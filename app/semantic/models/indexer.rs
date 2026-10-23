@@ -1,11 +1,22 @@
-//! One idle embedding pool per watcher; ordinary indexing retains no models.
+//! One expiring idle embedding pool per watcher; ordinary indexing retains no models.
 use super::EmbeddingPool;
 use std::cell::RefCell;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
+
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+#[cfg(all(test, target_os = "linux"))]
+mod memory;
+
+struct CachedIndexer {
+    key: AssetsKey,
+    pool: EmbeddingPool,
+    idle_since: Instant,
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) struct AssetsKey {
@@ -15,7 +26,7 @@ pub(super) struct AssetsKey {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct Cache(Arc<Mutex<Option<(AssetsKey, EmbeddingPool)>>>);
+pub(crate) struct Cache(Arc<Mutex<Option<CachedIndexer>>>);
 
 tokio::task_local! { static ASYNC_CACHE: Cache; }
 thread_local! { static BLOCKING_CACHE: RefCell<Option<Cache>> = const { RefCell::new(None) }; }
@@ -38,15 +49,52 @@ pub(crate) fn on_blocking_thread<T>(cache: Option<Cache>, work: impl FnOnce() ->
     work()
 }
 
-pub(crate) async fn scope<T>(work: impl Future<Output = T>) -> T {
+pub(crate) fn scope<T>(work: impl Future<Output = T>) -> impl Future<Output = T> {
+    scope_with_idle_timeout(Box::pin(work), IDLE_TIMEOUT)
+}
+
+async fn scope_with_idle_timeout<T>(work: impl Future<Output = T>, idle_timeout: Duration) -> T {
     let cache = Cache::default();
-    let result = ASYNC_CACHE.scope(cache.clone(), work).await;
+    let result = ASYNC_CACHE
+        .scope(cache.clone(), async {
+            tokio::pin!(work);
+            loop {
+                tokio::select! {
+                    result = &mut work => break result,
+                    () = tokio::time::sleep(idle_timeout / 2) => {
+                        let cache = cache.clone();
+                        // Model destruction can join inference threads; never do it
+                        // on the async runtime or while holding the cache lock.
+                        let _ = tokio::task::spawn_blocking(move || cache.expire(idle_timeout)).await;
+                    }
+                }
+            }
+        })
+        .await;
     // Destruction joins model resources; keep normal watcher shutdown off Tokio.
     let _ = tokio::task::spawn_blocking(move || drop(cache)).await;
     result
 }
 
 impl Cache {
+    fn expire(&self, idle_timeout: Duration) {
+        let expired = {
+            let mut cached = self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if cached
+                .as_ref()
+                .is_some_and(|entry| entry.idle_since.elapsed() >= idle_timeout)
+            {
+                cached.take()
+            } else {
+                None
+            }
+        };
+        drop(expired);
+    }
+
     pub(super) fn clear(&self) {
         let previous = self
             .0
@@ -63,7 +111,7 @@ impl Cache {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         match cached {
-            Some((cached_key, pool)) if cached_key == *key => Some(pool),
+            Some(cached) if cached.key == *key => Some(cached.pool),
             // Drop mismatched assets outside the lock, never reuse another model.
             _ => None,
         }
@@ -112,7 +160,11 @@ impl Drop for LoadedIndexer {
                 .0
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .replace((key, pool));
+                .replace(CachedIndexer {
+                    key,
+                    pool,
+                    idle_since: Instant::now(),
+                });
             drop(previous);
         }
     }
@@ -149,6 +201,60 @@ mod tests {
             backend: EmbeddingPoolBackend::Remote(remote::Client::new(remote_config()).unwrap()),
             assets_lease: None,
         }
+    }
+
+    #[test]
+    fn idle_expiry_preserves_checked_out_models_and_resets_on_return() {
+        let cache = Cache::default();
+        drop(LoadedIndexer::new(pool(), key(), Some(cache.clone())));
+        cache.expire(IDLE_TIMEOUT);
+        let checked_out = cache.take(&key()).expect("warm pool survives");
+        cache.expire(Duration::ZERO);
+        drop(LoadedIndexer::new(checked_out, key(), Some(cache.clone())));
+        cache.expire(IDLE_TIMEOUT);
+        assert!(
+            cache.take(&key()).is_some(),
+            "return starts a new idle period"
+        );
+        drop(LoadedIndexer::new(pool(), key(), Some(cache.clone())));
+        cache.expire(Duration::ZERO);
+        assert!(cache.take(&key()).is_none());
+    }
+
+    #[tokio::test]
+    async fn watcher_releases_idle_assets_without_another_index_pass() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("asset-lease");
+        let collector = std::fs::File::create(&path).unwrap();
+        scope_with_idle_timeout(
+            async {
+                let reader = std::fs::File::open(&path).unwrap();
+                reader.lock_shared().unwrap();
+                let mut retained = pool();
+                retained.assets_lease = Some(reader);
+                drop(LoadedIndexer::new(retained, key(), current()));
+                assert!(matches!(
+                    collector.try_lock(),
+                    Err(std::fs::TryLockError::WouldBlock)
+                ));
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    loop {
+                        if collector.try_lock().is_ok() {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .expect("idle pool releases its asset lease while watcher remains alive");
+                assert!(current().unwrap().take(&key()).is_none());
+                // The next update can cache a fresh pool after expiry.
+                drop(LoadedIndexer::new(pool(), key(), current()));
+                assert!(current().unwrap().take(&key()).is_some());
+            },
+            Duration::from_millis(20),
+        )
+        .await;
     }
 
     #[test]

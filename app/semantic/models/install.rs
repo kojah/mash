@@ -77,7 +77,7 @@ impl Models {
         }
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            let mut indexer = EmbeddingPool::load_local(asset_root)?;
+            let mut indexer = EmbeddingPool::load_local(asset_root, false)?;
             let smoke = [EmbeddingGroup {
                 content: "semantic Core ML installation check".to_owned(),
                 message_ids: vec!["smoke".to_owned()],

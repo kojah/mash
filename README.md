@@ -1508,6 +1508,14 @@ Failed indexing and pending shared publication retry after 30 seconds without
 requiring another file change. A reconciliation pass every five minutes recovers
 missed events. No models are downloaded automatically; every node retains SQLite.
 
+Watchers use one local CPU embedding worker instead of the eight used by explicit
+indexing. They keep the same embedding batches and vector format, trading bulk
+throughput for lower memory use. The indexing model pool is reused during bursts
+and released after 60–90 seconds without model work; the next update reloads it.
+Idle release also applies to Apple Silicon's Core ML indexing pool. Allocators may
+retain freed memory, so releasing the pool is not a process RSS limit. Search model
+caching is separate from the indexing pool.
+
 Each source read captures a fresh stamp and retries detected changes up to three
 times, with 50 ms between attempts. Local and shared-only ingestion both use this
 stable-read check. Stable malformed input fails without retries. If a source keeps

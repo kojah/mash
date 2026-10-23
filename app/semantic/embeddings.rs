@@ -126,7 +126,7 @@ impl EmbeddingPool {
     }
 
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
+    pub(super) fn load_local(root: &Path, _watching: bool) -> Result<Self, AppError> {
         Ok(Self {
             backend: EmbeddingPoolBackend::CoreMl(Box::new(CoreMlEmbeddingPool::load(root)?)),
             assets_lease: None,
@@ -134,8 +134,11 @@ impl EmbeddingPool {
     }
 
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-    pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
-        let workers = (0..EMBEDDING_WORKERS)
+    pub(super) fn load_local(root: &Path, watching: bool) -> Result<Self, AppError> {
+        // Watchers favor a small persistent footprint over bulk throughput.
+        // Keep the same waves and quantization batches regardless of concurrency.
+        let worker_count = if watching { 1 } else { EMBEDDING_WORKERS };
+        let workers = (0..worker_count)
             .map(|_| load_local_embedding(root, Some(EMBEDDING_THREADS_PER_WORKER)))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {

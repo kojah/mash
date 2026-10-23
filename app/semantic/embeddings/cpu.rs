@@ -43,18 +43,19 @@ fn embed_batches(
     groups: &[EmbeddingGroup],
     batch_size: usize,
 ) -> Result<Vec<Vec<f32>>, AppError> {
-    if workers.len() != EMBEDDING_WORKERS {
+    if !matches!(workers.len(), 1 | EMBEDDING_WORKERS) {
         return Err(AppError::internal("unexpected CPU embedding worker count"));
     }
+    let long_workers = LONG_WORKERS.min(workers.len());
     let mut jobs = (0..workers.len()).map(|_| Vec::new()).collect::<Vec<_>>();
     let (mut short, mut long) = (0, 0);
     for (index, batch) in groups.chunks(batch_size).enumerate() {
         let worker = if is_short_batch(&workers[0], batch)? {
-            let worker = (LONG_WORKERS + short) % workers.len();
+            let worker = (long_workers + short) % workers.len();
             short += 1;
             worker
         } else {
-            let worker = long % LONG_WORKERS;
+            let worker = long % long_workers;
             long += 1;
             worker
         };
@@ -173,7 +174,15 @@ mod tests {
             !is_short_batch(&models[0], &dense).unwrap(),
             "byte length cannot substitute for token length"
         );
-        assert!(embed_wave(&mut models[..2], &groups).is_err());
+        let watching = embed_wave(&mut models[..1], &groups).unwrap();
+        for (expected, actual) in expected.iter().zip(&watching) {
+            assert_eq!(
+                crate::semantic::retrieval::quantize_vector(expected).values,
+                crate::semantic::retrieval::quantize_vector(actual).values,
+                "watcher concurrency must preserve stored vector bytes"
+            );
+        }
+        assert!(embed_wave(&mut models[..0], &groups).is_err());
     }
 }
 

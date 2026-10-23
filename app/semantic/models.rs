@@ -268,7 +268,7 @@ impl Models {
         let cache = indexer::current();
         let mut pool = match cache.as_ref().and_then(|cache| cache.take(&key)) {
             Some(pool) => pool,
-            None => EmbeddingPool::load_local(&selected.root)?,
+            None => EmbeddingPool::load_local(&selected.root, cache.is_some())?,
         };
         pool.assets_lease = selected.lease;
         Ok(Some(indexer::LoadedIndexer::new(pool, key, cache)))
