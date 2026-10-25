@@ -820,7 +820,11 @@ machine's `providers` and `index` settings to the top level and optionally add
 
 ## External connectors
 
-[Obsidian vault ingestion](connectors/obsidian/README.md) is a runnable external
+All external connectors currently live in [blueprints](connectors/blueprints/README.md).
+They are experimental and will move out individually after testing establishes
+readiness. Their automated checks remain enabled.
+
+[Obsidian vault ingestion](connectors/blueprints/obsidian/README.md) is a runnable external
 connector through the Python SDK. It reads selected Markdown notes without
 changing the vault, retains frontmatter and stable identities, and delivers to
 explicit local and/or shared destinations. No Obsidian API key is needed.

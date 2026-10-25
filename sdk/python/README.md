@@ -36,7 +36,7 @@ asyncio.run(main())
 runnable connector: it turns a folder of Markdown files into searchable notes
 and keeps them in sync.
 
-[The Obsidian connector](../../connectors/obsidian/README.md) adds vault folder
+[The Obsidian connector](../../connectors/blueprints/obsidian/README.md) adds vault folder
 selection, frontmatter, stable rename identities and confirmed deletions. It
 uses this SDK as a separate application and never writes to the vault.
 
@@ -62,7 +62,7 @@ statuses to `check`, which adds Python and, per destination, the offline `mash`
 and `database` checks (local) or `credentials` and `authority` (shared, where
 authority is always `unverified`). The manifest declares those IDs in its own
 words. `emit` prints the report as one JSON line and returns exit code 2 unless
-it is ready. See [Obsidian's](../../connectors/obsidian/src/mash_obsidian/prerequisites.py)
+it is ready. See [Obsidian's](../../connectors/blueprints/obsidian/src/mash_obsidian/prerequisites.py)
 source checks. This is a connector packaging convention; the SDK does not
 discover, install or run connector packages inside Mash.
 

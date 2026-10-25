@@ -1,0 +1,45 @@
+version = 1
+connector = "obsidian"
+python = [3, 11]
+
+[[requirements]]
+id = "python"
+when = "always"
+description = "Python 3.11 or newer"
+remedy = "Run uv sync --project connectors/blueprints/obsidian --locked."
+
+[[requirements]]
+id = "vault"
+when = "always"
+description = "A readable local vault and selected folders"
+remedy = "Set vault and folders to readable directories; use Obsidian Sync separately if needed."
+
+[[requirements]]
+id = "state"
+when = "always"
+description = "Writable persistent connector state outside the vault"
+remedy = "Set state_dir outside the vault and grant this user access."
+
+[[requirements]]
+id = "mash"
+when = "local"
+description = "An installed Mash executable"
+remedy = "Install Mash and set destinations.executable to its path."
+
+[[requirements]]
+id = "database"
+when = "local"
+description = "A writable local silver database compatible with the installed Mash"
+remedy = "Select a writable database outside the vault; use Mash export/import for schema changes."
+
+[[requirements]]
+id = "credentials"
+when = "shared"
+description = "A Mash node token in the configured environment variable"
+remedy = "Set token_env to an environment variable containing this node's API token."
+
+[[requirements]]
+id = "authority"
+when = "shared"
+description = "Network access and a token authorized for the configured node/group"
+remedy = "Verify the shared service and node credentials; delivery verifies authorization."

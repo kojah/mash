@@ -75,49 +75,49 @@ jobs:
             uv run --directory sdk/python --locked python -m unittest discover -s tests
       - name: Verify Obsidian ingestion and real local search
         run: |
-          uv sync --project connectors/obsidian --locked
-          uv run --project connectors/obsidian --locked ruff check connectors/obsidian
-          uv run --project connectors/obsidian --locked ruff format --check connectors/obsidian
-          uv run --project connectors/obsidian --locked ty check connectors/obsidian
+          uv sync --project connectors/blueprints/obsidian --locked
+          uv run --project connectors/blueprints/obsidian --locked ruff check connectors/blueprints/obsidian
+          uv run --project connectors/blueprints/obsidian --locked ruff format --check connectors/blueprints/obsidian
+          uv run --project connectors/blueprints/obsidian --locked ty check connectors/blueprints/obsidian
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/obsidian --locked python -m unittest discover \
-              -s connectors/obsidian/tests
+            uv run --project connectors/blueprints/obsidian --locked python -m unittest discover \
+              -s connectors/blueprints/obsidian/tests
       - name: Verify Google Docs ingestion against a fake Drive and real local search
         run: |
-          uv sync --project connectors/google_docs --locked
-          uv run --project connectors/google_docs --locked ruff check connectors/google_docs
-          uv run --project connectors/google_docs --locked ruff format --check connectors/google_docs
-          uv run --project connectors/google_docs --locked ty check connectors/google_docs
+          uv sync --project connectors/blueprints/google_docs --locked
+          uv run --project connectors/blueprints/google_docs --locked ruff check connectors/blueprints/google_docs
+          uv run --project connectors/blueprints/google_docs --locked ruff format --check connectors/blueprints/google_docs
+          uv run --project connectors/blueprints/google_docs --locked ty check connectors/blueprints/google_docs
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/google_docs --locked python -m unittest discover \
-              -s connectors/google_docs/tests
+            uv run --project connectors/blueprints/google_docs --locked python -m unittest discover \
+              -s connectors/blueprints/google_docs/tests
       - name: Verify GitHub ingestion against a fake API and real local search
         run: |
-          uv sync --project connectors/github --locked
-          uv run --project connectors/github --locked ruff check connectors/github
-          uv run --project connectors/github --locked ruff format --check connectors/github
-          uv run --project connectors/github --locked ty check connectors/github
+          uv sync --project connectors/blueprints/github --locked
+          uv run --project connectors/blueprints/github --locked ruff check connectors/blueprints/github
+          uv run --project connectors/blueprints/github --locked ruff format --check connectors/blueprints/github
+          uv run --project connectors/blueprints/github --locked ty check connectors/blueprints/github
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/github --locked python -m unittest discover \
-              -s connectors/github/tests
+            uv run --project connectors/blueprints/github --locked python -m unittest discover \
+              -s connectors/blueprints/github/tests
       - name: Verify Slack ingestion against a fake API and real local search
         run: |
-          uv sync --project connectors/slack --locked
-          uv run --project connectors/slack --locked ruff check connectors/slack
-          uv run --project connectors/slack --locked ruff format --check connectors/slack
-          uv run --project connectors/slack --locked ty check connectors/slack
+          uv sync --project connectors/blueprints/slack --locked
+          uv run --project connectors/blueprints/slack --locked ruff check connectors/blueprints/slack
+          uv run --project connectors/blueprints/slack --locked ruff format --check connectors/blueprints/slack
+          uv run --project connectors/blueprints/slack --locked ty check connectors/blueprints/slack
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/slack --locked python -m unittest discover \
-              -s connectors/slack/tests
+            uv run --project connectors/blueprints/slack --locked python -m unittest discover \
+              -s connectors/blueprints/slack/tests
       - name: Verify Discord ingestion against a fake API and real local search
         run: |
-          uv sync --project connectors/discord --locked
-          uv run --project connectors/discord --locked ruff check connectors/discord
-          uv run --project connectors/discord --locked ruff format --check connectors/discord
-          uv run --project connectors/discord --locked ty check connectors/discord
+          uv sync --project connectors/blueprints/discord --locked
+          uv run --project connectors/blueprints/discord --locked ruff check connectors/blueprints/discord
+          uv run --project connectors/blueprints/discord --locked ruff format --check connectors/blueprints/discord
+          uv run --project connectors/blueprints/discord --locked ty check connectors/blueprints/discord
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/discord --locked python -m unittest discover \
-              -s connectors/discord/tests
+            uv run --project connectors/blueprints/discord --locked python -m unittest discover \
+              -s connectors/blueprints/discord/tests
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |
