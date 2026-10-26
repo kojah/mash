@@ -240,9 +240,9 @@ fn index(
 }
 
 fn require_certified_silver(storage: &Storage) -> Result<(), AppError> {
-    if !storage.silver_certificate()?.is_complete() {
+    if !storage.silver_certificate()?.permits_views() {
         return Err(AppError::usage(
-            "local views rebuild requires complete, current silver; run explicit mash index to repair or replay history first",
+            "local views rebuild requires a finished current scan; run explicit mash index to repair or replay history first",
         ));
     }
     Ok(())

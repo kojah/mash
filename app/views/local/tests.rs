@@ -446,7 +446,7 @@ fn views_rebuild_from_stored_history_survives_source_removal_and_is_idempotent()
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
-fn rejected_source_keeps_views_unready_even_with_complete_stored_vectors() {
+fn rejected_source_allows_views_over_complete_stored_vectors() {
     let mut fixture = fixture(true);
     assert_eq!(fixture.source.summary.malformed_records, 1);
     // A stale caller's success summary/certificate cannot override durable evidence.
@@ -464,9 +464,60 @@ fn rejected_source_keeps_views_unready_even_with_complete_stored_vectors() {
     )
     .unwrap();
     assert_eq!(result.counts.embeddings, result.counts.searchable_messages);
-    assert!(!result.ready);
+    assert!(result.ready);
     storage.commit_writer().unwrap();
-    assert!(Storage::open_search(&fixture.database, &models.generation()).is_err());
+    Storage::open_search(&fixture.database, &models.generation()).unwrap();
+}
+
+#[test]
+fn rejected_sources_do_not_block_retained_history_or_valid_incremental_changes() {
+    let fixture = fixture(true);
+    let models = Models::new(fixture.database.with_file_name("absent-models"));
+    let recipe = crate::views::config::Build::default();
+    let generation = recipe.generation(&models.generation());
+    let before = canonical(&fixture.database);
+    for appended in [false, true] {
+        let mut storage = Storage::open_writer(&fixture.database).unwrap();
+        let summary = if appended {
+            std::fs::create_dir(&fixture.source_root).unwrap();
+            write_history(&fixture.source_root, true);
+            std::fs::write(fixture.source_root.join("malformed.jsonl"), "{\n").unwrap();
+            let source = silver::ingest(&mut storage, &options(&fixture.source_root)).unwrap();
+            assert_eq!(source.summary.changed_messages, 1);
+            assert!(storage.derived_search_is_dirty().unwrap());
+            Some(source.summary)
+        } else {
+            None
+        };
+        storage.refresh_derived_search_state().unwrap();
+        embed_pending(&mut storage, &generation);
+        assert!(
+            build(
+                &mut storage,
+                &models,
+                summary.as_ref().unwrap_or(&fixture.source.summary),
+                &recipe
+            )
+            .unwrap()
+            .ready
+        );
+        let certificate = storage.silver_certificate().unwrap();
+        assert!(!certificate.is_complete());
+        assert_eq!(certificate.rejected_sources, 1);
+        storage.commit_writer().unwrap();
+        drop(storage);
+        let reader = Storage::open_search(&fixture.database, &generation).unwrap();
+        assert_eq!(reader.search("qdrant", 5, None, None).unwrap().len(), 1);
+        assert_eq!(
+            reader.search("postgres", 5, None, None).unwrap().len(),
+            usize::from(appended)
+        );
+        Storage::open_lexical(&fixture.database).unwrap();
+        if !appended {
+            assert_eq!(canonical(&fixture.database), before);
+        }
+    }
+    assert!(!fixture.database.with_file_name("absent-models").exists());
 }
 
 /// Span names one views build emits, with its readiness.

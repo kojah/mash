@@ -25,7 +25,8 @@ impl Manifest {
     pub(crate) fn matches(&self, silver: &Certificate, searchable_messages: u64) -> bool {
         self.schema_version == 1
             && self.representation_version == 1
-            && self.silver.is_complete()
+            && self.silver.permits_views()
+            && silver.permits_views()
             && self.silver.revision == silver.revision
             && self.silver.interpretation_version == silver.interpretation_version
             && silver.interpretation_version == INTERPRETATION_VERSION
@@ -68,6 +69,15 @@ mod tests {
             manifest.matches(&changed, 12),
             "unchanged rejected refresh may retain prior publication"
         );
+        changed.rejected_sources = 1;
+        let retained = Manifest::new(changed.clone(), 12);
+        assert!(retained.matches(&changed, 12));
+        for state in [Completeness::Pending, Completeness::Unverified] {
+            let mut unfinished = changed.clone();
+            unfinished.completeness = state;
+            assert!(!retained.matches(&unfinished, 12));
+            assert!(!Manifest::new(unfinished, 12).matches(&changed, 12));
+        }
         assert_eq!(
             serde_json::from_str::<Manifest>(&serde_json::to_string(&manifest).unwrap()).unwrap(),
             manifest

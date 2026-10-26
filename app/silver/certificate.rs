@@ -27,4 +27,14 @@ impl Certificate {
     pub(crate) fn is_complete(&self) -> bool {
         self.completeness == Completeness::Complete
     }
+
+    /// A finished scan can certify views of retained silver even when a source
+    /// was rejected. This says nothing about coverage of the provider history.
+    pub(crate) fn permits_views(&self) -> bool {
+        self.interpretation_version == INTERPRETATION_VERSION
+            && matches!(
+                self.completeness,
+                Completeness::Complete | Completeness::Incomplete
+            )
+    }
 }

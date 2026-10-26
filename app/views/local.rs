@@ -22,7 +22,7 @@ pub(crate) fn build(
     build: &crate::views::config::Build,
 ) -> Result<Build, AppError> {
     let silver = storage.silver_certificate()?;
-    let source_complete = silver.is_complete();
+    let views_allowed = silver.permits_views();
     let model = models.generation();
     let manifest = crate::views::manifest::Manifest::new(build.clone(), model.clone(), silver);
     let previous = storage.views_manifest()?;
@@ -55,7 +55,7 @@ pub(crate) fn build(
         storage.refresh_derived_search_state()?;
     }
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
-    if source_complete {
+    if views_allowed {
         storage.publish_lexical_manifest()?;
     }
     if !build.dense_enabled() {
@@ -63,7 +63,7 @@ pub(crate) fn build(
         storage.publish_views_manifest(&manifest)?;
         return Ok(Build {
             counts: storage.counts()?,
-            ready: source_complete,
+            ready: views_allowed,
             embeddings: semantic::EmbeddingSummary::default(),
             model_load_milliseconds: 0,
             search_refresh_milliseconds,
@@ -74,7 +74,7 @@ pub(crate) fn build(
     let embedding_started = Instant::now();
     let generation = build.generation(&model);
     storage.restrict_dense_queue(build)?;
-    resume_snapshot(storage, &generation, source_complete, certified_unchanged)?;
+    resume_snapshot(storage, &generation, views_allowed, certified_unchanged)?;
     let already_published = storage.semantic_generation_is_published(&generation)?
         && !storage.has_pending_embeddings()?;
     if !already_published {
@@ -110,12 +110,12 @@ pub(crate) fn build(
     embed_connectors(storage, models, &generation, &mut embeddings)?;
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
-    if !already_published && source_complete {
+    if !already_published && views_allowed {
         crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
             storage.mark_semantic_build_ready(&generation, build)
         })?;
     }
-    if source_complete {
+    if views_allowed {
         storage.publish_views_manifest(&manifest)?;
     }
     Ok(Build {

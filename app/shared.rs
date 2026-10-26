@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 // Keep interactive client deadlines separate so ordinary search falls back promptly.
 const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
 
+// Leave transport/decoding headroom inside the five-second client deadline.
+// A cold vocabulary facet alone can take two seconds on retained node history.
+const EXACT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+const EXACT_SEARCH_BUDGET_ERROR: &str = "exact query exceeded the shared search budget; narrow the query or metadata filters, or use match_mode=strict";
+
 pub(crate) mod attachments;
 mod client;
 mod coverage;

@@ -104,7 +104,7 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
     create_valid_model_marker(&models);
     let database = directory.path().join("index.sqlite3");
     for (expected_phase, exit_code, malformed_records, ready) in [
-        (Phase::Incomplete, 9, 1, false),
+        (Phase::Incomplete, 9, 1, true),
         (Phase::Complete, 0, 0, true),
         (Phase::Incomplete, 9, 1, true),
     ] {
@@ -203,4 +203,68 @@ fn assert_readiness(
         assert_eq!(search.status.code(), Some(8));
         assert_eq!(search.stdout, [] as [u8; 0]);
     }
+}
+
+#[test]
+fn rejected_source_preserves_cli_search_and_offline_views_rebuild() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("provider");
+    std::fs::create_dir(&root).unwrap();
+    let broken = root.join("broken.jsonl");
+    let corrupt = b"{\"type\":\"response_item\",\"payload\":";
+    std::fs::write(&broken, corrupt).unwrap();
+    let healthy = root.join("healthy.jsonl");
+    std::fs::write(&healthy, concat!(
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"healthy-thread\"}}\n",
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"id\":\"request\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"retainedneedle history\"}]}}\n",
+    )).unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, format!(
+        "version=1\n[providers]\ncodex={{roots=[{}]}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
+        toml::Value::String(root.to_str().unwrap().into()),
+    )).unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let models = directory.path().join("absent-models");
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    for operation in [
+        vec!["index"],
+        vec!["index", "--rebuild-local-views", "--full"],
+    ] {
+        let result = Command::cargo_bin("mash")
+            .unwrap()
+            .args(base)
+            .args(operation)
+            .output()
+            .unwrap();
+        assert_eq!(
+            result.status.code(),
+            Some(9),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let indexed: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(indexed["silver"]["completeness"], "incomplete");
+        assert_eq!(indexed["silver"]["rejected_sources"], 1);
+        let status = run_json(&[base.as_slice(), &["status"]].concat());
+        assert_eq!(status["ready"], true);
+        let results = run_json(
+            &[
+                base.as_slice(),
+                &["search", "retainedneedle", "--local", "--unit", "messages"],
+            ]
+            .concat(),
+        );
+        assert_eq!(results["results"].as_array().unwrap().len(), 1);
+        assert_eq!(std::fs::read(&broken).unwrap(), corrupt);
+        // The second operation must use stored silver, without provider files.
+        std::fs::remove_file(&healthy).ok();
+    }
+    assert!(!models.exists());
 }

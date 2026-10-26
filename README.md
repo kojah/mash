@@ -278,6 +278,9 @@ numbers are never expanded or corrected. Expanded results include
 `lexical_match` with the matched source term. Vocabulary expansion is scoped by
 metadata filters and bounded to 100,000 vocabulary terms, 32 query terms and eight alternatives per query
 term; a budget error asks for narrower filters or strict matching.
+Shared exact-mention queries have a four-second execution budget, including
+vocabulary expansion. Use `--match-mode strict` to skip the vocabulary lookup.
+The CLI preserves recognized budget errors from the API with this guidance.
 Install models explicitly, then build the local index:
 
 ```bash
@@ -365,9 +368,13 @@ count, rather than `complete`; either incomplete state reports that a retry is
 required. The CLI exits with status 9 and MCP sets `isError: true` while retaining
 the structured partial counts. Correct the source or publication failure and run
 `mash index` again; already committed usable data is preserved.
-A partial initial run remains unready for search until a clean indexing attempt
-finishes. Malformed input alone does not invalidate an unchanged, previously
-completed local index.
+Source coverage and search readiness are reported separately. After a finished
+scan, views can be certified over retained history even when some sources were
+rejected; valid sources can keep advancing and remain searchable. Ingestion still
+reports `incomplete` and exits with status 9 until the source failures are resolved.
+Unfinished scans, obsolete interpretation and stale or incomplete search views
+remain unready. `index --rebuild-local-views` can rebuild retained history offline
+without repairing source coverage or changing the provider files.
 Malformed JSONL sources contribute no readable fragments to the index. Their
 last complete messages, vectors and checkpoint remain intact until a clean
 retry; healthy sources in the same run can still advance.

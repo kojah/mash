@@ -238,8 +238,12 @@ impl Store {
     ) -> Result<protocol::Candidates, AppError> {
         validate_search(&input, identity)?;
         if input.intent == crate::views::exact::Intent::ExactMention {
-            return tokio::time::timeout(std::time::Duration::from_millis(1500), self.search_exact(identity, input, active))
-                .await.map_err(|_| AppError::usage("exact query exceeded the shared search budget; narrow the query or metadata filters"))?;
+            return tokio::time::timeout(
+                crate::shared::EXACT_SEARCH_TIMEOUT,
+                self.search_exact(identity, input, active),
+            )
+            .await
+            .map_err(|_| AppError::usage(crate::shared::EXACT_SEARCH_BUDGET_ERROR))?;
         }
         self.build.require_intent(input.intent)?;
         let configuration = self.active_configuration(identity).await?;

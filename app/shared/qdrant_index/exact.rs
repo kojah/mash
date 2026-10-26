@@ -200,3 +200,61 @@ impl Store {
         })
     }
 }
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    use axum::{Router, routing::post};
+
+    #[tokio::test]
+    async fn flexible_exact_search_allows_cold_vocabulary_and_keeps_a_deadline() {
+        let identity = Identity {
+            group_id: "test".into(),
+            node_id: "node".into(),
+            generation: "unused".into(),
+            dimensions: 4,
+        };
+        let active = [identity.node_id.clone()].into_iter().collect();
+        let name = collection(&identity.group_id, false);
+        for (delay_ms, succeeds) in [(1800, true), (4200, false)] {
+            let router = Router::new()
+                .route(&format!("/collections/{name}/facet"), post(move || async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    r#"{"status":"ok","result":{"hits":[{"value":"bun","count":1},{"value":"mcp","count":1}]}}"#
+                }))
+                .route(&format!("/collections/{name}/points/scroll"), post(|| async {
+                    r#"{"status":"ok","result":{"points":[],"next_page_offset":null}}"#
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+            let mut store = Store::unavailable();
+            store.api = api::Client::new(&url, None, 64 * 1024).unwrap();
+            let input = protocol::Search {
+                match_mode: crate::views::matching::Mode::Flexible,
+                vector_policy: None,
+                intent: exact::Intent::ExactMention,
+                unit: crate::search_results::SearchUnit::Chats,
+                query: "bun mcp".into(),
+                generation: String::new(),
+                vector: Vec::new(),
+                provider: None,
+                days: None,
+                exclude_self: false,
+                filter: None,
+            };
+            let result = store.search(&identity, input, &active).await;
+            if succeeds {
+                assert!(result.unwrap().lexical.is_empty());
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+                assert_eq!(
+                    error.error.message,
+                    crate::shared::EXACT_SEARCH_BUDGET_ERROR
+                );
+            }
+            server.abort();
+        }
+    }
+}

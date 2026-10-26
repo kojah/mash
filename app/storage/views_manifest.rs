@@ -23,9 +23,9 @@ impl Storage {
     pub(crate) fn publish_lexical_manifest(&self) -> Result<(), AppError> {
         self.require_writer()?;
         let silver = self.silver_certificate()?;
-        if !silver.is_complete() || self.derived_search_is_dirty()? {
+        if !silver.permits_views() || self.derived_search_is_dirty()? {
             return Err(AppError::search_not_ready(
-                "lexical publication requires complete silver and clean derived data",
+                "lexical publication requires a finished current scan and clean derived data",
             ));
         }
         let manifest =

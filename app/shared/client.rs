@@ -6,6 +6,7 @@ use std::{sync::LazyLock, time::Duration};
 use tokio::sync::{Semaphore, SemaphorePermit};
 mod body;
 mod contexts;
+mod query_error;
 pub(super) use contexts::read as context_batch;
 #[cfg(test)]
 mod retry_tests;
@@ -260,6 +261,12 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
         }
         if !response.status().is_success() {
             let status = response.status();
+            if search
+                && status == reqwest::StatusCode::BAD_REQUEST
+                && let Some(error) = query_error::read(response).await
+            {
+                return Err(error);
+            }
             let message = match status.as_u16() {
                 409 if search => "shared index changed while searching; retry the search",
                 401 | 403 => {

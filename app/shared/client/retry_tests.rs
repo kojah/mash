@@ -132,3 +132,57 @@ async fn cancelling_busy_negotiation_releases_bulk_capacity() {
     assert_eq!(CAPACITY.interactive.available_permits(), 8);
     server.abort();
 }
+
+#[tokio::test]
+async fn query_budget_errors_preserve_guidance_without_exposing_arbitrary_responses() {
+    use axum::routing::post;
+    let budget = crate::shared::EXACT_SEARCH_BUDGET_ERROR;
+    let old_budget =
+        "exact query exceeded the shared search budget; narrow the query or metadata filters";
+    for (body, expected) in [
+        (
+            serde_json::to_string(&AppError::usage(budget)).unwrap(),
+            Some(budget),
+        ),
+        (
+            serde_json::to_string(&AppError::usage(old_budget)).unwrap(),
+            Some(budget),
+        ),
+        (
+            serde_json::to_string(&AppError::usage("PRIVATE-SERVER-TEXT")).unwrap(),
+            None,
+        ),
+        (
+            serde_json::to_string(&AppError::shared(budget)).unwrap(),
+            None,
+        ),
+        ("PRIVATE-PROXY-TEXT".repeat(4096), None),
+    ] {
+        let app = Router::new().route(
+            "/search",
+            post(move || {
+                let body = body.clone();
+                async move { (StatusCode::BAD_REQUEST, body) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/search", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let error = response::<Reply>(reqwest::Client::new().post(url), Endpoint::Search)
+            .await
+            .unwrap_err();
+        if let Some(message) = expected {
+            assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+            assert_eq!(error.error.message, message);
+            assert_eq!(error.code, 2);
+        } else {
+            assert_eq!(error.error.kind, crate::ErrorKind::SharedIndex);
+            assert_eq!(
+                error.error.message,
+                "shared index rejected invalid or oversized data"
+            );
+        }
+        assert!(!error.error.retryable);
+        server.abort();
+    }
+}

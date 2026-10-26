@@ -26,7 +26,8 @@ impl Manifest {
         self.schema_version == 1
             && &self.build == build
             && self.model_generation == model
-            && self.silver.is_complete()
+            && self.silver.permits_views()
+            && silver.permits_views()
             && self.silver.revision == silver.revision
             && self.silver.interpretation_version == silver.interpretation_version
             && silver.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION
@@ -73,10 +74,24 @@ mod tests {
         changed_manifest = manifest.clone();
         changed_manifest.silver.completeness = Completeness::Unverified;
         assert!(!changed_manifest.matches(&Build::default(), "model", &silver));
-        // Rejected refreshes with no canonical changes may resume the already
-        // certified projection; they cannot certify a new build.
+        // Source coverage is independent of a certified retained projection.
         changed = silver;
         changed.completeness = Completeness::Incomplete;
         assert!(manifest.matches(&Build::default(), "model", &changed));
+        changed.rejected_sources = 1;
+        let retained = Manifest::new(Build::default(), "model".into(), changed.clone());
+        assert!(retained.matches(&Build::default(), "model", &changed));
+        for state in [Completeness::Pending, Completeness::Unverified] {
+            let mut unfinished = changed.clone();
+            unfinished.completeness = state;
+            assert!(!retained.matches(&Build::default(), "model", &unfinished));
+            assert!(
+                !Manifest::new(Build::default(), "model".into(), unfinished).matches(
+                    &Build::default(),
+                    "model",
+                    &changed
+                )
+            );
+        }
     }
 }
