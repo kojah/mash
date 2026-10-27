@@ -19,8 +19,8 @@ from mash_sdk import (
     Snapshot,
 )
 
-from .common import File, Operation, Sender, milliseconds
-from .scope import Scope
+from ..common import File, Operation, Sender, milliseconds
+from ..scope import Scope
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
 
-from .scope import Scope
+from ..scope import Scope
 
 
 @dataclass(frozen=True)

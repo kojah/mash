@@ -19,8 +19,8 @@ from mash_sdk import (
     Role,
 )
 
-from .common import File, milliseconds
-from .scope import Scope
+from ..common import File, milliseconds
+from ..scope import Scope
 
 
 @dataclass(frozen=True)

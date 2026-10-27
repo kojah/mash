@@ -8,9 +8,8 @@ sources and `Connector.run` (backfill diffs, event capture and debounce), and
 Mash indexes delivered records for search. Platform adapters still need
 implementation; `sdk/python/examples/markdown_folder.py` is a complete, runnable
 connector to start from.
-Obsidian and Apple Notes share the note-to-document mapping in `notes.py`;
-their source readers are sketched in `obsidian.py` and `apple_notes.py`.
-`imessage.py` sketches container/entry mapping from a separate read-only SQLite
+Sketched future connectors live in blueprints/: Obsidian and Apple Notes share the note-to-document mapping in blueprints/notes.py; their source readers are sketched in blueprints/obsidian.py and blueprints/apple_notes.py. blueprints/imessage.py sketches iMessage mapping and blueprints/gold.py sketches the custom-gold API.
+`blueprints/imessage.py` sketches container/entry mapping from a separate read-only SQLite
 reader. Native database readers and local attachment transport are not implemented.
 
 The platform adapter handles authentication, permissions, rate limits, pagination,

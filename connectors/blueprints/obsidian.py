@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .scope import Scope
+from ..scope import Scope
 
 
 @dataclass(frozen=True)
