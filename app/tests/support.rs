@@ -141,8 +141,9 @@ impl NodeFixture {
         // Synthetic rows inserted after empty-index setup need explicit silver
         // evidence and a manifest revision as well as the vector-ready marker.
         connection.execute_batch(
-            "INSERT INTO silver_scans(provider,interpretation_version,state) VALUES('codex',2,1)
-             ON CONFLICT(provider) DO UPDATE SET interpretation_version=2,state=1;
+            "INSERT INTO silver_scans(provider,interpretation_version,state)
+             SELECT 'codex',interpretation_version,1 FROM silver_state WHERE singleton=1
+             ON CONFLICT(provider) DO UPDATE SET interpretation_version=excluded.interpretation_version,state=1;
              UPDATE views_manifest SET manifest=json_set(manifest,
                  '$.silver.revision',(SELECT revision FROM silver_state WHERE singleton=1),
                  '$.silver.completeness','complete') WHERE singleton=1;
