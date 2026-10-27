@@ -23,10 +23,15 @@ impl Storage {
             "SELECT term FROM temp.mash_vocabulary LIMIT ?1".to_owned()
         } else {
             let scope = scope.expect("filtered scope");
+            // Resolve metadata once per indexed message, not once per token
+            // occurrence. Keep the FTS scan outside the indexed object lookups:
+            // metadata-first joins can rescan the virtual table for each message.
             format!(
-                "SELECT DISTINCT v.term FROM temp.mash_vocabulary_instances v
-                JOIN message_fts f ON f.rowid=v.doc JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.id=f.message_id
-                JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id WHERE ({}) LIMIT ?1",
+                "SELECT DISTINCT v.term FROM temp.mash_vocabulary_instances v WHERE v.doc IN (
+                SELECT f.rowid FROM message_fts f
+                CROSS JOIN objects m INDEXED BY objects_id ON m.origin='provider' AND m.object_role='entry' AND m.id=f.message_id
+                CROSS JOIN objects c INDEXED BY objects_native_container ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
+                WHERE ({})) LIMIT ?1",
                 scope.filter.sql(Some(&scope.node))
             )
         };

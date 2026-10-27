@@ -97,6 +97,68 @@ fn flexible_search_supports_prefixes_and_transpositions_on_read_only_views() {
 }
 
 #[test]
+fn filtered_flexible_vocabulary_preserves_chat_role_and_boolean_scope() {
+    use crate::{role::Role, search_filter::Filter, views::matching::Mode};
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("filtered-vocabulary.sqlite3");
+    let mut writer = Storage::open_writer(&path).unwrap();
+    let mut selected = conversation_with_messages(&[
+        ("selected", "idempotency idempotency idempotency"),
+        (
+            "assistant",
+            "idempaaaa idempaaab idempaaac idempaaad idempaaae idempaaaf idempaaag idempaaah idempaaai",
+        ),
+    ]);
+    selected.messages.inline_mut()[1].role = Role::Assistant;
+    writer.replace_conversation(&selected).unwrap();
+    let mut other = conversation_with_messages(&[(
+        "outside",
+        "idempbaaa idempbaab idempbaac idempbaad idempbaae idempbaaf idempbaag idempbaah idempbaai",
+    )]);
+    other.id = "other-chat".into();
+    other.source = crate::silver::SourceIdentity::file("other.jsonl");
+    writer.replace_conversation(&other).unwrap();
+    certify(&mut writer);
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let reader = Storage::open_lexical(&path).unwrap();
+    let scope = Selection {
+        conversation: vec![selected.id],
+        filter: Some(Filter::Not(Box::new(Filter::Role(vec![Role::Assistant])))),
+        ..Default::default()
+    }
+    .resolve("local")
+    .unwrap();
+    for query in ["idemp", "idempotnecy"] {
+        let plan = reader
+            .lexical_plan(query, Mode::Flexible, Some(&scope))
+            .unwrap();
+        assert_eq!(
+            plan.groups,
+            vec![vec![query.to_owned(), "idempotency".to_owned()]]
+        );
+        let hits = reader
+            .search_exact(
+                &Literal::with_mode(query, Mode::Flexible).unwrap(),
+                10,
+                &scope,
+            )
+            .unwrap();
+        assert_eq!(
+            hits.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>(),
+            ["selected"]
+        );
+        let hits = reader
+            .search_filtered(query, 10, None, None, Some(&scope))
+            .unwrap();
+        assert_eq!(
+            hits.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>(),
+            ["selected"]
+        );
+    }
+}
+
+#[test]
 fn lexical_publication_survives_forget_without_a_dense_manifest() {
     for dirty in [false, true] {
         let root = tempfile::tempdir().unwrap();
