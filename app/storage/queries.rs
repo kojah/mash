@@ -178,6 +178,10 @@ impl Storage {
         let limit = i64::try_from(limit.min(1_000)).unwrap_or(1_000);
         let cutoff = cutoff_timestamp(days)?;
         let predicate = filters.map_or_else(|| "TRUE".to_owned(), |f| f.filter.sql(Some(&f.node)));
+        let chats = filters.map_or_else(
+            || "TRUE".to_owned(),
+            |f| f.filter.fts_chat_sql("message_fts.conversation_id"),
+        );
         // Reuse the generated projection verbatim so its decoder stays aligned
         // when fields are added or reordered. sqlc cannot analyze FTS MATCH's
         // table operand; only that ranking/filtering clause is handwritten.
@@ -192,7 +196,7 @@ impl Storage {
                    JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.id = message_fts.message_id
                    JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id = m.conversation_id
                    LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
-                  WHERE message_fts MATCH ?1
+                  WHERE message_fts MATCH ?1 AND {chats}
                     AND (?2 IS NULL OR c.source = ?2)
                     AND (?3 IS NULL OR m.created_at >= ?3)
                     AND ({predicate})

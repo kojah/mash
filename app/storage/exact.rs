@@ -26,12 +26,15 @@ impl Storage {
             // Resolve metadata once per indexed message, not once per token
             // occurrence. Keep the FTS scan outside the indexed object lookups:
             // metadata-first joins can rescan the virtual table for each message.
+            // The stored chat prefilter skips those lookups for other chats;
+            // on a cold page cache each lookup is a random silver read.
             format!(
                 "SELECT DISTINCT v.term FROM temp.mash_vocabulary_instances v WHERE v.doc IN (
                 SELECT f.rowid FROM message_fts f
                 CROSS JOIN objects m INDEXED BY objects_id ON m.origin='provider' AND m.object_role='entry' AND m.id=f.message_id
                 CROSS JOIN objects c INDEXED BY objects_native_container ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
-                WHERE ({})) LIMIT ?1",
+                WHERE {} AND ({})) LIMIT ?1",
+                scope.filter.fts_chat_sql("f.conversation_id"),
                 scope.filter.sql(Some(&scope.node))
             )
         };
@@ -111,6 +114,7 @@ impl Storage {
             .split_once("FROM objects m")
             .ok_or_else(|| AppError::internal("invalid generated search projection"))?;
         let predicate = scope.filter.sql(Some(&scope.node));
+        let chats = scope.filter.fts_chat_sql("message_fts.conversation_id");
         let mut statement = self
             .connection
             .prepare(&format!(
@@ -119,7 +123,7 @@ impl Storage {
              JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.id=message_fts.message_id
              JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
              LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
-             WHERE message_fts MATCH ?1 AND ({predicate})
+             WHERE message_fts MATCH ?1 AND {chats} AND ({predicate})
                AND mash_literal(m.role,COALESCE(m.search_projection,m.content))
              ORDER BY mash_literal(m.role,COALESCE(m.search_projection,m.content)) DESC,
                       m.created_at DESC,m.id LIMIT ?2"

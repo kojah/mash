@@ -268,6 +268,41 @@ impl Filter {
         self.compile(&Columns::CONNECTOR, local_node)
     }
 
+    /// A condition every matching native message satisfies, over the chat
+    /// `column` that `message_fts` stores beside each indexed message. Filtered
+    /// lexical scans check it before joining silver objects, so a chat-scoped
+    /// search does not look up every indexed message. It never replaces `sql`.
+    pub(crate) fn fts_chat_sql(&self, column: &str) -> String {
+        match self.implied_chats() {
+            None => "TRUE".to_owned(),
+            Some(chats) if chats.is_empty() => "FALSE".to_owned(),
+            Some(chats) => format!(
+                "{column} IN ({})",
+                chats.into_iter().map(quote).collect::<Vec<_>>().join(",")
+            ),
+        }
+    }
+
+    /// Chats that contain every match, or `None` when the filter allows any chat.
+    fn implied_chats(&self) -> Option<std::collections::BTreeSet<&str>> {
+        match self {
+            Self::Chat(values) => Some(values.iter().map(String::as_str).collect()),
+            Self::All(children) => children
+                .iter()
+                .filter_map(Self::implied_chats)
+                .reduce(|left, right| left.intersection(&right).copied().collect()),
+            Self::Any(children) => {
+                children
+                    .iter()
+                    .try_fold(std::collections::BTreeSet::new(), |mut chats, child| {
+                        chats.extend(child.implied_chats()?);
+                        Some(chats)
+                    })
+            }
+            _ => None,
+        }
+    }
+
     /// Identifiers come only from these fixed column maps; literals are SQL quoted.
     /// COALESCE preserves the filter tree's Boolean semantics for absent metadata.
     fn compile(&self, columns: &Columns, local_node: Option<&str>) -> String {
@@ -429,5 +464,36 @@ mod tests {
         }
         assert!(deep.validate().is_err());
         assert!(serde_json::from_str::<Filter>(r#"{"project":["x"],"role":["user"]}"#).is_err());
+    }
+
+    #[test]
+    fn fts_chat_prefilter_is_implied_by_the_filter_tree() {
+        let chats = |json: &str| {
+            serde_json::from_str::<Filter>(json)
+                .unwrap()
+                .fts_chat_sql("f.conversation_id")
+        };
+        assert_eq!(
+            chats(r#"{"all":[{"role":["user"]},{"chat":["b","a'x"]}]}"#),
+            "f.conversation_id IN ('a''x','b')"
+        );
+        assert_eq!(
+            chats(r#"{"all":[{"chat":["a","b"]},{"all":[{"chat":["b","c"]}]}]}"#),
+            "f.conversation_id IN ('b')"
+        );
+        assert_eq!(
+            chats(r#"{"any":[{"chat":["a"]},{"all":[{"chat":["b"]},{"role":["user"]}]}]}"#),
+            "f.conversation_id IN ('a','b')"
+        );
+        assert_eq!(chats(r#"{"all":[{"chat":["a"]},{"chat":["b"]}]}"#), "FALSE");
+        assert_eq!(chats(r#"{"any":[]}"#), "FALSE");
+        for open in [
+            r#"{"all":[]}"#,
+            r#"{"role":["user"]}"#,
+            r#"{"any":[{"chat":["a"]},{"role":["user"]}]}"#,
+            r#"{"not":{"chat":["a"]}}"#,
+        ] {
+            assert_eq!(chats(open), "TRUE", "{open}");
+        }
     }
 }
