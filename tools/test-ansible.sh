@@ -3,8 +3,14 @@
 set -euo pipefail
 repository=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$repository/tools/controller-environment.sh"
+# A fleet deploy runs this check inside an outer ansible-runner job. Its callback and cache settings (for example
+# ANSIBLE_STDOUT_CALLBACK=awx_display) break every nested runner this script starts, so drop them first.
+for inherited in $(compgen -e); do
+    case $inherited in ANSIBLE_* | AWX_* | RUNNER_*) unset "$inherited" ;; esac
+done
 scratch=$(mktemp -d "${TMPDIR:?}/ansible-fleet-test.XXXXXXXX")
-trap 'rm -rf "$scratch"' EXIT
+# On an unexpected failure, show the newest nested runner log before the scratch tree is removed.
+trap 'status=$?; if [[ $status -ne 0 ]]; then newest=$(ls -t "$scratch"/*/runner.log 2>/dev/null | head -n 1); [[ -n $newest ]] && tail -n 80 "$newest" >&2; fi; rm -rf "$scratch"' EXIT
 cat > "$scratch/probe" <<'PROBE'
 #!/usr/bin/env bash
 set -euo pipefail
