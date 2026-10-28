@@ -1,6 +1,6 @@
 """What the SessionStart hook and the record helper share: the Mash executable,
-the session's project and its watermark file. Standard library only, because both
-scripts run in the agent host's own `python3`."""
+the session's project, its watermark file and the record text format. Standard
+library only, because both scripts run in the agent host's own `python3`."""
 
 from __future__ import annotations
 
@@ -15,6 +15,27 @@ from pathlib import Path
 from typing import Any
 
 SOURCE_ID = "mash-recall"
+ENTRY_PREFIX = f"connector#entry#{SOURCE_ID}#"
+# `view` returns a record's text but not its connector kind or metadata, so the
+# text carries supersession: a replaced record's first two lines are
+# "Superseded <heading>" and "Superseded by: <entry id> (<its heading>)", and
+# its replacement lists "Supersedes: <entry id> (<heading>)" before "Evidence:".
+SUPERSEDED, SUPERSEDED_BY, SUPERSEDES = "Superseded ", "Superseded by: ", "Supersedes: "
+
+
+def superseded_by(content: str) -> str | None:
+    """The record ID that replaced this record's text, or None while current."""
+    heading, _, rest = content.partition("\n")
+    marker = rest.partition("\n")[0]
+    if not heading.startswith(SUPERSEDED) or not marker.startswith(SUPERSEDED_BY):
+        return None
+    return short_id(marker[len(SUPERSEDED_BY) :].partition(" ")[0]) or None
+
+
+def short_id(value: str) -> str:
+    """A record ID without the connector entry prefix that `view` needs."""
+    value = value.strip()
+    return value[len(ENTRY_PREFIX) :] if value.startswith(ENTRY_PREFIX) else value
 
 
 def resolve_binary() -> str | None:

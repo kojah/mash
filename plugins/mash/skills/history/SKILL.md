@@ -13,7 +13,7 @@ installed skill may describe another release; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"e1a656c591990a9804a9d8017084a049e70ea5ac88e6ae0c559f5a2fb66b0926","tool":"search","topic":"discovery"}
+{"expected_contract":"65c5218bf6b17a86895caa4e126298f693d219595b56e48ecc0eef6622c9d606","tool":"search","topic":"discovery"}
 ```
 
 
@@ -41,11 +41,16 @@ The plugin's SessionStart hook may add project recall: records first, then
 recent project chats with `view` lookups. Records are connector entries from
 source `mash-recall` (kinds `recall:decision`, `recall:preference`,
 `recall:fact`, `recall:open-question`) that quote exact cited messages; filter
-with `source` and view the cited message before relying on one. When the hook
-lists undistilled activity, read it, recap what is relevant to this project in
-your first reply, then pass only quote-supported records and every chat you read
-to the helper command it names. The helper drops unverifiable quotes, commits
-survivors to local silver and advances only the covered chats' watermarks.
+with `source` and view the cited message before relying on one. A replaced
+record has kind `recall:superseded` and a `Superseded by` line naming its
+replacement; filter by the current kinds to recall only current records, and
+view either record to follow the chain. When the hook lists undistilled
+activity, read it, recap what is relevant to this project in your first reply,
+then pass only quote-supported records and every chat you read to the helper
+command it names; to replace an earlier record, add `supersedes` with its record
+ID or exact statement. The helper drops unverifiable quotes and decisions or
+preferences that quote no user message, commits survivors to local silver and
+advances only the covered chats' watermarks.
 
 If MCP is absent or disconnected, use the configured `mash` executable with the
 same configuration, database, models and scope. Tool errors and empty results

@@ -231,19 +231,55 @@ recap and pass durable decisions, preferences, facts and open questions to
 
 ```json
 {"records": [{"kind": "decision", "statement": "...",
-              "evidence": [{"message_id": "...", "quote": "exact text"}]}],
+              "evidence": [{"message_id": "...", "quote": "exact text"}],
+              "supersedes": [{"id": "connector#entry#mash-recall#record/..."}]}],
  "covered": [{"chat_id": "...", "message_id": "newest message read"}]}
 ```
 
 The helper checks every quote against `mash view MESSAGE_ID` and drops any record
-with a quote that is not an exact substring. Survivors go to local silver through
+with a quote that is not an exact substring. A `decision` or `preference` must
+also quote at least one of the user's own messages (a native `user` turn or a
+human-authored connector message): an assistant proposal alone is a suggestion,
+and the helper drops it with that reason, so cite the user's approval or record
+it as a `fact` or `open_question`. Survivors go to local silver through
 `mash index --connector-batch` as connector source `mash-recall`: one
 `recall:project` container per project and `recall:decision`, `recall:preference`,
 `recall:fact` or `recall:open-question` entries whose text and metadata name the
 project and the cited message IDs and quotes. They become searchable after the
 next `mash index` (`mash search ... --source mash-recall`); like other connector
 records they are not published by node publication. Watermarks advance only for
-the covered chats, after delivery succeeds. The connector revision and
+the covered chats, after delivery succeeds.
+
+Records change through supersession rather than deletion. The optional
+`supersedes` list names up to four earlier records of the same project, by record
+ID (with or without the `connector#entry#mash-recall#` prefix) or by exact
+`statement` (plus `kind` when it differs from the new record's). The new record
+carries its own evidence and a `Supersedes: <id> (<heading>)` line; each replaced
+record is rewritten in place as kind `recall:superseded`, its first lines becoming
+`Superseded <heading>` and `Superseded by: <id> (<heading>)`, with its original
+evidence and time kept. Replacements form chains (Biome, then oxlint, then oxlint
+with type-aware rules): a record that is already superseded can only be replaced
+again through its replacement, so the helper rejects self-supersession, cycles
+and forks, and names that are missing or belong to another project. Within one
+submission a record may supersede an earlier one. Re-recording is idempotent: a
+superseded record stays superseded and keeps its links. The SessionStart hook
+lists only current records; `view` of either record shows the neighbouring link,
+and `python3 plugins/mash/hooks/record.py --history RECORD_ID` prints the whole
+chain, oldest first, without writing. Search the current records with the
+current kinds, for example
+`mash search oxlint --source mash-recall --kind recall:decision`, and their
+history with `--kind recall:superseded`. Supersession is read and written
+without a lock, like the watermarks: run one helper per project at a time.
+
+Other agents record decisions the same way. An agent that already reads Mash
+over MCP (for example a DeepSeek harness worker) pipes the same JSON to
+`record.py --cwd PROJECT` through its shell, with `MASH_BIN` naming the Mash
+executable, and recalls with MCP `search` filtered by `source` and the current
+kinds. Evidence must cite messages Mash has indexed, so a decision taken in a
+history Mash does not ingest is recorded only once its words appear in indexed
+history.
+
+The connector revision and
 per-project watermarks live in `<Mash data directory>/recall/`
 (`~/.local/share/mash/recall` on Linux; override with `MASH_RECALL_STATE_DIR`),
 replaced atomically without a lock. The scripts use only the Python 3.9+
