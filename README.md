@@ -180,8 +180,8 @@ Mash MCP, falls back to the CLI when MCP is unavailable, and guides chat
 discovery, scoped message searches and evidence-backed answers about past
 decisions. It uses the existing Mash connection rather than starting a duplicate
 MCP server. The plugin requires a configured Mash executable/index; install and
-connect Mash using the setup above. Its only hook is the read-only session
-recall below; the plugin never indexes history or downloads models.
+connect Mash using the setup above. Its hooks are the read-only session recall
+and prompt nudge below; the plugin never indexes history or downloads models.
 
 From this repository, install the local plugin:
 
@@ -222,6 +222,15 @@ lookups, excluding the current session. It reads only `list-chats --local` and
 `view`, so it needs no models or current lexical views, and it fails open: any
 error, missing executable or index, or its 3-second deadline yields no output and
 exit status 0. The executable is `$MASH_BIN`, else `mash-dev`, else `mash`.
+
+On UserPromptSubmit it also runs `prompt_recall.py`, which reads only the prompt
+and never calls Mash. A prompt that looks back at earlier work ("yesterday",
+"do you remember", "what did we decide", "where did we leave off", "the diagram
+we made") gets a short note to search Mash history before answering or asking.
+A prompt that names an outside person, PR, issue or ticket ("aaron's changes",
+"PR 183", "#1394", "MASH-42") gets a softer note to search only if the agent does
+not recognize it. Slash commands, pasted content and fenced code are ignored. It
+fails open, and `MASH_PROMPT_RECALL=off` disables it.
 
 Distillation is lazy rather than tied to session end. Up to three project chats
 active in the last seven days with messages newer than their watermark are listed

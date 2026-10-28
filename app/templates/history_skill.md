@@ -1,6 +1,6 @@
 ---
 name: history
-description: Find past chats, requests, decisions, and supporting messages across providers and machines using Mash. Use when the user refers to previous conversations or asks what they discussed or decided.
+description: Find past chats, requests, decisions, and supporting messages across providers and machines using Mash. Use when the user refers to previous conversations or earlier work ("yesterday", "last week", "do you remember", "what did we decide", "where did we leave off", "that diagram we made"), asks about the status or history of a PR, task or decision, or names a person, project, PR, ticket, file or term you don't recognize from the current conversation or codebase. Search Mash before asking the user or guessing.
 ---
 
 # Search agent history with Mash
@@ -31,6 +31,10 @@ returned attachment lookups. Text is credential-redacted; binary files are not.
 Restart Mash MCP after installing a new binary. Help/status report the running
 build and contract. If the skill fingerprint differs, follow live help and reload
 the installed skill. Never replay a mutation whose outcome is unknown.
+
+The plugin's UserPromptSubmit hook may add a short Mash note when a prompt looks
+back at earlier work or names an outside person, PR or thing. It reads only the
+prompt: treat it as a reminder to search, not as evidence.
 
 The plugin's SessionStart hook may add project recall: records first, then
 recent project chats with `view` lookups. Records are connector entries from
