@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade)
+models=(Publication ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade) ;;
+            Publication|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -104,6 +104,9 @@ check() {
 
 for model in "${models[@]}"; do
     check "$model" "$model"
+    if [[ $model == MutationAdmission ]]; then
+        check MutationAdmission MutationAdmissionTwoSlots
+    fi
 done
 if $self_test; then
     check Publication PublicationAckLatest AcknowledgedIsCommitted
@@ -118,4 +121,6 @@ if $self_test; then
     check LocalUpgrade LocalUpgradeRetireFirst RetireRequiresValidation
     check LocalUpgrade LocalUpgradeDatabaseFirst DatabaseHasAttachments
     check RuntimeUpgrade RuntimeUpgradeNoGuard AdmissionChecked
+    check MutationAdmission MutationAdmissionReleaseWorker WorkOwnsCapacity
+    check MutationAdmission MutationAdmissionUnfair FairOrder
 fi

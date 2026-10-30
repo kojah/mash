@@ -145,6 +145,11 @@ async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() 
         .unwrap();
     assert_eq!(wrong_media.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
     let capacity = service.uploads.acquire_many(4).await.unwrap();
+    let waiting = service
+        .waiters
+        .acquire_many(u32::try_from(super::super::admission::MAX_WAITERS).unwrap())
+        .await
+        .unwrap();
     assert_eq!(
         upload(&service, FIRST, &batch("first", 0, "ok"))
             .await
@@ -152,6 +157,7 @@ async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() 
         StatusCode::SERVICE_UNAVAILABLE
     );
     drop(capacity);
+    drop(waiting);
     let receipt: Receipt = upload(&service, FIRST, &batch("first", 0, "ok"))
         .await
         .error_for_status()
@@ -160,6 +166,32 @@ async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() 
         .await
         .unwrap();
     assert_eq!(receipt.source_revision, 1);
+}
+
+#[tokio::test]
+async fn connector_http_waits_for_capacity_then_commits_without_client_retry() {
+    let service = Service::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST).await;
+    let capacity = service.uploads.acquire_many(4).await.unwrap();
+    let input = batch("first", 0, "queued once");
+    let release = async {
+        tokio::time::timeout(crate::test_support::HANG_GUARD, async {
+            while service.waiters.available_permits() == super::super::admission::MAX_WAITERS {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(service.uploads.available_permits(), 0);
+        drop(capacity);
+    };
+    let (response, ()) = tokio::join!(upload(&service, FIRST, &input), release);
+    let receipt: Receipt = response.error_for_status().unwrap().json().await.unwrap();
+    assert_eq!(receipt.source_revision, 1);
+    assert_eq!(document(&service, FIRST), "queued once");
+    assert_eq!(
+        service.waiters.available_permits(),
+        super::super::admission::MAX_WAITERS
+    );
 }
 
 fn exact(text: &str) -> crate::shared::protocol::Search {

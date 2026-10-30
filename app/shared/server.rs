@@ -40,6 +40,7 @@ struct App {
     store: Store,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
     uploads: Arc<tokio::sync::Semaphore>,
+    waiters: Arc<tokio::sync::Semaphore>,
 }
 
 #[derive(serde::Serialize)]
@@ -285,12 +286,12 @@ async fn index(
     Extension(id): Extension<Identity>,
     request: Request,
 ) -> Result<Json<protocol::Indexed>, ApiError> {
-    let permit = admission::reserve(&app.uploads)?;
     let progress = app.activity.start(
         &id.group_id,
         &id.node_id,
         super::activity::Kind::Publication,
     );
+    let permit = admission::reserve(&app.uploads, &app.waiters, &progress).await?;
     if request
         .headers()
         .get("content-type")
@@ -362,6 +363,7 @@ pub(crate) async fn run(
         store,
         identities: Arc::new(identities),
         uploads: Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_uploads)),
+        waiters: Arc::new(tokio::sync::Semaphore::new(admission::MAX_WAITERS)),
     };
     axum::serve(listener, router(app))
         .with_graceful_shutdown(async {

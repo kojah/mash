@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Eight models plus eleven expected counterexamples.
+make protocol-check       # Nine models plus thirteen expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on
@@ -51,6 +51,31 @@ boundaries or certification ordering. Its cancellation and group-isolation
 regressions use Rust tests; no protocol-model transition changes are required.
 
 ## Models and source boundaries
+
+### MutationAdmission: bounded FIFO waiting and worker ownership
+
+`MutationAdmission.tla` models four requests, one or two active slots and two
+waiting positions. `server/admission.rs` uses Tokio's fair semaphore for active capacity
+and a separate semaphore to bound waiting handlers. `Arrive` models immediate
+admission, joining the queue or overflow rejection. `Grant` models the FIFO
+acquisition; receiving includes a reserved wake that the handler has not yet
+polled. `CancelBeforeWork` covers wait expiry and dropping a queued/receiving
+handler. `StartWork` transfers ownership to `admission::run`; `Disconnect` must
+not release its permit, and `Finish` covers either worker success or failure.
+
+Checks bound workers/waiters, prevent overtaking and require active workers to
+own permits. Queued requests resolve assuming weak fairness of semaphore grants,
+body receipt/worker start, and work completion. This is not a wall-clock latency
+guarantee: the implementation has a 60-second waiting deadline, and neither the
+model nor FIFO promises equal throughput across nodes or body sizes. HTTP socket
+closure is not assumed to immediately cancel a handler. Rust tests verify FIFO,
+overflow, timeout/cancellation cleanup, phase reporting, a real HTTP connector
+request completing after waiting, and detached worker ownership. Per-node locks,
+SQLite and Qdrant durability remain covered by their existing models/tests.
+
+`MutationAdmissionReleaseWorker.cfg` deliberately releases active capacity on
+disconnect and must violate `WorkOwnsCapacity`. `MutationAdmissionUnfair.cfg`
+permits taking a non-head waiter and must violate `FairOrder`.
 
 ### RuntimeUpgrade: stop admitting writes after observing replacement
 

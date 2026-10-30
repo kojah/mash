@@ -1694,6 +1694,16 @@ time alone does not prove a stall. Detached server work remains visible after
 its requester disconnects. Completed work disappears; server restart resets the
 inventory. Older servers omit this field, which means unknown.
 
+When mutation slots are occupied, up to 32 authenticated requests wait in FIFO
+order for at most 60 seconds before returning a retryable capacity error. Waiting
+is reported as `waiting_for_capacity`, separately from receiving an upload or
+waiting for the node's writer lock. The handler does not collect upload bodies
+until admitted. Queue overflow is rejected immediately. Dropping a waiting
+handler releases its queue position; disconnected sockets may remain waiting
+until the server observes cancellation or the deadline expires. Once work is
+admitted and detached, it retains its slot through completion. This bounds
+waiting and active work independently; it does not increase publication capacity.
+
 With `MASH_TRACE=1`, shared-operation start, phase transitions and end events go
 to structured server logs, correlated by operation ID. Events include node IDs,
 timings and enum phases, never history contents or credentials. Mutation outcome

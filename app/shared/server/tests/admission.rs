@@ -7,6 +7,11 @@ async fn busy_mutations_are_rejected_without_blocking_read_routes() {
     // This fixture deliberately has no database. Busy mutations must be rejected
     // before backend access; reads still reach it and return their own failure.
     let permit = service.uploads.clone().acquire_many_owned(4).await.unwrap();
+    let _waiting = service
+        .waiters
+        .acquire_many(u32::try_from(super::super::admission::MAX_WAITERS).unwrap())
+        .await
+        .unwrap();
     let index = service.upload(FIRST, &snapshot(1)).await;
     assert_eq!(index.status(), StatusCode::SERVICE_UNAVAILABLE);
     let error: AppError = index.json().await.unwrap();

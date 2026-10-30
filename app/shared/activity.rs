@@ -14,6 +14,7 @@ pub(crate) enum Kind {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Phase {
+    WaitingForCapacity,
     Receiving,
     WaitingForNode,
     CheckingViews,

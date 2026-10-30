@@ -38,6 +38,9 @@ fn traced_router(dispatcher: tracing::Dispatch) -> Router {
             },
         )])),
         uploads: Arc::new(tokio::sync::Semaphore::new(1)),
+        waiters: Arc::new(tokio::sync::Semaphore::new(
+            super::super::admission::MAX_WAITERS,
+        )),
     };
     router(app).layer(middleware::from_fn(move |request: Request, next: Next| {
         next.run(request).with_subscriber(dispatcher.clone())

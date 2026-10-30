@@ -113,12 +113,12 @@ pub(super) async fn upload(
     Extension(id): Extension<Identity>,
     request: axum::extract::Request,
 ) -> Result<Json<bool>, ApiError> {
-    let permit = super::admission::reserve(&app.uploads)?;
     let progress = app.activity.start(
         &id.group_id,
         &id.node_id,
         crate::shared::activity::Kind::Attachment,
     );
+    let permit = super::admission::reserve(&app.uploads, &app.waiters, &progress).await?;
     let file = super::upload::spool_bytes(request.into_body(), 8 * 1024 * 1024, &progress).await?;
     progress.phase(
         crate::shared::activity::Phase::Attachment,

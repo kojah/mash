@@ -220,6 +220,7 @@ struct Service {
     group: String,
     task: tokio::task::JoinHandle<()>,
     uploads: Arc<tokio::sync::Semaphore>,
+    waiters: Arc<tokio::sync::Semaphore>,
     store: Store,
     first: Identity,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
@@ -460,7 +461,6 @@ impl Service {
         max_node_bytes: usize,
         first_token: &str,
     ) -> Self {
-        let available = matches!(backend, TestBackend::Qdrant);
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
         } else {
@@ -471,7 +471,7 @@ impl Service {
             "api-{}",
             directory.path().file_name().unwrap().to_string_lossy()
         );
-        let views = if available {
+        let views = if matches!(backend, TestBackend::Qdrant) {
             super::super::qdrant_index::Store::connect(
                 &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
                 None,
@@ -515,7 +515,7 @@ impl Service {
                 },
             ),
         ]));
-        if available {
+        if matches!(backend, TestBackend::Qdrant) {
             for identity in identities.values() {
                 views.select_views(identity, false).await.unwrap();
             }
@@ -533,8 +533,8 @@ impl Service {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let uploads = Arc::new(tokio::sync::Semaphore::new(4));
+        let waiters = Arc::new(tokio::sync::Semaphore::new(super::admission::MAX_WAITERS));
         let attachments = tempfile::tempdir().unwrap();
-        let first = identities[&blake3::hash(first_token.as_bytes())].clone();
         let app = App {
             activity: crate::shared::activity::Registry::default(),
             mutation_capacity: uploads.available_permits(),
@@ -542,6 +542,7 @@ impl Service {
             store: store.clone(),
             identities: identities.clone(),
             uploads: uploads.clone(),
+            waiters: waiters.clone(),
         };
         let task = tokio::spawn(async move {
             axum::serve(listener, router(app)).await.unwrap();
@@ -553,8 +554,9 @@ impl Service {
             group,
             task,
             uploads,
+            waiters,
             store,
-            first,
+            first: identities[&blake3::hash(first_token.as_bytes())].clone(),
             identities,
         }
     }

@@ -14,12 +14,12 @@ pub(super) async fn ingest(
 ) -> Result<Json<Receipt>, ApiError> {
     // Reserve before collecting the body. The detached admission task retains
     // this capacity through decoding and commit even if the requester vanishes.
-    let permit = admission::reserve(&app.uploads)?;
     let progress = app.activity.start(
         &identity.group_id,
         &identity.node_id,
         crate::shared::activity::Kind::Connector,
     );
+    let permit = admission::reserve(&app.uploads, &app.waiters, &progress).await?;
     let media = request
         .headers()
         .get("content-type")
