@@ -101,10 +101,27 @@ fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
     let watcher = Watching::start(root, &[]);
     assert_eq!(watcher.next()["indexed_messages"], 1);
     watcher.quiet();
+    // Queue one burst before the watcher can process it. Sleeping between writes
+    // does not bound their spacing on a loaded host and can exceed the debounce.
+    #[cfg(unix)]
+    assert!(
+        std::process::Command::new("kill")
+            .args(["-STOP", &watcher.child.id().to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
     for content in ["one", "two", "three"] {
         history(&source, content);
-        std::thread::sleep(Duration::from_millis(30));
     }
+    #[cfg(unix)]
+    assert!(
+        std::process::Command::new("kill")
+            .args(["-CONT", &watcher.child.id().to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
     assert_eq!(watcher.next()["changed_messages"], 1);
     let connection = Connection::open(root.join("index.sqlite3")).unwrap();
     let content: String = connection

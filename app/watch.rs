@@ -512,7 +512,6 @@ mod tests {
 
     fn election_request(dir: &Path, db: &str) -> Request {
         let config = dir.join("config.toml");
-        std::fs::write(&config, "version = 1\n[providers]\n").unwrap();
         Request {
             paths: crate::core::Paths {
                 config: Some(config),
@@ -566,6 +565,9 @@ mod tests {
     #[tokio::test]
     async fn one_watcher_indexes_per_database_and_a_standby_takes_over_with_a_pass() {
         let dir = tempfile::tempdir().unwrap();
+        // Prepare the shared configuration before any watcher starts. Rewriting it
+        // for another candidate would legitimately trigger the existing leader.
+        std::fs::write(dir.path().join("config.toml"), "version = 1\n[providers]\n").unwrap();
         let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
         let mut candidates = Vec::new();
         for id in 0..3 {
