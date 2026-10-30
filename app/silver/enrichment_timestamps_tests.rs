@@ -1,6 +1,38 @@
 use super::*;
 
 #[test]
+fn codex_paginated_timestamp_provenance_preserves_field_and_provider_boundaries() {
+    for (created, updated) in [
+        (
+            TimestampField::ThreadCreatedAt,
+            TimestampField::ThreadUpdatedAt,
+        ),
+        (
+            TimestampField::ThreadCreatedAtMs,
+            TimestampField::ThreadUpdatedAtMs,
+        ),
+    ] {
+        let origin = |field| {
+            Some(TimestampOrigin::SourceMetadata {
+                field,
+                rule_version: VERSION,
+            })
+        };
+        let mut times = Timestamps {
+            created_at: origin(created),
+            updated_at: origin(updated),
+        };
+        assert!(times.is_current_for(Provider::Codex));
+        assert!(!times.is_current_for(Provider::ClaudeCode));
+        assert!(!times.is_current_for(Provider::Opencode));
+        std::mem::swap(&mut times.created_at, &mut times.updated_at);
+        assert!(!times.is_current_for(Provider::Codex));
+        times.created_at = Some(TimestampOrigin::Unknown);
+        assert!(!times.is_current_for(Provider::Codex));
+    }
+}
+
+#[test]
 fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented() {
     let mut thread = Conversation {
         id: "thread".into(),

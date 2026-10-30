@@ -90,7 +90,7 @@ impl Targets {
                     || self.roots.iter().any(|root| {
                         root.starts_with(path)
                             || (root.extension().is_some_and(|extension| {
-                                matches!(extension.to_str(), Some("db" | "vscdb"))
+                                matches!(extension.to_str(), Some("db" | "vscdb" | "sqlite"))
                             }) && root.parent() == path.parent()
                                 && path.file_name().is_some_and(|name| {
                                     let mut wal_name =
@@ -99,20 +99,19 @@ impl Targets {
                                     name == wal_name
                                 }))
                             || (path.starts_with(root)
-                                && (path
-                                    .extension()
-                                    .is_some_and(|ext| ext == "jsonl" || ext == "db")
-                                    || path.file_name().is_some_and(|name| {
-                                        name.to_str().is_some_and(|n| n.ends_with(".db-wal"))
-                                            || name == "state.vscdb"
-                                            || name == "state.vscdb-wal"
-                                    })
-                                    || matches!(
-                                        event.kind,
-                                        EventKind::Create(notify::event::CreateKind::Folder)
-                                            | EventKind::Remove(notify::event::RemoveKind::Folder)
-                                            | EventKind::Modify(notify::event::ModifyKind::Name(_))
-                                    )))
+                                && (path.extension().is_some_and(|ext| {
+                                    ext == "jsonl" || ext == "db" || ext == "sqlite"
+                                }) || path.file_name().is_some_and(|name| {
+                                    name.to_str().is_some_and(|n| {
+                                        n.ends_with(".db-wal") || n.ends_with(".sqlite-wal")
+                                    }) || name == "state.vscdb"
+                                        || name == "state.vscdb-wal"
+                                }) || matches!(
+                                    event.kind,
+                                    EventKind::Create(notify::event::CreateKind::Folder)
+                                        | EventKind::Remove(notify::event::RemoveKind::Folder)
+                                        | EventKind::Modify(notify::event::ModifyKind::Name(_))
+                                )))
                     })
             })
     }
@@ -393,6 +392,22 @@ mod tests {
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
         assert!(database.relevant(&change(root.join("state.db-wal"))));
         assert!(custom.relevant(&change(root.join("custom.db-wal"))));
+        let codex = Targets {
+            roots: vec![
+                root.join("thread_history_1.sqlite"),
+                root.join("state_5.sqlite"),
+            ],
+            files: vec![],
+        };
+        for name in [
+            "thread_history_1.sqlite",
+            "thread_history_1.sqlite-wal",
+            "state_5.sqlite",
+            "state_5.sqlite-wal",
+        ] {
+            assert!(codex.relevant(&change(root.join(name))));
+            assert!(directory.relevant(&change(root.join(name))));
+        }
         assert!(!custom.relevant(&change(root.join("other.db-wal"))));
         assert!(!database.relevant(
             &Event::new(EventKind::Access(AccessKind::Read)).add_path(root.join("state.db-wal"))

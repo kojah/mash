@@ -21,6 +21,13 @@ pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
             continue;
         }
         for path in paths {
+            if provider == Provider::Codex
+                && path
+                    .file_name()
+                    .is_some_and(|name| name == "thread_history_1.sqlite")
+            {
+                roots.push(path.with_file_name("state_5.sqlite"));
+            }
             if provider == Provider::Copilot
                 && path.file_name().is_some_and(|name| name == "state.vscdb")
                 && let Some(parent) = path.parent()
@@ -201,6 +208,10 @@ pub(super) fn discover_history_files(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     let mut discovery = discover_physical_sources(provider, roots, authoritative)?;
+    if provider == Provider::Codex {
+        discovery.sources = super::codex_store::sources(discovery.sources)?;
+        return Ok(discovery);
+    }
     if provider == Provider::Copilot {
         discovery.sources = super::copilot::sources(discovery.sources)?;
         return Ok(discovery);
@@ -259,7 +270,13 @@ fn discover_physical_sources(
                 .is_some_and(|n| n == "store.db" || n == "state.vscdb")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))
         }
-        Provider::ClaudeCode | Provider::Codex => is_jsonl(path),
+        Provider::ClaudeCode => is_jsonl(path),
+        Provider::Codex => {
+            is_jsonl(path)
+                || path
+                    .file_name()
+                    .is_some_and(|n| n == "thread_history_1.sqlite")
+        }
         Provider::Copilot => {
             path.file_name().is_some_and(|name| name == "events.jsonl")
                 || path.file_name().is_some_and(|name| name == "state.vscdb")

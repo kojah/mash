@@ -593,7 +593,7 @@ records its separate memory reduction and additional scratch-I/O cost.
 Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
-- Codex: `~/.codex/sessions`, `~/.local/share/codex/sessions`
+- Codex: `~/.codex/sessions`, `~/.local/share/codex/sessions`, and each directory's sibling `thread_history_1.sqlite`
 
 Claude subagent transcripts share their parent's native session ID. mash uses
 the session and native `agentId` together to index each subagent as an independent
@@ -811,7 +811,23 @@ keep their existing ordinal neighbourhoods. SQLite migrations preserve existing
 messages and vectors. Update the shared service before
 publishing Copilot, Cursor or Antigravity histories from upgraded nodes.
 
-Codex histories include raw response records and completed `UserMessage` /
+Codex paginated history is read from an explicitly configured
+`thread_history_1.sqlite`, with its sibling `state_5.sqlite` as a required metadata
+dependency. Both databases are opened read-only and changes in either WAL invalidate
+the snapshot. Built-in discovery includes these stores; explicit provider roots
+must include them separately from `sessions`. Installation diagnostics warn when
+a store exists beside a configured sessions directory but is not covered.
+Thread IDs are preserved. For a paginated thread with stored items, the SQLite
+source replaces only the JSONL mirror named by Codex metadata. Other JSONL sources
+remain readable. Dialogue is searchable; reasoning, hooks and tool context remain
+canonical context. Realtime transcript segments share the recorded rollout order;
+promotion markers reference existing items without duplicating their content.
+Unsupported item types reject the source
+instead of silently replacing retained history with a partial transcript.
+This reads locally available history; it does not fetch cloud-only pages or recover
+records that Codex has removed. Keep exports when migrating old indexes.
+
+Codex JSONL histories include raw response records and completed `UserMessage` /
 `AgentMessage` turn items. Nearby raw/completed counterparts are paired once;
 unmatched dialogue and separate repeated requests are retained. Started items,
 streaming deltas and legacy event mirrors are omitted. See the

@@ -135,6 +135,17 @@ pub(super) fn inspect(paths: &Paths) -> Report {
             report.configuration_loaded = config.loaded;
             for &provider in Provider::ALL {
                 let roots = config.providers.get(&provider);
+                if provider == Provider::Codex {
+                    for path in unconfigured_codex_stores(roots.map_or(&[], Vec::as_slice)) {
+                        report.findings.push(Finding {
+                            component: Component::Configuration,
+                            state: State::Missing,
+                            path: Some(path),
+                            message: "A Codex paginated history database exists beside a configured sessions directory but is outside the configured roots. A completed JSONL scan does not cover this history.".into(),
+                            remediation: Some("Add this thread_history_1.sqlite path to providers.codex.roots; its sibling state_5.sqlite is required metadata. Then run an explicit all-history refresh.".into()),
+                        });
+                    }
+                }
                 if config.loaded && roots.is_some_and(|roots| roots.iter().any(|path| root_state(path).needs_attention())) {
                     report.findings.push(Finding {
                         component: Component::Configuration,
@@ -168,15 +179,41 @@ pub(super) fn inspect(paths: &Paths) -> Report {
 pub(super) fn setup_needs_attention(paths: &Paths) -> bool {
     match crate::config::load(paths.config.as_deref()) {
         Ok(config) => {
-            config.loaded
-                && config
+            !unconfigured_codex_stores(
+                config
                     .providers
-                    .values()
-                    .flatten()
-                    .any(|path| root_state(path).needs_attention())
+                    .get(&Provider::Codex)
+                    .map_or(&[], Vec::as_slice),
+            )
+            .is_empty()
+                || config.loaded
+                    && config
+                        .providers
+                        .values()
+                        .flatten()
+                        .any(|path| root_state(path).needs_attention())
         }
         Err(_) => true,
     }
+}
+
+fn unconfigured_codex_stores(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots
+        .iter()
+        .filter(|root| {
+            root.file_name()
+                .is_some_and(|name| name == "sessions" || name == "archived_sessions")
+        })
+        .filter_map(|root| {
+            root.parent()
+                .map(|parent| parent.join("thread_history_1.sqlite"))
+        })
+        .filter(|database| {
+            database.is_file() && !roots.iter().any(|root| database.starts_with(root))
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn root_state(path: &Path) -> State {
@@ -217,6 +254,31 @@ fn unverified(message: &str) -> Finding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installation_detects_codex_history_outside_configured_jsonl_roots() {
+        let directory = tempfile::tempdir().unwrap();
+        let sessions = directory.path().join("sessions");
+        let store = directory.path().join("thread_history_1.sqlite");
+        std::fs::create_dir(&sessions).unwrap();
+        assert_eq!(
+            unconfigured_codex_stores(std::slice::from_ref(&sessions)),
+            Vec::<PathBuf>::new()
+        );
+        std::fs::write(&store, []).unwrap();
+        assert_eq!(
+            unconfigured_codex_stores(std::slice::from_ref(&sessions)),
+            std::slice::from_ref(&store)
+        );
+        assert_eq!(
+            unconfigured_codex_stores(&[sessions, store]),
+            Vec::<PathBuf>::new()
+        );
+        assert_eq!(
+            unconfigured_codex_stores(&[directory.path().into()]),
+            Vec::<PathBuf>::new()
+        );
+    }
 
     #[test]
     fn installation_resources_distinguish_deliveries_scans_and_live_health() {

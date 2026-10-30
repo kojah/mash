@@ -1,8 +1,9 @@
-# Audit the guards that decide whether persisted views can be reported current.
-examine_globs = ["app/shared/silver_revision.rs", "app/shared/views_manifest.rs", "app/shared/lexical_manifest.rs"]
+# Audit persisted-view freshness and provider timestamp provenance guards.
+examine_globs = ["app/shared/silver_revision.rs", "app/shared/views_manifest.rs", "app/shared/lexical_manifest.rs", "app/silver/enrichment.rs"]
+examine_re = ["app/shared/", "Timestamps::is_current_for"]
 test_package = ["mash"]
 test_tool = "nextest"
 # Mutated bodies can leave arguments unused; tests must judge those mutations.
 cap_lints = true
 additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
-additional_cargo_test_args = ["-E", "test(shared::silver_revision::tests) | test(shared::views_manifest::tests) | test(shared::lexical_manifest::tests)", "--no-tests", "fail", "--test-threads", "2"]
+additional_cargo_test_args = ["-E", "test(shared::silver_revision::tests) | test(shared::views_manifest::tests) | test(shared::lexical_manifest::tests) | test(silver::enrichment::timestamp_tests) | test(codex_paginated)", "--no-tests", "fail", "--test-threads", "2"]

@@ -51,6 +51,14 @@ pub(crate) enum TimestampField {
     SessionTimeCreated,
     #[serde(rename = "session.time_updated")]
     SessionTimeUpdated,
+    #[serde(rename = "threads.created_at_ms")]
+    ThreadCreatedAtMs,
+    #[serde(rename = "threads.updated_at_ms")]
+    ThreadUpdatedAtMs,
+    #[serde(rename = "threads.created_at")]
+    ThreadCreatedAt,
+    #[serde(rename = "threads.updated_at")]
+    ThreadUpdatedAt,
 }
 
 impl Timestamps {
@@ -95,7 +103,23 @@ impl Timestamps {
             ])
             .all(|(origin, (boundary, expected))| {
                 origin.as_ref().is_none_or(|origin| match provider {
-                    Provider::Codex | Provider::ClaudeCode => matches!(origin,
+                    Provider::Codex => match origin {
+                        TimestampOrigin::MessageBoundary { selection, .. } => {
+                            *selection == boundary
+                        }
+                        TimestampOrigin::SourceMetadata { field, .. } => matches!(
+                            (boundary, field),
+                            (
+                                Boundary::Minimum,
+                                TimestampField::ThreadCreatedAt | TimestampField::ThreadCreatedAtMs
+                            ) | (
+                                Boundary::Maximum,
+                                TimestampField::ThreadUpdatedAt | TimestampField::ThreadUpdatedAtMs
+                            )
+                        ),
+                        TimestampOrigin::Unknown => false,
+                    },
+                    Provider::ClaudeCode => matches!(origin,
                     TimestampOrigin::MessageBoundary { selection, .. } if *selection == boundary),
                     Provider::Opencode => matches!(origin,
                     TimestampOrigin::SourceMetadata { field, .. } if *field == expected),
@@ -124,6 +148,8 @@ pub(crate) enum SourceField {
     Cwd,
     #[serde(rename = "session.title")]
     SessionTitle,
+    #[serde(rename = "threads.title")]
+    ThreadTitle,
     #[serde(rename = "session.directory")]
     SessionDirectory,
     #[serde(rename = "project.worktree")]

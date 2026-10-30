@@ -13,6 +13,7 @@ pub(crate) mod archive;
 mod benchmarks;
 pub(crate) mod certificate;
 pub(crate) mod claude;
+mod codex_store;
 mod copilot;
 mod cursor;
 pub(crate) mod diagnostics;
@@ -78,6 +79,9 @@ impl Parser {
         };
         match provider {
             Provider::ClaudeCode => parsers::parse_claude(&source.identity.path),
+            Provider::Codex if source.identity.session.is_some() => {
+                codex_store::parse(&source.identity)
+            }
             Provider::Codex => parsers::parse_codex(&source.identity.path),
             Provider::Opencode => opencode::parse(&source.identity),
             Provider::Copilot => copilot::parse_source(source),

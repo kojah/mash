@@ -76,8 +76,11 @@ agent-test env TMPDIR=/home/james/scratch/achi-tmp \
 
 [cargo-mutants](https://mutants.rs/) changes expressions or function bodies in
 an isolated copy and asks whether selected tests reject the changed behavior.
-The initial scope is silver revision validation and dense/lexical freshness
-manifests, with their corresponding unit tests in `.cargo/mutants.toml`.
+The scope is silver revision validation, dense/lexical freshness manifests,
+and provider timestamp-provenance validation, with their corresponding tests
+in `.cargo/mutants.toml`. The enrichment selection is limited to
+`Timestamps::is_current_for`; Codex paginated-history tests cover native metadata
+origins alongside the existing JSONL message-boundary evidence tests.
 This is a narrow test-quality audit, not a workspace coverage score.
 
 ```bash

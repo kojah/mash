@@ -136,7 +136,9 @@ fn built_in_providers() -> Result<ProviderRoots, AppError> {
             Provider::Codex,
             vec![
                 home.join(".codex/sessions"),
+                home.join(".codex/thread_history_1.sqlite"),
                 home.join(".local/share/codex/sessions"),
+                home.join(".local/share/codex/thread_history_1.sqlite"),
             ],
         ),
     ]))
