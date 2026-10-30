@@ -110,6 +110,35 @@ candidates separate. Do not rewrite historical studies just to add tracking.
 
 ## Verification
 
+### Protocol models
+
+Use the bounded TLA+ models in `protocol/` when changing concurrency, retry or
+acknowledgement semantics, crash recovery, publication revision guards,
+tombstones, or ordering between silver commits and views/certification writes.
+Add a small model when a new protocol introduces consequential interleavings
+that ordinary examples cannot cover. Parsers, presentation, ranking quality,
+and routine sequential transformations generally belong in ordinary tests.
+
+Keep models synchronized with the actual code. A change to a modeled protocol
+must review its model, TLC configuration, source mapping and assumptions in
+`protocol/README.md`, and update them together when semantics change. Match
+atomic actions to real transaction, lock and awaited I/O boundaries; explicitly
+model failures between separate durable writes. Do not assume extra locking,
+atomicity, fairness, delivery guarantees or writer fencing to make checks pass.
+If no model change is needed, record why in the change's validation evidence.
+
+Run `make protocol-check` for protocol changes; install the pinned checker
+explicitly with `make protocol-tools` when needed. The checker includes bounded
+safety/liveness checks and named expected counterexamples that verify the
+properties detect broken behavior. Keep source behavior, deliberate mutations,
+and proposed contracts clearly distinguished. Record implementation/model gaps
+in Beads with a reproducing trace; when fixing a gap, update its model status
+and add a corresponding Rust boundary or fault-injection regression. Passing
+TLC checks establish properties of the bounded model, not proof that Rust or
+the backing services implement it. They supplement the existing focused tests.
+
+### Implementation checks
+
 Use `make iterate FOCUS='test(changed_behavior)'` for the normal development loop:
 formatting, Clippy, then explicitly selected nextest regressions. A missing or
 empty selection fails; this mode never certifies full acceptance or builds an

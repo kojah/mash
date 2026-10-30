@@ -25,6 +25,18 @@ env:
   SCCACHE_BASEDIRS: ${{ github.workspace }}
 
 jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MASH_PROTOCOL_ARTIFACTS: ${{ runner.temp }}/mash-protocol
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Check bounded protocols and expected counterexamples
+        run: |
+          make protocol-tools
+          make protocol-check DEV_RUN=
+
   rust:
     # Cancel obsolete validation jobs, without canceling an active deployment.
     # The reusable deploy workflow holds its own noncanceling lock and head gate.
@@ -229,7 +241,7 @@ jobs:
           key: mash-${{ runner.os }}-cargo-sources-${{ hashFiles('Cargo.lock') }}
 
   deploy:
-    needs: rust
+    needs: [rust, protocol]
     if: >-
       github.ref == 'refs/heads/main' &&
       github.event_name == 'workflow_dispatch' && inputs.deploy == true

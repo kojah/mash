@@ -8,6 +8,13 @@ DEV_TARGET_DIR ?= /home/james/scratch/achi-targets/integrated
 DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local/bin/agent-test,)
 export FOCUS
 
+.PHONY: protocol-tools protocol-check
+protocol-tools:
+	bash protocol/check.sh --install-tools
+
+protocol-check:
+	$(DEV_RUN) bash protocol/check.sh
+
 .PHONY: iterate validate-dev
 iterate:
 	@test -n "$${FOCUS}" || (echo 'Set FOCUS to a nextest filter for the changed behavior'; exit 2)
