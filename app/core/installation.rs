@@ -1,8 +1,9 @@
-//! File-based integration diagnostics, independent of Mash's index and configuration.
+//! Read-only setup diagnostics that tolerate a broken index or configuration.
 //! Client settings are observations, never proof of what an already running agent loaded.
 mod clients;
 mod plugin;
 mod probe;
+mod resources;
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -47,6 +48,7 @@ enum Component {
     HookTrust,
     Mcp,
     Probe,
+    Index,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,6 +95,7 @@ pub(crate) struct Report {
     clients: Vec<Client>,
     scope: &'static str,
     runtime: &'static str,
+    resources: Option<resources::Report>,
 }
 
 #[derive(Debug, Serialize)]
@@ -155,6 +158,18 @@ impl Report {
             .iter()
             .map(|client| client.unverified)
             .sum();
+        if let Some(resources) = &self.resources {
+            self.summary.attention += resources
+                .findings
+                .iter()
+                .filter(|f| f.state.needs_attention())
+                .count();
+            self.summary.unverified += resources
+                .findings
+                .iter()
+                .filter(|f| f.state == State::Unverified)
+                .count();
+        }
     }
 }
 
@@ -192,6 +207,7 @@ fn collect(environment: Option<&Environment>, agents: &[Agent]) -> Report {
             next_action: "mash status --installation",
         },
         clients: vec![],
+        resources: None,
         scope: "Local Codex and Claude Code user settings and current-project override detection. Managed settings, profiles, remote hosts and other clients are not certified.",
         runtime: "Existing agent sessions, loaded plugins and live hook execution are unverified. Restart the agent after repairs. A probe tests a new process only.",
     };
@@ -218,7 +234,25 @@ pub(super) fn summary() -> Summary {
     collect(Environment::discover().as_ref(), &[]).summary
 }
 
-pub(crate) fn help_notice() -> Option<&'static str> {
+pub(crate) fn help_notice(paths: &super::Paths) -> Option<&'static str> {
+    if resources::index_finding(
+        &paths
+            .db
+            .clone()
+            .unwrap_or_else(super::default_database_path),
+    )
+    .state
+    .needs_attention()
+    {
+        return Some(
+            "Installation warning: the local index is incompatible or unreadable. Run `mash status --installation` for recovery details before indexing or replacing files.",
+        );
+    }
+    if resources::setup_needs_attention(paths) {
+        return Some(
+            "Installation warning: Mash configuration or configured provider roots need attention. Run `mash status --installation` for setup details.",
+        );
+    }
     let summary = summary();
     if summary.attention > 0 {
         Some(
@@ -236,9 +270,15 @@ pub(crate) fn help_notice() -> Option<&'static str> {
 pub(super) async fn inspect(
     agents: Vec<Agent>,
     run_probe: bool,
+    paths: super::Paths,
 ) -> Result<Report, crate::AppError> {
-    let mut report =
-        crate::blocking(move || Ok(collect(Environment::discover().as_ref(), &agents))).await?;
+    let mut report = crate::blocking(move || {
+        let mut report = collect(Environment::discover().as_ref(), &agents);
+        report.resources = Some(resources::inspect(&paths));
+        report.update_summary();
+        Ok(report)
+    })
+    .await?;
     if run_probe {
         for client in &mut report.clients {
             probe::check(client).await;

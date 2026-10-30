@@ -81,13 +81,121 @@ fn installation_inspection_bypasses_broken_mash_resources_and_is_read_only() {
             .args(["status", "--installation", "--agent", "codex"]),
     );
     assert_eq!(report["clients"].as_array().unwrap().len(), 1);
-    assert_eq!(report["summary"]["attention"], 2);
+    assert_eq!(report["summary"]["attention"], 3);
+    assert!(report["resources"]["findings"].as_array().unwrap().iter().any(|finding| finding["component"] == "configuration" && finding["state"] == "invalid"));
     assert!(!db.exists());
     assert!(!models.exists());
     assert_eq!(
         std::fs::read_to_string(config).unwrap(),
         "not a valid configuration"
     );
+}
+
+#[test]
+fn installation_reports_schema_mismatch_and_help_uses_selected_database() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("old.sqlite3");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    connection.execute_batch("PRAGMA user_version=45; CREATE TABLE retained(value TEXT); INSERT INTO retained VALUES('keep');").unwrap();
+    drop(connection);
+    let before = std::fs::read(&database).unwrap();
+    let report = json(
+        isolated(root.path())
+            .arg("--db")
+            .arg(&database)
+            .args(["status", "--installation"]),
+    );
+    assert_eq!(report["resources"]["findings"][0]["state"], "outdated");
+    assert!(
+        report["resources"]["findings"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("45")
+    );
+    assert_eq!(report["summary"]["attention"], 1);
+    assert!(report["resources"]["connectors"].is_null());
+    for args in [vec!["--help"], vec!["help"], vec!["status", "--help"]] {
+        let help = json(isolated(root.path()).arg("--db").arg(&database).args(args));
+        assert!(
+            help["help"]
+                .as_str()
+                .unwrap()
+                .contains("local index is incompatible or unreadable"),
+            "{help}"
+        );
+    }
+    let help = json(
+        isolated(root.path())
+            .arg("--help")
+            .arg("--db")
+            .arg(&database),
+    );
+    assert!(
+        help["help"]
+            .as_str()
+            .unwrap()
+            .contains("local index is incompatible or unreadable")
+    );
+    assert_eq!(std::fs::read(&database).unwrap(), before);
+    assert!(!root.path().join("old.views.sqlite3").exists());
+}
+
+#[test]
+fn installation_lists_provider_setup_without_claiming_missing_sources_are_connected() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("node.toml");
+    let available = root.path().join("history");
+    std::fs::create_dir(&available).unwrap();
+    let missing = root.path().join("absent");
+    std::fs::write(
+        &config,
+        format!(
+            "version = 1\n[providers.codex]\nroots = [{}, {}]\n",
+            toml::Value::String(available.to_string_lossy().into_owned()),
+            toml::Value::String(missing.to_string_lossy().into_owned())
+        ),
+    )
+    .unwrap();
+    let report = json(
+        isolated(root.path())
+            .arg("--config")
+            .arg(&config)
+            .args(["status", "--installation"]),
+    );
+    let providers = report["resources"]["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 6);
+    let codex = providers
+        .iter()
+        .find(|provider| provider["provider"] == "codex")
+        .unwrap();
+    assert_eq!(codex["configured"], true);
+    assert_eq!(codex["roots"][0]["state"], "present");
+    assert_eq!(codex["roots"][1]["state"], "missing");
+    assert_eq!(report["summary"]["attention"], 1);
+    let help = json(
+        isolated(root.path())
+            .arg("--config")
+            .arg(&config)
+            .arg("--help"),
+    );
+    assert!(
+        help["help"]
+            .as_str()
+            .unwrap()
+            .contains("configured provider roots need attention")
+    );
+    assert!(codex["scan"].is_null());
+    assert!(
+        providers
+            .iter()
+            .filter(|provider| provider["provider"] != "codex")
+            .all(|provider| provider["configured"] == false)
+    );
+    assert_eq!(
+        report["resources"]["findings"][0]["state"],
+        "not_configured"
+    );
+    assert!(!root.path().join("data").exists());
 }
 
 #[test]

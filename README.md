@@ -175,7 +175,7 @@ Runner logs and reports stay private. Skipped targets are not installed or ready
 
 ## Codex and Claude Code history plugin
 
-Check agent wiring separately from search readiness:
+Discover local setup and inspect agent wiring without requiring search readiness:
 
 ```bash
 mash status --installation
@@ -186,11 +186,23 @@ mash status --installation --agent codex --probe
 The first command inspects local Codex and Claude Code user settings, installed
 Mash plugin/skill files, bundled hooks, hook trust records and the stdio MCP
 registration. Findings include the inspected path and a repair suggestion.
+The `resources` section checks the selected local database's schema, lists every
+supported provider with configured roots, root accessibility and recorded scan
+results, and lists locally committed connector delivery timestamps. Missing scan
+or delivery evidence is not a successful connection check. Connector credentials,
+live transport health and shared-only sources cannot be inferred from local
+receipts; use `status --shared` for shared readiness and `status --coverage` for
+retained provider coverage. Missing default history directories may simply mean
+that provider is not used on this machine.
 `--agent` explicitly requires an integration; without it, an enabled plugin or
 an MCP registration establishes that expectation. A CLI-only installation is valid.
 Ordinary `status` includes a compact installation summary, and `--help` (also
 `help` and subcommand help) adds a short warning when local checks find an
-incomplete integration. Help remains JSON and does not start subprocesses.
+incomplete integration or an incompatible/unreadable local index. Help respects
+`--db`, remains JSON and does not start subprocesses. Schema checks never migrate
+the index. A missing index alone cannot distinguish a fresh setup from an
+interrupted upgrade; recover retained history before indexing after an upgrade
+failure.
 Detected clients with no enabled Mash integration receive a softer setup notice
 and appear in `summary.unconfigured`, without making CLI-only use an error.
 

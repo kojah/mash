@@ -3,7 +3,6 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 
-#[cfg(test)]
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -131,7 +130,7 @@ enum Command {
         #[arg(long, value_name = "NODE_ID")]
         shared: Option<String>,
     },
-    /// Report storage, model readiness and agent installation health.
+    /// Report readiness; --installation discovers providers, connector deliveries and agent setup.
     Status {
         /// Inspect agent integrations without opening the Mash configuration, index or models.
         #[arg(long, conflicts_with_all = ["coverage", "shared"])]
@@ -451,7 +450,9 @@ where
         Err(error) => match error.kind() {
             clap::error::ErrorKind::DisplayHelp => {
                 let mut help = error.to_string();
-                if let Some(notice) = crate::core::installation::help_notice() {
+                if let Some(notice) =
+                    crate::core::installation::help_notice(&help_paths(&arguments))
+                {
                     help.push('\n');
                     help.push_str(notice);
                     help.push('\n');
@@ -507,6 +508,37 @@ where
     } else {
         runtime.block_on(run_parsed(cli))
     }
+}
+
+// Parse global paths with Clap even when help short-circuits the normal parser.
+// Values containing `--help` remain values; no token stripping or hand parsing.
+fn help_paths(arguments: &[OsString]) -> Paths {
+    fn passive(command: clap::Command) -> clap::Command {
+        command
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .arg_required_else_help(false)
+            .subcommand_required(false)
+            .mut_subcommands(passive)
+    }
+    let command = passive(Cli::command())
+        .arg(
+            clap::Arg::new("diagnostic-help")
+                .long("help")
+                .short('h')
+                .global(true)
+                .action(clap::ArgAction::SetTrue),
+        )
+        .subcommand(clap::Command::new("help").arg(clap::Arg::new("topic").num_args(0..)))
+        .ignore_errors(true);
+    command.try_get_matches_from(arguments).map_or_else(
+        |_| Paths::default(),
+        |matches| Paths {
+            config: matches.get_one::<PathBuf>("config").cloned(),
+            db: matches.get_one::<PathBuf>("db").cloned(),
+            models_dir: matches.get_one::<PathBuf>("models_dir").cloned(),
+        },
+    )
 }
 
 #[derive(serde::Serialize)]

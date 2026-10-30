@@ -89,7 +89,7 @@ async fn execute_inner(
     capacity: Option<&tokio::sync::Semaphore>,
 ) -> Result<Response, AppError> {
     if let Operation::Installation { agents, probe } = &request.operation {
-        return installation::inspect(agents.clone(), *probe)
+        return installation::inspect(agents.clone(), *probe, request.paths.clone())
             .boxed()
             .await
             .map(Response::Installation);
@@ -296,9 +296,17 @@ async fn dispatch(
                 .await
                 .map(|status| Response::Status(Box::new(status)))
         }
-        Operation::Installation { agents, probe } => installation::inspect(agents, probe)
-            .await
-            .map(Response::Installation),
+        Operation::Installation { agents, probe } => installation::inspect(
+            agents,
+            probe,
+            Paths {
+                db: Some(database.to_path_buf()),
+                config: Some(configuration.path.clone()),
+                models_dir: Some(models.to_path_buf()),
+            },
+        )
+        .await
+        .map(Response::Installation),
         Operation::Forget { id } => maintenance::forget(database, configuration, id)
             .await
             .map(Response::Forget),
