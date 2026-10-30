@@ -57,7 +57,7 @@ else
     run bash tools/test-ansible.sh
     run bash tools/test-upgrade-local-index.sh
     run bash tools/generate-history-skill.sh --check
-    run cargo test-clif --locked --profile ci
+    run cargo test-clif --locked --profile ci --test-threads 4
     run cargo test --doc
     [[ $(validation_key) == "$key" ]] || { echo 'Source changed during validation; rerun the build gate.' >&2; exit 1; }
     printf '%s\n' "$key" > "$receipt.incoming.$$"

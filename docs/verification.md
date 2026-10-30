@@ -72,6 +72,11 @@ agent-test env TMPDIR=/home/james/scratch/achi-tmp \
   -E 'test(qdrant_replay_interruption)' --no-tests fail --test-threads 1
 ```
 
+The local release validation runner limits the broad nextest suite to four
+concurrent tests, as the focused runner does. SQLite-heavy tests otherwise
+compete for disk access at host CPU-count concurrency and can exceed their
+existing deadlines even inside the per-job memory budget.
+
 ## Mutation audits
 
 [cargo-mutants](https://mutants.rs/) changes expressions or function bodies in

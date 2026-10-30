@@ -56,6 +56,7 @@ rm -f "$TEST_BUILD_CLIPPY_FAIL"
 : > "$TEST_BUILD_CALLS"
 run_build --validate-only >/dev/null
 [[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
+grep -Fxq 'test-clif --locked --profile ci --test-threads 4' "$TEST_BUILD_CALLS"
 ! grep -q '^build --release' "$TEST_BUILD_CALLS"
 run_build >/dev/null
 [[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
