@@ -9,6 +9,7 @@ pub(super) struct Report {
     pub(super) findings: Vec<Finding>,
     providers: Vec<ProviderStatus>,
     configuration_loaded: bool,
+    silver: Option<crate::silver::certificate::Certificate>,
     connectors: Option<Vec<crate::source::SourceStatus>>,
     connector_scope: &'static str,
 }
@@ -112,6 +113,7 @@ pub(super) fn inspect(paths: &Paths) -> Report {
         findings: vec![index],
         providers: vec![],
         configuration_loaded: false,
+        silver: None,
         connectors: None,
         connector_scope: "Local committed connector deliveries only. No delivery does not prove a connector is unconfigured. External credentials, live connections and shared-only sources are not inspected; use `mash status --shared` for shared readiness.",
     };
@@ -121,6 +123,21 @@ pub(super) fn inspect(paths: &Paths) -> Report {
         None
     };
     if let Some(storage) = &storage {
+        match storage.silver_certificate() {
+            Ok(certificate) => {
+                if !certificate.is_complete() {
+                    report.findings.push(Finding {
+                        component: Component::Index,
+                        state: State::Unverified,
+                        path: Some(database.clone()),
+                        message: "Stored history is pending, incomplete or unverified; a completed provider scan alone does not certify all retained sources. Inspect resources.silver for the recorded state.".into(),
+                        remediation: Some("Inspect `mash status --coverage` and any running index operation. After correcting provider roots or rejected sources, use an explicit `mash index --all-history` refresh; retain upgrade exports for history absent from current provider stores.".into()),
+                    });
+                }
+                report.silver = Some(certificate);
+            }
+            Err(_) => report.findings.push(unverified("Cannot read the stored history certificate; source interpretation freshness is unverified.")),
+        }
         match storage.connector_activity() {
             Ok(connectors) => report.connectors = Some(connectors),
             Err(_) => report.findings.push(unverified(
@@ -254,6 +271,56 @@ fn unverified(message: &str) -> Finding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installation_reports_stale_checkpoints_despite_a_complete_provider_scan() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("silver.sqlite3");
+        drop(Storage::open(&database).unwrap());
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        let current = crate::silver::certificate::INTERPRETATION_VERSION;
+        connection
+            .execute(
+                "UPDATE silver_state SET interpretation_version=?1",
+                [current],
+            )
+            .unwrap();
+        connection
+            .execute("INSERT INTO silver_scans VALUES('codex',?1,1)", [current])
+            .unwrap();
+        connection.execute("INSERT INTO source_checkpoints(provider,source_key,source_path,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','old','/missing/old.jsonl',1,1,'old',?1)", [current - 1]).unwrap();
+        let paths = Paths {
+            db: Some(database.clone()),
+            config: Some(directory.path().join("absent-config.toml")),
+            ..Paths::default()
+        };
+        let report = inspect(&paths);
+        assert_eq!(
+            report.silver.unwrap().completeness,
+            crate::silver::certificate::Completeness::Unverified
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.state == State::Unverified
+                    && finding.message.contains("retained sources"))
+        );
+        connection
+            .execute(
+                "UPDATE source_checkpoints SET interpretation_version=?1",
+                [current],
+            )
+            .unwrap();
+        let report = inspect(&paths);
+        assert!(report.silver.unwrap().is_complete());
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.message.contains("retained sources"))
+        );
+    }
 
     #[test]
     fn installation_detects_codex_history_outside_configured_jsonl_roots() {

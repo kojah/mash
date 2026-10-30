@@ -194,6 +194,9 @@ live transport health and shared-only sources cannot be inferred from local
 receipts; use `status --shared` for shared readiness and `status --coverage` for
 retained provider coverage. Missing default history directories may simply mean
 that provider is not used on this machine.
+The report also includes `resources.silver` and flags pending, incomplete or
+unverified history. A completed provider scan can coexist with older source
+checkpoints; matching the binary's database schema alone does not certify them.
 `--agent` explicitly requires an integration; without it, an enabled plugin or
 an MCP registration establishes that expectation. A CLI-only installation is valid.
 Ordinary `status` includes a compact installation summary, and `--help` (also
