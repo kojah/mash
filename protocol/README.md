@@ -66,12 +66,16 @@ not release its permit, and `Finish` covers either worker success or failure.
 Checks bound workers/waiters, prevent overtaking and require active workers to
 own permits. Queued requests resolve assuming weak fairness of semaphore grants,
 body receipt/worker start, and work completion. This is not a wall-clock latency
-guarantee: the implementation has a 60-second waiting deadline, and neither the
+guarantee: the implementation has a five-minute waiting deadline, and neither the
 model nor FIFO promises equal throughput across nodes or body sizes. HTTP socket
 closure is not assumed to immediately cancel a handler. Rust tests verify FIFO,
 overflow, timeout/cancellation cleanup, phase reporting, a real HTTP connector
 request completing after waiting, and detached worker ownership. Per-node locks,
 SQLite and Qdrant durability remain covered by their existing models/tests.
+The deadline was increased after a 32-publisher mixed-workload trial took
+104–151 seconds and forced repeated queue expiry at 60 seconds. The model and
+TLC configurations are unchanged: expiry is already a nondeterministic
+`CancelBeforeWork`, and the model makes no numerical timing assumption.
 
 `MutationAdmissionReleaseWorker.cfg` deliberately releases active capacity on
 disconnect and must violate `WorkOwnsCapacity`. `MutationAdmissionUnfair.cfg`

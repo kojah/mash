@@ -6,7 +6,11 @@ use tracing::{Instrument, instrument::WithSubscriber};
 
 /// Bound queued HTTP handlers independently of the disk-heavy worker limit.
 pub(super) const MAX_WAITERS: usize = 32;
-const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+// A full publication can spend several minutes settling Qdrant. Keep queued
+// requests in place through that work rather than forcing repeated submissions.
+// The waiter count bounds retained handlers; this deadline also remains below
+// the outer 30-minute bulk request budget.
+const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 pub(super) async fn reserve(
     capacity: &Arc<Semaphore>,

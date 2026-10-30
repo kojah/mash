@@ -1698,7 +1698,7 @@ then probes retrieval. Both can take time after document writes have finished,
 and their counters do not estimate remaining optimizer work.
 
 When mutation slots are occupied, up to 32 authenticated requests wait in FIFO
-order for at most 60 seconds before returning a retryable capacity error. Waiting
+order for at most five minutes before returning a retryable capacity error. Waiting
 is reported as `waiting_for_capacity`, separately from receiving an upload or
 waiting for the node's writer lock. The handler does not collect upload bodies
 until admitted. Queue overflow is rejected immediately. Dropping a waiting
