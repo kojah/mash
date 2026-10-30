@@ -23,6 +23,8 @@ pub(crate) enum Phase {
     CommittingSilver,
     WritingViews,
     CertifyingViews,
+    OptimizingViews,
+    CheckingSearch,
     Connector,
     Attachment,
 }

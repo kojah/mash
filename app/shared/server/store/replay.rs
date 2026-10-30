@@ -156,7 +156,13 @@ impl Store {
             replayed.embeddings += stored;
         }
         documents.finish(&self.views).await?;
-        self.certify(identity, node, &fingerprints).await?;
+        self.certify(
+            identity,
+            node,
+            &fingerprints,
+            &crate::shared::activity::Progress::default(),
+        )
+        .await?;
         Ok(replayed)
     }
 }

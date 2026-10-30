@@ -75,7 +75,13 @@ impl Store {
         let fingerprints = self
             .read(identity, crate::shared::silver_store::fingerprints)
             .await?;
-        self.certify(identity, views, &fingerprints).await
+        self.certify(
+            identity,
+            views,
+            &fingerprints,
+            &crate::shared::activity::Progress::default(),
+        )
+        .await
     }
 
     /// Bring this node's connector points in line with its shared silver.

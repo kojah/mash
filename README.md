@@ -1693,6 +1693,9 @@ commits. Long SQLite statements can run without intermediate updates; elapsed
 time alone does not prove a stall. Detached server work remains visible after
 its requester disconnects. Completed work disappears; server restart resets the
 inventory. Older servers omit this field, which means unknown.
+The `optimizing_views` phase waits for Qdrant's optimizer; `checking_search`
+then probes retrieval. Both can take time after document writes have finished,
+and their counters do not estimate remaining optimizer work.
 
 When mutation slots are occupied, up to 32 authenticated requests wait in FIFO
 order for at most 60 seconds before returning a retryable capacity error. Waiting

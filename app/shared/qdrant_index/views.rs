@@ -222,10 +222,17 @@ impl Store {
     }
 
     /// Drain optimization started by synchronization, then exercise retrieval.
-    pub(in crate::shared) async fn settle(&self, identity: &Identity) -> Result<(), AppError> {
+    pub(in crate::shared) async fn settle(
+        &self,
+        identity: &Identity,
+        progress: &crate::shared::activity::Progress,
+    ) -> Result<(), AppError> {
+        use crate::shared::activity::{Phase, Unit};
         let name = collection(&identity.group_id, false);
+        progress.phase(Phase::OptimizingViews, Unit::Records);
         self.api.settle_search(&name).await?;
         if self.build.dense_enabled() {
+            progress.phase(Phase::CheckingSearch, Unit::Records);
             let configuration = self.active_configuration(identity).await?;
             self.api
                 .warm_search(

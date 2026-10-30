@@ -136,7 +136,7 @@ impl Store {
             );
         }
         progress.phase(Phase::CertifyingViews, Unit::Chats);
-        self.certify(identity, views, &fingerprints).await
+        self.certify(identity, views, &fingerprints, progress).await
     }
 
     /// Stream the upload's messages for the selected chats into documents.
@@ -209,6 +209,7 @@ impl Store {
         identity: &Identity,
         mut views: NodeViews,
         fingerprints: &BTreeMap<String, String>,
+        progress: &Progress,
     ) -> Result<(), AppError> {
         self.sync_connectors(identity, &mut views).await?;
         views.chats.retain(|id, _| fingerprints.contains_key(id));
@@ -225,6 +226,6 @@ impl Store {
             .then(|| head.and_then(|h| h.silver_revision))
             .flatten();
         self.views.put_node_views(identity, &views).await?;
-        self.views.settle(identity).await
+        self.views.settle(identity, progress).await
     }
 }
