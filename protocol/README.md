@@ -265,6 +265,8 @@ Source mapping: `tools/upgrade-local-index.sh` stages a complete import before
 setting `retiring=true`, moves originals into a unique retained directory, installs
 attachments, then links the new database without clobbering an existing path.
 The `DATABASE.upgrade-in-progress/backup` marker points to the recovery directory;
+completion atomically renames the marker directory into the backup, preserving
+its pointer even if the process dies at the final boundary.
 the marker is checked before the missing-database no-op. Failures after retirement
 starts retain it. `tools/test-upgrade-local-index.sh` exercises rejection without
 mutating original files, absent/present publication identity, busy-file rejection,

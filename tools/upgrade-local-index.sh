@@ -104,6 +104,7 @@ mv "$staged.attachments" "$database.attachments"
 # destination unexpectedly exists. Original files remain in retired/ throughout.
 ln "$staged" "$database"
 rm "$staged"
-rm "$marker/backup"
-rmdir "$marker"
+# One rename clears the active marker without a crash window that loses its
+# recovery pointer. Keep that pointer with the completed backup as well.
+mv "$marker" "$backup/completed-marker"
 echo "local index upgraded; previous files retained in $backup"

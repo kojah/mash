@@ -15,6 +15,7 @@ SH
 cat > "$scratch/bin/mv" <<'SH'
 #!/usr/bin/env bash
 if [[ -e $TEST_UPGRADE_ROOT/interrupt && $1 == "$TEST_UPGRADE_ROOT/db.sqlite3-wal" ]]; then exit 1; fi
+if [[ -e $TEST_UPGRADE_ROOT/finish-fail && $1 == "$TEST_UPGRADE_ROOT/db.sqlite3.upgrade-in-progress" ]]; then exit 1; fi
 exec "$TEST_UPGRADE_REAL_MV" "$@"
 SH
 cat > "$scratch/bin/mash" <<'SH'
@@ -78,6 +79,7 @@ for identity in absent present; do
         ! grep -q -- --keep-identity "$TEST_UPGRADE_ROOT/import-args"
     fi
     retired=("$TEST_UPGRADE_ROOT"/backups/*/retired)
+    [[ $(cat "${retired[0]%/retired}/completed-marker/backup") == "${retired[0]%/retired}" ]]
     [[ $(cat "${retired[0]}/db.sqlite3") == original ]]
     [[ $(cat "${retired[0]}/db.sqlite3-wal") == wal ]]
     [[ $(cat "${retired[0]}/db.sqlite3.attachments/blob") == old-blob ]]
@@ -94,4 +96,12 @@ backup=$(cat "$marker/backup")
 rm "$TEST_UPGRADE_ROOT/interrupt"
 if upgrade; then echo 'Ignored unfinished marker when active database was absent' >&2; exit 1; fi
 grep -q 'unfinished local-index upgrade' "$TEST_UPGRADE_ROOT/error"
+fixture finish-failure
+touch "$TEST_UPGRADE_ROOT/finish-fail"
+if upgrade; then echo 'Accepted failed marker retirement' >&2; exit 1; fi
+marker="$TEST_UPGRADE_ROOT/db.sqlite3.upgrade-in-progress"
+backup=$(cat "$marker/backup")
+[[ $(cat "$TEST_UPGRADE_ROOT/db.sqlite3") == new ]]
+[[ $(cat "$backup/retired/db.sqlite3") == original ]]
+if upgrade; then echo 'Ignored retained marker after database promotion' >&2; exit 1; fi
 echo 'Upgrade staging, identity, quiescence, retention and interrupted retry checks passed.'
