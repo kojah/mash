@@ -133,6 +133,7 @@ fn local_status(
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            installation: super::installation::summary(),
             coverage: None,
             shared_error: None,
             local_artifacts: local_artifacts(None, dense_enabled, false, false),
@@ -183,6 +184,7 @@ fn local_status(
             .is_some_and(|(m, s)| m.matches(s, counts.searchable_messages));
     let ready = if exact { lexical_ready } else { hybrid_ready };
     Ok(StatusResponse {
+        installation: super::installation::summary(),
         coverage: None,
         shared_error: None,
         local_artifacts: local_artifacts(

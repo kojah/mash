@@ -16,6 +16,7 @@ mod connector_ingestion;
 mod export;
 mod index_destinations;
 mod indexing;
+mod installation;
 mod publication;
 mod readiness;
 mod real_models;

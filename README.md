@@ -175,6 +175,47 @@ Runner logs and reports stay private. Skipped targets are not installed or ready
 
 ## Codex and Claude Code history plugin
 
+Check agent wiring separately from search readiness:
+
+```bash
+mash status --installation
+mash status --installation --agent codex --agent claude-code
+mash status --installation --agent codex --probe
+```
+
+The first command inspects local Codex and Claude Code user settings, installed
+Mash plugin/skill files, bundled hooks, hook trust records and the stdio MCP
+registration. Findings include the inspected path and a repair suggestion.
+`--agent` explicitly requires an integration; without it, an enabled plugin or
+an MCP registration establishes that expectation. A CLI-only installation is valid.
+Ordinary `status` includes a compact installation summary, and `--help` (also
+`help` and subcommand help) adds a short warning when local checks find an
+incomplete integration. Help remains JSON and does not start subprocesses.
+Detected clients with no enabled Mash integration receive a softer setup notice
+and appear in `summary.unconfigured`, without making CLI-only use an error.
+
+Installation inspection works without a valid Mash configuration, index or
+models. It never installs plugins, trusts hooks, modifies agent settings or
+downloads models. `--probe` explicitly executes each configured user-level stdio
+command with its arguments/environment, using a ten-second deadline for MCP
+initialization and a Mash `help` contract check. Only probe commands run: hook
+scripts and indexing/search tools are never invoked. A configured `--watch` is
+not probed. Private launchers can have their own startup effects; inspect those
+before probing. Arguments, environment values and child stderr are not printed.
+
+These are observations of user settings on the current machine. Project overrides
+are reported as unverified and suppress the user-level MCP probe; managed policy,
+client profiles, remote clients and other agent integrations are not certified.
+Multiple cached Codex versions are ambiguous, not evidence that a particular
+version is active. A Codex trust record does not prove its hash still matches:
+review current hooks with `/hooks`. A successful probe checks a **new** process,
+not an existing agent connection or actual hook execution. Restart clients after
+repairs. Inspection exits successfully when it produces a report; use
+`summary.attention` and the individual states for automation.
+
+Client-format references: [Codex plugins](https://developers.openai.com/plugins/build/plugins)
+and [Codex hook trust](https://learn.chatgpt.com/docs/hooks).
+
 `plugins/mash` packages a shared `history` skill for both clients. It prefers
 Mash MCP, falls back to the CLI when MCP is unavailable, and guides chat
 discovery, scoped message searches and evidence-backed answers about past

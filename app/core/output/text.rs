@@ -256,6 +256,7 @@ fn status(out: &mut String, value: &Status<'_>) -> Result<(), serde_json::Error>
         &format!("Mash status — local search ready: {}", value.ready),
     );
     json(out, "Artifacts", value.local_artifacts)?;
+    json(out, "Installation", value.installation)?;
     json(out, "Query models", value.query_models)?;
     line(
         out,
@@ -336,6 +337,7 @@ pub(crate) fn render(
         Response::Search(value) => search(&mut out, &Search::from(value))?,
         Response::ListChats(value) => list(&mut out, value)?,
         Response::Status(value) => status(&mut out, &Status::from(value.as_ref()))?,
+        Response::Installation(value) => json(&mut out, "Installation", value)?,
         Response::View(value) => operations::view(&mut out, value)?,
         Response::Index(value) => operations::index(&mut out, value)?,
         Response::IngestConnector(value) => {

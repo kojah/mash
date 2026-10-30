@@ -10,6 +10,7 @@ mod connector_ingestion;
 pub(crate) mod coverage;
 mod indexing;
 mod inspection;
+pub(crate) mod installation;
 mod maintenance;
 mod models;
 pub(crate) mod output;
@@ -43,7 +44,7 @@ async fn execute_admitted(
         Operation::ListChats { .. } => "list_chats",
         Operation::Search { .. } => "search",
         Operation::View { .. } => "view",
-        Operation::Status { .. } => "status",
+        Operation::Status { .. } | Operation::Installation { .. } => "status",
         Operation::Forget { .. } => "forget",
         Operation::ModelsInstall => "models_install",
         Operation::ExportSilver { .. } => "export_silver",
@@ -87,6 +88,12 @@ async fn execute_inner(
     request: Request,
     capacity: Option<&tokio::sync::Semaphore>,
 ) -> Result<Response, AppError> {
+    if let Operation::Installation { agents, probe } = &request.operation {
+        return installation::inspect(agents.clone(), *probe)
+            .boxed()
+            .await
+            .map(Response::Installation);
+    }
     let path = request.paths.config;
     let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
     let database = request.paths.db.unwrap_or_else(default_database_path);
@@ -289,6 +296,9 @@ async fn dispatch(
                 .await
                 .map(|status| Response::Status(Box::new(status)))
         }
+        Operation::Installation { agents, probe } => installation::inspect(agents, probe)
+            .await
+            .map(Response::Installation),
         Operation::Forget { id } => maintenance::forget(database, configuration, id)
             .await
             .map(Response::Forget),

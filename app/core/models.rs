@@ -80,6 +80,10 @@ pub(crate) enum Operation {
         shared: bool,
         coverage: Option<super::coverage::Scope>,
     },
+    Installation {
+        agents: Vec<super::installation::Agent>,
+        probe: bool,
+    },
     Forget {
         id: String,
     },
@@ -112,6 +116,7 @@ pub(crate) enum Response {
     Search(SearchResponse),
     View(ViewResponse),
     Status(Box<StatusResponse>),
+    Installation(super::installation::Report),
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
     ExportSilver(crate::export::Exported),
@@ -212,6 +217,7 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
+    pub(super) installation: super::installation::Summary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) coverage: Option<super::coverage::Report>,
     #[serde(skip_serializing_if = "Option::is_none")]

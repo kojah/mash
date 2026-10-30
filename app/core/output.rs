@@ -246,6 +246,7 @@ struct List<'a> {
 
 #[derive(Serialize)]
 struct Status<'a> {
+    installation: &'a super::installation::Summary,
     #[serde(skip_serializing_if = "Option::is_none")]
     coverage: Option<&'a super::coverage::Report>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -272,6 +273,7 @@ struct Status<'a> {
 impl<'a> From<&'a StatusResponse> for Status<'a> {
     fn from(value: &'a StatusResponse) -> Self {
         Self {
+            installation: &value.installation,
             coverage: value.coverage.as_ref(),
             shared_error: value.shared_error.as_deref(),
             local_artifacts: &value.local_artifacts,

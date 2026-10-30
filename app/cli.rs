@@ -131,8 +131,17 @@ enum Command {
         #[arg(long, value_name = "NODE_ID")]
         shared: Option<String>,
     },
-    /// Report canonical storage and model readiness.
+    /// Report storage, model readiness and agent installation health.
     Status {
+        /// Inspect agent integrations without opening the Mash configuration, index or models.
+        #[arg(long, conflicts_with_all = ["coverage", "shared"])]
+        installation: bool,
+        /// Require this integration (repeatable); otherwise inspect detected clients.
+        #[arg(long, value_enum, requires = "installation")]
+        agent: Vec<crate::core::installation::Agent>,
+        /// Launch configured stdio MCP commands and verify Mash help (10 seconds per client).
+        #[arg(long, requires = "installation")]
+        probe: bool,
         /// Report scoped retained-history and provider scan facts without proving completeness.
         #[arg(long)]
         coverage: bool,
@@ -388,13 +397,25 @@ impl Cli {
                 shared,
             },
             Command::Status {
+                installation,
+                agent,
+                probe,
                 shared,
                 coverage,
                 scope,
-            } => Operation::Status {
-                shared,
-                coverage: coverage.then_some(*scope),
-            },
+            } => {
+                if installation {
+                    Operation::Installation {
+                        agents: agent,
+                        probe,
+                    }
+                } else {
+                    Operation::Status {
+                        shared,
+                        coverage: coverage.then_some(*scope),
+                    }
+                }
+            }
             Command::Forget { id } => Operation::Forget { id },
             Command::Export { directory } => Operation::ExportSilver { directory },
             Command::Import {
@@ -429,9 +450,13 @@ where
         Ok(cli) => cli,
         Err(error) => match error.kind() {
             clap::error::ErrorKind::DisplayHelp => {
-                return Ok(Response::Help {
-                    help: error.to_string(),
-                });
+                let mut help = error.to_string();
+                if let Some(notice) = crate::core::installation::help_notice() {
+                    help.push('\n');
+                    help.push_str(notice);
+                    help.push('\n');
+                }
+                return Ok(Response::Help { help });
             }
             clap::error::ErrorKind::DisplayVersion => {
                 return Ok(Response::Version {
