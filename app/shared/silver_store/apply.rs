@@ -319,6 +319,7 @@ pub(in crate::shared) fn apply(
     identity: &Identity,
     file: &tempfile::NamedTempFile,
     build: &Build,
+    progress: &crate::shared::activity::Progress,
 ) -> Result<Applied, AppError> {
     let previous = head(tx)?;
     let (input, lines) = first_line(file)?;
@@ -406,16 +407,19 @@ pub(in crate::shared) fn apply(
                             }
                             upload.tombstone(&record)?;
                             upload.applied.changed = true;
+                            progress.advance(1);
                         }
                     }
                     Batch::Conversations { records } => {
                         for record in records {
                             upload.conversation(record, input.snapshot)?;
+                            progress.advance(1);
                         }
                     }
                     Batch::Messages { records } => {
                         for record in records {
                             upload.message(record)?;
+                            progress.advance(1);
                         }
                     }
                 }
@@ -441,6 +445,10 @@ pub(in crate::shared) fn apply(
         return Err(AppError::usage("missing message context parent"));
     }
     let supplied = upload.applied.supplied.clone();
+    progress.phase(
+        crate::shared::activity::Phase::FinalizingSilver,
+        crate::shared::activity::Unit::Chats,
+    );
     for id in &supplied {
         crate::storage::turns::derive(tx, id)?;
         let fingerprint = upload.fingerprint(id)?;
@@ -450,6 +458,7 @@ pub(in crate::shared) fn apply(
             .build()
             .execute(tx)
             .map_err(database)?;
+        progress.advance(1);
     }
     let canonical = upload.canonical()?;
     let mut applied = upload.applied;

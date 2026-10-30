@@ -114,7 +114,16 @@ pub(super) async fn upload(
     request: axum::extract::Request,
 ) -> Result<Json<bool>, ApiError> {
     let permit = super::admission::reserve(&app.uploads)?;
-    let file = super::upload::spool_bytes(request.into_body(), 8 * 1024 * 1024).await?;
+    let progress = app.activity.start(
+        &id.group_id,
+        &id.node_id,
+        crate::shared::activity::Kind::Attachment,
+    );
+    let file = super::upload::spool_bytes(request.into_body(), 8 * 1024 * 1024, &progress).await?;
+    progress.phase(
+        crate::shared::activity::Phase::Attachment,
+        crate::shared::activity::Unit::Records,
+    );
     let input: Retrieved = crate::blocking(move || {
         serde_json::from_reader(file.as_file())
             .map_err(|_| AppError::usage("invalid attachment upload JSON"))
@@ -139,6 +148,7 @@ pub(super) async fn upload(
         .ok_or_else(|| AppError::usage("shared attachment storage is disabled"))?;
     crate::blocking(move || {
         let _permit = permit;
+        let _progress = progress;
         attachments::write(&root, &input.attachment, &input.data)
     })
     .await?;

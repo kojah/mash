@@ -536,6 +536,8 @@ impl Service {
         let attachments = tempfile::tempdir().unwrap();
         let first = identities[&blake3::hash(first_token.as_bytes())].clone();
         let app = App {
+            activity: crate::shared::activity::Registry::default(),
+            mutation_capacity: uploads.available_permits(),
             attachments_dir: Some(attachments.path().to_path_buf()),
             store: store.clone(),
             identities: identities.clone(),

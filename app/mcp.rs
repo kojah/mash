@@ -13,7 +13,6 @@ use rmcp::{
 use serde::Deserialize;
 
 pub(crate) mod guidance;
-mod watching;
 
 #[derive(Clone)]
 struct Mash {
@@ -21,7 +20,7 @@ struct Mash {
     // Mutations serialize, while read-only calls may run concurrently.
     gate: Arc<tokio::sync::Mutex<()>>,
     model_work: Arc<tokio::sync::Semaphore>,
-    watcher: Arc<tokio::sync::Mutex<watching::Watcher>>,
+    runtime: Option<Arc<crate::runtime::Lease>>,
 }
 
 #[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -184,14 +183,6 @@ struct Forget {
     chat_id: String,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct WatchStart {
-    /// Quiet period in milliseconds, 50–60000; defaults to 1000 on a new start.
-    #[schemars(range(min = 50, max = 60_000))]
-    debounce_ms: Option<u64>,
-}
-
 impl Mash {
     async fn execute_detailed(&self, operation: Operation, detail: Detail) -> CallToolResult {
         let server = self.clone();
@@ -290,7 +281,7 @@ impl Mash {
         &self,
         operation: Operation,
     ) -> Result<core::Response, crate::AppError> {
-        let _guard = if matches!(
+        let guard = if matches!(
             operation,
             Operation::Index(_)
                 | Operation::IngestConnector { .. }
@@ -303,6 +294,12 @@ impl Mash {
         } else {
             None
         };
+        if guard.is_some()
+            && let Some(lease) = &self.runtime
+        {
+            let lease = Arc::clone(lease);
+            crate::blocking(move || lease.ensure_current()).await?;
+        }
         core::execute_with_model_limit(
             Request {
                 paths: self.paths.as_ref().clone(),
@@ -389,14 +386,6 @@ fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
 #[tool_router]
 impl Mash {
     #[tool(
-        annotations(read_only_hint = false, destructive_hint = false),
-        description = "Start this MCP session's history watcher and an initial indexing pass. Returns promptly; poll watch_status for progress, errors and shared publication results. Uses TOML providers, destinations and credentials; never downloads models. Repeating a start preserves the active watcher; stop before changing debounce_ms. Settings are process-local. Only one process indexes each database: if another already watches it, this watcher waits as a standby and takes over with an initial pass when that process stops or exits."
-    )]
-    async fn watch_start(&self, Parameters(input): Parameters<WatchStart>) -> CallToolResult {
-        watching::start(self.clone(), input.debounce_ms).await
-    }
-
-    #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
         description = "List attachment metadata without loading contents or models. Copy lookup.list_attachments from a search result. Omit shared for local evidence, or supply the publishing node ID for shared evidence. Returns stable attachment IDs, names, MIME types, sizes, redaction status and explicit availability, including not_uploaded for shared metadata without bytes. Only captured provider attachments are discoverable; reindex older histories to capture them."
     )]
@@ -422,22 +411,6 @@ impl Mash {
             shared: input.shared,
         })
         .await
-    }
-
-    #[tool(
-        annotations(read_only_hint = false, destructive_hint = false),
-        description = "Stop future watched refreshes in this MCP session. Returns promptly with stopping while an active indexing pass finishes; poll watch_status until stopped. A stopped leader lets a waiting standby take over; a stopped standby no longer waits. Safe to repeat."
-    )]
-    async fn watch_stop(&self) -> CallToolResult {
-        watching::stop(self).await
-    }
-
-    #[tool(
-        annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report this MCP session's watcher state, role (leader indexes; standby waits while another process watches the database), debounce_ms, indexing progress, last completed refresh/result (including shared publication state), and last error. Does not start indexing."
-    )]
-    async fn watch_status(&self) -> CallToolResult {
-        self.watcher.lock().await.response()
     }
 
     #[tool(
@@ -587,43 +560,27 @@ impl rmcp::ServerHandler for Mash {
     }
 }
 
-#[derive(serde::Serialize)]
-struct WatchIndex {
-    event: WatchEvent,
-    result: CallToolResult,
-}
-#[derive(serde::Serialize)]
-enum WatchEvent {
-    #[serde(rename = "watch-index")]
-    Index,
-}
-
-pub(crate) async fn run(
-    paths: Paths,
-    watch: bool,
-    debounce_ms: u64,
-) -> Result<(), crate::AppError> {
+pub(crate) async fn run(paths: Paths) -> Result<(), crate::AppError> {
+    let registered_paths = paths.clone();
+    let lease = crate::blocking(move || {
+        crate::runtime::Lease::register(&registered_paths, crate::runtime::Kind::Mcp)
+    })
+    .await?;
     let server = Mash {
         paths: Arc::new(paths),
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
-        watcher: Arc::default(),
+        runtime: Some(Arc::new(lease)),
     };
-    let background = server.clone();
     let service = server
         .serve(rmcp::transport::stdio())
         .await
         .map_err(|_| crate::AppError::internal("MCP initialization failed"))?;
-    if watch {
-        let _ = watching::start(background.clone(), Some(debounce_ms)).await;
-    }
-    let success = service.waiting().await.is_ok();
-    watching::shutdown(&background).await;
-    if success {
-        Ok(())
-    } else {
-        Err(crate::AppError::internal("MCP session failed"))
-    }
+    service
+        .waiting()
+        .await
+        .map(|_| ())
+        .map_err(|_| crate::AppError::internal("MCP session failed"))
 }
 
 #[cfg(test)]

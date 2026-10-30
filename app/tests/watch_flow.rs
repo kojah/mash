@@ -12,7 +12,11 @@ struct Watching {
 
 impl Watching {
     fn start(root: &Path, extra: &[&str]) -> Self {
-        let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"))
+        Self::start_binary(root, extra, assert_cmd::cargo::cargo_bin!("mash"))
+    }
+
+    fn start_binary(root: &Path, extra: &[&str], executable: &Path) -> Self {
+        let mut child = std::process::Command::new(executable)
             .args([
                 "--config",
                 root.join("config.toml").to_str().unwrap(),
@@ -62,6 +66,68 @@ impl Watching {
             "unexpected extra refresh"
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn runtime_upgrade_stops_idle_and_standby_cli_watchers() {
+    let root = tempfile::tempdir().unwrap();
+    let sources = root.path().join("history");
+    std::fs::create_dir(&sources).unwrap();
+    history(&sources.join("session.jsonl"), "before upgrade");
+    configure(root.path(), &sources);
+    create_valid_model_marker(&root.path().join("models"));
+    let executable = root.path().join("mash");
+    std::os::unix::fs::symlink(assert_cmd::cargo::cargo_bin!("mash"), &executable).unwrap();
+    let mut leader = Watching::start_binary(root.path(), &[], &executable);
+    assert_eq!(leader.next()["indexed_messages"], 1);
+    let mut standby = Watching::start_binary(root.path(), &[], &executable);
+    let deadline = std::time::Instant::now() + HANG_GUARD;
+    loop {
+        if std::fs::read_dir(root.path().join("index.sqlite3.runtimes"))
+            .unwrap()
+            .count()
+            == 2
+        {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "standby registered");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let replacement = root.path().join("replacement");
+    std::fs::write(&replacement, "new executable identity").unwrap();
+    std::fs::rename(replacement, executable).unwrap();
+    for watcher in [&mut leader, &mut standby] {
+        loop {
+            if let Some(status) = watcher.child.try_wait().unwrap() {
+                assert!(
+                    !status.success(),
+                    "superseded watch exits with a typed error"
+                );
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "superseded watch stops"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+    assert_eq!(
+        std::fs::read_dir(root.path().join("index.sqlite3.runtimes"))
+            .unwrap()
+            .count(),
+        0
+    );
+    let connection = Connection::open(root.path().join("index.sqlite3")).unwrap();
+    let content: String = connection
+        .query_row(
+            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(content, "before upgrade");
 }
 
 impl Drop for Watching {
@@ -184,7 +250,7 @@ fn watcher_recovers_missing_roots_and_reloads_configuration() {
 }
 
 #[test]
-fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
+fn mcp_indexes_only_on_explicit_request_and_stops_when_session_closes() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let sources = root.join("history");
@@ -201,9 +267,6 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
             root.join("index.sqlite3").to_str().unwrap(),
             "--models-dir",
             root.join("models").to_str().unwrap(),
-            "--watch",
-            "--debounce-ms",
-            "200",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -240,36 +303,23 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
         &mut stdin,
         serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
     );
-    let deadline = std::time::Instant::now() + HANG_GUARD;
-    loop {
-        let indexed = Connection::open_with_flags(
-            root.join("index.sqlite3"),
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .is_ok_and(|db| {
-            db.query_row(
-                "SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry'",
-                [],
-                |r| r.get::<_, i64>(0),
-            )
-            .ok()
-                == Some(1)
-        });
-        if indexed {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "MCP background indexing completes"
-        );
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    assert!(
+        !root.join("index.sqlite3").exists(),
+        "MCP startup does not ingest"
+    );
     send(
         &mut stdin,
-        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"status","arguments":{}}}),
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"index","arguments":{}}}),
+    );
+    let indexed = watcher.next();
+    assert_eq!(indexed["id"], 2);
+    assert_ne!(indexed["result"]["isError"], true);
+    send(
+        &mut stdin,
+        serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"status","arguments":{}}}),
     );
     let response = watcher.next();
-    assert_eq!(response["id"], 2);
+    assert_eq!(response["id"], 3);
     assert_eq!(response["result"]["structuredContent"]["messages"], 1);
     drop(stdin);
     let deadline = std::time::Instant::now() + HANG_GUARD;
@@ -278,10 +328,7 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
             assert!(status.success());
             break;
         }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "MCP watcher exits on EOF"
-        );
+        assert!(std::time::Instant::now() < deadline, "MCP exits on EOF");
         std::thread::sleep(Duration::from_millis(25));
     }
     watcher.quiet(); // No CLI response may follow the MCP shutdown.

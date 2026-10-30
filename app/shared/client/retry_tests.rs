@@ -98,6 +98,10 @@ async fn mutation_posts_and_authorization_failures_are_never_replayed() {
         let error = response::<Reply>(request, endpoint).await.unwrap_err();
         assert_eq!(state.calls.load(Ordering::SeqCst), 1);
         assert_eq!(error.error.retryable, status != StatusCode::UNAUTHORIZED);
+        if status == StatusCode::SERVICE_UNAVAILABLE {
+            assert!(error.error.message.contains("mash status --shared"));
+            assert!(error.error.message.contains("phase and progress"));
+        }
         server.abort();
     }
 }

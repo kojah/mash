@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Seven models plus ten expected counterexamples.
+make protocol-check       # Eight models plus eleven expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on
@@ -45,7 +45,38 @@ invariants and missing tools fail the command. Negative configurations deliberat
 break the modeled contracts, including the historical replay-ordering bug below.
 A green suite establishes properties of these bounded abstractions only.
 
+Shared activity reporting is observational: progress records follow the existing
+admission-owned worker, and never gate work or change retries, transaction
+boundaries or certification ordering. Its cancellation and group-isolation
+regressions use Rust tests; no protocol-model transition changes are required.
+
 ## Models and source boundaries
+
+### RuntimeUpgrade: stop admitting writes after observing replacement
+
+[RuntimeUpgrade.tla](RuntimeUpgrade.tla) models one old runtime, two executable
+identities and at most two admitted operations. It separates executable
+replacement, admission after the MCP mutation gate, an idle/standby watch poll,
+and completion of an admitted operation. A replacement can occur after admission
+and before completion: old writes may finish. The check is not installer fencing.
+Safety checks require admission to observe the running identity and shutdown to
+preserve admitted work. With fair polling and operation completion, the CLI
+watcher eventually stops after replacement. MCP itself stays available for reads;
+the polling/liveness portion applies only to CLI watching.
+
+Source mapping: [runtime.rs](../app/runtime.rs) `Lease::ensure_current`,
+[mcp.rs](../app/mcp.rs) `Mash::perform_response`, and
+[cli.rs](../app/cli.rs) `run_parsed`. Registry liveness uses held OS locks;
+filesystem metadata identity, lock correctness, successful registration and
+eventual operation completion are assumptions, not modeled proofs. Older binaries
+without these checks are outside the contract. The model excludes source data,
+the filesystem's individual metadata reads, process crashes and reads under an
+older schema. Rust tests cover replacement, symlink switching, unverified evidence,
+queued MCP admission and the public CLI watch lifecycle.
+
+`RuntimeUpgradeNoGuard.cfg` deliberately removes the admission guard; TLC must
+violate `AdmissionChecked`. This supplements Rust boundary regressions and does
+not claim that every Rust interleaving has been proven safe.
 
 ### Publication: preserve edits made during an upload
 

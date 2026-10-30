@@ -59,7 +59,7 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
         .unwrap();
     std::fs::remove_file(source).unwrap();
     let mash = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(paths),
         gate: Arc::default(),
         model_work: Arc::new(tokio::sync::Semaphore::new(0)),

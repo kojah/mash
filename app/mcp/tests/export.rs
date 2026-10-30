@@ -13,7 +13,7 @@ async fn sdk_export_import_is_model_free_and_keeps_the_sessions_database() {
     let config = root.path().join("node.toml");
     std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
     let mash = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(db.clone()),

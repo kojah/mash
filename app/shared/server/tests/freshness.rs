@@ -10,6 +10,10 @@ async fn qdrant_freshness_reports_unpublished_members_only_in_the_authorized_gro
     let service = Service::qdrant(384).await;
     let initial = read(&service, FIRST).await;
     assert!(initial.nodes.is_empty());
+    let activity = serde_json::to_value(&initial.activity).unwrap();
+    assert!(activity["capacity"].as_u64().is_some());
+    assert_eq!(activity["occupied"], 0);
+    assert_eq!(activity["active"], serde_json::json!([]));
     assert_eq!(
         initial.unpublished_nodes.as_deref(),
         Some(["first".to_owned(), "second".to_owned()].as_slice())

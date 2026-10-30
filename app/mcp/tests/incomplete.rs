@@ -39,7 +39,7 @@ async fn unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_p
     let models = dir.path().join("models");
     install_test_marker(&models);
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(dir.path().join("index.sqlite3")),
@@ -93,7 +93,7 @@ async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
     let models = dir.path().join("models");
     install_test_marker(&models);
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(dir.path().join("index.sqlite3")),

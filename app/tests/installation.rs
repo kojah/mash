@@ -277,7 +277,20 @@ fn installation_probe_verifies_real_mash_without_index_or_models() {
             .any(|finding| finding["component"] == "probe" && finding["state"] == "passed"),
         "{report}"
     );
-    assert!(!root.path().join("data").exists());
+    // MCP may leave an empty runtime-registry directory. The probe must never
+    // create an index, model files, or a live record after its child has exited.
+    let data = root.path().join("data");
+    if data.exists() {
+        for entry in walkdir::WalkDir::new(data) {
+            let entry = entry.unwrap();
+            assert!(
+                entry.file_type().is_dir(),
+                "unexpected probe file: {:?}",
+                entry.path()
+            );
+            assert_ne!(entry.file_name(), "models");
+        }
+    }
 }
 
 #[test]

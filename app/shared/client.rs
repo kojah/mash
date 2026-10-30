@@ -276,6 +276,9 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
                     "shared index revision or node identity conflict; retry indexing or choose a new node_id"
                 }
                 400 | 413 | 422 => "shared index rejected invalid or oversized data",
+                503 => {
+                    "shared index service is unavailable or mutation capacity is busy; inspect `mash status --shared` activity for the active node, phase and progress before retrying"
+                }
                 _ => "shared index service is unavailable; retry later",
             };
             let mut error = AppError::shared(message);

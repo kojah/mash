@@ -34,6 +34,7 @@ pub use mcp::guidance::{generate_history_skill, validate_history_release};
 mod observability;
 mod progress;
 mod redaction;
+mod runtime;
 mod scratch;
 mod shared;
 mod storage;

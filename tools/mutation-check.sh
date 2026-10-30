@@ -37,13 +37,18 @@ config=.cargo/mutants.toml
 case "${1:-}" in
     '') [[ $# == 0 ]] || exit 2 ;;
     --list) [[ $# == 1 ]] || exit 2; exec "$tool" mutants --list ;;
+    --runtime|--list-runtime)
+        [[ $# == 1 ]] || exit 2
+        config=.cargo/mutants-runtime.toml
+        if [[ $1 == --list-runtime ]]; then exec "$tool" mutants --config "$config" --list; fi
+        ;;
     --connectors|--list-connectors)
         [[ $# == 1 ]] || exit 2
         config=.cargo/mutants-connectors.toml
         if [[ $1 == --list-connectors ]]; then exec "$tool" mutants --config "$config" --list; fi
         [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
         ;;
-    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--connectors|--list-connectors]' >&2; exit 2 ;;
+    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--connectors|--list-connectors]' >&2; exit 2 ;;
 esac
 mkdir -p "$artifacts/runs" "$artifacts/tmp"
 run=$(mktemp -d "$artifacts/runs/audit.XXXXXX")

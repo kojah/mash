@@ -14,9 +14,9 @@ mod output;
 mod paging;
 mod rebuild;
 mod redaction;
+mod runtime;
 mod selections;
 mod skill;
-mod watching;
 mod workflows;
 
 #[tokio::test]
@@ -37,7 +37,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     )
     .unwrap();
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database.clone()),
@@ -118,7 +118,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
     let database = dir.path().join("missing.sqlite3");
     let models = dir.path().join("missing-models");
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database.clone()),
@@ -223,7 +223,7 @@ async fn indexing_streams_correlated_progress_before_the_tool_result() {
     std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
     install_test_marker(&models);
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database.clone()),
@@ -367,7 +367,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     )
     .expect("config");
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(dir.path().join("missing.sqlite3")),
@@ -408,10 +408,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "models_install",
             "search",
             "status",
-            "view",
-            "watch_start",
-            "watch_status",
-            "watch_stop"
+            "view"
         ]
     );
     let write_guard = write_gate.lock().await;

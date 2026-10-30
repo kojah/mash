@@ -352,6 +352,15 @@ fn inspect_server(
         );
         return;
     };
+    if server.args.iter().any(|arg| {
+        arg == "--watch"
+            || arg.starts_with("--watch=")
+            || arg == "--debounce-ms"
+            || arg.starts_with("--debounce-ms=")
+    }) {
+        client.add(Component::Mcp, State::Outdated, Some(path), "Mash MCP registration contains retired watch arguments.", Some("Remove --watch and --debounce-ms from the MCP registration and reconnect. Run `mash index --watch` separately for automatic ingestion."));
+        return;
+    }
     if command.contains('$')
         || server.args.iter().any(|arg| arg.contains("${"))
         || server.env.values().any(|value| value.contains("${"))

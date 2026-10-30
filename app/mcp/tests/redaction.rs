@@ -9,7 +9,7 @@ async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", chats.display())).unwrap();
     let mash = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(root.path().join("index.sqlite3")),

@@ -18,6 +18,10 @@ mutation-check:
 mutation-connectors:
 	$(DEV_RUN) bash tools/mutation-check.sh --connectors
 
+.PHONY: mutation-runtime
+mutation-runtime:
+	$(DEV_RUN) bash tools/mutation-check.sh --runtime
+
 property-check:
 	$(MAKE) iterate FOCUS='test(connectors::silver::tests::properties)'
 

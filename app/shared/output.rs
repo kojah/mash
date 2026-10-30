@@ -20,6 +20,8 @@ impl Publication {
 
 #[derive(Serialize)]
 pub(crate) struct FreshnessSummary<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) activity: Option<&'a super::activity::Report>,
     pub(crate) group_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) unpublished_nodes: Option<&'a [String]>,
@@ -45,6 +47,7 @@ pub(crate) struct Member<'a> {
 impl Freshness {
     pub(crate) fn summary(&self) -> FreshnessSummary<'_> {
         FreshnessSummary {
+            activity: self.activity.as_ref(),
             group_id: &self.group_id,
             unpublished_nodes: self.unpublished_nodes.as_deref(),
             nodes: self

@@ -249,6 +249,13 @@ async fn installation_probe_skips_watch_and_preserves_disabled_registration() {
     ] {
         write(&environment.codex.join("config.toml"), config);
         let mut report = collect(Some(&environment), &[Agent::Codex]);
+        if config.contains("--watch") {
+            assert!(report.clients[0].findings.iter().any(|finding| matches!(
+                finding.component,
+                Component::Mcp
+            ) && finding.state
+                == State::Outdated));
+        }
         probe::check(&mut report.clients[0]).await;
         assert!(report.clients[0].findings.iter().any(|finding| matches!(
             finding.component,

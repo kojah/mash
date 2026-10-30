@@ -82,7 +82,7 @@ async fn sdk_decision_workflow_discovers_scopes_and_reads_user_approval_in_four_
     let server = Mash {
         paths: Arc::new(paths),
         gate: Arc::default(),
-        watcher: Arc::default(),
+        runtime: None,
         model_work: Arc::new(tokio::sync::Semaphore::new(0)),
     };
     let (server_io, client_io) = tokio::io::duplex(64 * 1024);

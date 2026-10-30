@@ -48,8 +48,10 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
   is supported; exclude deployment credentials, models and provider files.
   Clearly document that exports preserve sensitive canonical history.
 - CLI searches execute directly. MCP runs in one process; reconnect after upgrades.
-- Support opt-in debounced synchronization with `index --watch` and MCP startup
-  `--watch`. Keep it within the running process; do not install a daemon.
+- Support opt-in debounced synchronization only with `index --watch` in a
+  separate process. MCP reads the refreshed index and permits explicit indexing;
+  it does not own watchers. Do not install a daemon. Superseded long-lived
+  runtimes refuse new writes; already admitted operations may finish.
 - Use concrete, enum-selected history adapters with typed input models. The
   provider set includes Claude Code, Codex, OpenCode, GitHub Copilot, Cursor,
   and Antigravity.

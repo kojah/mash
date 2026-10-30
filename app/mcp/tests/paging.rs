@@ -63,7 +63,7 @@ async fn sdk_search_pages_continue_from_next_offset() {
     .unwrap();
     seed(&database);
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database),

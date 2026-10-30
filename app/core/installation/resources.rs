@@ -12,6 +12,7 @@ pub(super) struct Report {
     silver: Option<crate::silver::certificate::Certificate>,
     connectors: Option<Vec<crate::source::SourceStatus>>,
     connector_scope: &'static str,
+    runtimes: crate::runtime::Inventory,
 }
 
 #[derive(Debug, Serialize)]
@@ -115,21 +116,62 @@ pub(super) fn inspect(paths: &Paths) -> Report {
         configuration_loaded: false,
         silver: None,
         connectors: None,
+        runtimes: crate::runtime::inspect(paths),
         connector_scope: "Local committed connector deliveries only. No delivery does not prove a connector is unconfigured. External credentials, live connections and shared-only sources are not inspected; use `mash status --shared` for shared readiness.",
     };
+    add_runtime_findings(&mut report);
     let storage = if compatible {
         Storage::open_catalog(&database).ok()
     } else {
         None
     };
-    if let Some(storage) = &storage {
+    inspect_catalog(&mut report, storage.as_ref(), compatible, &database);
+    inspect_configuration(&mut report, paths, storage.as_ref());
+    report
+}
+
+fn add_runtime_findings(report: &mut Report) {
+    for process in &report.runtimes.processes {
+        let state = match process.state {
+            crate::runtime::State::Current => continue,
+            crate::runtime::State::Superseded | crate::runtime::State::DifferentBuild => {
+                State::Outdated
+            }
+            crate::runtime::State::Unverified => State::Unverified,
+        };
+        report.findings.push(Finding {
+            component: Component::Runtime,
+            state,
+            path: None,
+            message: format!("Live Mash process {} has a replaced/unverified executable or a different build from this observer. Inspect resources.runtimes for the precise state.", process.pid),
+            remediation: Some("Reconnect that MCP session or restart its explicit `mash index --watch`. Replacement of its invocation path blocks new writes; an unchanged old release path does not. Already admitted work may finish.".into()),
+        });
+    }
+    if !report.runtimes.complete {
+        report.findings.push(Finding {
+            component: Component::Runtime,
+            state: State::Unverified,
+            path: None,
+            message: "Runtime records could not be completely inspected.".into(),
+            remediation: Some("Check runtime-directory access. Older releases without runtime registration remain outside this inventory.".into()),
+        });
+    }
+}
+
+fn inspect_catalog(
+    report: &mut Report,
+    storage: Option<&Storage>,
+    compatible: bool,
+    database: &Path,
+) {
+    if let Some(storage) = storage {
         match storage.silver_certificate() {
             Ok(certificate) => {
                 if !certificate.is_complete() {
                     report.findings.push(Finding {
                         component: Component::Index,
                         state: State::Unverified,
-                        path: Some(database.clone()),
+                        path: Some(database.to_path_buf()),
                         message: "Stored history is pending, incomplete or unverified; a completed provider scan alone does not certify all retained sources. Inspect resources.silver for the recorded state.".into(),
                         remediation: Some("Inspect `mash status --coverage` and any running index operation. After correcting provider roots or rejected sources, use an explicit `mash index --all-history` refresh; retain upgrade exports for history absent from current provider stores.".into()),
                     });
@@ -147,6 +189,9 @@ pub(super) fn inspect(paths: &Paths) -> Report {
     } else if compatible {
         report.findings.push(unverified("Schema matches, but the catalog cannot be inspected. Provider scans and connector deliveries are unverified."));
     }
+}
+
+fn inspect_configuration(report: &mut Report, paths: &Paths, storage: Option<&Storage>) {
     match crate::config::load(paths.config.as_deref()) {
         Ok(config) => {
             report.configuration_loaded = config.loaded;
@@ -190,10 +235,18 @@ pub(super) fn inspect(paths: &Paths) -> Report {
             remediation: Some("Correct the node TOML configuration; ordinary `mash status` provides its validation error.".into()),
         }),
     }
-    report
 }
 
 pub(super) fn setup_needs_attention(paths: &Paths) -> bool {
+    let runtimes = crate::runtime::inspect(paths);
+    if !runtimes.complete
+        || runtimes
+            .processes
+            .iter()
+            .any(|process| process.state != crate::runtime::State::Current)
+    {
+        return true;
+    }
     match crate::config::load(paths.config.as_deref()) {
         Ok(config) => {
             !unconfigured_codex_stores(
@@ -271,6 +324,34 @@ fn unverified(message: &str) -> Finding {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installation_and_help_notice_report_a_superseded_live_runtime() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("mash");
+        std::fs::write(&executable, "running").unwrap();
+        let config = directory.path().join("config.toml");
+        std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+        let paths = Paths {
+            config: Some(config),
+            db: Some(directory.path().join("index.sqlite3")),
+            ..Paths::default()
+        };
+        let lease = crate::runtime::Lease::fixture(&paths, &executable);
+        assert!(!setup_needs_attention(&paths));
+        std::fs::write(&executable, "new executable").unwrap();
+        let report = inspect(&paths);
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| matches!(finding.component, Component::Runtime)
+                    && finding.state == State::Outdated)
+        );
+        assert!(setup_needs_attention(&paths));
+        drop(lease);
+        assert!(!setup_needs_attention(&paths));
+    }
 
     #[test]
     fn installation_reports_stale_checkpoints_despite_a_complete_provider_scan() {

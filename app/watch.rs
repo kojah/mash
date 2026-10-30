@@ -416,6 +416,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn runtime_shutdown_finishes_the_admitted_pass_before_releasing_leadership() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+        let database = root.path().join("index.sqlite3");
+        let executable = root.path().join("mash");
+        std::fs::write(&executable, "running").unwrap();
+        let request = Request {
+            paths: crate::core::Paths {
+                config: Some(config),
+                db: Some(database.clone()),
+                models_dir: None,
+            },
+            operation: crate::core::Operation::Index(crate::core::IndexRequest::default()),
+        };
+        let lease = crate::runtime::Lease::fixture(&request.paths, &executable);
+        let lock = lock_path(&request).unwrap();
+        let (stop, shutdown) = watch::channel(false);
+        let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let entered_pass = entered.clone();
+        let release_pass = release.clone();
+        let output = database.clone();
+        let task = tokio::spawn(async move {
+            run(request, 50, shutdown, |_| {}, || {
+                lease.ensure_current().unwrap();
+                let entered = entered_pass.clone();
+                let release = release_pass.clone();
+                let output = output.clone();
+                async move {
+                    entered.notify_one();
+                    release.notified().await;
+                    crate::blocking(move || {
+                        let connection = rusqlite::Connection::open(output).unwrap();
+                        connection.execute_batch("CREATE TABLE completed(value INTEGER); INSERT INTO completed VALUES(1);").unwrap();
+                        Ok(())
+                    }).await?;
+                    Ok(false)
+                }
+            }).await
+        });
+        tokio::time::timeout(crate::test_support::HANG_GUARD, entered.notified())
+            .await
+            .unwrap();
+        std::fs::write(executable, "replacement").unwrap();
+        stop.send(true).unwrap();
+        assert!(!task.is_finished());
+        assert!(try_lead(&lock).unwrap().is_none());
+        release.notify_one();
+        tokio::time::timeout(crate::test_support::HANG_GUARD, task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(try_lead(&lock).unwrap().is_some());
+        let connection = rusqlite::Connection::open(database).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT value FROM completed", [], |row| row
+                    .get::<_, i32>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn pending_publication_retries_without_another_filesystem_event() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config.toml");

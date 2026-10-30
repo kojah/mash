@@ -86,6 +86,7 @@ async fn qdrant_retry_removes_documents_deleted_by_an_interrupted_publication() 
                 &fixture.identity,
                 &Fixture::forget(2, &["thread"]),
                 fixture.store.build(),
+                &crate::shared::activity::Progress::default(),
             )
         })
         .unwrap();

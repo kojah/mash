@@ -170,14 +170,7 @@ enum Command {
         command: ModelsCommand,
     },
     /// Serve search tools over the stdio MCP protocol.
-    Mcp {
-        /// Synchronize histories for this MCP session's lifetime.
-        #[arg(long)]
-        watch: bool,
-        /// Quiet period before a watch refresh (milliseconds).
-        #[arg(long, requires = "watch", default_value = "1000", value_parser = clap::value_parser!(u64).range(50..=60_000))]
-        debounce_ms: u64,
-    },
+    Mcp,
     /// Serve the shared-index HTTP API using a server configuration file.
     Serve {
         #[arg(long, value_name = "PATH")]
@@ -429,7 +422,7 @@ impl Cli {
             Command::Models {
                 command: ModelsCommand::Install,
             } => Operation::ModelsInstall,
-            Command::Mcp { .. } | Command::Serve { .. } => {
+            Command::Mcp | Command::Serve { .. } => {
                 return Err(AppError::usage(
                     "server commands must run as process commands",
                 ));
@@ -497,13 +490,13 @@ where
             replay_views,
         ))?;
         Ok(Response::McpStopped)
-    } else if let Command::Mcp { watch, debounce_ms } = cli.command {
+    } else if let Command::Mcp = cli.command {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        runtime.block_on(crate::mcp::run(paths, watch, debounce_ms))?;
+        runtime.block_on(crate::mcp::run(paths))?;
         Ok(Response::McpStopped)
     } else {
         runtime.block_on(run_parsed(cli))
@@ -561,13 +554,31 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
     {
         *watch = false;
         let debounce = *debounce_ms;
-        let (stop, shutdown) = tokio::sync::watch::channel(false);
-        let signal = tokio::spawn(async move {
-            if tokio::signal::ctrl_c().await.is_ok() {
-                let _ = stop.send(true);
-            }
-        });
         let request = cli.into_request()?;
+        let paths = request.paths.clone();
+        let lease = std::sync::Arc::new(
+            crate::blocking(move || {
+                crate::runtime::Lease::register(&paths, crate::runtime::Kind::IndexWatch)
+            })
+            .await?,
+        );
+        let (stop, shutdown) = tokio::sync::watch::channel(false);
+        let monitor = lease.clone();
+        let signal = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            loop {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => break,
+                    _ = interval.tick() => {
+                        let lease = monitor.clone();
+                        if crate::blocking(move || lease.ensure_current()).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+            let _ = stop.send(true);
+        });
         let role = |role| {
             let _ = crate::write_json(
                 &mut std::io::stderr(),
@@ -577,9 +588,12 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
                 },
             );
         };
+        let admission = lease.clone();
         let result = crate::watch::run(request.clone(), debounce, shutdown, role, move || {
             let request = request.clone();
+            let lease = admission.clone();
             async move {
+                crate::blocking(move || lease.ensure_current()).await?;
                 let response = core::execute(request).await?;
                 let retry = response.needs_retry();
                 let mut stdout = std::io::stdout();
@@ -593,6 +607,7 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
         .await;
         signal.abort();
         result?;
+        crate::blocking(move || lease.ensure_current()).await?;
         return Ok(Response::WatchStopped { watching: false });
     }
     core::execute(cli.into_request()?)
@@ -604,6 +619,13 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_rejects_retired_watch_options() {
+        assert!(Cli::try_parse_from(["mash", "mcp", "--watch"]).is_err());
+        assert!(Cli::try_parse_from(["mash", "mcp", "--debounce-ms", "500"]).is_err());
+        assert!(Cli::try_parse_from(["mash", "index", "--watch", "--debounce-ms", "500"]).is_ok());
+    }
 
     #[test]
     fn cli_preserves_typed_request_ranking_without_inventing_defaults() {

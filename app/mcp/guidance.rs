@@ -39,7 +39,7 @@ impl Topic {
                 "Use status to distinguish local readiness from shared freshness. Search never repairs missing indexes or downloads models. Partial results and unknown coverage cannot prove absence. Do not widen an explicit offline request."
             }
             Self::Sessions => {
-                "Mash MCP runs in one process. Restart it after installing a new binary or changing startup settings. Help/status report the running build and contract. Use live help when contract_matches is false, and reload the installed history skill."
+                "Mash MCP runs in one process. Restart it after installing a new binary or changing startup settings. Help/status report the running build and contract. Use live help when contract_matches is false, and reload the installed history skill. MCP does not watch history: run `mash index --watch` separately for automatic freshness, or call index explicitly. Superseded runtimes refuse new writes; already admitted work may finish."
             }
         }
     }

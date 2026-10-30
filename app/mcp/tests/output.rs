@@ -85,7 +85,7 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     writer.commit_writer().unwrap();
     drop(writer);
     let server = Mash {
-        watcher: Arc::default(),
+        runtime: None,
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database),

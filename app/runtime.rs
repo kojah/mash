@@ -1,0 +1,295 @@
+//! Live-process evidence and admission checks for long-lived local runtimes.
+//! Replacing an executable prevents new work; already admitted work may finish.
+use crate::{AppError, core::Paths};
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Kind {
+    Mcp,
+    IndexWatch,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+struct Identity {
+    bytes: u64,
+    modified_ns: u64,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+}
+
+fn identity(path: &Path) -> Result<Identity, AppError> {
+    let metadata = std::fs::metadata(path).map_err(|_| superseded())?;
+    let modified_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|duration| u64::try_from(duration.as_nanos()).ok())
+        .ok_or_else(superseded)?;
+    Ok(Identity {
+        bytes: metadata.len(),
+        modified_ns,
+        #[cfg(unix)]
+        device: metadata.dev(),
+        #[cfg(unix)]
+        inode: metadata.ino(),
+    })
+}
+
+fn superseded() -> AppError {
+    AppError::configuration(
+        "This Mash runtime's executable was replaced or cannot be verified. Reconnect Mash MCP or restart `mash index --watch` before requesting more writes. An already admitted operation may finish.",
+    )
+}
+
+// Keep the invocation path, including its final symlink: current_exe alone can
+// point into an immutable old release after the installed symlink is replaced.
+fn executable() -> Result<(PathBuf, Identity), AppError> {
+    let argument = std::env::args_os().next().ok_or_else(superseded)?;
+    let argument = PathBuf::from(argument);
+    let path = if argument.is_absolute() {
+        argument
+    } else if argument.components().count() > 1 {
+        std::env::current_dir()
+            .map_err(|_| superseded())?
+            .join(argument)
+    } else {
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|directory| directory.join(&argument))
+            .find(|path| path.is_file())
+            .ok_or_else(superseded)?
+    };
+    let path = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir()
+            .map_err(|_| superseded())?
+            .join(path)
+    };
+    let running = std::env::current_exe().map_err(|_| superseded())?;
+    let running_identity = identity(&running)?;
+    if identity(&path)? != running_identity {
+        return Err(superseded());
+    }
+    Ok((path, running_identity))
+}
+
+fn directory(paths: &Paths) -> Result<PathBuf, AppError> {
+    let database = paths
+        .db
+        .clone()
+        .unwrap_or_else(crate::core::default_database_path);
+    let database = if database.is_absolute() {
+        database
+    } else {
+        std::env::current_dir()
+            .map_err(|_| superseded())?
+            .join(database)
+    };
+    let database = std::fs::canonicalize(&database).unwrap_or_else(|_| {
+        database
+            .parent()
+            .and_then(|parent| std::fs::canonicalize(parent).ok())
+            .zip(database.file_name())
+            .map_or_else(|| database.clone(), |(parent, name)| parent.join(name))
+    });
+    let mut name = database.into_os_string();
+    name.push(".runtimes");
+    Ok(name.into())
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Record {
+    version: u32,
+    pid: u32,
+    kind: Kind,
+    build_revision: String,
+    executable: PathBuf,
+    identity: Identity,
+}
+
+pub(crate) struct Lease {
+    // An OS-held lock proves liveness without guessing from a reusable PID.
+    _file: tempfile::NamedTempFile,
+    record: Record,
+}
+
+impl Lease {
+    #[cfg(test)]
+    pub(crate) fn fixture(paths: &Paths, executable: &Path) -> Self {
+        Self::create(
+            &directory(paths).unwrap(),
+            executable.to_path_buf(),
+            identity(executable).unwrap(),
+            Kind::Mcp,
+        )
+        .unwrap()
+    }
+
+    pub(crate) fn register(paths: &Paths, kind: Kind) -> Result<Self, AppError> {
+        let (executable, identity) = executable()?;
+        Self::create(&directory(paths)?, executable, identity, kind)
+    }
+
+    fn create(
+        directory: &Path,
+        executable: PathBuf,
+        identity: Identity,
+        kind: Kind,
+    ) -> Result<Self, AppError> {
+        let record = Record {
+            version: 1,
+            pid: std::process::id(),
+            kind,
+            build_revision: env!("MASH_BUILD_REVISION").into(),
+            identity,
+            executable,
+        };
+        std::fs::create_dir_all(directory)
+            .map_err(|_| AppError::configuration("cannot create Mash runtime directory"))?;
+        let mut file = tempfile::Builder::new()
+            .prefix("runtime-")
+            .suffix(".json")
+            .tempfile_in(directory)
+            .map_err(|_| AppError::configuration("cannot register Mash runtime"))?;
+        file.as_file()
+            .try_lock()
+            .map_err(|_| AppError::configuration("cannot lock Mash runtime record"))?;
+        serde_json::to_writer(file.as_file_mut(), &record)
+            .map_err(|_| AppError::internal("serialize Mash runtime record"))?;
+        file.flush()
+            .map_err(|_| AppError::configuration("cannot write Mash runtime record"))?;
+        Ok(Self {
+            _file: file,
+            record,
+        })
+    }
+
+    pub(crate) fn ensure_current(&self) -> Result<(), AppError> {
+        if identity(&self.record.executable)? == self.record.identity {
+            Ok(())
+        } else {
+            Err(superseded())
+        }
+    }
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum State {
+    Current,
+    Superseded,
+    DifferentBuild,
+    Unverified,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct Process {
+    pub(crate) pid: u32,
+    kind: Kind,
+    build_revision: String,
+    executable: PathBuf,
+    pub(crate) state: State,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct Inventory {
+    observer_revision: &'static str,
+    pub(crate) processes: Vec<Process>,
+    pub(crate) complete: bool,
+    scope: &'static str,
+}
+
+pub(crate) fn inspect(paths: &Paths) -> Inventory {
+    match directory(paths) {
+        Ok(directory) => inspect_directory(&directory),
+        Err(_) => Inventory {
+            complete: false,
+            ..empty_inventory()
+        },
+    }
+}
+
+fn empty_inventory() -> Inventory {
+    Inventory {
+        observer_revision: env!("MASH_BUILD_REVISION"),
+        processes: vec![],
+        complete: true,
+        scope: "Registered live MCP and index-watch processes for this database only. Releases predating runtime registration and processes using other databases are not inventoried. A fresh probe does not verify existing sessions.",
+    }
+}
+
+fn inspect_directory(directory: &Path) -> Inventory {
+    let mut report = empty_inventory();
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) => {
+            report.complete = error.kind() == std::io::ErrorKind::NotFound;
+            return report;
+        }
+    };
+    for (index, entry) in entries.enumerate() {
+        if index >= 256 {
+            report.complete = false;
+            break;
+        }
+        let record = entry.ok().and_then(|entry| read_live(&entry.path()).ok());
+        let Some(record) = record else {
+            report.complete = false;
+            continue;
+        };
+        let Some(record) = record else { continue };
+        let state = match identity(&record.executable) {
+            Ok(current) if current != record.identity => State::Superseded,
+            Ok(_) if record.build_revision != env!("MASH_BUILD_REVISION") => State::DifferentBuild,
+            Ok(_) => State::Current,
+            Err(_) => State::Unverified,
+        };
+        report.processes.push(Process {
+            pid: record.pid,
+            kind: record.kind,
+            build_revision: record.build_revision,
+            executable: record.executable,
+            state,
+        });
+    }
+    report.processes.sort_by_key(|process| process.pid);
+    report
+}
+
+fn read_live(path: &Path) -> Result<Option<Record>, ()> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| ())?;
+    if !metadata.is_file() || metadata.len() > 16_384 {
+        return Err(());
+    }
+    let mut file = File::open(path).map_err(|_| ())?;
+    match file.try_lock() {
+        Ok(()) => return Ok(None), // Abandoned record, not a live process.
+        Err(std::fs::TryLockError::WouldBlock) => (),
+        Err(std::fs::TryLockError::Error(_)) => return Err(()),
+    }
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut file)
+        .take(16_385)
+        .read_to_end(&mut bytes)
+        .map_err(|_| ())?;
+    if bytes.len() > 16_384 {
+        return Err(());
+    }
+    let record: Record = serde_json::from_slice(&bytes).map_err(|_| ())?;
+    if record.version != 1 || !record.executable.is_absolute() {
+        return Err(());
+    }
+    Ok(Some(record))
+}
+
+#[cfg(test)]
+mod tests;

@@ -12,6 +12,7 @@ const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
 const EXACT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
 const EXACT_SEARCH_BUDGET_ERROR: &str = "exact query exceeded the shared search budget; narrow the query or metadata filters, or use match_mode=strict";
 
+mod activity;
 pub(crate) mod attachments;
 mod client;
 mod coverage;
@@ -80,6 +81,8 @@ impl Publication {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Freshness {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    activity: Option<activity::Report>,
     group_id: String,
     /// Configured group members with no retained publication. None means the
     /// responding service did not supply its configured membership scope.

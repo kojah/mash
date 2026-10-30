@@ -317,6 +317,7 @@ impl Store {
             });
         }
         Ok(Freshness {
+            activity: None,
             group_id: identity.group_id.clone(),
             unpublished_nodes: None,
             group_views: Some(Box::new(group_views)),

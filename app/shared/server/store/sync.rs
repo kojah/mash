@@ -2,6 +2,7 @@
 //! leaves views marked stale; the next snapshot or a replay repairs it.
 use super::{Identity, Store};
 use crate::AppError;
+use crate::shared::activity::{Phase, Progress, Unit};
 use crate::shared::protocol::{Batch, ConversationRecord, Event, Indexed};
 use crate::shared::qdrant_index::{NodeViews, ViewChat};
 use crate::shared::silver_store::{self, Applied};
@@ -20,13 +21,26 @@ struct Written {
 }
 
 impl Store {
-    #[tracing::instrument(name = "backend_index", skip_all, fields(backend = "sqlite+qdrant"))]
+    #[cfg(test)]
     pub(in crate::shared) async fn index(
         &self,
         identity: &Identity,
         file: tempfile::NamedTempFile,
     ) -> Result<Indexed, AppError> {
+        self.index_tracked(identity, file, Progress::default())
+            .await
+    }
+
+    #[tracing::instrument(name = "backend_index", skip_all, fields(backend = "sqlite+qdrant"))]
+    pub(in crate::shared) async fn index_tracked(
+        &self,
+        identity: &Identity,
+        file: tempfile::NamedTempFile,
+        progress: Progress,
+    ) -> Result<Indexed, AppError> {
+        progress.phase(Phase::WaitingForNode, Unit::Records);
         let _node = self.lock(identity).await?;
+        progress.phase(Phase::CheckingViews, Unit::Records);
         self.views.views_configuration(identity).await?;
         let previous = self.head(identity).await?;
         let views = self.compatible_views(identity).await?;
@@ -37,15 +51,21 @@ impl Store {
         let silver = self.silver.clone();
         let scope = identity.clone();
         let build = self.views.build().clone();
+        let worker_progress = progress.clone();
+        progress.phase(Phase::ApplyingSilver, Unit::Records);
         let (applied, file) = crate::blocking(move || {
             let applied = silver.write(&scope, |tx| {
-                silver_store::apply::apply(tx, &scope, &file, &build)
+                let applied =
+                    silver_store::apply::apply(tx, &scope, &file, &build, &worker_progress)?;
+                worker_progress.phase(Phase::CommittingSilver, Unit::Records);
+                Ok(applied)
             })?;
             Ok((applied, file))
         })
         .await?;
         if !(applied.duplicate && current) {
-            self.sync_upload(identity, &file, &applied, views).await?;
+            self.sync_upload(identity, &file, &applied, views, &progress)
+                .await?;
         }
         Ok(Indexed {
             counts: self.status(identity).await?,
@@ -62,7 +82,9 @@ impl Store {
         file: &tempfile::NamedTempFile,
         applied: &Applied,
         previous: Option<NodeViews>,
+        progress: &Progress,
     ) -> Result<(), AppError> {
+        progress.phase(Phase::WritingViews, Unit::Records);
         // Without prior views every document is deleted, so none can be stale.
         let fresh = previous.is_none();
         let mut views = if let Some(views) = previous {
@@ -95,7 +117,9 @@ impl Store {
         } else {
             applied.supplied.clone()
         };
-        let written = self.write_upload(identity, file, &supplied).await?;
+        let written = self
+            .write_upload(identity, file, &supplied, progress)
+            .await?;
         for id in &supplied {
             let chat = written.get(id);
             if !fresh {
@@ -115,6 +139,7 @@ impl Store {
                 },
             );
         }
+        progress.phase(Phase::CertifyingViews, Unit::Chats);
         self.certify(identity, views, &fingerprints).await
     }
 
@@ -124,6 +149,7 @@ impl Store {
         identity: &Identity,
         file: &tempfile::NamedTempFile,
         selected: &BTreeSet<String>,
+        progress: &Progress,
     ) -> Result<BTreeMap<String, Written>, AppError> {
         let mut lines = std::io::BufReader::new(file.reopen().map_err(AppError::io)?).lines();
         let mut written = BTreeMap::<String, Written>::new();
@@ -174,6 +200,7 @@ impl Store {
                 entry.embeddings += documents
                     .push(&self.views, identity, &conversations[&id], message)
                     .await?;
+                progress.advance(1);
             }
         }
         documents.finish(&self.views).await?;

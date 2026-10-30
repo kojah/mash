@@ -15,6 +15,11 @@ pub(super) async fn ingest(
     // Reserve before collecting the body. The detached admission task retains
     // this capacity through decoding and commit even if the requester vanishes.
     let permit = admission::reserve(&app.uploads)?;
+    let progress = app.activity.start(
+        &identity.group_id,
+        &identity.node_id,
+        crate::shared::activity::Kind::Connector,
+    );
     let media = request
         .headers()
         .get("content-type")
@@ -44,8 +49,14 @@ pub(super) async fn ingest(
             ));
         }
         bytes.extend_from_slice(&chunk);
+        progress.advance(chunk.len() as u64);
     }
     let receipt = admission::run(permit, async move {
+        progress.phase(
+            crate::shared::activity::Phase::Connector,
+            crate::shared::activity::Unit::Records,
+        );
+        let _progress = progress;
         let batch = crate::blocking(move || {
             Batch::decode(&bytes)
                 .map_err(|problem| silver::app_error(silver::Error::InvalidBatch(problem)))

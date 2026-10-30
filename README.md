@@ -498,7 +498,7 @@ see [recovering incomplete indexing](https://github.com/kojah/mash/blob/a4921015
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with
-`index --watch` or `mcp --watch`.
+`index --watch` in a separate process.
 
 No other command downloads models. Indexing fingerprints sources and messages,
 skips unchanged input, updates FTS incrementally for small changes, embeds only
@@ -1618,7 +1618,7 @@ configured delay if longer. Passes run sequentially; changes during indexing
 queue another pass. Existing provider, age and destination settings still apply. `--full` cannot be combined with `--watch`.
 
 Only one watcher indexes each database at a time, across all processes. Every
-watching process (`index --watch`, `mcp --watch` and `watch_start`) first takes
+watching process (`index --watch`) first takes
 an exclusive advisory lock on `<database>.watch-lock` beside the canonical
 database path. A process that cannot take it becomes a standby: it neither
 watches files nor indexes, and retries the lock every second. The operating
@@ -1659,26 +1659,48 @@ indexing pass.
 
 Watch mode writes one JSON result per completed pass to stdout (newline-delimited
 JSON); progress and typed errors go to stderr. Ctrl-C finishes the active pass
-and exits. For MCP, use `mash mcp --watch` with optional `--debounce-ms`; watching
-lasts for the MCP session and shares the tool mutation/model concurrency guards.
-Its refresh results go to stderr so stdout remains MCP protocol only.
+and exits. MCP does not watch history and rejects `--watch`, `--debounce-ms`, and
+the retired `watch_start`, `watch_stop`, and `watch_status` tools. Run the CLI
+watcher separately; all MCP sessions reading that database see its committed
+updates without reconnecting. With no watcher, freshness advances only when an
+explicit CLI or MCP `index` operation runs. No daemon is installed.
 
-An existing MCP session can control that same watcher with `watch_start`,
-`watch_stop`, and `watch_status`. `watch_start` accepts optional `debounce_ms`
-(50–60000; default 1000), returns promptly, and triggers initial indexing.
-Repeated starts preserve the active watcher; stop it before changing the delay.
-`watch_stop` returns `stopping` while an active pass finishes, then the state
-becomes `stopped`; stopping the leader releases leadership to a waiting standby
-after the active pass, and stopping a standby withdraws it. `watch_status`
-reports the state, `role` (`leader`, `standby`, or null while stopped), whether
-a pass is running, latest progress/phase ETA, `last_refresh_at` (Unix milliseconds), the last
-index result including shared publication, and the last error. Poll it for
-background progress; explicit `index` calls retain MCP progress notifications.
-Provider routing and credentials remain in TOML. Watch settings are not persisted,
-and the watcher stops when this MCP session ends. These tools do not control
-another process running `mash index --watch`.
+Long-lived MCP and CLI watch processes register locked records beside the
+selected database in `<database>.runtimes`. Installation diagnostics list their
+PIDs, running revisions, invocation paths and whether those executables still
+match. This inventory covers registered processes for that database only; older
+releases and other databases are outside its scope. A fresh MCP probe does not
+verify an existing agent session.
+An explicit MCP probe also registers its short-lived child; its record is removed
+on exit, but an empty runtime directory may remain. It never indexes or downloads
+models.
+An unchanged executable from a different release is reported as `different_build`;
+it must be reconnected explicitly because its own invocation path did not change.
+
+After executable replacement, MCP rejects new mutations when they acquire the
+session's mutation guard; CLI watchers check before each pass and once per second
+while idle or standing by. Already admitted operations may finish. Reconnect MCP
+or restart the CLI watcher after upgrading. This is an admission check, not
+transaction fencing against an installer racing a check. Read-only MCP tools
+remain available, but use the running release's schema and contract.
 
 Run `mash status --shared`, or call the MCP `status` tool with `{"shared":true}`,
+to inspect `shared_index.activity`: service-wide occupied/capacity counts and
+live operations belonging to your authenticated group. Each operation reports
+its node, kind, phase, elapsed time, phase counters, and time since its last
+reported progress. Counters reset at phase boundaries and do not certify durable
+commits. Long SQLite statements can run without intermediate updates; elapsed
+time alone does not prove a stall. Detached server work remains visible after
+its requester disconnects. Completed work disappears; server restart resets the
+inventory. Older servers omit this field, which means unknown.
+
+With `MASH_TRACE=1`, shared-operation start, phase transitions and end events go
+to structured server logs, correlated by operation ID. Events include node IDs,
+timings and enum phases, never history contents or credentials. Mutation outcome
+events distinguish success from failure. Status is a point-in-time observation;
+it does not queue work, increase concurrency or retry mutations.
+
+Use that same status response
 to inspect `shared_index.nodes` for every publishing node in the configured
 group. Each node includes its revision, conversation/message counts, and UTC
 timestamps:
@@ -1741,8 +1763,8 @@ NDJSON streams. Configuration and credentials are validated before connecting
 to storage, and backend initialization completes before the listener opens.
 
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
-`--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_chats`, `view`, `status`, `index`, `forget`,
-`models_install`, `list_attachments`, `get_attachment`, `export_silver`, `import_silver`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
+`--models-dir` at startup and exposes `search`, `list_chats`, `view`, `status`, `index`, `forget`,
+`models_install`, `list_attachments`, `get_attachment`, `export_silver`, and `import_silver`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
 
 All MCP tools present readable text alongside the
@@ -1842,8 +1864,7 @@ Example MCP client configuration:
 For shared operations, provide the configured node token environment variable to
 `mash mcp` through your MCP client's environment mechanism. `search` accepts a
 `shared` boolean, a `unit` of `chats` (default) or `messages`, and `limit`/`offset` paging with `next_offset` in the response; `view` accepts a `shared` publishing node ID. Search, view, and
-status, `list_chats`, and `watch_status` are annotated read-only. Watch start/stop
-control background indexing without waiting for the index mutation guard. Index and forget mutate data; `models_install`
+status and `list_chats` are annotated read-only. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
 service-side Qdrant I/O uses async HTTP. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status

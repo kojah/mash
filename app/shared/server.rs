@@ -22,7 +22,6 @@ mod upload;
 use super::protocol;
 use crate::AppError;
 use store::Store;
-use upload::spool;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,6 +34,8 @@ pub(super) struct Identity {
 
 #[derive(Clone)]
 struct App {
+    activity: super::activity::Registry,
+    mutation_capacity: usize,
     attachments_dir: Option<std::path::PathBuf>,
     store: Store,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
@@ -172,6 +173,11 @@ async fn freshness(
     Extension(id): Extension<Identity>,
 ) -> Result<Json<super::Freshness>, ApiError> {
     let mut freshness = app.store.freshness(&id).await?;
+    freshness.activity = Some(app.activity.snapshot(
+        &id.group_id,
+        app.mutation_capacity,
+        app.uploads.available_permits(),
+    ));
     freshness.unpublished_nodes =
         Some(unpublished_nodes(&app.identities, &id.group_id, &freshness));
     Ok(Json(freshness))
@@ -280,6 +286,11 @@ async fn index(
     request: Request,
 ) -> Result<Json<protocol::Indexed>, ApiError> {
     let permit = admission::reserve(&app.uploads)?;
+    let progress = app.activity.start(
+        &id.group_id,
+        &id.node_id,
+        super::activity::Kind::Publication,
+    );
     if request
         .headers()
         .get("content-type")
@@ -289,10 +300,10 @@ async fn index(
         return Err(AppError::usage("index uploads require application/x-ndjson").into());
     }
     let max_bytes = app.store.max_node_bytes();
-    let file = spool(request.into_body(), max_bytes).await?;
+    let file = upload::spool_tracked(request.into_body(), max_bytes, &progress).await?;
     Ok(Json(
         Box::pin(admission::run(permit, async move {
-            app.store.index(&id, file).await
+            app.store.index_tracked(&id, file, progress).await
         }))
         .await?,
     ))
@@ -345,6 +356,8 @@ pub(crate) async fn run(
         .map_err(|_| AppError::internal("get HTTP listener address"))?;
     crate::write_json(&mut std::io::stderr(), &Listening { listening: address })?;
     let app = App {
+        activity: super::activity::Registry::default(),
+        mutation_capacity: config.max_concurrent_uploads,
         attachments_dir: config.attachments_dir,
         store,
         identities: Arc::new(identities),

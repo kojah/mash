@@ -48,7 +48,10 @@ mod tests {
         let (done_cpu, cpu_finished) = tokio::sync::oneshot::channel();
         let (release_publish, publish_gate) = tokio::sync::oneshot::channel();
         let permit = reserve(&capacity).unwrap();
+        let activity = crate::shared::activity::Registry::default();
+        let progress = activity.start("group", "node", crate::shared::activity::Kind::Publication);
         let requester = tokio::spawn(run(permit, async move {
+            let _progress = progress;
             crate::blocking(move || {
                 entered.send(()).unwrap();
                 cpu_gate.recv().unwrap();
@@ -68,6 +71,8 @@ mod tests {
         let error = reserve(&capacity).unwrap_err();
         assert_eq!(error.error.kind, crate::ErrorKind::SharedIndex);
         assert!(error.error.retryable);
+        let report = serde_json::to_value(activity.snapshot("group", 1, 0)).unwrap();
+        assert_eq!(report["active"].as_array().unwrap().len(), 1);
         release_cpu.send(()).unwrap();
         tokio::time::timeout(crate::test_support::HANG_GUARD, cpu_finished)
             .await
@@ -87,6 +92,8 @@ mod tests {
         .unwrap();
         drop(permit);
         assert_eq!(capacity.available_permits(), 1);
+        let report = serde_json::to_value(activity.snapshot("group", 1, 1)).unwrap();
+        assert_eq!(report["active"], serde_json::json!([]));
     }
 
     #[tokio::test]

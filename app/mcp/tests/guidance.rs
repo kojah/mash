@@ -9,7 +9,7 @@ async fn history_skill_help_works_without_storage_models_or_mutation_permits() {
             db: Some(directory.path().join("absent.sqlite3")),
             models_dir: None,
         }),
-        watcher: Arc::default(),
+        runtime: None,
         gate: Arc::default(),
         model_work: Arc::new(tokio::sync::Semaphore::new(0)),
     };

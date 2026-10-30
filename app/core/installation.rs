@@ -49,6 +49,7 @@ enum Component {
     Mcp,
     Probe,
     Index,
+    Runtime,
 }
 
 #[derive(Debug, Serialize)]

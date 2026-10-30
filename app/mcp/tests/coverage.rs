@@ -6,7 +6,7 @@ async fn scoped_status_reports_scan_facts_without_proving_absence() {
     let server = Mash {
         paths: Arc::new(super::workflows::decision_history(root.path())),
         gate: Arc::default(),
-        watcher: Arc::default(),
+        runtime: None,
         model_work: Arc::new(tokio::sync::Semaphore::new(0)),
     };
     for (after, before, expected) in [(0, 2, 4), (2, 3, 0)] {
@@ -107,7 +107,7 @@ async fn unavailable_shared_status_preserves_local_coverage() {
     let server = Mash {
         paths: Arc::new(paths),
         gate: Arc::default(),
-        watcher: Arc::default(),
+        runtime: None,
         model_work: Arc::new(tokio::sync::Semaphore::new(0)),
     };
     let result = server

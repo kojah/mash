@@ -24,6 +24,8 @@ struct TraceSpan {
 
 fn traced_router(dispatcher: tracing::Dispatch) -> Router {
     let app = App {
+        activity: crate::shared::activity::Registry::default(),
+        mutation_capacity: 1,
         attachments_dir: None,
         store: Store::unavailable(),
         identities: Arc::new(HashMap::from([(
