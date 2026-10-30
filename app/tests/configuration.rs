@@ -70,7 +70,9 @@ fn legacy_provider_root_environment_variables_are_ignored() {
                 ]},
                 "codex": {"roots": [
                     home.join(".codex/sessions"),
-                    home.join(".local/share/codex/sessions")
+                    home.join(".codex/thread_history_1.sqlite"),
+                    home.join(".local/share/codex/sessions"),
+                    home.join(".local/share/codex/thread_history_1.sqlite")
                 ]}
             },
             "index": {"since_days": 90, "destination": "local"}
