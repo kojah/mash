@@ -684,7 +684,7 @@ async fn authorization_and_request_limits_apply_before_database_access() {
     let line = service
         .request("index", FIRST)
         .header("content-type", "application/x-ndjson")
-        .body("x".repeat(8 * 1024 * 1024 + 1))
+        .body("x".repeat(64 * 1024 * 1024 + 1))
         .send()
         .await
         .unwrap();

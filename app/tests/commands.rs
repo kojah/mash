@@ -188,7 +188,20 @@ fn cargo_and_ci_make_semantic_support_unconditional() {
         .expect("release workflow");
 
     assert!(manifest.contains("fastembed = { version = \"6.0.1\", default-features = false"));
-    assert!(!manifest.contains("optional = true"));
+    let configuration: toml::Table = toml::from_str(&manifest).unwrap();
+    let dependencies = configuration["dependencies"].as_table().unwrap();
+    assert_ne!(
+        dependencies["fastembed"]
+            .get("optional")
+            .and_then(toml::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        dependencies["console-subscriber"]
+            .get("optional")
+            .and_then(toml::Value::as_bool),
+        Some(true)
+    );
     assert!(!manifest.contains("semantic = ["));
     assert!(ci.contains("cargo nextest run --profile ci"));
     assert!(!ci.contains("--no-default-features"));
