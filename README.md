@@ -203,6 +203,9 @@ incomplete integration or an incompatible/unreadable local index. Help respects
 the index. A missing index alone cannot distinguish a fresh setup from an
 interrupted upgrade; recover retained history before indexing after an upgrade
 failure.
+An upgrade marker is reported even if the active database is absent. Diagnostics
+never clear it: first distinguish a running upgrade from an interrupted cutover
+and recover the retained database/attachments before retrying.
 Detected clients with no enabled Mash integration receive a softer setup notice
 and appear in `summary.unconfigured`, without making CLI-only use an error.
 

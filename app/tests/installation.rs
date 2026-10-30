@@ -141,6 +141,37 @@ fn installation_reports_schema_mismatch_and_help_uses_selected_database() {
 }
 
 #[test]
+fn installation_detects_interrupted_upgrade_even_without_active_database() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("absent.sqlite3");
+    let marker = root.path().join("absent.sqlite3.upgrade-in-progress");
+    std::fs::create_dir(&marker).unwrap();
+    std::fs::write(marker.join("backup"), "/retained/private-backup").unwrap();
+    let report = json(
+        isolated(root.path())
+            .arg("--db")
+            .arg(&database)
+            .args(["status", "--installation"]),
+    );
+    assert_eq!(report["resources"]["findings"][0]["state"], "failed");
+    assert_eq!(report["summary"]["attention"], 1);
+    let help = json(
+        isolated(root.path())
+            .arg("--db")
+            .arg(&database)
+            .arg("--help"),
+    );
+    assert!(
+        help["help"]
+            .as_str()
+            .unwrap()
+            .contains("upgrade is unfinished")
+    );
+    assert!(!database.exists());
+    assert!(marker.is_dir());
+}
+
+#[test]
 fn installation_lists_provider_setup_without_claiming_missing_sources_are_connected() {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("node.toml");

@@ -245,7 +245,7 @@ pub(crate) fn help_notice(paths: &super::Paths) -> Option<&'static str> {
     .needs_attention()
     {
         return Some(
-            "Installation warning: the local index is incompatible or unreadable. Run `mash status --installation` for recovery details before indexing or replacing files.",
+            "Installation warning: the local index is incompatible or unreadable, or an upgrade is unfinished. Run `mash status --installation` for recovery details before indexing or replacing files.",
         );
     }
     if resources::setup_needs_attention(paths) {

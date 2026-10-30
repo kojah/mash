@@ -58,6 +58,30 @@ and bounded lexical/available semantic searches. Restart existing Mash MCP
 connections after upgrading the binary, and reload updated plugin instructions.
 Canonical exports and Runner logs remain private.
 
+Local schema upgrades require a quiescent node: stop index watchers and agent MCP
+sessions and keep them stopped through cutover. The upgrader checks open database
+files with `lsof` before export and again before cutover; this is not a fence
+against newly started processes. Targets need `jq` and `lsof`. It validates a
+portable import in a private staging directory before moving any active files,
+keeps originals under `retired/`, and installs attachments before the new database.
+Publication identity is preserved only when the export contains it.
+
+An interrupted cutover leaves `DATABASE.upgrade-in-progress/backup`, pointing to
+the private recovery directory. Subsequent deployment refuses to proceed even if
+the active database is absent. Inspect the stopped upgrade and all retained files,
+then recover the complete database/WAL/attachments together before clearing the
+marker. Do not remove the marker to force a retry over an unknown intermediate state.
+Successful moves are not a power-loss durability guarantee.
+
+Schema-45 releases that export format 1 need the intermediate exporter at
+`a88c99344f6d03bec4147ff57915ad5a08bdc3d6`, which reads schema 45 without modifying
+it and exports portable format 2. Build this separately, verify its artifact,
+and select its remote executable as the optional fifth argument to
+`tools/upgrade-remote-index.sh` in the private Ansible inventory. The fourth
+argument is the explicit database path (or empty for the platform default).
+This selects an exporter, not an alternative installed release. Retain the old
+database and export until the current importer and explicit refresh pass.
+
 Local gates are authoritative; hosted CI is optional. Validation includes probe
 unit tests and real Ansible fixtures through `tools/test-ansible.sh`, plus fleet
 lock, API rollback and build-gate regression scripts.

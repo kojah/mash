@@ -55,6 +55,7 @@ else
     run bash tools/test-run-ansible.sh
     run bash tools/test-controller-environment.sh
     run bash tools/test-ansible.sh
+    run bash tools/test-upgrade-local-index.sh
     run bash tools/generate-history-skill.sh --check
     run cargo test-clif --locked --profile ci
     run cargo test --doc

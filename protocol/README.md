@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Six models plus eight expected counterexamples.
+make protocol-check       # Seven models plus ten expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on
@@ -249,6 +249,38 @@ physical cleanup and retained stale evidence respectively. Hash equality abstrac
 full unit equality; multiple anchors, arbitrary late remote writes, process kill
 and power-loss durability are outside this model. The runtime hook simulates the
 boundary after completed point writes, not those other failure classes.
+
+### Local index upgrade cutover
+
+[LocalUpgrade.tla](LocalUpgrade.tla) separates export, validated staged import,
+each original-file retirement, new attachment installation, database installation
+and marker removal. The old database, WAL, attachments and views are represented
+as four independently moved files; the actual script also retains SHM and journal
+files. A failed operation or process kill can stop between any modeled writes.
+The model checks validation before retirement, attachments before the new database,
+and a retained marker throughout an incomplete cutover. Two negative configurations
+demonstrate premature retirement and database-first installation.
+
+Source mapping: `tools/upgrade-local-index.sh` stages a complete import before
+setting `retiring=true`, moves originals into a unique retained directory, installs
+attachments, then links the new database without clobbering an existing path.
+The `DATABASE.upgrade-in-progress/backup` marker points to the recovery directory;
+the marker is checked before the missing-database no-op. Failures after retirement
+starts retain it. `tools/test-upgrade-local-index.sh` exercises rejection without
+mutating original files, absent/present publication identity, busy-file rejection,
+retained files after successful cutover and interruption after the first rename.
+The Ansible regression separately checks that a failed step blocks binary install.
+
+Assumptions and limits: the node stays quiescent throughout cutover. The script's
+`lsof` checks detect current open files, but do not fence processes started later;
+old Mash binaries do not honor the marker. Stop watchers/agent MCP sessions before
+upgrading and keep them stopped until completion. The model assumes one upgrader,
+same-filesystem moves/links and completed writes surviving process termination.
+It does not prove power-loss durability (the shell does not fsync directories),
+filesystem behavior, export completeness, import correctness or automatic crash
+recovery. Recovery is manual and retries fail closed. Individual failure during
+marker creation/removal may conservatively leave a marker; it must never authorize
+retirement without a validated import. No progress/liveness property is claimed.
 
 ## Maintaining the models
 

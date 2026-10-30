@@ -35,6 +35,18 @@ struct Scan {
 }
 
 pub(super) fn index_finding(database: &Path) -> Finding {
+    let mut marker = database.as_os_str().to_owned();
+    marker.push(".upgrade-in-progress");
+    let marker = PathBuf::from(marker);
+    if marker.exists() {
+        return Finding {
+            component: Component::Index,
+            state: State::Failed,
+            path: Some(marker),
+            message: "A local-index upgrade marker remains. The upgrade may be running or interrupted; do not start indexing or retry installation.".into(),
+            remediation: Some("Check the upgrade process. If it stopped, inspect the marker's backup file and retained/staged files; recover the complete database and attachments before clearing the marker.".into()),
+        };
+    }
     let (state, message, remedy) = match std::fs::metadata(database) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => (
             State::NotConfigured,
