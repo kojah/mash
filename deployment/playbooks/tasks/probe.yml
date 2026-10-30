@@ -1,6 +1,6 @@
 - name: Probe installed Mash with typed MCP calls
   ansible.builtin.command:
-    argv: "{{ [mash_probe, '--repository', mash_repository, '--output', mash_job_directory ~ '/' ~ inventory_hostname ~ '.json', '--progress', mash_job_directory ~ '/' ~ inventory_hostname ~ '.progress.json', '--mode', mash_probe_mode] + (['--shared'] if mash_shared | default(false) else []) + ['--'] + mash_mcp }}"
+    argv: "{{ [mash_probe, '--repository', mash_repository, '--output', mash_job_directory ~ '/' ~ inventory_hostname ~ '.json', '--progress', mash_job_directory ~ '/' ~ inventory_hostname ~ '.progress.json', '--mode', mash_probe_mode] + (['--shared'] if mash_shared | default(false) else []) + (['--all-history'] if mash_probe_mode == 'sync' and mash_refresh_all_history | default(false) else []) + ['--'] + mash_mcp }}"
     chdir: "{{ mash_repository }}"
   changed_when: mash_probe_mode != 'check'
   delegate_to: localhost

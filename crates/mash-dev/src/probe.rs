@@ -26,6 +26,9 @@ struct Arguments {
     mode: Mode,
     #[arg(long)]
     shared: bool,
+    /// Reparse every source after an interpretation upgrade, including old history.
+    #[arg(long)]
+    all_history: bool,
     /// Trusted inventory's MCP command, executed directly without a shell.
     #[arg(last = true, required = true, num_args = 1..)]
     command: Vec<std::ffi::OsString>,
@@ -56,6 +59,7 @@ enum Detail {
 #[derive(Serialize)]
 struct Index {
     rebuild_local_views: bool,
+    all_history: bool,
 }
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -116,6 +120,9 @@ async fn record(report: &Arc<Mutex<report::Report>>, result: CallToolResult) -> 
 }
 
 async fn check(arguments: &Arguments, report: Arc<Mutex<report::Report>>) -> Result<(), String> {
+    if arguments.all_history && arguments.mode != Mode::Sync {
+        return Err("--all-history requires --mode sync".into());
+    }
     let expected = readiness::expected(&arguments.repository).await?;
     let mut command = tokio::process::Command::new(&arguments.command[0]);
     command
@@ -173,6 +180,7 @@ async fn run(
             "index",
             &Index {
                 rebuild_local_views: arguments.mode == Mode::LocalViews,
+                all_history: arguments.all_history,
             },
         )?;
         let mut meta = RequestMetaObject::new();
@@ -267,6 +275,40 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn probe_all_history_requires_explicit_sync() {
+        for mode in ["check", "local-views"] {
+            let arguments = Arguments::try_parse_from([
+                "probe",
+                "--repository",
+                ".",
+                "--output",
+                "unused",
+                "--progress",
+                "unused",
+                "--mode",
+                mode,
+                "--all-history",
+                "--",
+                "nonexistent-mash",
+            ])
+            .unwrap();
+            let error = check(&arguments, Arc::new(Mutex::new(Report::default())))
+                .await
+                .unwrap_err();
+            assert_eq!(error, "--all-history requires --mode sync");
+        }
+        let input = request(
+            "index",
+            &Index {
+                rebuild_local_views: false,
+                all_history: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(input.arguments.unwrap()["all_history"], true);
+    }
+
+    #[tokio::test]
     #[ignore = "requires MASH_TEST_SERVER_BINARY with the current build and contract"]
     async fn probe_checks_without_ingestion_and_refreshes_only_when_requested() {
         let binary = std::env::var_os("MASH_TEST_SERVER_BINARY").expect("built Mash binary");
@@ -286,6 +328,7 @@ mod tests {
             progress: root.join("progress.json"),
             mode: Mode::Check,
             shared: false,
+            all_history: false,
             command: vec![
                 binary,
                 "mcp".into(),

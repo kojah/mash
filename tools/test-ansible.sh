@@ -14,15 +14,21 @@ trap 'status=$?; if [[ $status -ne 0 ]]; then newest=$(ls -t "$scratch"/*/runner
 cat > "$scratch/probe" <<'PROBE'
 #!/usr/bin/env bash
 set -euo pipefail
-output='' mode=''
+output='' mode='' all_history=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) output=$2; shift 2 ;;
         --mode) mode=$2; shift 2 ;;
+        --all-history) all_history=true; shift ;;
         *) shift ;;
     esac
 done
 if [[ "$mode" == local-views && -e "$TEST_ANSIBLE_UPGRADE" ]]; then exit 1; fi
+if [[ -e "$TEST_ANSIBLE_UPGRADE" && "$mode" == sync ]]; then
+    [[ "$all_history" == true ]]
+else
+    [[ "$all_history" == false ]]
+fi
 printf '%s\n' "$mode" >> "$TEST_ANSIBLE_ACTIONS"
 printf '%s\n' '{"state":"succeeded","results":[]}' > "$output"
 PROBE

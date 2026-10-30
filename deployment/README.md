@@ -85,3 +85,11 @@ database and export until the current importer and explicit refresh pass.
 Local gates are authoritative; hosted CI is optional. Validation includes probe
 unit tests and real Ansible fixtures through `tools/test-ansible.sh`, plus fleet
 lock, API rollback and build-gate regression scripts.
+# Full-history refresh after upgrades
+
+Schema upgrades run the refresh probe with `--all-history`, so sources outside
+the ordinary age window are reparsed before readiness is checked. For an explicit
+repair of an already upgraded node, set `mash_refresh_all_history: true` in its
+private inventory and run the normal `fleet.sh sync` operation. Remove that setting
+after repair to restore the ordinary refresh window. Checks and local-view replay
+never use this option.
