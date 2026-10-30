@@ -173,6 +173,36 @@ impl Store {
             .await
     }
 
+    /// Reconcile native deletions even when previous request metadata was lost.
+    pub(in crate::shared) async fn retain_node_conversations(
+        &self,
+        identity: &Identity,
+        current: Vec<String>,
+    ) -> Result<(), AppError> {
+        let mut filter = api::Filter {
+            must: vec![
+                api::matches("node_id", vec![identity.node_id.clone()]),
+                // Connector points share this collection, but have no provider.
+                api::matches(
+                    "provider",
+                    crate::provider::Provider::ALL
+                        .iter()
+                        .map(|p| p.as_str().to_owned())
+                        .collect(),
+                ),
+            ],
+            ..api::Filter::default()
+        };
+        if !current.is_empty() {
+            filter
+                .must_not
+                .push(api::matches("conversation_id", current));
+        }
+        self.api
+            .delete_filtered(&collection(&identity.group_id, false), filter)
+            .await
+    }
+
     /// Delete all documents of one node, for a complete replay.
     pub(in crate::shared) async fn delete_node_documents(
         &self,

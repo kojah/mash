@@ -84,6 +84,11 @@ impl Store {
                 silver_store::fingerprints(connection)
             })
             .await?;
+        // An earlier attempt may have committed silver or written points and
+        // then failed before updating metadata. Its deleted set is not durable.
+        self.views
+            .retain_node_conversations(identity, fingerprints.keys().cloned().collect())
+            .await?;
         // A duplicate snapshot resupplies every chat with its vectors.
         let supplied: BTreeSet<String> = if applied.duplicate {
             fingerprints.keys().cloned().collect()

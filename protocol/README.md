@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Four models plus four expected counterexamples.
+make protocol-check       # Five models plus six expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on
@@ -196,6 +196,33 @@ Qdrant metadata/data, arbitrary delayed writes after a process crash, and
 multiple servers with different silver directories sharing one Qdrant namespace.
 Successful operations are assumed durable and ordered at the modeled boundary;
 there is no proof of storage engines or network cancellation semantics here.
+
+### Retry recovery source mapping
+
+[RetryViews.tla](RetryViews.tla) adds the retry details that `SharedViews` abstracts
+away. It bounds the system to one native chat, a silver deletion committed before
+views synchronization, one retry and three possible supplied contents (absent,
+retained, changed). Certification uses silver identity without inspecting physical
+documents. Safety requires payload validation and removal of absent chats.
+This is a safety-only model; it makes no liveness or concurrency claim.
+
+- `silver_store/apply.rs`: duplicate snapshots are validated through the ordinary
+  transactional ingestion path inside a rolled-back savepoint. The resulting
+  canonical fingerprint must equal retained silver; vectors remain outside it.
+- `server/store/sync.rs` and `qdrant_index/views.rs`: synchronization removes native
+  documents whose chats are absent from silver, including points left by a failed
+  request whose in-memory deletion set or metadata was lost. Connector points
+  are excluded from this deletion by the provider filter.
+- `qdrant_index/tests/retries.rs`: backend regressions for altered/incomplete
+  retries and forgotten documents surviving retry, plus writer serialization.
+
+The negative configurations restore the reproduced bugs `mash-vcfn` (accept
+changed payload) and `mash-w8q7` (lose deletion intent). The original `SharedViews`
+model required `docs = Desired` before certification; it did not verify that the
+implementation's per-chat metadata was sufficient to establish that condition.
+This additional model separates the supplied contents from retained silver.
+Multiple messages, partial point writes, connector records and cryptographic
+collision resistance remain Rust/backend test or review responsibilities.
 
 ## Keeping the models useful
 

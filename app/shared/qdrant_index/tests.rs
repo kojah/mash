@@ -8,6 +8,7 @@ mod memory;
 mod physical;
 mod recipe;
 mod recovery;
+mod retries;
 
 /// One disposable group: a SQLite silver file and its Qdrant views collections.
 struct Fixture {

@@ -355,22 +355,27 @@ pub(in crate::shared) fn apply(
             deleted: BTreeSet::new(),
         },
     };
-    if !duplicate {
-        upload
-            .applied
-            .head
-            .source_silver
-            .clone_from(&input.source_silver);
-        for id in &input.forgets {
-            upload.applied.changed |= upload.forget(id)?;
-        }
-        if input.snapshot {
-            let existing = super::fingerprints(tx)?;
-            sql::DeleteNodeMessages.execute(tx).map_err(database)?;
-            sql::DeleteNodeConversations.execute(tx).map_err(database)?;
-            upload.applied.deleted.extend(existing.into_keys());
-            upload.applied.changed = true;
-        }
+    if duplicate {
+        // Validate a retried snapshot using the same ingestion rules, then
+        // roll it back. Its canonical content must match retained silver;
+        // only vectors/settings may differ when rebuilding derived views.
+        tx.execute_batch("SAVEPOINT retry_validation")
+            .map_err(database)?;
+    }
+    upload
+        .applied
+        .head
+        .source_silver
+        .clone_from(&input.source_silver);
+    for id in &input.forgets {
+        upload.applied.changed |= upload.forget(id)?;
+    }
+    if input.snapshot {
+        let existing = super::fingerprints(tx)?;
+        sql::DeleteNodeMessages.execute(tx).map_err(database)?;
+        sql::DeleteNodeConversations.execute(tx).map_err(database)?;
+        upload.applied.deleted.extend(existing.into_keys());
+        upload.applied.changed = true;
     }
     let mut finished = false;
     for line in lines {
@@ -386,15 +391,6 @@ pub(in crate::shared) fn apply(
         }
         if matches!(event, Event::Start(_)) {
             return Err(AppError::usage("duplicate index start"));
-        }
-        if duplicate {
-            // Silver is unchanged, but views synchronization reads these vectors.
-            if let Event::Batch(Batch::Messages { records }) = &event {
-                for record in records {
-                    upload.check_message(record)?;
-                }
-            }
-            continue;
         }
         match event {
             Event::Batch(batch) => {
@@ -441,13 +437,6 @@ pub(in crate::shared) fn apply(
     if !finished {
         return Err(AppError::usage("incomplete index stream"));
     }
-    if duplicate {
-        // A resent revision changes no silver; it only records that the node synced.
-        let mut applied = upload.applied;
-        applied.head.last_synced_at = Some(now());
-        put_head(tx, &applied.head)?;
-        return Ok(applied);
-    }
     if upload.missing_parents()? {
         return Err(AppError::usage("missing message context parent"));
     }
@@ -464,6 +453,21 @@ pub(in crate::shared) fn apply(
     }
     let canonical = upload.canonical()?;
     let mut applied = upload.applied;
+    if duplicate {
+        let retained = previous.as_ref().and_then(|h| h.silver_revision.as_ref());
+        if retained.is_none_or(|state| state.fingerprint != canonical) {
+            return Err(conflict(
+                "snapshot revision already committed with different silver",
+            ));
+        }
+        tx.execute_batch("ROLLBACK TO retry_validation; RELEASE retry_validation")
+            .map_err(database)?;
+        applied.head = previous.ok_or_else(|| AppError::internal("duplicate without head"))?;
+        applied.head.last_synced_at = Some(now());
+        applied.changed = false;
+        put_head(tx, &applied.head)?;
+        return Ok(applied);
+    }
     let now = now();
     applied.head.silver_revision = Some(crate::shared::silver_revision::State::next(
         applied.head.silver_revision.as_ref(),
