@@ -41,10 +41,9 @@ download tools implicitly and reject an unexpected jar checksum.
 
 An expected counterexample succeeds only with TLC's safety-violation exit code
 and the named invariant violation. Syntax errors, timeouts, unexpected
-invariants and missing tools fail the command. The replay case below is a known
-implementation gap, not a deliberately broken implementation of a passing
-contract. A green suite therefore does **not** mean all modeled contracts are
-currently satisfied by Mash.
+invariants and missing tools fail the command. Negative configurations deliberately
+break the modeled contracts, including the historical replay-ordering bug below.
+A green suite establishes properties of these bounded abstractions only.
 
 ## Models and source boundaries
 
@@ -131,6 +130,9 @@ Source mapping:
   `committed_records_and_receipt_survive_lost_response_reopen_and_later_batches`,
   `changed_batch_identity_and_stale_source_revision_never_mutate_records`,
   `failure_to_record_receipt_rolls_back_data_and_ordering`.
+- [Generated SQLite sequences](../app/connectors/silver/tests/properties.rs)
+  check independent expected objects, revisions and receipts across two sources,
+  retries, rejected writes, reopening and archive restoration.
 
 Fingerprint equality represents equality of the entire validated batch, not
 just text; hash collisions are excluded. Object graph validation, multiple
@@ -167,9 +169,9 @@ Source mapping:
 - Existing regressions in [recovery.rs](../app/shared/qdrant_index/tests/recovery.rs)
   and [recipe.rs](../app/shared/qdrant_index/tests/recipe.rs).
 
-**Known implementation gap: `mash-8qaj`.** The passing configuration requires
-invalidation before clearing documents. Current `Store::replay` clears them
-first. `SharedViewsReplayCurrent.cfg` deliberately selects the current order
+**Fixed implementation gap: `mash-8qaj`.** `Store::replay` now persists empty
+certification before clearing documents, matching the passing configuration.
+`SharedViewsReplayClearFirst.cfg` deliberately restores the historical order
 and must violate `NeverFalselyCurrent`:
 
 1. Start with matching silver/view metadata and two documents.
@@ -178,10 +180,14 @@ and must violate `NeverFalselyCurrent`:
 
 A crash or failed empty-metadata write at step 3 preserves the bad state. This
 does not require HTTP readers during startup replay: the next ordinary startup
-can observe the persisted mismatch. The source-derived counterexample still
-needs a Rust/backend fault-injection regression; this change does not fix it.
-When fixed, update this source mapping and turn the old ordering into a labeled
-mutation test instead of retaining a false claim about current behavior.
+can observe the persisted mismatch. The real-Qdrant regression
+`qdrant_replay_interruption_never_leaves_current_metadata_and_retry_repairs`
+failed on this old ordering. It interrupts the actual awaited boundaries after
+invalidation and deletion, verifies stale metadata through a fresh service
+handle, and checks unchanged silver and successful retry. This is simulated
+boundary failure, not process termination or power-loss verification. No TLA+
+action change was needed: the passing model already described the corrected
+order; the negative configuration is now labeled as a historical mutation.
 
 No all-time physical-subset guarantee is claimed while views are stale: in-place
 updates permit old documents until deletion completes. This model also excludes

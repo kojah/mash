@@ -180,6 +180,80 @@ mod embeddings {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_replay_interruption_never_leaves_current_metadata_and_retry_repairs() {
+    use crate::shared::server::store::ReplayFault;
+
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let remote = crate::semantic::remote::Configuration {
+        url: embeddings::serve(),
+        model: "test".into(),
+        dimensions: 4,
+        api: crate::semantic::remote::Api::OpenaiCompatible,
+        token_env: None,
+        request_dimensions: true,
+        redaction: crate::redaction::Policy::ON,
+    };
+    let models = tempfile::tempdir().unwrap();
+    for fault in [ReplayFault::AfterDeletion, ReplayFault::AfterInvalidation] {
+        fixture
+            .server
+            .index(&fixture.identity, fixture.file(1, "durable"))
+            .await
+            .unwrap();
+        let silver = fixture.retained();
+        let head = fixture.server.state(&fixture.identity).await.unwrap();
+        assert!(
+            fixture
+                .server
+                .freshness(&fixture.identity)
+                .await
+                .unwrap()
+                .nodes[0]
+                .views_current
+        );
+        let interrupted = fixture
+            .serve(fixture.store.clone())
+            .with_replay_fault(fault);
+        let error = interrupted
+            .replay(&fixture.identity, models.path(), Some(&remote))
+            .await
+            .unwrap_err();
+        assert_eq!(error.error.message, "injected replay interruption");
+        drop(interrupted);
+
+        // A new service handle must observe the durable stale marker. This is
+        // a boundary interruption, not a claim of process/power-loss testing.
+        let reopened = reconnect(&fixture).await;
+        let freshness = reopened.freshness(&fixture.identity).await.unwrap();
+        assert!(!freshness.nodes[0].views_current);
+        assert!(!freshness.nodes[0].lexical_current);
+        assert_eq!(freshness.nodes[0].silver_revision, head.silver_revision);
+        assert_eq!(fixture.retained(), silver);
+        assert!(
+            reopened
+                .search(&fixture.identity, fixture.query())
+                .await
+                .is_err()
+        );
+
+        reopened
+            .replay(&fixture.identity, models.path(), Some(&remote))
+            .await
+            .unwrap();
+        assert!(reopened.freshness(&fixture.identity).await.unwrap().nodes[0].views_current);
+        assert_eq!(fixture.retained(), silver);
+        let results = reopened
+            .search(&fixture.identity, fixture.query())
+            .await
+            .unwrap();
+        assert_eq!(results.lexical.len(), 2);
+        assert_eq!(results.semantic.len(), 2);
+    }
+    fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_replay_reconstructs_all_views_from_shared_silver() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture

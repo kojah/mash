@@ -8,6 +8,13 @@ DEV_TARGET_DIR ?= /home/james/scratch/achi-targets/integrated
 DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local/bin/agent-test,)
 export FOCUS
 
+.PHONY: mutation-tools mutation-check
+mutation-tools:
+	bash tools/mutation-check.sh --install-tools
+
+mutation-check:
+	$(DEV_RUN) bash tools/mutation-check.sh
+
 .PHONY: protocol-tools protocol-check
 protocol-tools:
 	bash protocol/check.sh --install-tools

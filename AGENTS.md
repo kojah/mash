@@ -139,6 +139,27 @@ the backing services implement it. They supplement the existing focused tests.
 
 ### Implementation checks
 
+Use Proptest for invariants across varied inputs or operation sequences, with
+an independent expected state. Start with the real SQLite connector sequence
+harness in `app/connectors/silver/tests/properties.rs`; generated retries,
+rejections, reopenings and archive round trips supplement named regressions.
+Keep cases bounded in normal CI, reproduce failures with `PROPTEST_RNG_SEED`,
+and promote shrunk failures to focused deterministic regressions. Property
+tests do not replace public API or disposable backend tests.
+
+Use `make mutation-tools` then `make mutation-check` for focused test-quality
+audits when changing critical validation/freshness guards or strengthening their
+tests. Scope lives in `.cargo/mutants.toml`; keep the selected tests aligned with
+the selected source. Inspect surviving mutants for missing assertions, invalid
+test selection or equivalent behavior. Do not weaken production checks or add
+blanket exclusions to obtain a score. Unviable mutants and timeouts are not
+evidence that a test detected faulty behavior. Keep these audits manual rather
+than adding them to every development iteration; see `docs/verification.md`.
+
+For failure ordering, prefer small per-instance test-only hooks at actual
+durable boundaries. Assert persisted state and recovery after interruption;
+distinguish simulated failures from process termination and power loss.
+
 Use `make iterate FOCUS='test(changed_behavior)'` for the normal development loop:
 formatting, Clippy, then explicitly selected nextest regressions. A missing or
 empty selection fails; this mode never certifies full acceptance or builds an

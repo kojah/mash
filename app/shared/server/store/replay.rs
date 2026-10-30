@@ -6,6 +6,29 @@ use crate::shared::silver_store;
 use crate::views::shared as views;
 use std::path::Path;
 
+/// Per-store interruption points; no global state or production fault switches.
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::shared) enum ReplayFault {
+    AfterInvalidation,
+    AfterDeletion,
+}
+
+#[cfg(test)]
+impl Store {
+    pub(in crate::shared) fn with_replay_fault(mut self, fault: ReplayFault) -> Self {
+        self.replay_fault = Some(fault);
+        self
+    }
+
+    fn interrupt_replay(&self, point: ReplayFault) -> Result<(), AppError> {
+        if self.replay_fault == Some(point) {
+            return Err(AppError::internal("injected replay interruption"));
+        }
+        Ok(())
+    }
+}
+
 /// Replay result for one node.
 #[derive(Debug, serde::Serialize)]
 pub(in crate::shared) struct Replayed {
@@ -31,9 +54,15 @@ impl Store {
                 silver_store::fingerprints(connection)
             })
             .await?;
-        self.views.delete_node_documents(identity).await?;
+        // Metadata and documents live in separate collections. Persist stale
+        // certification before destructive writes so interruption fails closed.
         let mut node = NodeViews::empty(&self.views, identity);
         self.views.put_node_views(identity, &node).await?;
+        #[cfg(test)]
+        self.interrupt_replay(ReplayFault::AfterInvalidation)?;
+        self.views.delete_node_documents(identity).await?;
+        #[cfg(test)]
+        self.interrupt_replay(ReplayFault::AfterDeletion)?;
         let recipe = self.views.build().clone();
         let mut pool = None;
         let mut build = views::Build::default();

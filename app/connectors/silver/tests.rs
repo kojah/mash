@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::json;
+mod properties;
 
 fn id(value: &str) -> Id {
     Id::try_from(value.to_owned()).unwrap()

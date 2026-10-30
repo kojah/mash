@@ -1805,11 +1805,16 @@ split independent cases so each failure names the behavior that broke.
 
 ## Verification
 
+[Correctness checks](docs/verification.md) describes generated Proptest
+sequences against real SQLite, disposable-backend replay interruptions and
+focused cargo-mutants audits. Property tests run with ordinary nextest tests;
+mutation audits run explicitly with `make mutation-tools` and `make mutation-check`.
+
 Bounded TLA+ checks for publication, connector receipts, tombstones and shared
 view recovery live in [protocol/](protocol/README.md). Run `make protocol-tools`
 once to install the pinned checker, then `make protocol-check`. These checks
-include explicit expected counterexamples and document the current replay
-certification gap; they supplement implementation tests rather than certify
+include explicit expected counterexamples, including the historical replay
+certification bug; they supplement implementation tests rather than certify
 the Rust implementation.
 
 Use Cranelift for development builds and tests. Install the nightly component

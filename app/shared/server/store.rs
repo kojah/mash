@@ -12,6 +12,8 @@ use std::sync::Arc;
 
 pub(super) mod connectors;
 mod replay;
+#[cfg(test)]
+pub(in crate::shared) use replay::ReplayFault;
 mod sync;
 
 /// Serializes publications per node while other nodes proceed.
@@ -27,6 +29,8 @@ pub(in crate::shared) struct Store {
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
     /// Whether HTTP read responses mask recognizable credentials.
     responses: crate::redaction::Policy,
+    #[cfg(test)]
+    replay_fault: Option<ReplayFault>,
 }
 
 pub(super) async fn initialize(
@@ -106,6 +110,8 @@ impl Store {
             max_upload_bytes,
             nodes: Arc::default(),
             responses: crate::redaction::Policy::ON,
+            #[cfg(test)]
+            replay_fault: None,
         }
     }
 

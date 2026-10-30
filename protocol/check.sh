@@ -109,6 +109,6 @@ if $self_test; then
     check Publication PublicationAckLatest AcknowledgedIsCommitted
     check ConnectorReceipts ConnectorWrongPayload ReplyMatchesRequest
     check NativeSilver NativeSilverNoTombstones NoResurrection
-    # Current source ordering, not an injected mutation. See README / mash-8qaj.
-    check SharedViews SharedViewsReplayCurrent NeverFalselyCurrent
+    # Restore the historical replay-ordering bug (mash-8qaj).
+    check SharedViews SharedViewsReplayClearFirst NeverFalselyCurrent
 fi

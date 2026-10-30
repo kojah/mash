@@ -3,7 +3,7 @@ EXTENDS Naturals
 
 \* Native view lifecycle for ONE owning API process and its per-node mutex.
 \* Separate actions represent separate durable SQLite/Qdrant operations.
-\* ClearBeforeInvalidate=TRUE reproduces the current replay ordering.
+\* ClearBeforeInvalidate=TRUE restores the historical replay-ordering bug.
 CONSTANT ClearBeforeInvalidate
 Objects == {1, 2}
 EmptyDocs == [id \in Objects |-> <<0, 0>>]
