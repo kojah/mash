@@ -11,6 +11,10 @@ use std::{
 };
 
 mod items;
+// Codex stores whole file-change/tool results as single items. Real histories
+// contain valid 13 MiB patches; keep a finite bound without dropping that context.
+// Structural JSON limits and normalized-message disk spooling still apply.
+const MAX_ITEM_BYTES: usize = 64 * 1024 * 1024;
 #[cfg(test)]
 mod tests;
 
@@ -179,13 +183,14 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         }
         let realtime: bool = row.get("realtime").map_err(AppError::database)?;
         let text = if realtime {
-            let item: items::RealtimeItem = sqlite_source::bounded_json(row)?;
+            let item: items::RealtimeItem =
+                sqlite_source::bounded_json_with_limit(row, MAX_ITEM_BYTES)?;
             if item.id() != id {
                 return Err(invalid("realtime item identity disagrees with its row"));
             }
             item.normalize()?
         } else {
-            let item: items::Item = sqlite_source::bounded_json(row)?;
+            let item: items::Item = sqlite_source::bounded_json_with_limit(row, MAX_ITEM_BYTES)?;
             if item.id() != id {
                 return Err(invalid("item identity disagrees with its row"));
             }

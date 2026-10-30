@@ -35,6 +35,68 @@ fn options(path: &Path) -> IndexOptions {
     }
 }
 
+#[test]
+fn codex_paginated_large_file_change_preserves_tool_context_and_dialogue() {
+    let directory = tempfile::tempdir().unwrap();
+    let (path, history, _state) = fixture(directory.path());
+    let diff = "largepatchcanary\n".repeat(600_000);
+    let item = serde_json::json!({
+        "id":"patch", "type":"fileChange", "status":"completed",
+        "changes":[{"path":"example.rs", "diff":diff}]
+    });
+    let encoded = serde_json::to_string(&item).unwrap();
+    assert!(encoded.len() > super::super::MAX_RECORD_BYTES);
+    history
+        .execute(
+            "INSERT INTO thread_items VALUES('alpha','turn','patch',4,2000,?1)",
+            [encoded],
+        )
+        .unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    index(&mut storage, &options(&path)).unwrap();
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 5);
+    assert_eq!(
+        storage
+            .search("visiblequartz", 10, None, None)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        storage
+            .search("largepatchcanary", 10, None, None)
+            .unwrap()
+            .is_empty()
+    );
+    let source = sources(vec![HistorySource::file(&path)]).unwrap().remove(0);
+    let parsed = parse(&source.identity).unwrap().conversation.unwrap();
+    assert!(matches!(
+        parsed.messages,
+        super::super::messages::Messages::Staged(_)
+    ));
+    let message = parsed.messages.rows().unwrap().nth(4).unwrap().unwrap();
+    let retained: serde_json::Value = serde_json::from_str(&message.content).unwrap();
+    assert_eq!(retained["changes"][0]["diff"], diff);
+}
+
+#[test]
+fn codex_paginated_item_limit_rejects_before_materializing_payload() {
+    let connection = Connection::open_in_memory().unwrap();
+    // No `data` column exists: oversized rows must fail before trying to read it.
+    let mut statement = connection.prepare("SELECT ?1 AS bytes").unwrap();
+    let mut rows = statement
+        .query([i64::try_from(MAX_ITEM_BYTES + 1).unwrap()])
+        .unwrap();
+    let error = sqlite_source::bounded_json_with_limit::<items::Item>(
+        rows.next().unwrap().unwrap(),
+        MAX_ITEM_BYTES,
+    )
+    .err()
+    .unwrap();
+    assert!(error.error.message.contains("64 MiB ingestion limit"));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(12))]
     #[test]

@@ -5,6 +5,7 @@ use std::io::{BufRead, Read};
 pub(super) mod codex;
 mod json;
 pub(super) use json::decode;
+pub(super) use json::decode_with_limit;
 
 pub(super) struct Lines<R> {
     reader: R,

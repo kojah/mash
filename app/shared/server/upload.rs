@@ -40,6 +40,10 @@ async fn spool_body(
     let mut input = tokio::io::BufReader::new(tokio_util::io::StreamReader::new(stream));
     let mut line_bytes = 0usize;
     let mut total = 0u64;
+    // Native history may contain a single large canonical tool result (for
+    // example a Codex file-change item). Request and mutation admission budgets
+    // still bound the upload; attachment bodies retain their existing cap.
+    let line_limit = if line_framed { 64 } else { 8 } * 1024 * 1024;
     loop {
         let chunk = input
             .fill_buf()
@@ -51,7 +55,7 @@ async fn spool_body(
         for byte in chunk {
             line_bytes += 1;
             total += 1;
-            if line_bytes > 8 * 1024 * 1024 || total > max_bytes {
+            if line_bytes > line_limit || total > max_bytes {
                 return Err(ApiError(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     AppError::usage("index upload exceeds limits"),
@@ -77,4 +81,46 @@ async fn spool_body(
         .await
         .map_err(|_| AppError::internal("flush incoming index"))?;
     Ok(file)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn native_upload_spools_large_records_but_preserves_request_and_attachment_limits() {
+        let record = format!("{}\n", "x".repeat(9 * 1024 * 1024));
+        let progress = crate::shared::activity::Progress::default();
+        let accepted = spool_tracked(Body::from(record.clone()), 16 * 1024 * 1024, &progress)
+            .await
+            .unwrap_or_else(|error| panic!("{}", error.1.error.message));
+        assert_eq!(
+            accepted.as_file().metadata().unwrap().len(),
+            record.len() as u64
+        );
+        assert!(
+            spool_tracked(Body::from(record.clone()), 8 * 1024 * 1024, &progress)
+                .await
+                .is_err()
+        );
+        assert!(
+            spool_bytes(Body::from(record), 16 * 1024 * 1024, &progress)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn native_upload_rejects_oversized_event_across_body_frames() {
+        let frames = futures_util::stream::iter(
+            (0..8193).map(|_| Ok::<_, std::io::Error>(vec![b'x'; 8192])),
+        );
+        let result = spool_tracked(
+            Body::from_stream(frames),
+            128 * 1024 * 1024,
+            &crate::shared::activity::Progress::default(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
 }

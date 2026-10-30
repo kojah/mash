@@ -20,12 +20,20 @@ pub(super) fn open(path: &Path) -> Result<Connection, AppError> {
 pub(super) fn bounded_json<T: serde::de::DeserializeOwned>(
     row: &rusqlite::Row<'_>,
 ) -> Result<T, AppError> {
+    bounded_json_with_limit(row, super::MAX_RECORD_BYTES)
+}
+
+pub(super) fn bounded_json_with_limit<T: serde::de::DeserializeOwned>(
+    row: &rusqlite::Row<'_>,
+    limit: usize,
+) -> Result<T, AppError> {
     let bytes: i64 = row.get("bytes").map_err(AppError::database)?;
-    if bytes > MAX_RECORD_BYTES {
-        return Err(AppError::configuration(
-            "provider record exceeds the 8 MiB ingestion limit",
-        ));
+    if !usize::try_from(bytes).is_ok_and(|bytes| bytes <= limit) {
+        return Err(AppError::configuration(format!(
+            "provider record exceeds the {} MiB ingestion limit",
+            limit / (1024 * 1024)
+        )));
     }
     let json: String = row.get("data").map_err(AppError::database)?;
-    super::records::decode(json.as_bytes())
+    super::records::decode_with_limit(json.as_bytes(), limit)
 }

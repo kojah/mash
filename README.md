@@ -518,6 +518,10 @@ event types fail indexing. Oversized input fails indexing with a source-specific
 error; it is never truncated or marked
 complete. A failed configured provider scan retains its previous messages and
 checkpoints. These are record limits, not a total conversation memory limit.
+Codex SQLite history permits individual items up to 64 MiB because file-change
+and tool-result items can exceed the JSONL limit. The 65,536-node structural JSON
+limit still applies, and large normalized histories spill to disk. Tool bodies
+remain canonical context rather than searchable dialogue.
 
 Upgrading an existing index to schema 18 requires an explicit `mash index`.
 The migration retains canonical history and existing vectors, preserves recorded
@@ -1227,7 +1231,7 @@ their `/v1/freshness` entry and forget through delta uploads. Requests use beare
 credentials. Search carries a query embedding and returns candidates for node-side
 fusion and reranking. The HTTP server needs no model assets. Interrupted or invalid
 uploads leave the visible revision and freshness unchanged. Uploads are bounded
-by 128 records per batch, 8 MiB per event, 8 GiB per request, and the configured
+by 128 records per batch, 64 MiB per event, 8 GiB per request, and the configured
 `max_upload_mib` (64 MiB default, range 1–4,096). Ordinary JSON requests are limited to 64 KiB.
 Node/revision checks reject stale uploads; full snapshot retries are idempotent.
 

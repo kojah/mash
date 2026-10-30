@@ -8,10 +8,18 @@ use serde::{
 const MAX_NODES: usize = 65_536;
 
 pub(in crate::silver) fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, AppError> {
-    if bytes.len() > super::super::MAX_RECORD_BYTES {
-        return Err(AppError::configuration(
-            "provider JSON exceeds the 8 MiB ingestion limit",
-        ));
+    decode_with_limit(bytes, super::super::MAX_RECORD_BYTES)
+}
+
+pub(in crate::silver) fn decode_with_limit<T: DeserializeOwned>(
+    bytes: &[u8],
+    limit: usize,
+) -> Result<T, AppError> {
+    if bytes.len() > limit {
+        return Err(AppError::configuration(format!(
+            "provider JSON exceeds the {} MiB ingestion limit",
+            limit / (1024 * 1024)
+        )));
     }
     validate(bytes, MAX_NODES).map_err(|_| {
         AppError::configuration("invalid provider JSON or structural ingestion limit exceeded")
