@@ -53,7 +53,9 @@ all:
           mash_platform: test
           mash_requires: [api]
           mash_deploy_preflight: [[sh, -c, 'test ! -e $scratch/deny-install']]
-          mash_install: [[sh, -c, 'echo one-install >> $scratch/actions; if test -e $scratch/upgrade; then echo "local index upgraded;"; fi']]
+          mash_install:
+            - [sh, -c, 'if test -e $scratch/fail-upgrade; then exit 1; fi; echo one-install >> $scratch/actions; if test -e $scratch/upgrade; then echo "local index upgraded;"; fi']
+            - [sh, -c, 'echo one-binary-install >> $scratch/actions']
           mash_mcp: [unused]
         offline:
           mash_platform: test
@@ -116,6 +118,15 @@ if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed-af
 fi
 [[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
 rm -f "$scratch/fail-after-api-install" "$scratch/fail-api"
+binary_installs=$(rg -c '^one-binary-install$' "$scratch/actions")
+touch "$scratch/fail-upgrade"
+if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed-upgrade; then
+    echo 'Failed upgrade was accepted.' >&2; exit 1
+fi
+[[ $(rg -c '^one-binary-install$' "$scratch/actions") == "$binary_installs" ]]
+[[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
+rg -q 'Installation step 1 failed for one' "$scratch/deploy-failed-upgrade/runner.log"
+rm "$scratch/fail-upgrade"
 touch "$scratch/upgrade"
 run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml upgraded
 [[ $(rg -c '^sync$' "$scratch/actions") == 1 ]]

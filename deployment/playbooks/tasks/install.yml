@@ -1,0 +1,19 @@
+# A command loop continues its remaining items after a failure. Include one
+# task at a time so a failed migration cannot be followed by binary installation.
+- name: Run one ordered installation step
+  block:
+    - name: Execute private installation command
+      ansible.builtin.command:
+        argv: "{{ mash_install_command }}"
+        chdir: "{{ mash_repository }}"
+      delegate_to: localhost
+      register: mash_install_result
+      no_log: true
+    - name: Remember successful silver upgrades
+      ansible.builtin.set_fact:
+        mash_upgraded: "{{ (mash_upgraded | default(false)) or ('local index upgraded;' in mash_install_result.stdout) }}"
+      no_log: true
+  rescue:
+    - name: Report the failed step without exposing command arguments or history
+      ansible.builtin.fail:
+        msg: "Installation step {{ mash_install_step + 1 }} failed for {{ inventory_hostname }}. Remaining installation steps were not run. Command output is private."

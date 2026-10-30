@@ -31,12 +31,12 @@
   any_errors_fatal: true
   tasks:
     - name: Install or keep the validated API release
-      ansible.builtin.command:
-        argv: "{{ item }}"
-        chdir: "{{ mash_repository }}"
+      ansible.builtin.include_tasks: tasks/install.yml
       loop: "{{ mash_install }}"
-      delegate_to: localhost
-      no_log: true
+      loop_control:
+        loop_var: mash_install_command
+        index_var: mash_install_step
+        label: "installation step {{ mash_install_step + 1 }}"
     - ansible.builtin.include_tasks: tasks/api-check.yml
     - name: Record verified API deployment
       ansible.builtin.copy:
@@ -72,21 +72,17 @@
       when: item.stat.exists
       no_log: true
     - name: Upgrade incompatible silver and atomically install the artifact
-      ansible.builtin.command:
-        argv: "{{ item }}"
-        chdir: "{{ mash_repository }}"
+      ansible.builtin.include_tasks: tasks/install.yml
       loop: "{{ mash_install }}"
-      delegate_to: localhost
-      register: mash_install_results
-      no_log: true
-    - name: Determine whether an actual silver upgrade requires refresh
-      ansible.builtin.set_fact:
-        mash_upgraded: "{{ mash_install_results.results | map(attribute='stdout') | select('search', 'local index upgraded;') | list | length > 0 }}"
+      loop_control:
+        loop_var: mash_install_command
+        index_var: mash_install_step
+        label: "installation step {{ mash_install_step + 1 }}"
     - name: Re-ingest, rebuild views and republish after a required schema upgrade
       ansible.builtin.include_tasks: tasks/probe.yml
       vars:
         mash_probe_mode: sync
-      when: mash_upgraded
+      when: mash_upgraded | default(false)
     - name: Verify live tools, contract, readiness and smoke searches
       ansible.builtin.include_tasks: tasks/probe.yml
       vars:
