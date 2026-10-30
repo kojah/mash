@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Nine models plus thirteen expected counterexamples.
+make protocol-check       # Eleven models plus twenty-two expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on
@@ -351,6 +351,89 @@ filesystem behavior, export completeness, import correctness or automatic crash
 recovery. Recovery is manual and retries fail closed. Individual failure during
 marker creation/removal may conservatively leave a marker; it must never authorize
 retirement without a validated import. No progress/liveness property is claimed.
+
+### Proposed WebSocket synchronization: transfer and durable acknowledgement
+
+[SyncTransfer.tla](SyncTransfer.tla) is a **design contract, not implemented
+WebSocket behavior** (design issue `mash-kjok`, model task `mash-lqb7`). It bounds
+one immutable publication batch to two pieces. Receipt and persistence may occur
+in either piece order; persisted checkpoint metadata and its client report are
+separate actions. Restart retains only the checkpointed prefix. A validated,
+complete transfer enters a durable queue; starting its worker transfers ownership
+away from the socket. Disconnect does not cancel that worker. A process crash
+loses the worker, while queued work and committed evidence survive.
+
+The proposed atomic boundaries are explicit:
+
+- `Persist` completes piece persistence before `SaveCheckpoint` records a
+  resumable prefix; `ReportCheckpoint` may follow independently.
+- `Queue` records completed-transfer validation and durable queue admission.
+- `Commit` writes canonical silver and its operation receipt in one SQLite
+  transaction. `Certify` abstracts successful views repair; `Acknowledge` is the
+  later client receipt of `Published`, not the initial `Accepted` message.
+- `Close` represents terminal cancellation/expiry before application starts.
+  It ends checkpoint retention explicitly; it cannot discard a committed batch.
+
+Checks require checkpoints to have persisted data, immutable retry contents,
+atomic silver/receipt evidence, complete data for active workers and certification
+before `Published`. With eventual reconnection and fair processing after failures
+stop, a batch resolves as published or terminally closed. The five negative
+configurations independently introduce premature checkpoints, a separate receipt
+commit, early publication acknowledgement, expiry of committed work and acceptance
+of changed retry bytes. Each must violate its named invariant.
+
+`Accepted`, exact duplicate pieces and rejected inputs are abstract stutters.
+Expiry is nondeterministic, with no wall-clock guarantee, and a terminally closed
+operation is not reopened. Hash equality stands for exact payload identity.
+There is no proof of protobuf/Zstd parsing, fsync behavior, attachment handling,
+quota/credit accounting, competing sessions or publisher fencing. `Certify` relies
+on the existing `SharedViews` contract; it is not an atomic Qdrant transaction.
+
+### Proposed progressive backfill: coverage, live edits and deletions
+
+[ProgressiveBackfill.tla](ProgressiveBackfill.tla) is the second **unimplemented
+design contract**. A frozen baseline at source revision 1 contains conversations
+`a` and `b`; live revision 2 edits `a`, and revision 3 deletes it. Four independent
+batches may be scheduled in any order. Each carries complete conversation state
+or a tombstone. Only one apply/repair worker runs per node, but source edits and
+crashes may interleave with its work. Retrying an already committed batch uses
+its immutable receipt without applying it again.
+
+`Commit` atomically records silver, per-conversation ordering, the receipt and
+baseline membership coverage. A newer live record can satisfy its baseline
+member. `WriteDocument` models each separate durable views write/delete, followed
+by `Certify` and then the client's `Publish` receipt. The receipt count represents
+a monotonic server revision; source revisions are separate. A crash preserves
+completed writes and loses the worker or reply. Recovery repairs views from
+silver. A tombstone value in `docs` means no searchable document, not an indexed
+tombstone. Views settings and node identity are fixed in this model.
+
+Checks require the newest committed conversation version to win, deletions to
+survive late baseline arrival, and certified views to match silver. Baseline
+completion requires evidence for every member. Local acknowledgement and journal
+pruning require baseline completion plus contiguous published live coverage;
+the highest received version is insufficient. Per-batch `published` records are
+historical acknowledgements, not perpetual claims of current views. A subsequent
+batch may make views stale until its repair completes. Fair processing after
+edits and crashes stop eventually completes coverage, acknowledges the latest
+source revision and restores current views.
+
+Four negative configurations remove version ordering, drop tombstone protection,
+finish with missing baseline members or prune using only the highest published
+revision. These must expose stale writes, resurrection, incomplete coverage and
+lost journal gaps respectively. The finite batch set allows weak fairness to
+establish progress; this is not a scheduling or latency guarantee for an unbounded
+live stream. Baseline construction, multi-conversation transactions, local
+snapshot/journal persistence, identity changes and simultaneous publishers are
+outside this model. Tombstones have no later recreation in the bounded history.
+
+Neither proposed model is mapped to a new Rust endpoint: none is added by this
+change. Existing `Publication`, `NativeSilver`, `ConnectorReceipts` and
+`SharedViews` describe related implemented boundaries, not an implementation of
+these contracts. Before shipping synchronization, map each proposed action to
+its actual transaction/await/lock boundary, add Rust failure-boundary regressions
+and extend the models for any new interleavings. The two models are checked
+separately; their composition and the production implementation are not proven.
 
 ## Maintaining the models
 

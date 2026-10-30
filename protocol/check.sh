@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission)
+models=(Publication ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission) ;;
+            Publication|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -123,4 +123,14 @@ if $self_test; then
     check RuntimeUpgrade RuntimeUpgradeNoGuard AdmissionChecked
     check MutationAdmission MutationAdmissionReleaseWorker WorkOwnsCapacity
     check MutationAdmission MutationAdmissionUnfair FairOrder
+    # Proposed synchronization contracts, not deliberate mutations of Rust code.
+    check SyncTransfer SyncTransferEarlyCheckpoint CheckpointIsDurable
+    check SyncTransfer SyncTransferSplitReceipt CommitHasReceipt
+    check SyncTransfer SyncTransferEarlyAck PublishedIsReady
+    check SyncTransfer SyncTransferExpireCommitted CommittedCannotExpire
+    check SyncTransfer SyncTransferChangedRetry TransferIdentity
+    check ProgressiveBackfill ProgressiveBackfillStaleWrite NewestCommittedWins
+    check ProgressiveBackfill ProgressiveBackfillResurrection NoResurrection
+    check ProgressiveBackfill ProgressiveBackfillEarlyFinish CompleteHasCoverage
+    check ProgressiveBackfill ProgressiveBackfillSparseAck JournalRetainsGaps
 fi
