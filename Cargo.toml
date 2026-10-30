@@ -37,7 +37,11 @@ path = "app/examples/connector_schema.rs"
 name = "history-skill"
 path = "app/examples/history_skill.rs"
 
+[features]
+console = ["dep:console-subscriber", "tokio/tracing"]
+
 [dependencies]
+console-subscriber = { version = "0.5", optional = true }
 mash-query = { path = "crates/mash-query" }
 aho-corasick = "1.1.5"
 regex = "1.12"
@@ -93,6 +97,7 @@ opt-level = 3
 [lints.rust]
 unsafe_code = "forbid"
 warnings = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
 [lints.clippy]
 all = "warn"

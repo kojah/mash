@@ -664,6 +664,14 @@ span and the server's `http_request` span record the same `trace_id`. Enable
 tracing on both processes and match that field to correlate status and timing.
 The server replaces missing, malformed or duplicate IDs with a fresh local ID;
 client tracing disabled sends no correlation header.
+
+For async task and resource inspection, build with `--features console` and
+`RUSTFLAGS='--cfg tokio_unstable'`, then run that binary with `MASH_CONSOLE=1`.
+Connect `tokio-console http://127.0.0.1:6669` to its loopback telemetry listener.
+This is independent of `MASH_TRACE`; ordinary builds omit console instrumentation.
+See the [performance profiling skill](.agents/skills/mash-performance-profiling/SKILL.md)
+for isolated builds, remote access and measurement limitations.
+
 Successful shared response bodies are decoded into typed models on blocking
 workers so large JSON responses do not occupy an async runtime worker. The
 `shared_http_decode` child span records byte count, `mode` and success/error, with the

@@ -1,4 +1,7 @@
 //! Opt-in, application-only diagnostics; never record external payloads.
+#[cfg(all(feature = "console", not(tokio_unstable)))]
+compile_error!("the console feature requires RUSTFLAGS='--cfg tokio_unstable'");
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -7,13 +10,35 @@ pub(crate) mod http;
 pub(crate) mod retrieval;
 
 pub(crate) fn initialize() {
-    if std::env::var_os("MASH_TRACE").as_deref() != Some(std::ffi::OsStr::new("1")) {
+    let trace = std::env::var_os("MASH_TRACE").as_deref() == Some(std::ffi::OsStr::new("1"));
+    #[cfg(feature = "console")]
+    if std::env::var_os("MASH_CONSOLE").as_deref() == Some(std::ffi::OsStr::new("1")) {
+        let console = console_subscriber::ConsoleLayer::builder()
+            .server_addr(([127, 0, 0, 1], 6669))
+            .spawn();
+        let _ = configured_subscriber(std::io::stderr, trace)
+            .with(console)
+            .try_init();
         return;
     }
-    let _ = subscriber(std::io::stderr).try_init();
+    if !trace {
+        return;
+    }
+    let _ = configured_subscriber(std::io::stderr, true).try_init();
 }
 
+#[cfg(test)]
 fn subscriber<W>(writer: W) -> impl tracing::Subscriber + Send + Sync
+where
+    W: for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
+{
+    configured_subscriber(writer, true)
+}
+
+fn configured_subscriber<W>(
+    writer: W,
+    enabled: bool,
+) -> impl tracing::Subscriber + Send + Sync + for<'a> tracing_subscriber::registry::LookupSpan<'a>
 where
     W: for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
 {
@@ -27,10 +52,14 @@ where
                 tracing_subscriber::fmt::format::FmtSpan::NEW
                     | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
             )
-            .with_filter(
-                tracing_subscriber::filter::Targets::new()
-                    .with_target("mash", tracing::Level::INFO),
-            ),
+            .with_filter(tracing_subscriber::filter::Targets::new().with_target(
+                "mash",
+                if enabled {
+                    tracing::level_filters::LevelFilter::INFO
+                } else {
+                    tracing::level_filters::LevelFilter::OFF
+                },
+            )),
     )
 }
 

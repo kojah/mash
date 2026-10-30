@@ -81,6 +81,28 @@ problem. Check required build instrumentation and measure its overhead separatel
 do not compare an instrumented debug build with an optimized baseline as though
 only the proposed code change differed.
 
+Mash provides an optional `console` Cargo feature. Build a separate profiling
+binary with Tokio instrumentation, then opt in for the process being inspected:
+
+```bash
+agent-test env RUSTFLAGS='--cfg tokio_unstable' \
+  CARGO_TARGET_DIR=/home/james/scratch/achi-targets/console \
+  cargo build --features console --jobs 4
+MASH_CONSOLE=1 /home/james/scratch/achi-targets/console/debug/mash mcp
+tokio-console http://127.0.0.1:6669
+```
+
+Use the relevant existing Mash command (`mcp`, `serve`, or `index --watch`)
+and its usual configuration. The listener is fixed to loopback port 6669;
+profile one process at a time, or use an SSH tunnel to inspect a remote host.
+Ordinary builds omit the console dependency and listener. Instrumented builds
+still require `MASH_CONSOLE=1` to start telemetry collection. `MASH_TRACE=1`
+independently enables Mash JSON diagnostics on stderr; console telemetry does
+not write to MCP stdout. The feature fails compilation without `tokio_unstable`.
+On the installed Xenia nightly, add `-Znext-solver=no` to `RUSTFLAGS` for Clippy.
+Tokio telemetry adds overhead and exposes task locations and resource metadata;
+keep it in explicit profiling sessions rather than ordinary release deployments.
+
 Loom and Jepsen are not default profiling dependencies. Consider Loom when custom
 synchronization primitives need interleaving checks, or Jepsen for an explicitly
 scoped distributed failure investigation. Keep the repository's TLA+, boundary
