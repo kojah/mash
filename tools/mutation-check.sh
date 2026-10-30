@@ -33,10 +33,18 @@ fi
     echo 'Unexpected cargo-mutants version' >&2; exit 2;
 }
 # No arbitrary arguments: keep baseline, source isolation and bounds mandatory.
-[[ $# == 0 || ( $# == 1 && $1 == --list ) ]] || { echo 'Usage: mutation-check.sh [--install-tools|--list]' >&2; exit 2; }
-if [[ ${1:-} == --list ]]; then
-    exec "$tool" mutants --list
-fi
+config=.cargo/mutants.toml
+case "${1:-}" in
+    '') [[ $# == 0 ]] || exit 2 ;;
+    --list) [[ $# == 1 ]] || exit 2; exec "$tool" mutants --list ;;
+    --connectors|--list-connectors)
+        [[ $# == 1 ]] || exit 2
+        config=.cargo/mutants-connectors.toml
+        if [[ $1 == --list-connectors ]]; then exec "$tool" mutants --config "$config" --list; fi
+        [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
+        ;;
+    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--connectors|--list-connectors]' >&2; exit 2 ;;
+esac
 mkdir -p "$artifacts/runs" "$artifacts/tmp"
 run=$(mktemp -d "$artifacts/runs/audit.XXXXXX")
 echo "Mutation evidence: $run"
@@ -45,5 +53,5 @@ export CARGO_INCREMENTAL=1 RUSTC_WRAPPER=
 # Serialize use of the persistent target even across separate agent sessions.
 exec 9>"$artifacts/audit.lock"
 flock 9
-exec "$tool" mutants --jobs 1 --jobserver-tasks 4 --timeout 60 \
+exec "$tool" mutants --config "$config" --jobs 1 --jobserver-tasks 4 --timeout 120 \
     --build-timeout 600 --output "$run"

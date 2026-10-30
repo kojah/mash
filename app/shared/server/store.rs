@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(super) mod connectors;
+#[cfg(test)]
+pub(in crate::shared) use connectors::Embedder;
 mod replay;
 #[cfg(test)]
 pub(in crate::shared) use replay::ReplayFault;
@@ -31,6 +33,8 @@ pub(in crate::shared) struct Store {
     responses: crate::redaction::Policy,
     #[cfg(test)]
     replay_fault: Option<ReplayFault>,
+    #[cfg(test)]
+    connector_interruption: bool,
 }
 
 pub(super) async fn initialize(
@@ -112,6 +116,8 @@ impl Store {
             responses: crate::redaction::Policy::ON,
             #[cfg(test)]
             replay_fault: None,
+            #[cfg(test)]
+            connector_interruption: false,
         }
     }
 

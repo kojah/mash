@@ -146,6 +146,11 @@ rejections, reopenings and archive round trips supplement named regressions.
 Keep cases bounded in normal CI, reproduce failures with `PROPTEST_RNG_SEED`,
 and promote shrunk failures to focused deterministic regressions. Property
 tests do not replace public API or disposable backend tests.
+Use `make property-check` for the SQLite harness and `make property-backend-check`
+with disposable `MASH_TEST_QDRANT_URL` for generated connector failure sequences.
+Keep shrunk failures as named regressions. Use `make mutation-connectors` to audit
+the connector recovery tests against changed production code; its scope is in
+`.cargo/mutants-connectors.toml`.
 
 Use `make mutation-tools` then `make mutation-check` for focused test-quality
 audits when changing critical validation/freshness guards or strengthening their

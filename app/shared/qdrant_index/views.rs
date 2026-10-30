@@ -150,26 +150,28 @@ impl Store {
             .await
     }
 
-    /// Delete one node's connector points with these anchors.
-    pub(in crate::shared) async fn delete_connector_points(
+    /// Remove obsolete connector points, including writes never recorded in metadata.
+    pub(in crate::shared) async fn retain_connector_points(
         &self,
         identity: &Identity,
-        anchors: Vec<String>,
+        current: Vec<String>,
     ) -> Result<(), AppError> {
-        if anchors.is_empty() {
-            return Ok(());
+        let mut filter = api::Filter {
+            must: vec![
+                api::matches("node_id", vec![identity.node_id.clone()]),
+                api::Condition::IsEmpty {
+                    is_empty: api::Field {
+                        key: "provider".into(),
+                    },
+                },
+            ],
+            ..api::Filter::default()
+        };
+        if !current.is_empty() {
+            filter.must_not.push(api::matches("unit.anchor", current));
         }
         self.api
-            .delete_filtered(
-                &collection(&identity.group_id, false),
-                api::Filter {
-                    must: vec![
-                        api::matches("node_id", vec![identity.node_id.clone()]),
-                        api::matches("unit.anchor", anchors),
-                    ],
-                    ..api::Filter::default()
-                },
-            )
+            .delete_filtered(&collection(&identity.group_id, false), filter)
             .await
     }
 

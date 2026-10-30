@@ -1809,6 +1809,9 @@ split independent cases so each failure names the behavior that broke.
 sequences against real SQLite, disposable-backend replay interruptions and
 focused cargo-mutants audits. Property tests run with ordinary nextest tests;
 mutation audits run explicitly with `make mutation-tools` and `make mutation-check`.
+Run `make property-check` for generated SQLite tests. With disposable
+`MASH_TEST_QDRANT_URL`, run `make property-backend-check` for generated interrupted
+connector writes and `make mutation-connectors` to audit their regressions.
 
 Bounded TLA+ checks for publication, connector receipts, tombstones and shared
 view recovery live in [protocol/](protocol/README.md). Run `make protocol-tools`

@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Five models plus six expected counterexamples.
+make protocol-check       # Six models plus eight expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on
@@ -224,7 +224,33 @@ This additional model separates the supplied contents from retained silver.
 Multiple messages, partial point writes, connector records and cryptographic
 collision resistance remain Rust/backend test or review responsibilities.
 
-## Keeping the models useful
+### Connector views after interrupted writes
+
+[ConnectorViews.tla](ConnectorViews.tla) explores up to three connector commits
+for one anchor (absent or either of two contents), with interruptions before or
+after point writes and before persisted digest completion. Physical point contents
+and recorded digests are independent variables. TLC first found an interrupted
+insert followed by deletion; after correcting cleanup it found a completed insert,
+interrupted deletion and restoration of the original content.
+
+The independent Proptest backend generator in
+`app/shared/qdrant_index/tests/connector_sequences.rs` reproduced and shrank both:
+two operations for `mash-9b7s`, three for `mash-5avn`. Named regressions retain those
+sequences; bounded generation also exercises lexical-only and dense configurations
+using a controlled embedding endpoint. `make property-backend-check` runs them,
+and the existing CI Qdrant selection includes them.
+
+Source mapping: `server/store/connectors.rs::sync_connectors` compares digests,
+invalidates evidence for changed/removed anchors and clears the silver marker
+before physical mutation; `qdrant_index/views.rs::retain_connector_points` removes
+all absent anchors using a node-scoped connector filter. Successful completion
+persists new digests and certification. Negative configurations restore missing
+physical cleanup and retained stale evidence respectively. Hash equality abstracts
+full unit equality; multiple anchors, arbitrary late remote writes, process kill
+and power-loss durability are outside this model. The runtime hook simulates the
+boundary after completed point writes, not those other failure classes.
+
+## Maintaining the models
 
 Review the source mappings whenever their protocols change. Match atomic steps
 to actual transactions and split separate awaited writes; preserve real failure

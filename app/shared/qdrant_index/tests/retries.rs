@@ -224,6 +224,11 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
         .retain_node_conversations(&fixture.identity, Vec::new())
         .await
         .unwrap();
+    fixture
+        .store
+        .retain_documents(&fixture.identity, &Fixture::conversation().id, Vec::new())
+        .await
+        .unwrap();
     let name = collection(&fixture.identity.group_id, false);
     let native = fixture
         .store
@@ -252,5 +257,41 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
         .await
         .unwrap();
     assert_eq!(connectors.len(), 2);
+    assert_connector_cleanup_is_scoped(&fixture, &other, anchor).await;
     fixture.cleanup().await;
+}
+
+async fn assert_connector_cleanup_is_scoped(fixture: &Fixture, other: &Identity, anchor: &str) {
+    let name = collection(&fixture.identity.group_id, false);
+    fixture
+        .store
+        .retain_connector_points(&fixture.identity, Vec::new())
+        .await
+        .unwrap();
+    fixture
+        .store
+        .delete_node_documents(&fixture.identity)
+        .await
+        .unwrap();
+    let native = fixture
+        .store
+        .api
+        .retrieve::<Document>(&name, &[document_id(&other.node_id, "message-0")])
+        .await
+        .unwrap();
+    assert_eq!(native.len(), 1);
+    let connectors = fixture
+        .store
+        .api
+        .retrieve::<ConnectorDocument>(
+            &name,
+            &[
+                connector_id(&fixture.identity.node_id, anchor),
+                connector_id(&other.node_id, anchor),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(connectors.len(), 1);
+    assert_eq!(connectors[0].payload.node_id, other.node_id);
 }

@@ -3,6 +3,7 @@ use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRec
 use crate::shared::server::store::Store as Server;
 use crate::shared::silver_store::SilverStore;
 use std::io::Write;
+mod connector_sequences;
 mod exact;
 mod memory;
 mod physical;

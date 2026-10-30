@@ -4,6 +4,32 @@ Mash combines bounded [protocol models](../protocol/README.md), generated tests
 against real storage, targeted failure regressions, and focused mutation audits.
 Each checks a different claim; none proves the whole distributed system correct.
 
+The entry points are:
+
+| Check | Command | Setup |
+| --- | --- | --- |
+| SQLite generated sequences | `make property-check` | Repository Rust toolchain and nextest |
+| Qdrant generated recovery sequences | `make property-backend-check` | Disposable `MASH_TEST_QDRANT_URL` |
+| Bounded protocol exploration | `make protocol-check` | Explicit `make protocol-tools` installation |
+| Revision/freshness mutation audit | `make mutation-check` | Explicit `make mutation-tools` installation |
+| Connector recovery mutation audit | `make mutation-connectors` | Mutation tools and disposable `MASH_TEST_QDRANT_URL` |
+
+`PROPTEST_CASES` increases generated cases and `PROPTEST_RNG_SEED` makes an
+investigation repeatable. Ordinary CI runs SQLite properties in its usual test
+job; its existing `test(qdrant)` selection also runs bounded generated connector
+sequences and named regressions. Mutation audits remain explicit because they
+rebuild and retest each variant. On Xenia all Make targets use `agent-test` for
+heavy work. No check installs embedding models or uses production backend data.
+
+The backend generator varies connector writes, deletions and interruptions
+between actual point writes and persisted digest writes. It compares physical
+Qdrant records to independent expected content after successful recovery, then
+shrinks a failing operation sequence. Its per-instance interruption hook is
+compiled only into tests. This simulates a durable boundary failure, not process
+termination or a remote request that continues after timing out.
+The default is 16 sequences of up to four operations, across lexical and dense
+configurations; dense cases use a synthetic local embedding endpoint.
+
 ## Generated connector sequences
 
 The [Proptest harness](../app/connectors/silver/tests/properties.rs) compares real
@@ -60,11 +86,19 @@ bash tools/mutation-check.sh --list  # Review scope without building.
 make mutation-check                  # Baseline first; then isolated mutations.
 ```
 
+For connector recovery, set `MASH_TEST_QDRANT_URL` to your disposable backend,
+review `bash tools/mutation-check.sh --list-connectors`, then run
+`PROPTEST_RNG_SEED=42 make mutation-connectors`. Its separate configuration
+selects connector synchronization and shared document-cleanup mutations, with
+generated recovery, node-isolation and HTTP publication tests. Review the list
+when changing either source file: field-deletion candidates can include adjacent
+cleanup helpers. Results describe that selected scope, not a coverage percentage.
+
 The installer pins cargo-mutants 27.1.0 and verifies its release archive SHA-256.
 Requires Bash, curl, tar, sha256sum, flock, the repository nightly with Cranelift,
 and cargo-nextest. On Xenia `make` runs the audit through `agent-test`. Audits use
 one mutant at a time and four build tasks, a ten-minute build deadline and a
-one-minute test deadline per scenario. No automatic download happens during a
+two-minute test deadline per scenario. No automatic download happens during a
 check. Artifacts and a persistent build cache stay outside Git under
 `/home/james/scratch/mash-artifacts/mutations` on Xenia or the user cache elsewhere;
 `MASH_MUTATION_ARTIFACTS` overrides this. A lock serializes access to that cache.

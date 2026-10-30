@@ -118,7 +118,7 @@ async fn qdrant_publication_commits_silver_before_views_and_stale_views_is_never
     fixture.cleanup().await;
 }
 
-mod embeddings {
+pub(super) mod embeddings {
     use axum::{Json, Router, routing::post};
     use serde::{Deserialize, Serialize};
 
@@ -154,7 +154,7 @@ mod embeddings {
     }
 
     /// A controlled OpenAI-compatible endpoint on its own runtime thread.
-    pub(super) fn serve() -> String {
+    pub(in crate::shared::qdrant_index::tests) fn serve() -> String {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             tokio::runtime::Runtime::new()

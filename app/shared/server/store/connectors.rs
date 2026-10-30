@@ -32,6 +32,12 @@ fn digest(unit: &Unit) -> String {
 }
 
 impl Store {
+    #[cfg(test)]
+    pub(in crate::shared) fn with_connector_interruption(mut self) -> Self {
+        self.connector_interruption = true;
+        self
+    }
+
     /// Commit silver first. View follows on a best-effort basis: a failure
     /// leaves the node uncertified until the next ingest, upload or replay.
     pub(in crate::shared) async fn ingest_connector(
@@ -100,17 +106,17 @@ impl Store {
                 Ok(Units { digests, changed })
             })
             .await?;
-        let removed = views
-            .connectors
-            .keys()
-            .filter(|anchor| !units.digests.contains_key(*anchor))
-            .cloned()
-            .collect::<Vec<_>>();
         // Points no longer match the recorded digests until this completes.
         views.certified = false;
+        views.silver = None;
+        // Reversion after a failed write must not reuse the old digest: the
+        // physical point may have been overwritten or deleted in the meantime.
+        views
+            .connectors
+            .retain(|anchor, digest| units.digests.get(anchor) == Some(digest));
         self.views.put_node_views(identity, views).await?;
         self.views
-            .delete_connector_points(identity, removed)
+            .retain_connector_points(identity, units.digests.keys().cloned().collect())
             .await?;
         let mut documents = Documents::new(identity);
         let mut pool = None;
@@ -148,6 +154,10 @@ impl Store {
             }
         }
         documents.finish(&self.views).await?;
+        #[cfg(test)]
+        if self.connector_interruption {
+            return Err(AppError::internal("injected connector interruption"));
+        }
         views.connectors = units.digests;
         Ok(())
     }
