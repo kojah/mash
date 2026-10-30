@@ -262,9 +262,17 @@ retained, changed). Certification uses silver identity without inspecting physic
 documents. Safety requires payload validation and removal of absent chats.
 This is a safety-only model; it makes no liveness or concurrency claim.
 
-- `silver_store/apply.rs`: duplicate snapshots are validated through the ordinary
-  transactional ingestion path inside a rolled-back savepoint. The resulting
-  canonical fingerprint must equal retained silver; vectors remain outside it.
+- `silver_store/apply.rs`: duplicate snapshots use the ordinary transactional
+  ingestion rules and compare the resulting canonical fingerprint with retained
+  silver; vectors remain outside it. The entire validation transaction rolls
+  back, avoiding a long-lived nested-savepoint journal. A separate small
+  transaction updates only synchronization metadata. The node lock spans both
+  transactions and subsequent views work. `Validate`, `Rollback`, `Metadata`
+  and `BeginViews` keep these boundaries separate; `CrashBeforeViews` permits
+  interruption between them. Timestamp values and SQLite physical journaling
+  are not modeled. The Rust `retry_outer_rollback` regression interrupts after
+  rollback, reopens a connection and checks history, the head, storage IDs and
+  the AUTOINCREMENT sequence, then verifies recovery and altered-payload rejection.
 - `server/store/sync.rs` and `qdrant_index/views.rs`: synchronization removes native
   documents whose chats are absent from silver, including points left by a failed
   request whose in-memory deletion set or metadata was lost. Connector points

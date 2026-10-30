@@ -54,12 +54,8 @@ impl Store {
         let worker_progress = progress.clone();
         progress.phase(Phase::ApplyingSilver, Unit::Records);
         let (applied, file) = crate::blocking(move || {
-            let applied = silver.write(&scope, |tx| {
-                let applied =
-                    silver_store::apply::apply(tx, &scope, &file, &build, &worker_progress)?;
-                worker_progress.phase(Phase::CommittingSilver, Unit::Records);
-                Ok(applied)
-            })?;
+            let applied =
+                silver_store::apply::write(&silver, &scope, &file, &build, &worker_progress)?;
             Ok((applied, file))
         })
         .await?;

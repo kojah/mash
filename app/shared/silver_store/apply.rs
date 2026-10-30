@@ -10,11 +10,61 @@ use rusqlite::Transaction;
 use std::collections::BTreeSet;
 use std::io::BufRead;
 
+#[cfg(test)]
+mod tests;
+
+/// The caller holds the node lock through this operation and subsequent views
+/// synchronization. Duplicate validation rolls back the outer transaction so
+/// SQLite need not retain a snapshot-sized nested-savepoint subjournal.
+pub(in crate::shared) fn write(
+    store: &super::SilverStore,
+    identity: &Identity,
+    file: &tempfile::NamedTempFile,
+    build: &Build,
+    progress: &crate::shared::activity::Progress,
+) -> Result<Applied, AppError> {
+    write_inner(store, identity, file, build, progress, || Ok(()))
+}
+
+fn write_inner(
+    store: &super::SilverStore,
+    identity: &Identity,
+    file: &tempfile::NamedTempFile,
+    build: &Build,
+    progress: &crate::shared::activity::Progress,
+    after_rollback: impl FnOnce() -> Result<(), AppError>,
+) -> Result<Applied, AppError> {
+    let mut connection = store.connect(identity)?;
+    let transaction = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(database)?;
+    let applied = apply(&transaction, identity, file, build, progress)?;
+    progress.phase(
+        crate::shared::activity::Phase::CommittingSilver,
+        crate::shared::activity::Unit::Records,
+    );
+    if applied.duplicate {
+        transaction.rollback().map_err(database)?;
+        // A crash here leaves the previously committed history and head intact.
+        // The node lock prevents another writer between rollback and this small
+        // last-synchronized metadata update; no Qdrant work has started yet.
+        after_rollback()?;
+        let metadata = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(database)?;
+        put_head(&metadata, &applied.head)?;
+        metadata.commit().map_err(database)?;
+    } else {
+        transaction.commit().map_err(database)?;
+    }
+    Ok(applied)
+}
+
 #[derive(Debug)]
 pub(in crate::shared) struct Applied {
     pub(in crate::shared) head: Head,
     pub(in crate::shared) revision: i64,
-    /// Same source revision and recipe: silver unchanged, upload ignored.
+    /// Previously accepted snapshot with matching canonical history.
     pub(in crate::shared) duplicate: bool,
     pub(in crate::shared) changed: bool,
     pub(in crate::shared) removed: u64,
@@ -309,12 +359,12 @@ impl Upload<'_> {
     }
 }
 
-/// Validate the complete upload and commit its silver changes, or nothing.
+/// Validate and stage the complete upload; the caller owns commit or rollback.
 #[allow(
     clippy::too_many_lines,
     reason = "one protocol boundary: validate every event before the transaction commits"
 )]
-pub(in crate::shared) fn apply(
+fn apply(
     tx: &Transaction<'_>,
     identity: &Identity,
     file: &tempfile::NamedTempFile,
@@ -356,13 +406,6 @@ pub(in crate::shared) fn apply(
             deleted: BTreeSet::new(),
         },
     };
-    if duplicate {
-        // Validate a retried snapshot using the same ingestion rules, then
-        // roll it back. Its canonical content must match retained silver;
-        // only vectors/settings may differ when rebuilding derived views.
-        tx.execute_batch("SAVEPOINT retry_validation")
-            .map_err(database)?;
-    }
     upload
         .applied
         .head
@@ -469,12 +512,9 @@ pub(in crate::shared) fn apply(
                 "snapshot revision already committed with different silver",
             ));
         }
-        tx.execute_batch("ROLLBACK TO retry_validation; RELEASE retry_validation")
-            .map_err(database)?;
         applied.head = previous.ok_or_else(|| AppError::internal("duplicate without head"))?;
         applied.head.last_synced_at = Some(now());
         applied.changed = false;
-        put_head(tx, &applied.head)?;
         return Ok(applied);
     }
     let now = now();

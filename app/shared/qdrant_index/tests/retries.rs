@@ -78,18 +78,14 @@ async fn qdrant_retry_removes_documents_deleted_by_an_interrupted_publication() 
     partial.finish(&fixture.store).await.unwrap();
     // Complete only the real silver transaction, as when synchronization fails
     // before its first Qdrant write. Retry has no in-memory Applied.deleted set.
-    fixture
-        .silver
-        .write(&fixture.identity, |tx| {
-            crate::shared::silver_store::apply::apply(
-                tx,
-                &fixture.identity,
-                &Fixture::forget(2, &["thread"]),
-                fixture.store.build(),
-                &crate::shared::activity::Progress::default(),
-            )
-        })
-        .unwrap();
+    crate::shared::silver_store::apply::write(
+        &fixture.silver,
+        &fixture.identity,
+        &Fixture::forget(2, &["thread"]),
+        fixture.store.build(),
+        &crate::shared::activity::Progress::default(),
+    )
+    .unwrap();
     let retry = Fixture::upload(&[Event::Start(Fixture::start(2)), Event::Finish]);
     fixture
         .server
