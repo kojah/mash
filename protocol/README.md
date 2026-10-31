@@ -257,6 +257,20 @@ multiple servers with different silver directories sharing one Qdrant namespace.
 Successful operations are assumed durable and ordered at the modeled boundary;
 there is no proof of storage engines or network cancellation semantics here.
 
+Publication no longer waits for collection-wide optimizer idleness (`mash-yves`).
+The `SharedViews` actions/configurations are unchanged: `WritePoint` abstracts
+completed, awaited Qdrant writes/deletes, and `Certify` records their revision.
+Background index maintenance does not change those logical documents. Native
+publication still uses `wait=true&ordering=strong`, includes unindexed data in
+queries, and checks health plus bounded retrieval probes after certification.
+Yellow/optimizing health is accepted; failed, paused or unreadable health is not.
+A failed probe can follow a persisted certificate, as before: readiness evidence
+does not promise optimizer quiescence or query latency. This change removes an
+unmodeled post-certification wait, not a silver/views durability boundary.
+The real-backend readiness regression checks applied insert/replacement/deletion
+visibility while a proxy continuously reports optimization; API tests forbid
+polling the optimization queue. These checks do not prove latency at fleet scale.
+
 ### Retry recovery source mapping
 
 [RetryViews.tla](RetryViews.tla) adds the retry details that `SharedViews` abstracts
@@ -383,6 +397,9 @@ commit, early publication acknowledgement, expiry of committed work and acceptan
 of changed retry bytes. Each must violate its named invariant.
 
 `Accepted`, exact duplicate pieces and rejected inputs are abstract stutters.
+In this proposed protocol, `Published` requires certified applied views, never
+collection-wide optimizer idleness. Future implementation must preserve this
+distinction even when multiple nodes share a Qdrant collection.
 Expiry is nondeterministic, with no wall-clock guarantee, and a terminally closed
 operation is not reopened. Hash equality stands for exact payload identity.
 There is no proof of protobuf/Zstd parsing, fsync behavior, attachment handling,

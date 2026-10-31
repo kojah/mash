@@ -7,6 +7,7 @@ use axum::{
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 struct Replies {
@@ -70,36 +71,31 @@ const YELLOW: &str = r#"{"status":"yellow","optimizer_status":"ok"}"#;
 const IDLE: &str = r#"{"summary":{"queued_optimizations":0},"running":[]}"#;
 
 #[tokio::test]
-async fn acknowledgement_waits_for_running_and_queued_optimizations() {
-    let (client, state, server) = fixture(
-        &[YELLOW, GREEN],
-        &[
-            r#"{"summary":{"queued_optimizations":0},"running":[{"diagnostic":"private-canary"}]}"#,
-            r#"{"summary":{"queued_optimizations":1},"running":[]}"#,
-            IDLE,
-        ],
-    )
-    .await;
-    client
-        .settle_search_with_budget("test", Duration::from_secs(2), Duration::from_millis(1))
-        .await
-        .unwrap();
-    let state = state.lock().unwrap();
-    assert_eq!(state.health_calls, 4);
-    assert_eq!(state.progress_calls, 3);
-    server.abort();
+async fn publication_health_does_not_wait_for_running_or_queued_optimizations() {
+    for status in [YELLOW, GREEN] {
+        let (client, state, server) = fixture(
+            &[status],
+            &[r#"{"summary":{"queued_optimizations":10},"running":[{}]}"#],
+        )
+        .await;
+        tokio::time::timeout(Duration::from_secs(2), client.check_search_health("test"))
+            .await
+            .expect("background maintenance must not delay publication")
+            .unwrap();
+        let state = state.lock().unwrap();
+        assert_eq!(state.health_calls, 1);
+        assert_eq!(state.progress_calls, 0);
+        server.abort();
+    }
 }
 
 #[tokio::test]
 async fn healthy_small_publications_do_not_wait() {
     let (client, state, server) = fixture(&[GREEN], &[IDLE]).await;
-    client
-        .settle_search_with_budget("test", Duration::from_secs(2), Duration::from_secs(10))
-        .await
-        .unwrap();
+    client.check_search_health("test").await.unwrap();
     let state = state.lock().unwrap();
     assert_eq!(state.health_calls, 1);
-    assert_eq!(state.progress_calls, 1);
+    assert_eq!(state.progress_calls, 0);
     server.abort();
 }
 
@@ -109,13 +105,11 @@ async fn failed_paused_and_malformed_health_fail_closed_without_diagnostics() {
         r#"{"status":"red","optimizer_status":"ok"}"#,
         r#"{"status":"grey","optimizer_status":"ok"}"#,
         r#"{"status":"green","optimizer_status":{"error":"private-canary"}}"#,
+        r#"{"status":"yellow","optimizer_status":{"error":"private-canary"}}"#,
         r#"{"status":"foreign","optimizer_status":"ok"}"#,
     ] {
         let (client, state, server) = fixture(&[reply], &[IDLE]).await;
-        let error = client
-            .settle_search_with_budget("test", Duration::from_secs(2), Duration::from_millis(1))
-            .await
-            .unwrap_err();
+        let error = client.check_search_health("test").await.unwrap_err();
         assert!(error.error.message.contains("committed"));
         assert!(!error.error.message.contains("private-canary"));
         assert_eq!(state.lock().unwrap().health_calls, 1);
@@ -124,27 +118,28 @@ async fn failed_paused_and_malformed_health_fail_closed_without_diagnostics() {
 }
 
 #[tokio::test]
-async fn drain_budget_cancels_stalled_health_reads() {
+async fn health_check_retains_the_bounded_http_deadline() {
     let app = Router::new().route(
         "/collections/test",
         get(|| async { std::future::pending::<String>().await }),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let client = Client::new(
+    let mut client = Client::new(
         &format!("http://{}", listener.local_addr().unwrap()),
         None,
         4096,
     )
     .unwrap();
+    client.http = reqwest::Client::builder()
+        .timeout(Duration::from_millis(50))
+        .build()
+        .unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let started = std::time::Instant::now();
-    let error = client
-        .settle_search_with_budget("test", Duration::from_millis(50), Duration::from_millis(1))
-        .await
-        .unwrap_err();
+    let error = client.check_search_health("test").await.unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(1));
     assert!(error.error.message.contains("committed"));
-    assert!(error.error.message.contains("still optimizing"));
+    assert!(error.error.message.contains("unavailable"));
     server.abort();
 }
 

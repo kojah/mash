@@ -1705,9 +1705,12 @@ commits. Long SQLite statements can run without intermediate updates; elapsed
 time alone does not prove a stall. Detached server work remains visible after
 its requester disconnects. Completed work disappears; server restart resets the
 inventory. Older servers omit this field, which means unknown.
-The `optimizing_views` phase waits for Qdrant's optimizer; `checking_search`
-then probes retrieval. Both can take time after document writes have finished,
-and their counters do not estimate remaining optimizer work.
+The `checking_search` phase checks collection health once and probes retrieval
+after awaited document writes. Normal background optimization does not delay
+publication: no collection-wide optimizer drain is required. Failed or paused
+optimization and failed probes still return errors. Certification describes
+applied search data, not an idle optimizer or a guarantee of query latency under
+load. Older servers report `optimizing_views` while waiting for a drain.
 
 When mutation slots are occupied, up to 32 authenticated requests wait in FIFO
 order for at most five minutes before returning a retryable capacity error. Waiting

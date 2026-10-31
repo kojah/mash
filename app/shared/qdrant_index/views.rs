@@ -221,7 +221,7 @@ impl Store {
             .await
     }
 
-    /// Drain optimization started by synchronization, then exercise retrieval.
+    /// Check health and exercise retrieval after awaited document writes.
     pub(in crate::shared) async fn settle(
         &self,
         identity: &Identity,
@@ -229,10 +229,9 @@ impl Store {
     ) -> Result<(), AppError> {
         use crate::shared::activity::{Phase, Unit};
         let name = collection(&identity.group_id, false);
-        progress.phase(Phase::OptimizingViews, Unit::Records);
-        self.api.settle_search(&name).await?;
+        progress.phase(Phase::CheckingSearch, Unit::Records);
+        self.api.check_search_health(&name).await?;
         if self.build.dense_enabled() {
-            progress.phase(Phase::CheckingSearch, Unit::Records);
             let configuration = self.active_configuration(identity).await?;
             self.api
                 .warm_search(

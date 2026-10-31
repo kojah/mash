@@ -60,7 +60,7 @@ impl Update {
 
 impl Client {
     /// An intentional query activation may schedule a one-time graph rebuild.
-    /// Serving does not wait for that rebuild; publication owns optimizer drains.
+    /// Serving and publication do not wait for that background rebuild.
     pub(in crate::shared::qdrant_index) async fn prepare_query(
         &self,
         name: &str,

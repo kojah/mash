@@ -1,8 +1,7 @@
-//! Publication owns the optimizer drain; interactive searches retain their budget.
+//! Check health without making publication wait for collection-wide maintenance.
 use super::super::VectorIndex;
 use super::{AppError, Client, Method};
 use serde::Deserialize;
-use std::time::Duration;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -30,18 +29,6 @@ enum Optimizer {
 struct Health {
     status: Status,
     optimizer_status: Optimizer,
-}
-
-#[derive(Deserialize)]
-struct Summary {
-    queued_optimizations: usize,
-}
-
-#[derive(Deserialize)]
-struct Progress {
-    summary: Summary,
-    // Individual jobs contain diagnostics we neither expose nor need to decode.
-    running: Vec<serde::de::IgnoredAny>,
 }
 
 impl Client {
@@ -88,62 +75,29 @@ impl Client {
         Ok(())
     }
 
-    #[tracing::instrument(name = "qdrant_settle_search", skip_all)]
-    pub(in crate::shared::qdrant_index) async fn settle_search(
+    /// Awaited point writes establish application, not optimizer quiescence.
+    /// Yellow is normal background indexing; other nodes must not delay this
+    /// publication by continuing to write into the same collection.
+    #[tracing::instrument(name = "qdrant_check_search_health", skip_all)]
+    pub(in crate::shared::qdrant_index) async fn check_search_health(
         &self,
         name: &str,
     ) -> Result<(), AppError> {
-        self.settle_search_with_budget(name, Duration::from_secs(300), Duration::from_secs(1))
+        let health: Health = self
+            .call(Method::GET, &format!("collections/{name}"), None::<&()>)
             .await
-    }
-
-    async fn settle_search_with_budget(
-        &self,
-        name: &str,
-        budget: Duration,
-        interval: Duration,
-    ) -> Result<(), AppError> {
-        tokio::time::timeout(budget, async {
-            loop {
-                let health: Health = self
-                    .call(Method::GET, &format!("collections/{name}"), None::<&()>)
-                    .await
-                    .map_err(|_| unavailable())?;
-                if let Optimizer::Failed { error: _error } = health.optimizer_status {
-                    return Err(AppError::shared(
-                        "shared publication committed but Qdrant optimization failed; inspect backend health",
-                    ));
-                }
-                match health.status {
-                    Status::Red | Status::Grey => {
-                        return Err(AppError::shared(
-                            "shared publication committed but Qdrant optimization is failed or paused; inspect backend health",
-                        ));
-                    }
-                    Status::Green => {
-                        let progress: Progress = self
-                            .call(
-                                Method::GET,
-                                &format!("collections/{name}/optimizations"),
-                                None::<&()>,
-                            )
-                            .await
-                            .map_err(|_| unavailable())?;
-                        if progress.summary.queued_optimizations == 0 && progress.running.is_empty() {
-                            return Ok(());
-                        }
-                    }
-                    Status::Yellow => {}
-                }
-                tokio::time::sleep(interval).await;
-            }
-        })
-        .await
-        .unwrap_or_else(|_| {
-            Err(AppError::shared(
-                "shared publication committed but Qdrant is still optimizing; check shared status before retrying",
-            ))
-        })
+            .map_err(|_| unavailable())?;
+        if let Optimizer::Failed { error: _error } = health.optimizer_status {
+            return Err(AppError::shared(
+                "shared publication committed but Qdrant optimization failed; inspect backend health",
+            ));
+        }
+        match health.status {
+            Status::Green | Status::Yellow => Ok(()),
+            Status::Red | Status::Grey => Err(AppError::shared(
+                "shared publication committed but Qdrant optimization is failed or paused; inspect backend health",
+            )),
+        }
     }
 }
 

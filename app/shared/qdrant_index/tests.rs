@@ -7,6 +7,7 @@ mod connector_sequences;
 mod exact;
 mod memory;
 mod physical;
+mod readiness;
 mod recipe;
 mod recovery;
 mod retries;
