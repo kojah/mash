@@ -44,6 +44,12 @@ enum Command {
         #[arg(long)]
         diagnostics: bool,
     },
+    /// Publish this node's history as a progressive baseline over /v1/sync.
+    Backfill {
+        /// Baseline identity; reused retries converge on the same session.
+        #[arg(long, default_value = "baseline")]
+        backfill_id: String,
+    },
     /// Discover and index supported local histories.
     Index {
         /// Commit an external connector batch to local silver; receipt reports views readiness.
@@ -289,6 +295,10 @@ pub(super) enum Response {
         version: &'static str,
         silver_schema: i64,
     },
+    Backfill {
+        backfill_id: String,
+        revision: i64,
+    },
     WatchStopped {
         watching: bool,
     },
@@ -322,6 +332,11 @@ impl Cli {
                 shared,
                 diagnostics,
             },
+            Command::Backfill { .. } => {
+                return Err(AppError::internal(
+                    "backfill is dispatched before request mapping",
+                ));
+            }
             Command::Index {
                 connector_batch: Some(batch_file),
                 ..
@@ -339,6 +354,7 @@ impl Cli {
                 provider,
                 since_days,
                 all_history,
+                defer_publication: false,
             }),
             Command::Search {
                 shared_vector_search,
@@ -589,31 +605,61 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
             );
         };
         let admission = lease.clone();
-        let result = crate::watch::run(request.clone(), debounce, shutdown, role, move || {
-            let request = request.clone();
-            let lease = admission.clone();
-            async move {
-                crate::blocking(move || lease.ensure_current()).await?;
-                let response = core::execute(request).await?;
-                let retry = response.needs_retry();
-                let mut stdout = std::io::stdout();
-                crate::write_json(&mut stdout, &response)?;
-                stdout
-                    .flush()
-                    .map_err(|_| AppError::internal("flush watch output"))?;
-                Ok(retry)
-            }
-        })
-        .await;
+        // Watch collects state continuously; publish out of band so a slow
+        // server never blocks the next indexing pass.
+        let mut watch_request = request.clone();
+        if let crate::core::Request {
+            operation: crate::core::Operation::Index(index),
+            ..
+        } = &mut watch_request
+        {
+            index.defer_publication = true;
+        }
+        let result =
+            crate::watch::run(watch_request.clone(), debounce, shutdown, role, move || {
+                let request = watch_request.clone();
+                let lease = admission.clone();
+                async move {
+                    crate::blocking(move || lease.ensure_current()).await?;
+                    let response = core::execute(request).await?;
+                    let retry = response.needs_retry();
+                    let mut stdout = std::io::stdout();
+                    crate::write_json(&mut stdout, &response)?;
+                    stdout
+                        .flush()
+                        .map_err(|_| AppError::internal("flush watch output"))?;
+                    Ok(retry)
+                }
+            })
+            .await;
         signal.abort();
         result?;
         crate::blocking(move || lease.ensure_current()).await?;
         return Ok(Response::WatchStopped { watching: false });
     }
+    if let Command::Backfill { backfill_id } = &cli.command {
+        let backfill_id = backfill_id.clone();
+        return backfill(&cli.paths(), &backfill_id).await;
+    }
     core::execute(cli.into_request()?)
         .await
         .map(Box::new)
         .map(Response::Operation)
+}
+
+/// Operator entry point: publish this node's complete history as a baseline.
+async fn backfill(paths: &Paths, backfill_id: &str) -> Result<Response, AppError> {
+    let configuration = crate::config::load(paths.config.as_deref())?;
+    let shared = core::publication_config(&configuration).ok_or_else(|| {
+        AppError::usage("backfill requires a shared destination in the configuration")
+    })?;
+    let database = paths.db.clone().unwrap_or_else(core::default_database_path);
+    let revision =
+        crate::shared::publication::publish_backfill(&database, shared, backfill_id).await?;
+    Ok(Response::Backfill {
+        backfill_id: backfill_id.to_owned(),
+        revision,
+    })
 }
 
 #[cfg(test)]
@@ -822,6 +868,7 @@ mod tests {
             names,
             [
                 "list-chats",
+                "backfill",
                 "index",
                 "search",
                 "view",

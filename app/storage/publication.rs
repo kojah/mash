@@ -260,6 +260,38 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
     })
 }
 
+/// What a completed publication may remove from the local change journal.
+///
+/// During a progressive baseline the journal must survive until the baseline is
+/// covered *and* contiguous live coverage has been published; acknowledging a
+/// sparse recent batch is not enough.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "baseline producers arrive with the client backfill sender; the gate is enforced and tested now"
+)]
+pub(crate) enum JournalCoverage {
+    /// Ordinary incremental publication: this captured range is complete.
+    Incremental { through: i64 },
+    /// A baseline is still in progress; record the acknowledgement, keep rows.
+    BaselinePending,
+    /// Baseline complete and contiguous live coverage reached `through`.
+    BaselineComplete { through: i64 },
+}
+
+impl JournalCoverage {
+    /// Highest revision whose journal rows may be deleted, bounded by what was
+    /// actually published.
+    fn prunable(self, published: i64) -> Option<i64> {
+        match self {
+            Self::BaselinePending => None,
+            Self::Incremental { through } | Self::BaselineComplete { through } => {
+                Some(through.min(published))
+            }
+        }
+    }
+}
+
 impl Storage {
     /// New publication policy/destination must advance the revision even if
     /// bronze is unchanged. Persist the target now so failed uploads retry the
@@ -306,6 +338,7 @@ impl Storage {
         &self,
         target: &str,
         revision: i64,
+        coverage: JournalCoverage,
     ) -> Result<(), AppError> {
         let transaction = self
             .connection
@@ -315,8 +348,10 @@ impl Storage {
             "UPDATE shared_publication SET acknowledged = MAX(acknowledged,?2) WHERE singleton = 1 AND target = ?1 AND revision >= ?2",
             (target, revision),
         ).map_err(AppError::database)?;
-        transaction.execute("DELETE FROM shared_changes WHERE revision<=?2 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,revision)).map_err(AppError::database)?;
-        transaction.execute("UPDATE shared_change_state SET floor=MAX(floor,?2) WHERE singleton=1 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,revision)).map_err(AppError::database)?;
+        if let Some(prune) = coverage.prunable(revision) {
+            transaction.execute("DELETE FROM shared_changes WHERE revision<=?2 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,prune)).map_err(AppError::database)?;
+            transaction.execute("UPDATE shared_change_state SET floor=MAX(floor,?2) WHERE singleton=1 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,prune)).map_err(AppError::database)?;
+        }
         transaction.commit().map_err(AppError::database)
     }
 

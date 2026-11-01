@@ -7,6 +7,13 @@ use axum::extract::{Extension, Request, State};
 use axum::http::StatusCode;
 use futures_util::TryStreamExt;
 
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "legacy HTTP mutation path retained for test coverage only; /v1/sync replaces it"
+    )
+)]
 pub(super) async fn ingest(
     State(app): State<App>,
     Extension(identity): Extension<Identity>,

@@ -22,8 +22,9 @@ pub(in crate::shared) fn write(
     file: &tempfile::NamedTempFile,
     build: &Build,
     progress: &crate::shared::activity::Progress,
+    receipt: Option<&super::SyncReceipt>,
 ) -> Result<Applied, AppError> {
-    write_inner(store, identity, file, build, progress, || Ok(()))
+    write_inner(store, identity, file, build, progress, receipt, || Ok(()))
 }
 
 fn write_inner(
@@ -32,13 +33,14 @@ fn write_inner(
     file: &tempfile::NamedTempFile,
     build: &Build,
     progress: &crate::shared::activity::Progress,
+    receipt: Option<&super::SyncReceipt>,
     after_rollback: impl FnOnce() -> Result<(), AppError>,
 ) -> Result<Applied, AppError> {
     let mut connection = store.connect(identity)?;
     let transaction = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(database)?;
-    let applied = apply(&transaction, identity, file, build, progress)?;
+    let applied = apply(&transaction, identity, file, build, progress, receipt)?;
     progress.phase(
         crate::shared::activity::Phase::CommittingSilver,
         crate::shared::activity::Unit::Records,
@@ -370,6 +372,7 @@ fn apply(
     file: &tempfile::NamedTempFile,
     build: &Build,
     progress: &crate::shared::activity::Progress,
+    receipt: Option<&super::SyncReceipt>,
 ) -> Result<Applied, AppError> {
     let previous = head(tx)?;
     let (input, lines) = first_line(file)?;
@@ -396,6 +399,9 @@ fn apply(
                 source_silver: None,
                 last_synced_at: None,
                 last_updated_at: None,
+                operation_id: None,
+                manifest_digest: None,
+                receipt_digest: None,
             }),
             revision,
             duplicate,
@@ -515,6 +521,7 @@ fn apply(
         applied.head = previous.ok_or_else(|| AppError::internal("duplicate without head"))?;
         applied.head.last_synced_at = Some(now());
         applied.changed = false;
+        stamp_receipt(&mut applied.head, receipt);
         return Ok(applied);
     }
     let now = now();
@@ -528,6 +535,21 @@ fn apply(
     if applied.changed {
         applied.head.last_updated_at = Some(now);
     }
+    stamp_receipt(&mut applied.head, receipt);
     put_head(tx, &applied.head)?;
     Ok(applied)
+}
+
+/// Record the transfer receipt on the head inside the silver transaction, so a
+/// receipt exists if and only if the described history committed.
+fn stamp_receipt(head: &mut Head, receipt: Option<&super::SyncReceipt>) {
+    let Some(receipt) = receipt else {
+        return;
+    };
+    head.receipt_digest = Some(super::receipt_digest(
+        &receipt.manifest_digest,
+        head.revision,
+    ));
+    head.manifest_digest = Some(receipt.manifest_digest.clone());
+    head.operation_id = Some(receipt.operation_id.clone());
 }

@@ -9,14 +9,14 @@ use axum::{
 };
 use std::path::PathBuf;
 
-fn directory(app: &App, id: &Identity, node: &str) -> Option<PathBuf> {
+pub(super) fn directory(app: &App, id: &Identity, node: &str) -> Option<PathBuf> {
     app.attachments_dir.as_ref().map(|root| {
         root.join(blake3::hash(id.group_id.as_bytes()).to_hex().as_str())
             .join(blake3::hash(node.as_bytes()).to_hex().as_str())
     })
 }
 
-async fn known(
+pub(super) async fn known(
     app: &App,
     identity: &Identity,
     input: &attachments::Request,
@@ -108,6 +108,13 @@ pub(super) async fn get(
     Ok(Json(result))
 }
 
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "legacy HTTP mutation path retained for test coverage only; /v1/sync replaces it"
+    )
+)]
 pub(super) async fn upload(
     State(app): State<App>,
     Extension(id): Extension<Identity>,

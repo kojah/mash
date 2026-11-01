@@ -33,6 +33,32 @@ pub(super) struct Head {
     pub(super) source_silver: Option<crate::silver::certificate::Certificate>,
     pub(super) last_synced_at: Option<String>,
     pub(super) last_updated_at: Option<String>,
+    /// Last `/v1/sync` operation committed in this same transaction. Absent for
+    /// publications that arrived through the legacy HTTP mutation route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) receipt_digest: Option<String>,
+}
+
+/// Transfer receipt recorded with the silver commit it describes. The
+/// transport catalog only tracks spool state; this is the canonical evidence.
+#[derive(Clone, Debug)]
+pub(super) struct SyncReceipt {
+    pub(super) operation_id: String,
+    pub(super) manifest_digest: String,
+}
+
+/// Receipt identity over the transfer manifest and committed revision. The
+/// client, the silver head and the transport catalog all use this function.
+pub(super) fn receipt_digest(manifest: &str, revision: i64) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"mash-sync-receipt-v1\0");
+    hasher.update(manifest.as_bytes());
+    hasher.update(&revision.to_le_bytes());
+    hasher.finalize().to_hex().to_string()
 }
 
 /// One silver database per configured node under a root directory:

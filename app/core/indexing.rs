@@ -60,7 +60,25 @@ pub(super) async fn run(
     })
     .await?;
     if let Some(config) = publication_config(configuration) {
-        result.shared = Some(
+        result.shared = Some(if request.defer_publication {
+            // Watch mode: the local pass is complete; a slow network publisher
+            // must not hold the indexing task. The queue publishes the newest
+            // snapshot for this database.
+            match shared::publication::enqueue(
+                database,
+                config,
+                models,
+                configuration.embeddings.as_ref(),
+                configuration.attachments.share_files,
+            ) {
+                Ok(()) => shared::Publication::pending(),
+                Err(error) => {
+                    let mut pending = shared::Publication::pending();
+                    pending.attachment_failure(error);
+                    pending
+                }
+            }
+        } else {
             shared::publish(
                 database,
                 config,
@@ -69,8 +87,8 @@ pub(super) async fn run(
                     embeddings: configuration.embeddings.as_ref(),
                 }),
             )
-            .await,
-        );
+            .await
+        });
     }
     if configuration.attachments.share_files
         && let Some(publication) = &mut result.shared

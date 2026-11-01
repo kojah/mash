@@ -14,7 +14,13 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
             Ok(())
         })
         .unwrap();
-    storage.acknowledge_publication("journal", base).unwrap();
+    storage
+        .acknowledge_publication(
+            "journal",
+            base,
+            crate::storage::publication::JournalCoverage::Incremental { through: base },
+        )
+        .unwrap();
     crate::storage::test_support::write(
         &database,
         "UPDATE objects SET title='changed' WHERE origin='provider' AND id='a'; DELETE FROM objects WHERE origin='provider' AND id='b';",

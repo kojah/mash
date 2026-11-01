@@ -21,6 +21,7 @@ mod restart;
 mod selections;
 mod silver_revision;
 mod source_silver;
+mod sync;
 mod views;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
@@ -214,7 +215,7 @@ async fn remote_space_contract(service: Service) {
 }
 
 struct Service {
-    _attachments: tempfile::TempDir,
+    attachments: tempfile::TempDir,
     silver_dir: tempfile::TempDir,
     url: String,
     group: String,
@@ -432,6 +433,17 @@ impl Service {
     async fn qdrant(dimensions: usize) -> Self {
         Self::with_parameters(true, dimensions, 64 * 1024 * 1024, FIRST).await
     }
+    /// Qdrant-backed service whose views certification fails after silver commits.
+    async fn qdrant_views_failure(dimensions: usize) -> Self {
+        Self::with_backend(
+            TestBackend::Qdrant,
+            dimensions,
+            64 * 1024 * 1024,
+            FIRST,
+            true,
+        )
+        .await
+    }
     async fn with_parameters(
         available: bool,
         dimensions: usize,
@@ -447,19 +459,25 @@ impl Service {
             dimensions,
             max_node_bytes,
             first_token,
+            false,
         )
         .await
     }
 
     async fn canonical() -> Self {
-        Self::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST).await
+        Self::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST, false).await
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one explicit shared-service fixture for every server test"
+    )]
     async fn with_backend(
         backend: TestBackend,
         dimensions: usize,
         max_node_bytes: usize,
         first_token: &str,
+        views_failure: bool,
     ) -> Self {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
@@ -528,7 +546,12 @@ impl Service {
                 identities.values(),
             )
             .unwrap();
-            with_test_embedder(Store::new(silver, views, max_node_bytes as u64))
+            let store = with_test_embedder(Store::new(silver, views, max_node_bytes as u64));
+            if views_failure {
+                store.with_views_interruption()
+            } else {
+                store
+            }
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -539,6 +562,7 @@ impl Service {
             activity: crate::shared::activity::Registry::default(),
             mutation_capacity: uploads.available_permits(),
             attachments_dir: Some(attachments.path().to_path_buf()),
+            transfer_dir: directory.path().join("sync"),
             store: store.clone(),
             identities: identities.clone(),
             uploads: uploads.clone(),
@@ -548,7 +572,7 @@ impl Service {
             axum::serve(listener, router(app)).await.unwrap();
         });
         Self {
-            _attachments: attachments,
+            attachments,
             silver_dir: directory,
             url,
             group,
@@ -569,6 +593,39 @@ impl Service {
     async fn state(&self) -> protocol::NodeState {
         self.store.state(&self.first).await.unwrap()
     }
+    /// App handle over this service's durable state, for recovery and sweeps.
+    fn app(&self) -> App {
+        App {
+            activity: crate::shared::activity::Registry::default(),
+            mutation_capacity: self.uploads.available_permits(),
+            attachments_dir: Some(self.attachments.path().to_path_buf()),
+            transfer_dir: self.silver_dir.path().join("sync"),
+            store: self.store.clone(),
+            identities: self.identities.clone(),
+            uploads: self.uploads.clone(),
+            waiters: self.waiters.clone(),
+        }
+    }
+
+    /// Run startup recovery against this service's durable transfer directory.
+    async fn recover(&self) -> usize {
+        super::sync::recover(&self.app()).await.unwrap()
+    }
+
+    /// Start the periodic expiry sweep with test-friendly timing.
+    fn spawn_expiry(
+        &self,
+        period: std::time::Duration,
+        retention: std::time::Duration,
+    ) -> tokio::task::JoinHandle<()> {
+        super::sync::spawn_expiry(self.app(), period, retention)
+    }
+
+    /// Start the durable apply retry with test-friendly timing.
+    fn spawn_apply_retry(&self, period: std::time::Duration) -> tokio::task::JoinHandle<()> {
+        super::sync::spawn_apply_retry(self.app(), period)
+    }
+
     fn request(&self, route: &str, token: &str) -> reqwest::RequestBuilder {
         reqwest::Client::new()
             .post(format!("{}/v1/{route}", self.url))

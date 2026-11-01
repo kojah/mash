@@ -1,8 +1,11 @@
 ------------------------- MODULE ProgressiveBackfill -------------------------
 EXTENDS Naturals, FiniteSets
 
-\* PROPOSED protocol. Frozen baseline R=1 has two complete conversations.
-\* Live revision 2 edits a; revision 3 deletes a. Every batch is independent.
+\* PARTIALLY IMPLEMENTED contract. The manifest transfer, durable baseline
+\* membership and completion check exist in /v1/sync and the sync catalog.
+\* Version ordering, tombstone dominance and journal pruning are not implemented.
+\* Frozen baseline R=1 has two complete conversations. Live revision 2 edits a;
+\* revision 3 deletes a. Every batch is independent.
 \* Source revisions are application ordering, not timestamps or silver revisions.
 CONSTANTS GuardVersions, KeepTombstones, EarlyFinish, SparseAck
 Chats == {"a", "b"}

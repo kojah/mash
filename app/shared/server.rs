@@ -17,6 +17,7 @@ mod configuration;
 mod connectors;
 mod contexts;
 pub(super) mod store;
+mod sync;
 mod upload;
 
 use super::protocol;
@@ -37,6 +38,7 @@ struct App {
     activity: super::activity::Registry,
     mutation_capacity: usize,
     attachments_dir: Option<std::path::PathBuf>,
+    transfer_dir: std::path::PathBuf,
     store: Store,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
     uploads: Arc<tokio::sync::Semaphore>,
@@ -123,6 +125,11 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
         }
     }
     request.extensions_mut().insert(identity.clone());
+    // A WebSocket owns its own durable operation lifetime; the HTTP bulk
+    // deadline must not terminate a resumable synchronization connection.
+    if request.uri().path() == "/v1/sync" {
+        return next.run(request).await;
+    }
     let timeout = match request.uri().path() {
         "/v1/index" => super::BULK_TIMEOUT,
         _ => Duration::from_secs(600),
@@ -138,7 +145,7 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
         })
 }
 fn router(app: App) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/v1/freshness", get(freshness))
         .route("/v1/search", post(search))
         .route("/v1/chats", post(list_chats))
@@ -146,12 +153,19 @@ fn router(app: App) -> Router {
         .route("/v1/contexts", post(contexts::read))
         .route("/v1/attachments", post(attachments::list))
         .route("/v1/attachment", post(attachments::get))
+        .route("/v1/sync", get(sync::upgrade));
+    // The legacy HTTP mutation routes were removed in the protocol-matched
+    // release. Tests still mount them to keep HTTP-level coverage of the silver
+    // limits and authorization they used; no released router exposes them.
+    #[cfg(test)]
+    let router = router
+        .route("/v1/index", post(index))
+        .route("/v1/connector-batches", post(connectors::ingest))
         .route(
             "/v1/attachment-upload",
             post(attachments::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
-        )
-        .route("/v1/index", post(index))
-        .route("/v1/connector-batches", post(connectors::ingest))
+        );
+    router
         .method_not_allowed_fallback(|| async {
             ApiError(
                 StatusCode::METHOD_NOT_ALLOWED,
@@ -281,6 +295,13 @@ async fn view(
     }
     Ok(Json(messages))
 }
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "legacy HTTP mutation handler retained for test coverage only; /v1/sync replaces it"
+    )
+)]
 async fn index(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
@@ -356,21 +377,46 @@ pub(crate) async fn run(
         .local_addr()
         .map_err(|_| AppError::internal("get HTTP listener address"))?;
     crate::write_json(&mut std::io::stderr(), &Listening { listening: address })?;
+    let transfer_dir = config.silver_dir()?.join("sync");
     let app = App {
         activity: super::activity::Registry::default(),
         mutation_capacity: config.max_concurrent_uploads,
         attachments_dir: config.attachments_dir,
+        transfer_dir,
         store,
         identities: Arc::new(identities),
         uploads: Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_uploads)),
         waiters: Arc::new(tokio::sync::Semaphore::new(admission::MAX_WAITERS)),
     };
-    axum::serve(listener, router(app))
+    // Resume durable transfers before accepting requests. A failure is logged
+    // rather than fatal: the endpoint still serves and a client can resume.
+    match sync::recover(&app).await {
+        Ok(0) => {}
+        Ok(resumed) => {
+            crate::write_json(
+                &mut std::io::stderr(),
+                &serde_json::json!({"sync_recovered_operations": resumed}),
+            )?;
+        }
+        Err(error) => {
+            tracing::warn!(
+                kind = ?error.error.kind,
+                message = %error.error.message,
+                "durable synchronization recovery failed"
+            );
+        }
+    }
+    let expiry = sync::spawn_periodic_expiry(app.clone());
+    let apply_retry = sync::spawn_apply_recovery(app.clone());
+    let served = axum::serve(listener, router(app))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .map_err(|_| AppError::internal("HTTP server failed"))
+        .map_err(|_| AppError::internal("HTTP server failed"));
+    expiry.abort();
+    apply_retry.abort();
+    served
 }
 
 #[cfg(test)]

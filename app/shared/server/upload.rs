@@ -14,6 +14,13 @@ pub(super) async fn spool_tracked(
     spool_body(body, max_bytes, true, progress).await
 }
 
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "legacy HTTP mutation path retained for test coverage only; /v1/sync replaces it"
+    )
+)]
 pub(super) async fn spool_bytes(
     body: Body,
     max_bytes: u64,

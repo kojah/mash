@@ -495,6 +495,7 @@ impl Mash {
                 provider: request.provider,
                 since_days: request.since_days,
                 all_history: request.all_history,
+                defer_publication: false,
             }),
             Some(context),
         )

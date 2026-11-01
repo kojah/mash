@@ -326,7 +326,7 @@ fn required_shared(configuration: &ResolvedConfig) -> Result<&config::SharedConf
 }
 
 /// Both mode publishes exactly the local index.
-fn publication_config(configuration: &ResolvedConfig) -> Option<&config::SharedConfig> {
+pub(crate) fn publication_config(configuration: &ResolvedConfig) -> Option<&config::SharedConfig> {
     (configuration.destination == config::IndexDestination::Both)
         .then_some(configuration.shared.as_ref())
         .flatten()

@@ -366,55 +366,264 @@ recovery. Recovery is manual and retries fail closed. Individual failure during
 marker creation/removal may conservatively leave a marker; it must never authorize
 retirement without a validated import. No progress/liveness property is claimed.
 
-### Proposed WebSocket synchronization: transfer and durable acknowledgement
+### WebSocket synchronization: transfer and durable acknowledgement
 
-[SyncTransfer.tla](SyncTransfer.tla) is a **design contract, not implemented
-WebSocket behavior** (design issue `mash-kjok`, model task `mash-lqb7`). It bounds
-one immutable publication batch to two pieces. Receipt and persistence may occur
-in either piece order; persisted checkpoint metadata and its client report are
-separate actions. Restart retains only the checkpointed prefix. A validated,
-complete transfer enters a durable queue; starting its worker transfers ownership
-away from the socket. Disconnect does not cancel that worker. A process crash
-loses the worker, while queued work and committed evidence survive.
+[SyncTransfer.tla](SyncTransfer.tla) models the publication transfer path that
+now runs over the authenticated `/v1/sync` WebSocket. It bounds one immutable
+publication batch to two pieces. Receipt and persistence may occur in either
+piece order; persisted checkpoint metadata and its client report are separate
+actions. Restart retains only the checkpointed prefix. A validated, complete
+transfer enters a durable queue; starting its worker transfers ownership away
+from the socket. Disconnect does not cancel that worker. A process crash loses
+the worker, while queued work and committed evidence survive.
 
-The proposed atomic boundaries are explicit:
+Implemented source mapping:
 
-- `Persist` completes piece persistence before `SaveCheckpoint` records a
-  resumable prefix; `ReportCheckpoint` may follow independently.
-- `Queue` records completed-transfer validation and durable queue admission.
-- `Commit` writes canonical silver and its operation receipt in one SQLite
-  transaction. `Certify` abstracts successful views repair; `Acknowledge` is the
-  later client receipt of `Published`, not the initial `Accepted` message.
-- `Close` represents terminal cancellation/expiry before application starts.
-  It ends checkpoint retention explicitly; it cannot discard a committed batch.
+- `Receive` / `ChangedRetry`: `app/shared/server/sync.rs::handle_chunk` checks
+  the negotiated limits, zstd envelope and decoded digest before
+  `app/shared/sync/catalog.rs::append` rejects gaps, foreign owners and
+  conflicting retries of a retained sequence.
+- `Persist`: `Catalog::write_piece` creates the piece file with `create_new`,
+  calls `sync_all` on the file and the piece directory, and only then lets the
+  metadata transaction begin.
+- `SaveCheckpoint`: the same `Catalog::append` SQLite transaction inserts the
+  piece row and advances `next_sequence`/`decoded_offset`; a crash can leave an
+  orphan piece past the checkpoint, which a later identical retry accepts.
+- `ReportCheckpoint`: `handle_chunk` sends `Checkpoint` after the durable append
+  and returns `Credit`. The client sends only pieces that fit its budget.
+- `Queue`: `Catalog::finish` verifies the manifest digest, contiguous decoded
+  offset and ordered piece list, then moves `receiving` to `queued_for_apply`.
+- `Start` / `Commit`: `handle_finish` calls
+  `Store::index_tracked_receipt`, which passes a `SyncReceipt` into
+  `silver_store::apply::write`. The receipt (operation id, manifest digest and
+  receipt digest) is stamped on the shared-silver head **inside the same SQLite
+  transaction as the history**, so a receipt exists if and only if that history
+  committed. `Catalog::published` then records transport bookkeeping only.
+  Re-applying a duplicate publication is idempotent in silver.
+- `Certify`: `index_tracked` completes views synchronization/certification
+  before it returns, so `Published` is sent only after views are current.
+  `SilverCommitted` is emitted after that same call returns, not between silver
+  and views.
+- `Acknowledge`: the `Published` frame carries the revision. `Resume` and
+  `Begin` report the durable outcome after a reconnect.
+- `Disconnect`: the operation stays in the catalog; a later connection resumes
+  from the retained checkpoint. `Close` maps to an explicit `Cancel`, with
+  `TooLateToCancel` after publication.
+- `Session reuse`: the client keeps one negotiated session per endpoint, group,
+  node and database instance. Publications reuse it until it has been idle for
+  30 seconds; a peer close or transport failure invalidates it and the next
+  publication negotiates once more and resumes from the checkpoint. Control
+  frames stay per-operation, so this changes cost, not the state machine.
+- `Accepted`, duplicate pieces and rejected inputs are stutters in the model;
+  the handler acknowledges accepted pieces and fails closed otherwise.
 
-Checks require checkpoints to have persisted data, immutable retry contents,
-atomic silver/receipt evidence, complete data for active workers and certification
-before `Published`. With eventual reconnection and fair processing after failures
-stop, a batch resolves as published or terminally closed. The five negative
-configurations independently introduce premature checkpoints, a separate receipt
-commit, early publication acknowledgement, expiry of committed work and acceptance
-of changed retry bytes. Each must violate its named invariant.
+`SyncTransferSplitClose` is a deliberate broken-behaviour configuration: it
+splits expiry into `CloseClear` (release bytes) and `CloseMark` (mark the row
+closed) instead of the atomic `Close`. `CheckpointIsDurable` must fail between
+them, which is exactly the implementation hazard fixed by the immediate
+transaction above. TLC reports `EXPECTED COUNTEREXAMPLE
+SyncTransferSplitClose: CheckpointIsDurable`.
 
-`Accepted`, exact duplicate pieces and rejected inputs are abstract stutters.
-In this proposed protocol, `Published` requires certified applied views, never
-collection-wide optimizer idleness. Future implementation must preserve this
-distinction even when multiple nodes share a Qdrant collection.
-Expiry is nondeterministic, with no wall-clock guarantee, and a terminally closed
-operation is not reopened. Hash equality stands for exact payload identity.
-There is no proof of protobuf/Zstd parsing, fsync behavior, attachment handling,
-quota/credit accounting, competing sessions or publisher fencing. `Certify` relies
-on the existing `SharedViews` contract; it is not an atomic Qdrant transaction.
+Known implementation/model gaps, recorded in Beads:
 
-### Proposed progressive backfill: coverage, live edits and deletions
+1. `Commit` spans two databases but a single logical outcome: the canonical
+   receipt is written in the silver transaction, while transport state lives in
+   the side catalog. A crash between them leaves `queued_for_apply`/`applying`
+   or `views_pending`, and startup recovery re-applies the retained pieces.
+   `CommitHasReceipt` therefore holds for the canonical receipt, not for the
+   transport row. Coverage evidence is part of the receipt: a baseline
+   `cover` failure, and a live `record_live` failure, both leave the operation
+   `views_pending` and fail the request instead of being logged and ignored, so
+   a later baseline cannot overwrite a conversation whose live revision was
+   never recorded.
+2. Startup recovery is implemented: `server::sync::recover` runs before the
+   listener serves and resumes `queued_for_apply`, `applying` and
+   `views_pending` rows for every configured node, including connector,
+   attachment and backfill-manifest operations. It uses the ordinary mutation
+   admission budget and logs failures instead of blocking startup. The same
+   recovery runs on a 30-second task (`spawn_apply_recovery`), so a queued row
+   converges without a restart or a client reconnect; it is idempotent with
+   both. Receiving transfers are intentionally left for their client.
+3. Abandoned receiving transfers expire. `Catalog::expire_incomplete` releases
+   the spool and marks the row `expired` once its last progress is older than
+   the 24-hour retention advertised as `Welcome.incomplete_retention_ms`. It runs
+   in three places: a periodic server task every minute
+   (`sync::spawn_periodic_expiry`, first tick immediate, aborted with the
+   server), when a connection opens, and during startup recovery. Only
+   `receiving` rows expire — queued, applying and views-pending work is
+   retained. Terminal receipts keep the newest 64 per node.
+   `periodic_sweep_reclaims_an_abandoned_receiving_spool` proves reclamation
+   with no connection and no restart, and that the spool directory is gone.
 
-[ProgressiveBackfill.tla](ProgressiveBackfill.tla) is the second **unimplemented
-design contract**. A frozen baseline at source revision 1 contains conversations
-`a` and `b`; live revision 2 edits `a`, and revision 3 deletes it. Four independent
-batches may be scheduled in any order. Each carries complete conversation state
-or a tombstone. Only one apply/repair worker runs per node, but source edits and
-crashes may interleave with its work. Retrying an already committed batch uses
-its immutable receipt without applying it again.
+   Expiry and piece appends share one immediate SQLite transaction: the sweep
+   re-checks `state = 'receiving' AND updated_at < cutoff` before deleting
+   anything, and `append` only advances a row that is still `receiving` at the
+   expected sequence. A transfer expired by another connection therefore
+   rejects further pieces instead of acknowledging checkpoint bytes that were
+   just deleted
+   (`an_expired_transfer_rejects_further_pieces_from_another_connection`).
+
+   The spool is bounded: every catalog is opened with a hard ceiling
+   (`SPOOL_QUOTA`, 2 GiB by default) and `append` refuses a piece that would
+   exceed it inside the same transaction, removing the file it just wrote.
+   `spool_quota_rejects_a_piece_and_keeps_the_checkpoint` proves the checkpoint
+   does not advance and no orphan file remains; an unwritable spool
+   (`an_unwritable_spool_reports_an_io_failure_without_advancing`) takes the
+   same fail-closed path as a full disk, so ENOSPC cannot acknowledge bytes.
+
+   The wire decoders are property-tested against arbitrary bytes
+   (`arbitrary_frames_are_rejected_without_panicking`), against over-sized
+   decompression requests
+   (`decompression_never_exceeds_the_requested_output`) and against malformed
+   manifests (`manifests_reject_arbitrary_bytes`).
+
+   Crash windows are exercised for real. Debug builds honour
+   `MASH_TEST_CRASH_AT` at `piece_after_fsync`, `after_silver_commit` and
+   `after_published`; release builds ignore it. The server aborts at that point
+   and `a_server_crash_after_silver_commit_converges_after_restart` restarts it
+   on the same silver directory and waits for startup recovery to publish the
+   committed batch, which is the window the TLA+ actions treat as atomic.
+4. `Commit` and `Certify` are merged inside `index_tracked`. A views failure
+   after a silver commit records `views_pending` and reports
+   `commit_state=committed` without `Published`; recovery or a resent
+   `FinishUpload` repairs and acknowledges it.
+5. Progressive backfill is implemented through manifest creation, durable
+   membership, batch ordering and completion. `BeginBackfill` transfers a
+   bounded member manifest, `Catalog::store_manifest` installs it durably,
+   `BackfillBatch` publications must match the frozen baseline revision, and
+   `Catalog::cover` records member evidence before the receipt. Live `/v1/sync`
+   publications record `live_revision` per conversation; a baseline batch drops
+   records, messages and tombstones superseded by newer live state, then rebases
+   the rest onto the node revision, so a late baseline cannot overwrite a live
+   conversation or resurrect a deletion. Opening a baseline behind the node head
+   fails closed. `mash backfill` drives the whole flow.
+   `journal_pruning_waits_for_baseline_completion_and_contiguous_coverage`
+   enforces the journal gate. Remaining gaps: no scheduling heuristics, no
+   multi-session or restored-baseline ordering, and the journal gate is only
+   exercised by the incremental path in production.
+6. Connector batches and attachments now use the same transfer path
+   (`BeginConnectorBatch`, `BeginAttachment`, then `Chunk`/`FinishUpload`).
+   Connector batches commit through the existing `Store::ingest_connector`
+   receipt boundary and return a connector receipt revision, not a native
+   publication revision. Attachments are sent as uncompressed pieces
+   (`Compression::NONE`), validated against the published message metadata, and
+   written with `fsync` before `AttachmentStored`.
+
+   **Cutover:** `/v1/index`, `/v1/connector-batches` and
+   `/v1/attachment-upload` are removed from the released router;
+   `released_server_no_longer_exposes_legacy_mutation_routes` runs the real
+   binary and asserts all three answer 404 while `/v1/sync` is still mounted.
+   The old handlers and client endpoint remain compiled for `cfg(test)` only, so
+   transport and silver-limit tests keep their HTTP-level coverage; they are not
+   reachable in a release build and are not a compatibility surface.
+7. Multiple concurrent sessions are serialized by an in-process catalog mutex
+   plus operation ownership checks. Client publication is fenced per local
+   database and destination by an advisory file lock
+   (`<database>.publish-<target>.lock`, where the target is the destination
+   identity). One process owns the publisher for that pair; a second waits up to
+   30 seconds for the owner to finish, then reports shared-pending
+   ("another process is publishing this database and destination") instead of
+   claiming success. The background watch publisher takes the same lock, so a
+   queued job cannot race a one-shot CLI or MCP call. Distributed fencing across
+   several servers, and server-side cross-process ownership, remain outside the
+   model.
+
+Two benchmarks cover different layers:
+
+- **Codec** (`app/shared/sync/bench.rs`, `cargo test --lib sync::bench --
+  --nocapture`) compares the old uncompressed NDJSON body, whole-batch zstd over
+  that NDJSON, and the production Protobuf+zstd pieces over a deterministic
+  varied corpus. It reports wire bytes, encode/decode medians and projected
+  transfer time over 10/50/200 Mbit/s links.
+- **End to end** (`server::tests::sync::
+  qdrant_publish_latency_and_bandwidth_http_versus_websocket`, ignored) times
+  real `POST /v1/index` against `/v1/sync` until `Published`, with silver and
+  Qdrant views in the loop. It reports measured medians/p90, payload bytes per
+  batch, and the same measurements plus wire time at 10/50/200 Mbit/s.
+
+Measured on loopback with disposable Qdrant 1.19.1 and varied vectors, with the
+WebSocket side running the production publisher (one reused session). A
+160-message batch is 1278.7 KiB over legacy HTTP and 455.8 KiB over `/v1/sync`
+(64.4% fewer bytes). Publish latency is dominated by views certification
+(about 316 ms vs 327 ms measured across runs), but adding wire time the typed
+path is about 49% faster at 10 Mbit/s (1.36 s vs 0.70 s), about 23% at
+50 Mbit/s, and about 6% at 200 Mbit/s.
+
+Small batches (6 messages, 48.3 KiB vs 17.3 KiB, 64.2% fewer bytes) measure
+about 49 ms vs 65 ms. Session reuse removed the per-publication handshake, so the
+typed path is now about 11% faster at 10 Mbit/s; at 50 and 200 Mbit/s it stays
+behind by roughly 20–28% because Protobuf+zstd setup outweighs a 17 KiB saving
+when the link is short. Neither benchmark measures model inference or deployment
+latency.
+
+### Progressive backfill: coverage, live edits and deletions
+
+[ProgressiveBackfill.tla](ProgressiveBackfill.tla) is a **partially implemented
+design contract**. The manifest transfer, durable membership table, coverage
+evidence, completion check, per-conversation ordering and tombstone dominance
+exist in `app/shared/sync/catalog.rs` and the `/v1/sync` handlers:
+
+- While a baseline is active, every committed `/v1/sync` live publication records
+  `live_revision` per conversation in `backfill_members` and covers its baseline
+  member. That evidence is durable in the transfer catalog, not silver.
+- A baseline batch drops conversation records, their messages and their
+  tombstones for every conversation with `live_revision` above its source
+  revision, then rebases the remaining records onto the node's current revision.
+  A batch whose records are all superseded writes no silver, marks its members
+  covered and acknowledges the current revision. This keeps silver's monotonic
+  node revision intact while honouring per-conversation order.
+- A live tombstone therefore survives late baseline arrival, and a newer live
+  conversation is never overwritten by the frozen baseline.
+- Opening a baseline behind the node's current revision fails closed with
+  `backfill_baseline_stale`; the server never rebases a baseline over history it
+  cannot order.
+
+Live ordering evidence is collected from `/v1/sync` publications. A legacy
+`POST /v1/index` publication during the cutover window does not record it, so an
+open baseline must not overlap legacy-client writes; the stale-open check limits
+the damage but does not replace recording.
+
+Local journal pruning is gated by `storage::publication::JournalCoverage`:
+
+- `Incremental { through }` is the ordinary publication path and prunes through
+  the published revision.
+- `BaselinePending` records the acknowledgement but deletes nothing, so live
+  edits still replay while the baseline is incomplete.
+- `BaselineComplete { through }` prunes only through the contiguous live
+  watermark and never through the newest received revision.
+
+`journal_pruning_waits_for_baseline_completion_and_contiguous_coverage` proves
+all three, and
+`random_operation_sequences_preserve_catalog_invariants` replays generated
+operation sequences (begin, append, duplicate, changed retry, gap, finish,
+expire, restart, cancel) against an independent model, asserting checkpoint
+equality and spool release in terminal states. Ordinary publication uses the incremental gate; the baseline variants
+are enforced and tested at the storage boundary. Multi-session and
+restored-baseline ordering remain outside the model.
+
+The client can drive a baseline end to end: `sync::client::upload_backfill`
+encodes the frozen batch's conversation membership as the manifest, streams
+`BeginBackfill`/chunks/`FinishUpload`, sends the batch as a `BackfillBatch`
+publication, then drives `FinishBackfill` and waits for `BackfillComplete`.
+`qdrant_client_backfill_sender_completes_a_baseline_end_to_end` runs that sender
+against the real handler and asserts the catalog reports `complete`,
+coverage equals the manifest, and views are certified.
+
+The operator surface is `mash backfill [--backfill-id ID]`. It freezes the next
+local revision, spools the node's complete history as a non-snapshot batch,
+sends it through the client sender under the publisher lock, acknowledges the
+journal with the baseline-complete gate, and returns
+`{"backfill_id": ..., "revision": ...}`. Retrying with the same identity resumes
+the same server session. It requires the default views recipe and a configured
+shared destination. `qdrant_backfill_command_publishes_a_baseline_through_the_cli`
+runs the real binary against a real server and asserts the catalog reports
+`complete` with full coverage and that shared status shows the same revision.
+A frozen baseline at source revision 1 contains conversations `a` and `b`; live
+revision 2 edits `a`, and revision 3 deletes it. Four independent batches may be
+scheduled in any order. Each carries complete conversation state or a tombstone.
+Only one apply/repair worker runs per node, but source edits and crashes may
+interleave with its work. Retrying an already committed batch uses its immutable
+receipt without applying it again.
 
 `Commit` atomically records silver, per-conversation ordering, the receipt and
 baseline membership coverage. A newer live record can satisfy its baseline
@@ -444,13 +653,35 @@ live stream. Baseline construction, multi-conversation transactions, local
 snapshot/journal persistence, identity changes and simultaneous publishers are
 outside this model. Tombstones have no later recreation in the bounded history.
 
-Neither proposed model is mapped to a new Rust endpoint: none is added by this
-change. Existing `Publication`, `NativeSilver`, `ConnectorReceipts` and
-`SharedViews` describe related implemented boundaries, not an implementation of
-these contracts. Before shipping synchronization, map each proposed action to
-its actual transaction/await/lock boundary, add Rust failure-boundary regressions
-and extend the models for any new interleavings. The two models are checked
-separately; their composition and the production implementation are not proven.
+The two models are checked separately; their composition is not proven.
+`ProgressiveBackfill` still needs each remaining model action mapped to its
+transaction/await/lock boundary, and a client that actually sends baseline
+batches, before it can replace the HTTP connector and snapshot paths.
+
+Client-driven backfill coverage:
+`qdrant_client_backfill_sender_completes_a_baseline_end_to_end`.
+
+Coverage: manifest and completion flow in
+`qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches`, late
+baseline and tombstone dominance in
+`qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions`
+(including the stale-open rejection), and per-conversation evidence in the
+`live_publications_supersede_baseline_members` catalog unit test.
+
+Publisher ownership is verified by
+`another_process_owning_the_publisher_reports_shared_pending`: a real child
+process holds the advisory lock, the parent reports shared-pending within its
+bounded wait and leaves publication pending, and once the child exits the parent
+gets past the lock and fails at the unreachable server instead.
+
+Watch mode no longer awaits the network publisher. `core::indexing` hands the
+sealed snapshot to a process-wide publisher queue when
+`IndexRequest::defer_publication` is set; the queue coalesces jobs per database
+and publishes the newest snapshot after the local pass has already returned,
+running attachment publication behind it. `deferred_publication_queues_without_
+blocking_the_indexing_task` proves the call returns before the exchange and that
+the background job still reaches the server. One-shot CLI and MCP calls keep
+awaiting publication so their reported state stays synchronous.
 
 ## Maintaining the models
 

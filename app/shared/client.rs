@@ -40,15 +40,20 @@ pub(super) enum Endpoint {
     Chats,
     View,
     Contexts,
+    /// Bulk-shape fixture for transport tests; the legacy index route it named
+    /// was removed from the released router.
+    #[allow(
+        dead_code,
+        reason = "bulk-shape fixture for transport tests after the route cutover"
+    )]
     Index,
     Attachments,
     Attachment,
-    AttachmentUpload,
 }
 
 impl Endpoint {
     const fn bulk(self) -> bool {
-        matches!(self, Self::Index | Self::AttachmentUpload)
+        matches!(self, Self::Index)
     }
 
     fn capacity(self, admission: &'static Admission) -> &'static Semaphore {
@@ -68,7 +73,6 @@ impl Endpoint {
             Self::Index => "index",
             Self::Attachments => "attachments",
             Self::Attachment => "attachment",
-            Self::AttachmentUpload => "attachment-upload",
         }
     }
 

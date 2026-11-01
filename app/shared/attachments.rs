@@ -5,6 +5,7 @@ use crate::{
     attachments::{Listing, Request, Retrieved},
     config::SharedConfig,
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
 use std::path::Path;
 
 pub(crate) async fn list(
@@ -56,11 +57,21 @@ pub(crate) async fn publish(database: &Path, config: &SharedConfig) -> Result<()
             continue;
         }
         let db = database.to_path_buf();
+        let lookup = message_id.clone();
         let file = crate::blocking(move || {
-            crate::storage::Storage::open_catalog(&db)?.get_attachment(&message_id, &attachment_id)
+            crate::storage::Storage::open_catalog(&db)?.get_attachment(&lookup, &attachment_id)
         })
         .await?;
-        let _: bool = client::post(config, Endpoint::AttachmentUpload, &file).await?;
+        let bytes = STANDARD
+            .decode(&file.data)
+            .map_err(|_| AppError::database_data("invalid retained attachment bytes"))?;
+        crate::shared::sync::client::upload_attachment(
+            config,
+            &message_id,
+            &file.attachment,
+            &bytes,
+        )
+        .await?;
     }
     Ok(())
 }

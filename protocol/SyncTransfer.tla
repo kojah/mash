@@ -1,10 +1,12 @@
 ---------------------------- MODULE SyncTransfer ----------------------------
 EXTENDS Naturals, FiniteSets
 
-\* PROPOSED protocol, not a model of an implemented WebSocket endpoint.
+\* Implemented publication transfer over the authenticated /v1/sync WebSocket.
+\* The model abstracts protobuf/zstd parsing, fsync and Qdrant certification; see
+\* protocol/README.md for the source mapping and recorded atomics gaps.
 \* One immutable batch, two bounded pieces; hashes abstract exact identity.
 CONSTANTS Pieces, EarlyCheckpoint, SplitReceipt, EarlyAck,
-          ExpireCommitted, AcceptChangedRetry
+          ExpireCommitted, AcceptChangedRetry, SplitClose
 VARIABLES received, durable, checkpoint, reported, queued, working,
           committed, receipt, certified, ack, connected, closed, stable
 vars == <<received, durable, checkpoint, reported, queued, working,
@@ -123,12 +125,31 @@ Crash ==
 
 \* Explicit terminal cancellation/expiry ends the checkpoint retention promise.
 Close ==
+    /\ ~SplitClose
     /\ ~stable /\ ~closed
     /\ ((~committed /\ ~working) \/ ExpireCommitted)
     /\ closed' = TRUE /\ received' = Empty /\ durable' = Empty
     /\ checkpoint' = 0 /\ reported' = 0 /\ queued' = FALSE
     /\ working' = FALSE
     /\ UNCHANGED <<committed, receipt, certified, ack, connected, stable>>
+
+\* Broken implementation: expiry releases retained bytes before the row is
+\* marked closed. The gap between these two steps is the hazard this negative
+\* configuration exposes; the atomic Close above is the contract.
+CloseClear ==
+    /\ SplitClose /\ ~stable /\ ~closed
+    /\ ((~committed /\ ~working) \/ ExpireCommitted)
+    /\ durable' = Empty /\ received' = Empty
+    /\ UNCHANGED <<checkpoint, reported, queued, working, committed, receipt,
+                   certified, ack, closed, connected, stable>>
+
+CloseMark ==
+    /\ SplitClose /\ ~stable /\ ~closed
+    /\ ((~committed /\ ~working) \/ ExpireCommitted)
+    /\ closed' = TRUE /\ checkpoint' = 0 /\ reported' = 0
+    /\ queued' = FALSE /\ working' = FALSE
+    /\ UNCHANGED <<received, durable, committed, receipt, certified, ack,
+                   connected, stable>>
 
 Stabilize ==
     /\ ~stable /\ stable' = TRUE
@@ -137,7 +158,8 @@ Stabilize ==
 
 Next == Receive \/ ChangedRetry \/ Persist \/ SaveCheckpoint \/ ReportCheckpoint
         \/ Queue \/ Start \/ Commit \/ LateReceipt \/ Certify \/ Acknowledge
-        \/ Disconnect \/ Reconnect \/ Crash \/ Close \/ Stabilize
+        \/ Disconnect \/ Reconnect \/ Crash \/ Close
+        \/ CloseClear \/ CloseMark \/ Stabilize
 Spec == Init /\ [][Next]_vars
         /\ WF_vars(Receive) /\ WF_vars(Persist) /\ WF_vars(SaveCheckpoint)
         /\ WF_vars(Queue) /\ WF_vars(Start) /\ WF_vars(Commit)

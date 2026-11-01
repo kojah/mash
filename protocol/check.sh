@@ -129,6 +129,7 @@ if $self_test; then
     check SyncTransfer SyncTransferEarlyAck PublishedIsReady
     check SyncTransfer SyncTransferExpireCommitted CommittedCannotExpire
     check SyncTransfer SyncTransferChangedRetry TransferIdentity
+    check SyncTransfer SyncTransferSplitClose CheckpointIsDurable
     check ProgressiveBackfill ProgressiveBackfillStaleWrite NewestCommittedWins
     check ProgressiveBackfill ProgressiveBackfillResurrection NoResurrection
     check ProgressiveBackfill ProgressiveBackfillEarlyFinish CompleteHasCoverage

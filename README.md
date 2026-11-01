@@ -72,6 +72,7 @@ mash export <new-directory>
 mash import <export-directory> --into <new-database> [--keep-identity]
 mash models install
 mash mcp [--watch [--debounce-ms N]]
+mash backfill [--backfill-id ID]
 mash serve --server-config PATH
 ```
 
@@ -1225,14 +1226,21 @@ Database credentials belong on the HTTP server, supplied through environment var
 Use an HTTPS reverse proxy for remote access or HTTP on a trusted private network.
 The service binds to `127.0.0.1:8787` by default. Node clients disable redirects.
 
-The API exposes `/v1/index` (NDJSON), `/v1/freshness`, `/v1/search`, `/v1/contexts`,
-`/v1/chats`, `/v1/view` and the attachment routes. Nodes plan publication from
-their `/v1/freshness` entry and forget through delta uploads. Requests use bearer
-credentials. Search carries a query embedding and returns candidates for node-side
-fusion and reranking. The HTTP server needs no model assets. Interrupted or invalid
-uploads leave the visible revision and freshness unchanged. Uploads are bounded
-by 128 records per batch, 64 MiB per event, 8 GiB per request, and the configured
-`max_upload_mib` (64 MiB default, range 1–4,096). Ordinary JSON requests are limited to 64 KiB.
+The API exposes `/v1/sync` (authenticated WebSocket mutation transport),
+`/v1/freshness`, `/v1/search`, `/v1/contexts`, `/v1/chats`, `/v1/view` and the
+attachment read routes. Nodes plan publication from their `/v1/freshness` entry
+and forget through delta uploads. Requests use bearer credentials. `/v1/sync`
+carries typed Protobuf envelopes with zstd publication data, durable piece
+checkpoints and resume; publication, connector-batch, attachment-upload and
+progressive-backfill operations share one transfer protocol. It is the only
+mutation route: the former `POST /v1/index` (NDJSON), `/v1/connector-batches`
+and `/v1/attachment-upload` routes were removed in the protocol-matched
+release. Search carries a query
+embedding and returns candidates for node-side fusion and reranking. The HTTP
+server needs no model assets. Interrupted or invalid uploads leave the visible
+revision and freshness unchanged. Uploads are bounded by 128 records per batch,
+64 MiB per event, 8 GiB per request, and the configured `max_upload_mib` (64 MiB
+default, range 1–4,096). Ordinary JSON requests are limited to 64 KiB.
 Node/revision checks reject stale uploads; full snapshot retries are idempotent.
 
 Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent publication

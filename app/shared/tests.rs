@@ -1,5 +1,5 @@
 use super::client::{Endpoint, get, post, response};
-use super::publication::{target, upload};
+use super::publication::target;
 use super::retrieval::{CONTEXT_DEADLINE, context_documents, prepare_search, search_prepared};
 use super::*;
 use crate::config::SharedConfig;
@@ -8,7 +8,6 @@ use crate::semantic::{self, Models};
 use crate::silver::{Conversation, NormalizedMessage};
 use crate::storage::{EmbeddingWrite, Message, SearchHit, Storage};
 use crate::views::readiness::{Artifacts, State};
-use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
@@ -83,7 +82,6 @@ fn freshness_source_certificate_is_typed_and_distinct_from_shared_identity() {
 
 #[tokio::test]
 async fn context_deadline_preserves_completed_evidence_without_waiting_for_every_wave() {
-    use axum::Router;
     use context_batch::view;
     use std::sync::{
         Arc,
@@ -102,6 +100,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
     let dropped = Arc::new(AtomicBool::new(false));
     let server_dropped = Arc::clone(&dropped);
     let server = tokio::spawn(async move {
+        use axum::Router;
         axum::serve(
             listener,
             Router::new()
@@ -203,76 +202,361 @@ async fn interactive_request_timeout_does_not_inherit_the_upload_budget() {
     assert!(error.error.message.contains("timed out"));
 }
 
-#[tokio::test]
-async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
-    use axum::extract::State;
-    use axum::{Json, Router};
-    use tokio::sync::mpsc;
+use crate::shared::sync::wire;
+use axum::Json;
+use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
+use futures_util::StreamExt;
 
-    async fn freshness() -> Json<serde_json::Value> {
-        Json(serde_json::json!({
-            "group_id": "test",
-            "group_views": {
-                "version": "group",
-                "build": crate::views::config::Build::default(),
-                "generation": semantic::SHARED_EMBEDDING_GENERATION,
-                "dimensions": 2,
-            },
-            "nodes": [],
-        }))
-    }
+async fn publication_freshness() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "group_id": "test",
+        "group_views": {
+            "version": "group",
+            "build": crate::views::config::Build::default(),
+            "generation": semantic::SHARED_EMBEDDING_GENERATION,
+            "dimensions": 2,
+        },
+        "nodes": [],
+    }))
+}
 
-    async fn capture(
-        State(sender): State<mpsc::Sender<Vec<serde_json::Value>>>,
-        body: axum::body::Bytes,
-    ) -> Json<serde_json::Value> {
-        let events = std::str::from_utf8(&body)
-            .unwrap()
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect();
-        sender.send(events).await.unwrap();
-        Json(serde_json::json!({
-            "counts": {"conversations": 1, "messages": 2, "searchable_messages": 1, "embeddings": 1},
-            "revision": 1, "removed_messages": 0, "purged_conversations": 0
-        }))
+fn sync_frame_replies(frame: &wire::ClientFrame) -> Vec<wire::server_frame::Body> {
+    match &frame.body {
+        Some(wire::client_frame::Body::Hello(_)) => {
+            vec![wire::server_frame::Body::Welcome(wire::Welcome {
+                protocol_version: wire::PROTOCOL_VERSION,
+                session_id: "test-session".into(),
+                credit_bytes: wire::DEFAULT_CREDIT_BYTES,
+                max_envelope_bytes: u32::try_from(wire::MAX_ENVELOPE_BYTES).unwrap(),
+                max_decoded_bytes: u64::try_from(wire::DEFAULT_MAX_DECODED_BYTES).unwrap(),
+                heartbeat_ms: 30_000,
+                retained_revision: None,
+                views_fingerprint: "generation".into(),
+                incomplete_retention_ms: 24 * 60 * 60 * 1000,
+            })]
+        }
+        Some(wire::client_frame::Body::Resume(_)) => {
+            vec![wire::server_frame::Body::Outcome(wire::Outcome {
+                state: wire::OutcomeState::Unknown as i32,
+                commit_state: wire::CommitState::NotCommitted as i32,
+                checkpoint_sequence: 0,
+                revision: None,
+                receipt_digest: String::new(),
+            })]
+        }
+        Some(wire::client_frame::Body::BeginPublication(_)) => {
+            vec![wire::server_frame::Body::Accepted(wire::Accepted {
+                credit_bytes: 0,
+            })]
+        }
+        Some(wire::client_frame::Body::Chunk(chunk)) => vec![
+            wire::server_frame::Body::Checkpoint(wire::Checkpoint {
+                sequence: chunk.sequence,
+                decoded_offset: chunk.decoded_offset + chunk.decoded_length,
+            }),
+            wire::server_frame::Body::Credit(wire::Credit {
+                additional_bytes: u32::try_from(chunk.data.len()).unwrap_or(u32::MAX),
+            }),
+        ],
+        Some(wire::client_frame::Body::FinishUpload(_)) => {
+            vec![wire::server_frame::Body::Published(wire::Published {
+                revision: 1,
+                views_current: true,
+                coverage_through: None,
+            })]
+        }
+        _ => Vec::new(),
     }
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("local.sqlite3");
-    drop(seed(&path));
-    let (sender, mut received) = mpsc::channel(1);
+}
+
+async fn sync_socket_serve(
+    mut socket: WebSocket,
+    sender: tokio::sync::mpsc::Sender<Vec<wire::ClientFrame>>,
+) {
+    let mut frames = Vec::new();
+    while let Some(Ok(message)) = socket.next().await {
+        let WsMessage::Binary(bytes) = message else {
+            continue;
+        };
+        let Ok(frame) = wire::decode_client(&bytes) else {
+            continue;
+        };
+        for body in sync_frame_replies(&frame) {
+            let reply = wire::ServerFrame {
+                operation_id: frame.operation_id.clone(),
+                body: Some(body),
+            };
+            socket
+                .send(WsMessage::Binary(
+                    wire::encode_server(&reply).unwrap().into(),
+                ))
+                .await
+                .unwrap();
+        }
+        frames.push(frame);
+    }
+    sender.send(frames).await.ok();
+}
+
+async fn sync_upgrade(
+    upgrade: WebSocketUpgrade,
+    axum::extract::State(sender): axum::extract::State<
+        tokio::sync::mpsc::Sender<Vec<wire::ClientFrame>>,
+    >,
+) -> axum::response::Response {
+    upgrade.on_upgrade(move |socket| sync_socket_serve(socket, sender))
+}
+/// Start a fake server that answers freshness and the typed publication
+/// exchange, capturing every client frame.
+async fn start_publication_server() -> (
+    String,
+    tokio::sync::mpsc::Receiver<Vec<wire::ClientFrame>>,
+    tokio::task::JoinHandle<()>,
+) {
+    use axum::Router;
+
+    let (sender, received) = tokio::sync::mpsc::channel(1);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
         axum::serve(
             listener,
             Router::new()
-                .route("/v1/freshness", axum::routing::get(freshness))
-                .fallback(capture)
+                .route("/v1/freshness", axum::routing::get(publication_freshness))
+                .route("/v1/sync", axum::routing::get(sync_upgrade))
                 .with_state(sender),
         )
         .await
         .unwrap();
     });
+    (format!("http://{address}"), received, server)
+}
+
+const HOLD_PUBLISH_LOCK: &str = "MASH_TEST_HOLD_PUBLISH_LOCK";
+const HOLD_PUBLISH_READY: &str = "MASH_TEST_HOLD_PUBLISH_READY";
+
+/// Child-process helper: holds the publisher lock until the parent kills it.
+/// It is a no-op in a normal test run because the environment is absent.
+#[test]
+fn hold_publish_lock_helper() {
+    let Ok(lock) = std::env::var(HOLD_PUBLISH_LOCK) else {
+        return;
+    };
+    let ready = std::env::var(HOLD_PUBLISH_READY).expect("ready marker path");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock)
+        .expect("open lock file");
+    file.try_lock().expect("helper owns the publisher lock");
+    std::fs::write(&ready, b"ready").unwrap();
+    std::thread::sleep(Duration::from_secs(10));
+}
+
+#[tokio::test]
+async fn another_process_owning_the_publisher_reports_shared_pending() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local.sqlite3");
+    drop(seed(&path));
     let config = SharedConfig {
         group_id: "test".into(),
         node_id: "local-node".into(),
-        api_url: format!("http://{address}"),
+        api_url: "http://127.0.0.1:1".into(),
         token_env: "HOME".into(),
         publication_redaction: crate::redaction::Policy::ON,
     };
-    assert_eq!(
-        publish(&path, &config, None).await.state,
-        PublicationState::Published
+    let key = target(&config);
+    let lock = super::publication::publish_lock_path(&path, &key);
+    let ready = dir.path().join("ready");
+
+    // A real second process takes the lock for this database and destination.
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "shared::tests::hold_publish_lock_helper",
+            "--nocapture",
+        ])
+        .env(HOLD_PUBLISH_LOCK, &lock)
+        .env(HOLD_PUBLISH_READY, &ready)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn lock holder");
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !ready.exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("helper acquired the lock");
+
+    // The local caller waits briefly, then reports shared-pending without
+    // claiming success or mutating the publication state.
+    let started = std::time::Instant::now();
+    let blocked =
+        super::publication::publish_with_wait(&path, &config, None, Duration::from_millis(300))
+            .await;
+    assert!(blocked.is_pending());
+    assert!(
+        blocked
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("another process"),
+        "{:?}",
+        blocked.error
     );
-    let events = received.recv().await.unwrap();
-    assert_eq!(events.first().unwrap()["type"], "start");
-    assert_eq!(events.last().unwrap()["type"], "finish");
-    let messages = events
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(Storage::publication_is_pending(&path, &key).unwrap());
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+    // With the owner gone the lock is free: the caller gets past the lock and
+    // fails at the unreachable server instead of reporting shared-pending.
+    let after =
+        super::publication::publish_with_wait(&path, &config, None, Duration::from_millis(200))
+            .await;
+    assert!(after.is_pending());
+    assert!(
+        !after
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("another process"),
+        "{:?}",
+        after.error
+    );
+}
+
+#[tokio::test]
+async fn deferred_publication_queues_without_blocking_the_indexing_task() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local.sqlite3");
+    drop(seed(&path));
+    let (address, mut received, server) = start_publication_server().await;
+    let config = SharedConfig {
+        group_id: "test".into(),
+        node_id: "local-node".into(),
+        api_url: address,
+        token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
+    };
+    let key = target(&config);
+
+    // Watch mode hands the snapshot to the publisher task and returns at once.
+    let started = std::time::Instant::now();
+    super::publication::enqueue(&path, &config, &dir.path().join("models"), None, false).unwrap();
+    assert!(
+        started.elapsed() < Duration::from_millis(200),
+        "enqueue must not wait for the network"
+    );
+    assert!(Storage::publication_is_pending(&path, &key).unwrap());
+
+    // The background publisher completes the exchange without the caller.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while Storage::publication_is_pending(&path, &key).unwrap() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("background publication completes");
+    let frames = received.recv().await.expect("publisher connected");
+    assert!(
+        frames.iter().any(|frame| matches!(
+            frame.body,
+            Some(crate::shared::sync::wire::client_frame::Body::BeginPublication(_))
+        )),
+        "the queued publication reached the server"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one embedded WebSocket server proves the full publication exchange"
+)]
+async fn websocket_publication_streams_a_complete_snapshot_before_acknowledging() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local.sqlite3");
+    drop(seed(&path));
+    let (address, mut received, server) = start_publication_server().await;
+    let config = SharedConfig {
+        group_id: "test".into(),
+        node_id: "local-node".into(),
+        api_url: address,
+        token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
+    };
+    let publication = publish(&path, &config, None).await;
+    assert_eq!(
+        publication.state,
+        PublicationState::Published,
+        "{:?}",
+        publication.error
+    );
+
+    let frames = received.recv().await.unwrap();
+    assert!(
+        matches!(
+            frames.first().map(|frame| &frame.body),
+            Some(Some(wire::client_frame::Body::Hello(_)))
+        ),
+        "publication must negotiate before sending data"
+    );
+    let begin = frames
         .iter()
-        .find(|event| event["kind"] == "messages")
-        .unwrap();
-    assert_eq!(messages["records"].as_array().unwrap().len(), 2);
+        .find_map(|frame| match &frame.body {
+            Some(wire::client_frame::Body::BeginPublication(begin)) => Some(begin),
+            _ => None,
+        })
+        .expect("publication must begin with metadata");
+    let start = begin.start.as_ref().expect("begin carries source metadata");
+    assert!(start.snapshot, "the sealed spool is a complete snapshot");
+    assert!(
+        matches!(
+            frames.last().map(|frame| &frame.body),
+            Some(Some(wire::client_frame::Body::FinishUpload(_)))
+        ),
+        "the client only finishes after every piece was sent"
+    );
+
+    let pieces = frames
+        .iter()
+        .filter_map(|frame| match &frame.body {
+            Some(wire::client_frame::Body::Chunk(chunk)) => Some(wire::Piece {
+                sequence: chunk.sequence,
+                decoded_offset: chunk.decoded_offset,
+                decoded_length: chunk.decoded_length,
+                digest: chunk.digest.clone(),
+                encoded: chunk.data.clone(),
+                compression: chunk.compression,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let events = wire::decode_publication(&pieces, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
+    let conversations: usize = events
+        .iter()
+        .map(|event| match event {
+            crate::shared::protocol::Event::Batch(
+                crate::shared::protocol::Batch::Conversations { records },
+            ) => records.len(),
+            _ => 0,
+        })
+        .sum();
+    let messages: usize = events
+        .iter()
+        .map(|event| match event {
+            crate::shared::protocol::Event::Batch(crate::shared::protocol::Batch::Messages {
+                records,
+            }) => records.len(),
+            _ => 0,
+        })
+        .sum();
+    assert_eq!(conversations, 1);
+    assert_eq!(messages, 2);
     assert!(!Storage::publication_is_pending(&path, &target(&config)).unwrap());
     server.abort();
 }
@@ -495,9 +779,14 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
             .unwrap()["ok"],
         true
     );
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    file.write_all(b"{}\n").unwrap();
-    assert_eq!(upload(&config, &file).await.unwrap().revision, 1);
+    // The legacy bulk HTTP route still shares the pooled read transport; the
+    // native publication path moved to /v1/sync and is covered separately.
+    assert_eq!(
+        post::<serde_json::Value>(&config, Endpoint::Index, &serde_json::json!({}))
+            .await
+            .unwrap()["ok"],
+        true
+    );
     // Change identities on the same pooled transport, including which token to read.
     config.group_id = "second-group".into();
     config.node_id = "second-node".into();
@@ -515,7 +804,7 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
     assert_eq!(requests[0].method, Method::GET);
     assert_eq!(requests[1].method, Method::POST);
     assert_eq!(requests[2].method, Method::POST);
-    assert_eq!(requests[2].headers["content-type"], "application/x-ndjson");
+    assert_eq!(requests[2].headers["content-type"], "application/json");
     for request in &requests[..3] {
         assert_eq!(
             request.headers["authorization"],
@@ -752,7 +1041,11 @@ async fn publication_state_survives_failed_delivery_and_forget() {
         .prepare_publication_target("target")
         .expect("prepare destination");
     storage
-        .acknowledge_publication("target", revision)
+        .acknowledge_publication(
+            "target",
+            revision,
+            crate::storage::publication::JournalCoverage::Incremental { through: revision },
+        )
         .expect("ack");
     assert!(!Storage::publication_is_pending(&path, "target").expect("acked"));
     assert!(
@@ -761,7 +1054,11 @@ async fn publication_state_survives_failed_delivery_and_forget() {
     storage.forget("conversation").expect("forget");
     assert!(Storage::publication_is_pending(&path, "target").expect("pending delete"));
     storage
-        .acknowledge_publication("target", revision)
+        .acknowledge_publication(
+            "target",
+            revision,
+            crate::storage::publication::JournalCoverage::Incremental { through: revision },
+        )
         .expect("stale ack ignored");
     assert!(Storage::publication_is_pending(&path, "target").expect("still pending"));
     storage

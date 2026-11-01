@@ -43,6 +43,9 @@ pub(crate) struct IndexRequest {
     pub(crate) provider: Vec<Provider>,
     pub(crate) since_days: Option<u32>,
     pub(crate) all_history: bool,
+    /// Watch passes queue publication instead of awaiting it, so a slow
+    /// network publisher never occupies the local indexing task.
+    pub(crate) defer_publication: bool,
 }
 
 #[derive(Debug, Clone)]

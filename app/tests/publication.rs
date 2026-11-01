@@ -108,3 +108,315 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
     );
     shared_server::cleanup_group(&group);
 }
+
+#[test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
+    let dir = tempfile::tempdir().expect("temp");
+    let database = dir.path().join("local.sqlite3");
+    seed_readiness_database(&database, Some(""));
+    let models = dir.path().join("models");
+    create_valid_model_marker(&models);
+    let config = dir.path().join("config.toml");
+    let group = format!(
+        "backfill-{}",
+        dir.path().file_name().expect("name").to_string_lossy()
+    );
+    let server = shared_server::Server::new(dir.path(), &group, &["cli-node"]);
+    std::fs::write(
+        &config,
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {}
+            shared = {
+            group_id = (group.as_str()),node_id = "cli-node",api_url = (server.url.as_str()),token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
+            }
+        })
+        .expect("TOML"),
+    )
+    .expect("config");
+
+    let output = Command::cargo_bin("mash")
+        .expect("binary")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "backfill",
+            "--backfill-id",
+            "cli-baseline",
+        ])
+        .env(
+            "MASH_TEST_SHARED_CLIENT_TOKEN",
+            shared_server::token("cli-node"),
+        )
+        .output()
+        .expect("run");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let response: Value = serde_json::from_slice(&output.stdout).expect("JSON response");
+    assert_eq!(response["backfill_id"], "cli-baseline");
+    let revision = response["revision"].as_i64().expect("revision");
+    assert!(revision >= 1, "{response}");
+
+    // The server recorded a completed baseline covering every member.
+    let catalog = Connection::open(dir.path().join("silver/sync/catalog.sqlite3"))
+        .expect("open transfer catalog");
+    let (state, total): (String, i64) = catalog
+        .query_row(
+            "SELECT state, total_conversations FROM backfills WHERE backfill_id = 'cli-baseline'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("baseline row");
+    assert_eq!(state, "complete");
+    assert!(total >= 1);
+    let covered: i64 = catalog
+        .query_row(
+            "SELECT COUNT(*) FROM backfill_members WHERE backfill_id = 'cli-baseline' AND covered = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("coverage");
+    assert_eq!(covered, total);
+
+    // The published baseline is visible through the shared status.
+    let status = Command::cargo_bin("mash")
+        .expect("binary")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "status",
+            "--shared",
+        ])
+        .env(
+            "MASH_TEST_SHARED_CLIENT_TOKEN",
+            shared_server::token("cli-node"),
+        )
+        .output()
+        .expect("run status");
+    assert!(status.status.success());
+    let status: Value = serde_json::from_slice(&status.stdout).expect("status JSON");
+    assert_eq!(
+        status["shared_index"]["nodes"][0]["revision"].as_i64(),
+        Some(revision)
+    );
+    shared_server::cleanup_group(&group);
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn released_server_no_longer_exposes_legacy_mutation_routes() {
+    let dir = tempfile::tempdir().expect("temp");
+    let group = format!(
+        "cutover-{}",
+        dir.path().file_name().expect("name").to_string_lossy()
+    );
+    let server = shared_server::Server::new(dir.path(), &group, &["cli-node"]);
+    let token = shared_server::token("cli-node");
+    let runtime = tokio::runtime::Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let client = reqwest::Client::new();
+        for route in ["index", "connector-batches", "attachment-upload"] {
+            let response = client
+                .post(format!("{}/v1/{route}", server.url))
+                .bearer_auth(&token)
+                .header("content-type", "application/x-ndjson")
+                .body("{}")
+                .send()
+                .await
+                .expect("request");
+            assert_eq!(
+                response.status(),
+                reqwest::StatusCode::NOT_FOUND,
+                "{route} must be gone from the released router"
+            );
+        }
+        // The synchronization endpoint is still mounted; a plain GET is a rejected
+        // upgrade, not an unknown route.
+        let response = client
+            .get(format!("{}/v1/sync", server.url))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .expect("request");
+        assert_ne!(response.status(), reqwest::StatusCode::NOT_FOUND);
+    });
+    drop(server);
+    shared_server::cleanup_group(&group);
+}
+
+/// Start `mash serve` for one node, optionally aborting at a crash point.
+fn spawn_crash_server(
+    root: &Path,
+    group: &str,
+    crash: Option<&str>,
+) -> (std::process::Child, String) {
+    let path = root.join("server.toml");
+    if !path.exists() {
+        let silver = root.join("silver").to_str().unwrap().to_owned();
+        let config = toml::toml! {
+            version = 1
+            listen = "127.0.0.1:0"
+            qdrant_url_env = "MASH_TEST_QDRANT_URL"
+            silver_dir = silver
+            nodes = [{ group_id = (group), node_id = "cli-node", token_env = "MASH_TEST_TOKEN_0" }]
+            views = { build = { embedding_text = "dialogue" } }
+        };
+        std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
+    }
+    let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
+    command
+        .args(["serve", "--server-config", path.to_str().unwrap()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .env("MASH_TEST_TOKEN_0", shared_server::token("cli-node"));
+    if let Some(point) = crash {
+        command.env("MASH_TEST_CRASH_AT", point);
+    }
+    let mut child = command.spawn().expect("spawn server");
+    let stderr = child.stderr.take().unwrap();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let log = root.join("server.log");
+    std::thread::spawn(move || {
+        use std::io::{BufRead as _, Write as _};
+        let mut reader = std::io::BufReader::new(stderr);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let _ = sender.send(line);
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log)
+        {
+            for line in reader.lines().map_while(Result::ok) {
+                let _ = writeln!(file, "{line}");
+            }
+        }
+    });
+    let line = receiver
+        .recv_timeout(std::time::Duration::from_secs(45))
+        .expect("server startup");
+    let response: Value = serde_json::from_str(&line).expect("startup JSON");
+    let url = format!(
+        "http://{}",
+        response["listening"].as_str().expect("listening address")
+    );
+    (child, url)
+}
+
+fn write_client_config(path: &Path, group: &str, api_url: &str) {
+    std::fs::write(
+        path,
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {}
+            shared = {
+                group_id = (group), node_id = "cli-node",
+                api_url = (api_url), token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
+            }
+        })
+        .unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn a_server_crash_after_silver_commit_converges_after_restart() {
+    let dir = tempfile::tempdir().expect("temp");
+    let database = dir.path().join("local.sqlite3");
+    seed_readiness_database(&database, Some(""));
+    let models = dir.path().join("models");
+    create_valid_model_marker(&models);
+    let config = dir.path().join("config.toml");
+    let group = format!(
+        "crash-{}",
+        dir.path().file_name().expect("name").to_string_lossy()
+    );
+
+    // First process exits abruptly after the durable silver commit, before the
+    // receipt and certification.
+    let (mut first, url) = spawn_crash_server(dir.path(), &group, Some("after_silver_commit"));
+    write_client_config(&config, &group, &url);
+    let failed = Command::cargo_bin("mash")
+        .expect("binary")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "index",
+        ])
+        .env(
+            "MASH_TEST_SHARED_CLIENT_TOKEN",
+            shared_server::token("cli-node"),
+        )
+        .output()
+        .expect("run");
+    assert!(
+        !failed.status.success(),
+        "the crashed server cannot acknowledge the publication"
+    );
+    let status = first.wait().expect("wait");
+    assert!(!status.success(), "the process aborted mid-publication");
+
+    // Restart on the same silver directory; startup recovery finishes the work.
+    let (mut second, url) = spawn_crash_server(dir.path(), &group, None);
+    write_client_config(&config, &group, &url);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut converged = false;
+    let mut last = String::new();
+    while std::time::Instant::now() < deadline {
+        let output = Command::cargo_bin("mash")
+            .expect("binary")
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models.to_str().unwrap(),
+                "status",
+                "--shared",
+            ])
+            .env(
+                "MASH_TEST_SHARED_CLIENT_TOKEN",
+                shared_server::token("cli-node"),
+            )
+            .output()
+            .expect("run status");
+        last = String::from_utf8_lossy(&output.stdout).into_owned();
+        if output.status.success()
+            && let Ok(value) = serde_json::from_slice::<Value>(&output.stdout)
+            && value["shared_index"]["nodes"][0]["revision"]
+                .as_i64()
+                .is_some_and(|revision| revision >= 1)
+        {
+            converged = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(
+        converged,
+        "recovery after restart publishes the committed batch; last status: {last}; server log: {}",
+        std::fs::read_to_string(dir.path().join("server.log")).unwrap_or_default()
+    );
+    let _ = second.kill();
+    let _ = second.wait();
+    shared_server::cleanup_group(&group);
+}

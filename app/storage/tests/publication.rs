@@ -2,6 +2,117 @@ use super::*;
 use crate::shared::protocol::BatchKind;
 
 #[test]
+fn journal_pruning_waits_for_baseline_completion_and_contiguous_coverage() {
+    use crate::storage::publication::JournalCoverage;
+
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let mut writer = Storage::open_writer(&path).unwrap();
+    for index in 0..4 {
+        let mut chat = conversation(&format!("edit-{index}"));
+        chat.id = format!("session-{index}");
+        chat.source = crate::silver::SourceIdentity::file(PathBuf::from(format!(
+            "/tmp/session-{index}.jsonl"
+        )));
+        chat.messages =
+            crate::silver::messages::Messages::stage([crate::silver::NormalizedMessage {
+                attachments: Vec::new(),
+                id: format!("message-{index}"),
+                ordinal: 0,
+                context: crate::message_context::MessageContext::Linear,
+                role: crate::role::Role::User,
+                content: format!("edit-{index}"),
+                dialogue_text: None,
+                created_at: Some(i64::MAX / 2),
+                tools: crate::tools::Activity::default(),
+            }])
+            .unwrap();
+        writer.replace_conversation(&chat).unwrap();
+    }
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let storage = Storage::open_existing(&path).unwrap();
+    storage.prepare_publication_target("destination").unwrap();
+
+    let journal_rows = || -> i64 {
+        storage
+            .connection
+            .query_row("SELECT COUNT(*) FROM shared_changes", [], |row| row.get(0))
+            .unwrap()
+    };
+    let floor = || -> i64 {
+        storage
+            .connection
+            .query_row("SELECT floor FROM shared_change_state", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    };
+    assert_eq!(journal_rows(), 4, "one row per edited conversation");
+    let before = floor();
+    let revisions = {
+        let mut statement = storage
+            .connection
+            .prepare("SELECT revision FROM shared_changes ORDER BY revision")
+            .unwrap();
+        statement
+            .query_map([], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let latest: i64 = storage
+        .connection
+        .query_row("SELECT revision FROM shared_publication", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(revisions.len(), 4);
+    assert_eq!(revisions[3], latest);
+
+    // A baseline in progress acknowledges the published range but retains every
+    // journal row, so live edits still replay after an interruption.
+    storage
+        .acknowledge_publication(
+            "destination",
+            revisions[1],
+            JournalCoverage::BaselinePending,
+        )
+        .unwrap();
+    assert_eq!(journal_rows(), 4);
+    assert!(floor() >= before, "the prune floor never moves backwards");
+    // The newest revision is still unpublished, so the node stays pending.
+    assert!(Storage::publication_is_pending(&path, "destination").unwrap());
+
+    // Partial baseline coverage prunes only through the contiguous watermark,
+    // never through the newest received revision.
+    storage
+        .acknowledge_publication(
+            "destination",
+            latest,
+            JournalCoverage::BaselineComplete {
+                through: revisions[0],
+            },
+        )
+        .unwrap();
+    assert_eq!(journal_rows(), 3, "only revisions through the watermark go");
+    assert!(floor() >= before);
+
+    // Baseline complete plus coverage through the newest revision prunes the
+    // rest of the journal.
+    storage
+        .acknowledge_publication(
+            "destination",
+            latest,
+            JournalCoverage::BaselineComplete { through: latest },
+        )
+        .unwrap();
+    assert_eq!(journal_rows(), 0);
+    assert!(floor() >= before);
+    assert!(!Storage::publication_is_pending(&path, "destination").unwrap());
+}
+
+#[test]
 fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
@@ -13,7 +124,11 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
     storage.prepare_publication_target("destination").unwrap();
     let first = storage.with_publication_snapshot(|_| Ok(())).unwrap();
     storage
-        .acknowledge_publication("destination", first)
+        .acknowledge_publication(
+            "destination",
+            first,
+            crate::storage::publication::JournalCoverage::Incremental { through: first },
+        )
         .unwrap();
     drop(storage);
     let mut writer = Storage::open_writer(&path).unwrap();
@@ -45,7 +160,11 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         )
         .unwrap();
     storage
-        .acknowledge_publication("destination", sent)
+        .acknowledge_publication(
+            "destination",
+            sent,
+            crate::storage::publication::JournalCoverage::Incremental { through: sent },
+        )
         .unwrap();
     assert!(Storage::publication_is_pending(&path, "destination").unwrap());
     storage

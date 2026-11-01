@@ -123,21 +123,37 @@ fn valid_digest(digest: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "legacy HTTP mutation path retained for test coverage only; /v1/sync replaces it"
+    )
+)]
 pub(crate) fn write(root: &Path, metadata: &Metadata, data: &str) -> Result<(), AppError> {
-    validate_metadata(std::slice::from_ref(metadata))?;
-    if metadata.availability != Availability::Retained || data.len() > MAX_BYTES.div_ceil(3) * 4 {
+    if data.len() > MAX_BYTES.div_ceil(3) * 4 {
         return Err(AppError::usage("invalid attachment upload"));
     }
     let bytes = STANDARD
         .decode(data)
         .map_err(|_| AppError::usage("invalid attachment base64"))?;
+    write_bytes(root, metadata, &bytes)
+}
+
+/// Persist already-decoded attachment bytes. Binary `/v1/sync` uploads use
+/// this path directly; HTTP JSON uploads decode base64 first.
+pub(crate) fn write_bytes(root: &Path, metadata: &Metadata, bytes: &[u8]) -> Result<(), AppError> {
+    validate_metadata(std::slice::from_ref(metadata))?;
+    if metadata.availability != Availability::Retained {
+        return Err(AppError::usage("invalid attachment upload"));
+    }
     if bytes.len() > MAX_BYTES
         || metadata.bytes != Some(bytes.len() as u64)
-        || metadata.digest.as_deref() != Some(blake3::hash(&bytes).to_hex().as_str())
+        || metadata.digest.as_deref() != Some(blake3::hash(bytes).to_hex().as_str())
     {
         return Err(AppError::usage("attachment integrity mismatch"));
     }
-    if let Ok(text) = std::str::from_utf8(&bytes)
+    if let Ok(text) = std::str::from_utf8(bytes)
         && crate::redaction::text(text) != text
     {
         return Err(AppError::usage(
@@ -146,7 +162,8 @@ pub(crate) fn write(root: &Path, metadata: &Metadata, data: &str) -> Result<(), 
     }
     fs::create_dir_all(root).map_err(AppError::io)?;
     let mut file = tempfile::NamedTempFile::new_in(root).map_err(AppError::io)?;
-    std::io::Write::write_all(&mut file, &bytes).map_err(AppError::io)?;
+    std::io::Write::write_all(&mut file, bytes).map_err(AppError::io)?;
+    file.as_file().sync_all().map_err(AppError::io)?;
     file.persist(
         root.join(
             metadata

@@ -35,6 +35,9 @@ pub(in crate::shared) struct Store {
     replay_fault: Option<ReplayFault>,
     #[cfg(test)]
     connector_interruption: bool,
+    /// Test hook: fail views certification after a committed silver write.
+    #[cfg(test)]
+    views_interruption: bool,
 }
 
 pub(super) async fn initialize(
@@ -118,6 +121,8 @@ impl Store {
             replay_fault: None,
             #[cfg(test)]
             connector_interruption: false,
+            #[cfg(test)]
+            views_interruption: false,
         }
     }
 
@@ -215,6 +220,25 @@ impl Store {
         identity: &Identity,
     ) -> Result<Option<NodeViews>, AppError> {
         self.views.node_views(identity).await
+    }
+
+    /// Receipt recorded on the silver head for the last `/v1/sync` operation.
+    #[cfg(test)]
+    pub(in crate::shared) async fn sync_receipt(
+        &self,
+        identity: &Identity,
+    ) -> Result<Option<(String, String, String)>, AppError> {
+        self.read(identity, |connection| {
+            Ok(silver_store::head(connection)?.and_then(|head| {
+                let operation = head.operation_id?;
+                Some((
+                    operation,
+                    head.manifest_digest.unwrap_or_default(),
+                    head.receipt_digest.unwrap_or_default(),
+                ))
+            }))
+        })
+        .await
     }
 
     /// One node's publication state, for tests.

@@ -1,9 +1,13 @@
 //! Durable publication state and streaming uploads.
-use super::client::{Endpoint, request, response};
+use super::client::Endpoint;
 use super::protocol::{self, Event, Start};
 use super::{Publication, PublicationState};
 use crate::{AppError, config::SharedConfig, storage::Storage};
-use std::{io::Write, path::Path, time::Duration};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 mod snapshot;
 
 pub(crate) struct Inference<'a> {
@@ -63,61 +67,90 @@ pub(super) async fn upload(
     config: &SharedConfig,
     file: &tempfile::NamedTempFile,
 ) -> Result<protocol::Indexed, AppError> {
-    upload_to(config, file, Endpoint::Index).await
+    super::sync::client::upload(config, file).await
 }
 
-pub(super) async fn upload_to(
-    config: &SharedConfig,
-    file: &tempfile::NamedTempFile,
-    endpoint: Endpoint,
-) -> Result<protocol::Indexed, AppError> {
-    use futures_util::StreamExt;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    };
-    let total_bytes = file.as_file().metadata().map_err(AppError::io)?.len();
-    let file = file
-        .reopen()
-        .map_err(|_| AppError::internal("open index upload"))?;
-    let sent = Arc::new(AtomicU64::new(0));
-    let stream_sent = sent.clone();
-    let stream =
-        tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(file)).inspect(move |chunk| {
-            if let Ok(chunk) = chunk {
-                stream_sent.fetch_add(
-                    u64::try_from(chunk.len()).unwrap_or(u64::MAX),
-                    Ordering::Relaxed,
-                );
+/// One deferred publication request. Jobs are coalesced per database so a burst
+/// of watch passes sends the newest snapshot only.
+struct Job {
+    database: std::path::PathBuf,
+    config: SharedConfig,
+    models: std::path::PathBuf,
+    embeddings: Option<crate::semantic::remote::Configuration>,
+    attachments: bool,
+}
+
+static PUBLISHER: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<Job>> =
+    std::sync::OnceLock::new();
+
+fn publisher() -> &'static tokio::sync::mpsc::UnboundedSender<Job> {
+    PUBLISHER.get_or_init(|| {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Job>();
+        tokio::spawn(async move {
+            let mut pending: std::collections::BTreeMap<std::path::PathBuf, Job> =
+                std::collections::BTreeMap::new();
+            while let Some(job) = receiver.recv().await {
+                pending.insert(job.database.clone(), job);
+                // Collapse everything already queued: a snapshot publication
+                // supersedes any older one for the same database.
+                while let Ok(next) = receiver.try_recv() {
+                    pending.insert(next.database.clone(), next);
+                }
+                for (_, job) in std::mem::take(&mut pending) {
+                    let Job {
+                        database,
+                        config,
+                        models,
+                        embeddings,
+                        attachments,
+                    } = job;
+                    let inference = Inference {
+                        models_dir: &models,
+                        embeddings: embeddings.as_ref(),
+                    };
+                    let published = publish(&database, &config, Some(inference)).await;
+                    if published.is_pending() {
+                        tracing::warn!(
+                            message = published.error.as_deref().unwrap_or("publication pending"),
+                            "background publication is still pending"
+                        );
+                        continue;
+                    }
+                    if attachments
+                        && let Err(error) = super::attachments::publish(&database, &config).await
+                    {
+                        tracing::warn!(
+                            message = %error.error.message,
+                            "background attachment publication failed"
+                        );
+                    }
+                }
             }
         });
-    let request = response(
-        request(config, reqwest::Method::POST, endpoint)?
-            .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
-            .body(reqwest::Body::wrap_stream(stream)),
-        endpoint,
-    );
-    tokio::pin!(request);
-    let started = std::time::Instant::now();
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut estimate = crate::progress::Estimate::new();
-    loop {
-        tokio::select! {
-            result = &mut request => return result,
-            _ = interval.tick() => {
-                let uploaded_bytes = sent.load(Ordering::Relaxed);
-                let elapsed = crate::progress::milliseconds(started);
-                let committing = uploaded_bytes >= total_bytes;
-                let eta = if committing { None } else { estimate.observe(uploaded_bytes, total_bytes, elapsed) };
-                crate::progress::emit(&crate::progress::Event {
-                    uploaded_bytes:Some(uploaded_bytes), total_bytes:Some(total_bytes),
-                    ..crate::progress::Event::new(if committing {crate::progress::Phase::SharedCommit} else {crate::progress::Phase::SharedUpload}, elapsed, eta)
-                });
-            }
-        }
-    }
+        sender
+    })
 }
+
+/// Queue a publication for the process-wide publisher task. The caller returns
+/// immediately; the local indexing task never waits for the network.
+pub(crate) fn enqueue(
+    database: &Path,
+    config: &SharedConfig,
+    models: &Path,
+    embeddings: Option<&crate::semantic::remote::Configuration>,
+    attachments: bool,
+) -> Result<(), AppError> {
+    publisher()
+        .send(Job {
+            database: database.to_path_buf(),
+            config: config.clone(),
+            models: models.to_path_buf(),
+            embeddings: embeddings.cloned(),
+            attachments,
+        })
+        .map_err(|_| AppError::internal("background publisher is unavailable"))
+}
+
 pub(crate) fn status(
     path: &Path,
     config: Option<&SharedConfig>,
@@ -140,12 +173,49 @@ pub(crate) fn status(
     }))
 }
 
+/// One publisher owns a database/destination pair at a time. A second process
+/// may observe the owner within this budget, then reports shared-pending.
+const PUBLISH_LOCK_WAIT: Duration = Duration::from_secs(30);
+const PUBLISH_LOCK_POLL: Duration = Duration::from_millis(50);
+const SHARED_PENDING: &str =
+    "another process is publishing this database and destination; retry when it finishes";
+
 pub(crate) async fn publish(
     path: &Path,
     config: &SharedConfig,
     inference: Option<Inference<'_>>,
 ) -> Publication {
-    match publish_result(path, config, inference).await {
+    publish_with_wait(path, config, inference, PUBLISH_LOCK_WAIT).await
+}
+
+/// Publisher with an explicit ownership wait, used by tests.
+pub(super) async fn publish_with_wait(
+    path: &Path,
+    config: &SharedConfig,
+    inference: Option<Inference<'_>>,
+    wait: Duration,
+) -> Publication {
+    let target = target(config);
+    let lock = match acquire_publish_lock(path, &target, wait).await {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            return Publication {
+                preparation: None,
+                state: PublicationState::Pending,
+                error: Some(SHARED_PENDING.to_owned()),
+            };
+        }
+        Err(error) => {
+            return Publication {
+                preparation: None,
+                state: PublicationState::Pending,
+                error: Some(error.error.message),
+            };
+        }
+    };
+    let result = publish_result(path, config, inference).await;
+    drop(lock);
+    match result {
         Ok(preparation) => Publication {
             preparation: Some(preparation),
             ..Publication::published()
@@ -155,6 +225,51 @@ pub(crate) async fn publish(
             state: PublicationState::Pending,
             error: Some(error.error.message),
         },
+    }
+}
+
+/// Lock file beside the database, scoped to the destination identity. A
+/// destination change publishes a different snapshot, so it gets its own lock.
+pub(super) fn publish_lock_path(database: &Path, target: &str) -> PathBuf {
+    let mut lock = database.to_path_buf().into_os_string();
+    lock.push(format!(".publish-{}.lock", &target[..target.len().min(16)]));
+    PathBuf::from(lock)
+}
+
+fn try_publish_lock(path: &Path) -> Result<Option<std::fs::File>, AppError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(AppError::io)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)
+        .map_err(AppError::io)?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(error)) => Err(AppError::io(error)),
+    }
+}
+
+/// Acquire the publisher lock, waiting up to `wait` for a live owner to finish.
+async fn acquire_publish_lock(
+    database: &Path,
+    target: &str,
+    wait: Duration,
+) -> Result<Option<std::fs::File>, AppError> {
+    let path = publish_lock_path(database, target);
+    let deadline = tokio::time::Instant::now() + wait;
+    loop {
+        let probe = path.clone();
+        if let Some(file) = crate::blocking(move || try_publish_lock(&probe)).await? {
+            return Ok(Some(file));
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(None);
+        }
+        tokio::time::sleep(PUBLISH_LOCK_POLL).await;
     }
 }
 
@@ -264,10 +379,109 @@ async fn publish_result(
 }
 
 async fn acknowledge(path: &Path, config: &SharedConfig, revision: i64) -> Result<(), AppError> {
+    acknowledge_with(
+        path,
+        config,
+        revision,
+        crate::storage::publication::JournalCoverage::Incremental { through: revision },
+    )
+    .await
+}
+
+async fn acknowledge_with(
+    path: &Path,
+    config: &SharedConfig,
+    revision: i64,
+    coverage: crate::storage::publication::JournalCoverage,
+) -> Result<(), AppError> {
     let db = path.to_path_buf();
     let target = target(config);
-    crate::blocking(move || Storage::open_existing(&db)?.acknowledge_publication(&target, revision))
-        .await
+    crate::blocking(move || {
+        Storage::open_existing(&db)?.acknowledge_publication(&target, revision, coverage)
+    })
+    .await
+}
+
+/// Publish one frozen baseline progressively through `/v1/sync` and complete
+/// it. This is the operator entry point behind `mash backfill`.
+pub(crate) async fn publish_backfill(
+    path: &Path,
+    config: &SharedConfig,
+    backfill_id: &str,
+) -> Result<i64, AppError> {
+    if backfill_id.is_empty() || backfill_id.len() > 4096 {
+        return Err(AppError::usage("backfill identity is required"));
+    }
+    let target_key = target(config);
+    let _lock = acquire_publish_lock(path, &target_key, PUBLISH_LOCK_WAIT)
+        .await?
+        .ok_or_else(|| AppError::shared(SHARED_PENDING))?;
+    let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
+    let target = super::reuse::Target::from_freshness(&freshness, config)?;
+    if target.build != crate::views::config::Build::default() {
+        return Err(AppError::usage(
+            "backfill requires the default views recipe; publish normally to switch recipes",
+        ));
+    }
+    let (file, revision) = prepare_backfill(path, &target).await?;
+    let indexed = super::sync::client::upload_backfill(config, &file, backfill_id).await?;
+    acknowledge_with(
+        path,
+        config,
+        revision,
+        crate::storage::publication::JournalCoverage::BaselineComplete { through: revision },
+    )
+    .await?;
+    Ok(indexed.revision)
+}
+
+/// Spool the node's complete history as a non-snapshot batch frozen at the next
+/// local revision. The server merges it with per-conversation ordering.
+async fn prepare_backfill(
+    path: &Path,
+    target: &super::reuse::Target,
+) -> Result<(tempfile::NamedTempFile, i64), AppError> {
+    let db = path.to_path_buf();
+    let metadata = target.clone();
+    crate::blocking(move || {
+        crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
+            let mut file = tempfile::NamedTempFile::new()
+                .map_err(|_| AppError::internal("create backfill upload"))?;
+            let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
+            let revision = Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
+                snapshot::validate_owner(snapshot, &metadata)?;
+                write_event(
+                    &mut writer,
+                    &Event::Start(Start {
+                        views_build: Some(metadata.build.clone()),
+                        source_silver: Some(snapshot.source_silver.clone()),
+                        instance: snapshot.instance.clone(),
+                        revision: Some(snapshot.revision),
+                        base_revision: Some(snapshot.revision.saturating_sub(1)),
+                        snapshot: false,
+                        forgets: Vec::new(),
+                    }),
+                    metadata.redaction,
+                )?;
+                for kind in [
+                    protocol::BatchKind::Tombstones,
+                    protocol::BatchKind::Conversations,
+                    protocol::BatchKind::Messages,
+                ] {
+                    snapshot.visit(kind, |batch| {
+                        write_event(&mut writer, &Event::Batch(batch), metadata.redaction)
+                    })?;
+                }
+                write_event(&mut writer, &Event::Finish, metadata.redaction)
+            })?;
+            writer
+                .flush()
+                .map_err(|_| AppError::internal("flush backfill upload"))?;
+            drop(writer);
+            Ok((file, revision))
+        })
+    })
+    .await
 }
 
 /// Recover a lost acknowledgement without reading or uploading canonical bodies.

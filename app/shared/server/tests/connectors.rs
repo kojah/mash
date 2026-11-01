@@ -122,7 +122,7 @@ async fn connector_http_identity_is_authorized_by_token_not_payload_or_headers()
 
 #[tokio::test]
 async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() {
-    let service = Service::with_backend(TestBackend::Silver, 384, 1024, FIRST).await;
+    let service = Service::with_backend(TestBackend::Silver, 384, 1024, FIRST, false).await;
     let oversized = batch("first", 0, &"x".repeat(2048));
     assert_eq!(
         upload(&service, FIRST, &oversized).await.status(),
@@ -170,7 +170,8 @@ async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() 
 
 #[tokio::test]
 async fn connector_http_waits_for_capacity_then_commits_without_client_retry() {
-    let service = Service::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST).await;
+    let service =
+        Service::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST, false).await;
     let capacity = service.uploads.acquire_many(4).await.unwrap();
     let input = batch("first", 0, "queued once");
     let release = async {

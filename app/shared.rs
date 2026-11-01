@@ -20,13 +20,14 @@ mod exact;
 mod lexical_manifest;
 mod output;
 pub(crate) mod protocol;
-mod publication;
+pub(crate) mod publication;
 mod qdrant_index;
 mod retrieval;
 mod reuse;
 pub(crate) mod server;
 mod silver_revision;
 mod silver_store;
+mod sync;
 mod validation;
 mod views_manifest;
 
@@ -34,7 +35,6 @@ pub(crate) use client::{freshness, list_chats, view};
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;
-#[cfg(test)]
 pub(crate) use publication::write_event;
 pub(crate) use publication::{publish, status};
 pub(crate) use retrieval::{SearchOutcome, require_dense, search};

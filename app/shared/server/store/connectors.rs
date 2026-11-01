@@ -38,6 +38,12 @@ impl Store {
         self
     }
 
+    #[cfg(test)]
+    pub(in crate::shared) fn with_views_interruption(mut self) -> Self {
+        self.views_interruption = true;
+        self
+    }
+
     /// Commit silver first. View follows on a best-effort basis: a failure
     /// leaves the node uncertified until the next ingest, upload or replay.
     pub(in crate::shared) async fn ingest_connector(

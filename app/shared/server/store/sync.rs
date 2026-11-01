@@ -20,6 +20,25 @@ struct Written {
     expected: u64,
 }
 
+/// Silver committed and awaiting views certification. Holds the node lock so
+/// no other publication interleaves between the two phases.
+pub(in crate::shared) struct SilverCommit {
+    identity: Identity,
+    file: tempfile::NamedTempFile,
+    applied: Applied,
+    views: Option<NodeViews>,
+    current: bool,
+    progress: Progress,
+    _node: tokio::sync::OwnedMutexGuard<()>,
+}
+
+impl SilverCommit {
+    /// Source revision committed in silver.
+    pub(in crate::shared) fn revision(&self) -> i64 {
+        self.applied.revision
+    }
+}
+
 impl Store {
     #[cfg(test)]
     pub(in crate::shared) async fn index(
@@ -38,8 +57,38 @@ impl Store {
         file: tempfile::NamedTempFile,
         progress: Progress,
     ) -> Result<Indexed, AppError> {
+        self.index_tracked_receipt(identity, file, progress, None)
+            .await
+    }
+
+    /// Commit a `/v1/sync` publication together with its transfer receipt. The
+    /// receipt is written in the silver transaction, so recovery can tell
+    /// whether history committed without trusting transport bookkeeping.
+    pub(in crate::shared) async fn index_tracked_receipt(
+        &self,
+        identity: &Identity,
+        file: tempfile::NamedTempFile,
+        progress: Progress,
+        receipt: Option<&silver_store::SyncReceipt>,
+    ) -> Result<Indexed, AppError> {
+        let commit = self
+            .commit_silver(identity, file, progress, receipt)
+            .await?;
+        self.certify_views(commit).await
+    }
+
+    /// First phase: atomically commit canonical silver, its receipt and the
+    /// publication head. Views are untouched, so a caller can report
+    /// `SilverCommitted` before certification starts.
+    pub(in crate::shared) async fn commit_silver(
+        &self,
+        identity: &Identity,
+        file: tempfile::NamedTempFile,
+        progress: Progress,
+        receipt: Option<&silver_store::SyncReceipt>,
+    ) -> Result<SilverCommit, AppError> {
         progress.phase(Phase::WaitingForNode, Unit::Records);
-        let _node = self.lock(identity).await?;
+        let node = self.lock(identity).await?;
         progress.phase(Phase::CheckingViews, Unit::Records);
         self.views.views_configuration(identity).await?;
         let previous = self.head(identity).await?;
@@ -52,23 +101,69 @@ impl Store {
         let scope = identity.clone();
         let build = self.views.build().clone();
         let worker_progress = progress.clone();
+        let receipt = receipt.cloned();
         progress.phase(Phase::ApplyingSilver, Unit::Records);
         let (applied, file) = crate::blocking(move || {
-            let applied =
-                silver_store::apply::write(&silver, &scope, &file, &build, &worker_progress)?;
+            let applied = silver_store::apply::write(
+                &silver,
+                &scope,
+                &file,
+                &build,
+                &worker_progress,
+                receipt.as_ref(),
+            )?;
             Ok((applied, file))
         })
         .await?;
+        Ok(SilverCommit {
+            identity: identity.clone(),
+            file,
+            applied,
+            views,
+            current,
+            progress,
+            _node: node,
+        })
+    }
+
+    /// Second phase: write and certify views for a committed silver revision.
+    pub(in crate::shared) async fn certify_views(
+        &self,
+        commit: SilverCommit,
+    ) -> Result<Indexed, AppError> {
+        let SilverCommit {
+            identity,
+            file,
+            applied,
+            views,
+            current,
+            progress,
+            _node,
+        } = commit;
         if !(applied.duplicate && current) {
-            self.sync_upload(identity, &file, &applied, views, &progress)
+            #[cfg(test)]
+            if self.views_interruption {
+                return Err(AppError::internal("injected views certification failure"));
+            }
+            self.sync_upload(&identity, &file, &applied, views, &progress)
                 .await?;
         }
         Ok(Indexed {
-            counts: self.status(identity).await?,
+            counts: self.status(&identity).await?,
             revision: applied.revision,
             removed_messages: applied.removed,
             purged_conversations: applied.purged,
         })
+    }
+
+    /// Current accepted source revision for this node; 0 before its first
+    /// publication. Baseline batches rebase onto it so per-conversation
+    /// ordering, not node-level staleness, decides what applies.
+    pub(in crate::shared) async fn head_revision(
+        &self,
+        identity: &Identity,
+    ) -> Result<i64, AppError> {
+        Ok(self.head(identity).await?.map_or(0, |head| head.revision))
     }
 
     /// Write views for the chats an upload supplied, then certify the revision.

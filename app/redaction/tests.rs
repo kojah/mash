@@ -157,7 +157,13 @@ fn policy_upgrade_is_pending_and_retries_keep_the_same_revision() {
         .unwrap();
     storage.prepare_publication_target("first").unwrap();
     let revision = storage.with_publication_snapshot(|_| Ok(())).unwrap();
-    storage.acknowledge_publication("first", revision).unwrap();
+    storage
+        .acknowledge_publication(
+            "first",
+            revision,
+            crate::storage::publication::JournalCoverage::Incremental { through: revision },
+        )
+        .unwrap();
     assert!(!crate::storage::Storage::publication_is_pending(&path, "first").unwrap());
     storage.prepare_publication_target("redaction-v1").unwrap();
     let next = storage.with_publication_snapshot(|_| Ok(())).unwrap();
