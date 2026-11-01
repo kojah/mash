@@ -24,9 +24,21 @@ fn has_table(connection: &Connection, table: &str) -> Result<bool, AppError> {
 
 pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
     let connection = sqlite_source::open(path)?;
-    let mut statement = connection
-        .prepare("SELECT id,time_updated FROM session ORDER BY id")
-        .map_err(AppError::database)?;
+    let tables = session_tables(&connection)?;
+    if tables.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Upstream moved sessions to `session_v2`; both layouts can coexist in one
+    // database while older sessions are still being read.
+    let query = format!(
+        "SELECT id, MAX(time_updated) AS time_updated FROM ({}) GROUP BY id ORDER BY id",
+        tables
+            .iter()
+            .map(|table| format!("SELECT id,time_updated FROM {table}"))
+            .collect::<Vec<_>>()
+            .join(" UNION ALL ")
+    );
+    let mut statement = connection.prepare(&query).map_err(AppError::database)?;
     let rows = statement
         .query_map([], |row| {
             Ok((
@@ -53,6 +65,34 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
             activity_ns:Some(activity_ns), dependencies:Vec::new(), estimated_bytes:Some(u64::try_from(bytes)
                 .map_err(|_| AppError::configuration("invalid OpenCode session byte count"))?) })
     }).collect()
+}
+
+/// Session tables present in this database, newest layout first.
+fn session_tables(connection: &Connection) -> Result<Vec<&'static str>, AppError> {
+    let mut tables = Vec::new();
+    for table in ["session_v2", "session"] {
+        if has_table(connection, table)? {
+            tables.push(table);
+        }
+    }
+    Ok(tables)
+}
+
+/// Table holding this session, preferring the current layout.
+fn session_table(connection: &Connection, session: &str) -> Result<Option<&'static str>, AppError> {
+    for table in session_tables(connection)? {
+        let exists: bool = connection
+            .query_row(
+                &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id=?1)"),
+                [session],
+                |row| row.get(0),
+            )
+            .map_err(AppError::database)?;
+        if exists {
+            return Ok(Some(table));
+        }
+    }
+    Ok(None)
 }
 
 fn uses_current(connection: &Connection, session: &str) -> Result<bool, AppError> {
@@ -95,7 +135,10 @@ struct User {
 }
 #[derive(Deserialize)]
 struct Attachment {
-    uri: String,
+    /// External files carry a URI; inline images carry base64 data instead and
+    /// are not addressable, so they are omitted from the projection.
+    #[serde(default)]
+    uri: Option<String>,
     name: Option<String>,
     description: Option<String>,
 }
@@ -111,7 +154,9 @@ struct Shell {
 #[derive(Deserialize)]
 struct Compaction {
     summary: String,
-    recent: String,
+    /// Older databases carry a `recent` excerpt; current ones omit it.
+    #[serde(default)]
+    recent: Option<String>,
 }
 #[derive(Deserialize)]
 struct LegacyMessage {
@@ -304,15 +349,18 @@ fn current(
                 let user: User = sqlite_source::bounded_json(row)?;
                 let mut content = Content::text(user.text, true)?;
                 for file in user.files {
+                    let Some(uri) = file.uri else {
+                        continue;
+                    };
                     content.attachments.push(crate::attachments::url(
                         file.name.as_deref().unwrap_or("file"),
-                        &file.uri,
+                        &uri,
                     ));
                     content.append(
                         format!(
                             "File {}: {}\n{}",
                             file.name.unwrap_or_default(),
-                            file.uri,
+                            uri,
                             file.description.unwrap_or_default()
                         ),
                         None,
@@ -347,13 +395,12 @@ fn current(
             }
             Kind::Compaction => {
                 let compaction = sqlite_source::bounded_json::<Compaction>(row)?;
-                (
-                    Role::System,
-                    Content::text(
-                        format!("Compaction: {}\n{}", compaction.summary, compaction.recent),
-                        false,
-                    )?,
-                )
+                let mut text = format!("Compaction: {}", compaction.summary);
+                if let Some(recent) = compaction.recent {
+                    text.push('\n');
+                    text.push_str(&recent);
+                }
+                (Role::System, Content::text(text, false)?)
             }
             Kind::AgentSwitched | Kind::ModelSwitched | Kind::Unknown => continue,
         };
@@ -423,14 +470,18 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         .as_deref()
         .ok_or_else(|| AppError::configuration("OpenCode requires a session identity"))?;
     let connection = sqlite_source::open(&source.path)?;
+    let table = session_table(&connection, session)?
+        .ok_or_else(|| AppError::configuration("OpenCode session disappeared; retry index"))?;
     let mut budget = Budget::default();
     let metadata_bytes: i64 = connection
         .query_row(
-            "SELECT COALESCE(length(CAST(s.title AS BLOB)),0)
+            &format!(
+                "SELECT COALESCE(length(CAST(s.title AS BLOB)),0)
           +COALESCE(length(CAST(s.directory AS BLOB)),0)
           +COALESCE(length(CAST(p.worktree AS BLOB)),0)
           +COALESCE(length(CAST(p.vcs AS BLOB)),0)
-        FROM session s JOIN project p ON p.id=s.project_id WHERE s.id=?1",
+        FROM {table} s JOIN project p ON p.id=s.project_id WHERE s.id=?1"
+            ),
             [session],
             |row| row.get(0),
         )
@@ -443,8 +494,10 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
     budget.read(metadata_bytes)?;
     let metadata = connection
         .query_row(
-            "SELECT s.title,s.directory,p.worktree,p.vcs,s.time_created,s.time_updated
-        FROM session s JOIN project p ON p.id=s.project_id WHERE s.id=?1",
+            &format!(
+                "SELECT s.title,s.directory,p.worktree,p.vcs,s.time_created,s.time_updated
+        FROM {table} s JOIN project p ON p.id=s.project_id WHERE s.id=?1"
+            ),
             [session],
             |row| {
                 let vcs: Option<String> = row.get("vcs")?;

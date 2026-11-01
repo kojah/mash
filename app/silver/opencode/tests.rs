@@ -34,6 +34,54 @@ fn options(path: &Path) -> IndexOptions {
 }
 
 #[test]
+fn current_sessions_are_discovered_from_session_v2() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("opencode.db");
+    let connection = Connection::open(&path).unwrap();
+    // Modern layout only: no legacy `session` rows at all.
+    connection.execute_batch(
+        "PRAGMA journal_mode=WAL;
+         CREATE TABLE project(id TEXT PRIMARY KEY,worktree TEXT,vcs TEXT);
+         CREATE TABLE session(id TEXT PRIMARY KEY,project_id TEXT,title TEXT,directory TEXT,time_created INTEGER,time_updated INTEGER);
+         CREATE TABLE session_v2(id TEXT PRIMARY KEY,project_id TEXT,title TEXT,directory TEXT,time_created INTEGER,time_updated INTEGER);
+         CREATE TABLE message(id TEXT PRIMARY KEY,session_id TEXT,time_created INTEGER,data TEXT);
+         CREATE TABLE part(id TEXT PRIMARY KEY,message_id TEXT,session_id TEXT,data TEXT);
+         CREATE TABLE session_message(id TEXT PRIMARY KEY,session_id TEXT,type TEXT,seq INTEGER,time_created INTEGER,data TEXT);
+         INSERT INTO project VALUES('project','/work/current','git');
+         INSERT INTO session_v2 VALUES('gamma','project','Current session','/work/current',1790726400000,1790726500000);
+         INSERT INTO session_message VALUES('u','gamma','user',1,1790726400000,'{\"text\":\"modern marker\"}');
+         INSERT INTO session_message VALUES('a','gamma','assistant',2,1790726401000,'{\"content\":[{\"type\":\"text\",\"text\":\"current answer\"}]}');
+         INSERT INTO session_message VALUES('c','gamma','compaction',3,1790726402000,'{\"status\":\"completed\",\"summary\":\"compaction summary\",\"model\":{\"id\":\"m\",\"providerID\":\"p\"}}');
+         INSERT INTO session_message VALUES('u2','gamma','user',4,1790726403000,'{\"text\":\"inline screenshot\",\"files\":[{\"type\":\"inline\",\"mime\":\"image/png\",\"data\":\"AAAA\",\"name\":\"image.png\"}]}');",
+    )
+    .unwrap();
+    drop(connection);
+
+    let sources = discover(&path).unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].identity.session.as_deref(), Some("gamma"));
+    let parsed = parse(&sources[0].identity).unwrap().conversation.unwrap();
+    assert_eq!(parsed.title.as_deref(), Some("Current session"));
+    assert_eq!(parsed.project.as_deref(), Some("/work/current"));
+    assert_eq!(parsed.repository.as_deref(), Some("/work/current"));
+    assert_eq!(parsed.messages.len(), 4);
+    assert!(
+        parsed
+            .messages
+            .inline()
+            .iter()
+            .any(|message| message.content.contains("inline screenshot"))
+    );
+    assert!(
+        parsed
+            .messages
+            .inline()
+            .iter()
+            .any(|message| message.content.contains("compaction summary"))
+    );
+}
+
+#[test]
 fn native_layouts_preserve_prose_metadata_and_context_without_duplicate_mirrors() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("opencode.db");
