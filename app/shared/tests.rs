@@ -461,7 +461,11 @@ async fn deferred_publication_queues_without_blocking_the_indexing_task() {
     })
     .await
     .expect("background publication completes");
-    let frames = received.recv().await.expect("publisher connected");
+    crate::shared::sync::client::close_sessions();
+    let frames = tokio::time::timeout(Duration::from_secs(10), received.recv())
+        .await
+        .expect("fake server reports frames after the session closes")
+        .expect("publisher connected");
     assert!(
         frames.iter().any(|frame| matches!(
             frame.body,
@@ -496,8 +500,14 @@ async fn websocket_publication_streams_a_complete_snapshot_before_acknowledging(
         "{:?}",
         publication.error
     );
+    // The publisher keeps its session open for reuse; close it so the fake
+    // server's connection loop ends and it reports the captured frames.
+    crate::shared::sync::client::close_sessions();
 
-    let frames = received.recv().await.unwrap();
+    let frames = tokio::time::timeout(Duration::from_secs(10), received.recv())
+        .await
+        .expect("fake server reports frames after the session closes")
+        .unwrap();
     assert!(
         matches!(
             frames.first().map(|frame| &frame.body),

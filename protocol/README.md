@@ -496,7 +496,7 @@ Known implementation/model gaps, recorded in Beads:
    records, messages and tombstones superseded by newer live state, then rebases
    the rest onto the node revision, so a late baseline cannot overwrite a live
    conversation or resurrect a deletion. Opening a baseline behind the node head
-   fails closed. `mash backfill` drives the whole flow.
+   fails closed. `mash index --backfill` drives the whole flow.
    `journal_pruning_waits_for_baseline_completion_and_contiguous_coverage`
    enforces the journal gate. Remaining gaps: no scheduling heuristics, no
    multi-session or restored-baseline ordering, and the journal gate is only
@@ -609,15 +609,18 @@ publication, then drives `FinishBackfill` and waits for `BackfillComplete`.
 against the real handler and asserts the catalog reports `complete`,
 coverage equals the manifest, and views are certified.
 
-The operator surface is `mash backfill [--backfill-id ID]`. It freezes the next
-local revision, spools the node's complete history as a non-snapshot batch,
-sends it through the client sender under the publisher lock, acknowledges the
-journal with the baseline-complete gate, and returns
-`{"backfill_id": ..., "revision": ...}`. Retrying with the same identity resumes
-the same server session. It requires the default views recipe and a configured
-shared destination. `qdrant_backfill_command_publishes_a_baseline_through_the_cli`
-runs the real binary against a real server and asserts the catalog reports
-`complete` with full coverage and that shared status shows the same revision.
+The operator surface is `mash index --backfill[=ID]` — one command for one
+intent, with the baseline as a delivery modifier. It indexes local sources, then
+freezes the next local revision, spools the node's complete history as a
+non-snapshot batch, sends it through the client sender under the publisher lock,
+acknowledges the journal with the baseline-complete gate, and reports
+`{"shared": {"state": "published"}, "backfill": {"id": ..., "revision": ...}}`.
+Retrying with the same identity resumes the same server session. It requires the
+default views recipe and a configured shared destination, and conflicts with
+`--watch`, `--connector-batch` and `--rebuild-local-views`.
+`qdrant_backfill_command_publishes_a_baseline_through_the_cli` runs the real
+binary against a real server and asserts the catalog reports `complete` with
+full coverage and that shared status shows the same revision.
 A frozen baseline at source revision 1 contains conversations `a` and `b`; live
 revision 2 edits `a`, and revision 3 deletes it. Four independent batches may be
 scheduled in any order. Each carries complete conversation state or a tombstone.

@@ -44,12 +44,6 @@ enum Command {
         #[arg(long)]
         diagnostics: bool,
     },
-    /// Publish this node's history as a progressive baseline over /v1/sync.
-    Backfill {
-        /// Baseline identity; reused retries converge on the same session.
-        #[arg(long, default_value = "baseline")]
-        backfill_id: String,
-    },
     /// Discover and index supported local histories.
     Index {
         /// Commit an external connector batch to local silver; receipt reports views readiness.
@@ -77,6 +71,17 @@ enum Command {
         /// Admit source history regardless of age.
         #[arg(long)]
         all_history: bool,
+        /// Publish this database as a progressive baseline that merges instead
+        /// of replacing: a chat missing from the payload is not-yet-sent, never
+        /// deleted. Plain `index` or `forget` removes chats from the server.
+        #[arg(
+            long,
+            value_name = "BACKFILL_ID",
+            num_args = 0..=1,
+            default_missing_value = "baseline",
+            conflicts_with_all = ["watch", "connector_batch", "rebuild_local_views"]
+        )]
+        backfill: Option<String>,
     },
     /// Search indexed chats or messages.
     Search {
@@ -295,10 +300,6 @@ pub(super) enum Response {
         version: &'static str,
         silver_schema: i64,
     },
-    Backfill {
-        backfill_id: String,
-        revision: i64,
-    },
     WatchStopped {
         watching: bool,
     },
@@ -332,11 +333,6 @@ impl Cli {
                 shared,
                 diagnostics,
             },
-            Command::Backfill { .. } => {
-                return Err(AppError::internal(
-                    "backfill is dispatched before request mapping",
-                ));
-            }
             Command::Index {
                 connector_batch: Some(batch_file),
                 ..
@@ -347,6 +343,7 @@ impl Cli {
                 provider,
                 since_days,
                 all_history,
+                backfill,
                 ..
             } => Operation::Index(IndexRequest {
                 mode: crate::core::IndexMode::from_rebuild_flag(rebuild_local_views),
@@ -355,6 +352,7 @@ impl Cli {
                 since_days,
                 all_history,
                 defer_publication: false,
+                backfill,
             }),
             Command::Search {
                 shared_vector_search,
@@ -637,29 +635,10 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
         crate::blocking(move || lease.ensure_current()).await?;
         return Ok(Response::WatchStopped { watching: false });
     }
-    if let Command::Backfill { backfill_id } = &cli.command {
-        let backfill_id = backfill_id.clone();
-        return backfill(&cli.paths(), &backfill_id).await;
-    }
     core::execute(cli.into_request()?)
         .await
         .map(Box::new)
         .map(Response::Operation)
-}
-
-/// Operator entry point: publish this node's complete history as a baseline.
-async fn backfill(paths: &Paths, backfill_id: &str) -> Result<Response, AppError> {
-    let configuration = crate::config::load(paths.config.as_deref())?;
-    let shared = core::publication_config(&configuration).ok_or_else(|| {
-        AppError::usage("backfill requires a shared destination in the configuration")
-    })?;
-    let database = paths.db.clone().unwrap_or_else(core::default_database_path);
-    let revision =
-        crate::shared::publication::publish_backfill(&database, shared, backfill_id).await?;
-    Ok(Response::Backfill {
-        backfill_id: backfill_id.to_owned(),
-        revision,
-    })
 }
 
 #[cfg(test)]
@@ -858,6 +837,30 @@ mod tests {
     }
 
     #[test]
+    fn backfill_is_a_flag_on_index_not_a_sibling_command() {
+        let Cli { command, .. } = Cli::try_parse_from(["mash", "index", "--backfill"]).unwrap();
+        let Command::Index { backfill, .. } = command else {
+            panic!("expected index");
+        };
+        assert_eq!(backfill.as_deref(), Some("baseline"));
+
+        let Cli { command, .. } =
+            Cli::try_parse_from(["mash", "index", "--backfill", "nightly"]).unwrap();
+        let Command::Index { backfill, .. } = command else {
+            panic!("expected index");
+        };
+        assert_eq!(backfill.as_deref(), Some("nightly"));
+
+        // The baseline is a one-shot publication, not a watch or rebuild mode.
+        assert!(Cli::try_parse_from(["mash", "index", "--backfill", "--watch"]).is_err());
+        assert!(
+            Cli::try_parse_from(["mash", "index", "--backfill", "--rebuild-local-views"]).is_err()
+        );
+        // The retired sibling command is gone.
+        assert!(Cli::try_parse_from(["mash", "backfill"]).is_err());
+    }
+
+    #[test]
     fn command_surface_contains_only_the_contract_commands() {
         let command = Cli::command();
         let names: Vec<_> = command
@@ -868,7 +871,6 @@ mod tests {
             names,
             [
                 "list-chats",
-                "backfill",
                 "index",
                 "search",
                 "view",

@@ -1048,6 +1048,16 @@ fn indexed(revision: i64) -> protocol::Indexed {
     }
 }
 
+/// Close every cached publisher session. Tests use this once a publication is
+/// done so a fake server that answers on disconnect can finish.
+#[cfg(test)]
+pub(crate) fn close_sessions() {
+    let mut slots = session_slots()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    slots.clear();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

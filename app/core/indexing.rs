@@ -59,7 +59,32 @@ pub(super) async fn run(
         )
     })
     .await?;
-    if let Some(config) = publication_config(configuration) {
+    if let Some(backfill_id) = request.backfill.clone() {
+        let Some(config) = publication_config(configuration) else {
+            let mut pending = shared::Publication::pending();
+            pending.attachment_failure(AppError::usage(
+                "backfill requires a shared destination in the configuration",
+            ));
+            result.shared = Some(pending);
+            result.total_milliseconds = elapsed_milliseconds(started);
+            emit_finished(&result);
+            return Ok(result);
+        };
+        match shared::publication::publish_backfill(database, config, &backfill_id).await {
+            Ok(revision) => {
+                result.shared = Some(shared::Publication::published());
+                result.backfill = Some(crate::core::BackfillSummary {
+                    id: backfill_id,
+                    revision,
+                });
+            }
+            Err(error) => {
+                let mut pending = shared::Publication::pending();
+                pending.attachment_failure(error);
+                result.shared = Some(pending);
+            }
+        }
+    } else if let Some(config) = publication_config(configuration) {
         result.shared = Some(if request.defer_publication {
             // Watch mode: the local pass is complete; a slow network publisher
             // must not hold the indexing task. The queue publishes the newest
@@ -216,6 +241,7 @@ fn index(
     }
     emit_index_phase(crate::progress::Phase::LocalComplete, &summary);
     Ok(IndexResponse {
+        backfill: None,
         views: storage.views_manifest()?,
         rebuild_local_views,
         silver: certificate,

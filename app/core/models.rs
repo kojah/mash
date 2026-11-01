@@ -46,6 +46,8 @@ pub(crate) struct IndexRequest {
     /// Watch passes queue publication instead of awaiting it, so a slow
     /// network publisher never occupies the local indexing task.
     pub(crate) defer_publication: bool,
+    /// Publish as a progressive baseline instead of a replacing snapshot.
+    pub(crate) backfill: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +163,15 @@ pub(crate) struct IndexResponse {
     pub(super) total_milliseconds: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared: Option<shared::Publication>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) backfill: Option<BackfillSummary>,
+}
+
+/// What a `--backfill` publication produced.
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct BackfillSummary {
+    pub(crate) id: String,
+    pub(crate) revision: i64,
 }
 
 impl Response {

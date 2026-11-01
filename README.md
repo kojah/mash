@@ -61,7 +61,7 @@ CI checks regeneration against committed output. Dynamic predicates and FTS rank
 reuse the generated projection and decoder; migrations and writes remain explicit.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history] [--backfill[=ID]]
 mash index --rebuild-local-views [--full]
 mash search <query> [--unit chats|messages] [--local | --shared] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
 mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
@@ -72,7 +72,6 @@ mash export <new-directory>
 mash import <export-directory> --into <new-database> [--keep-identity]
 mash models install
 mash mcp [--watch [--debounce-ms N]]
-mash backfill [--backfill-id ID]
 mash serve --server-config PATH
 ```
 

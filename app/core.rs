@@ -18,8 +18,8 @@ mod search;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
-    IndexMode, IndexRequest, Operation, Paths, Request, Response, SearchMode, SearchResponse,
-    ViewResponse,
+    BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Request, Response, SearchMode,
+    SearchResponse, ViewResponse,
 };
 
 pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {

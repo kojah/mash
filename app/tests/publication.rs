@@ -145,8 +145,8 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
             database.to_str().unwrap(),
             "--models-dir",
             models.to_str().unwrap(),
-            "backfill",
-            "--backfill-id",
+            "index",
+            "--backfill",
             "cli-baseline",
         ])
         .env(
@@ -155,14 +155,18 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
         )
         .output()
         .expect("run");
+    let response: Value = serde_json::from_slice(&output.stdout).expect("JSON response");
+    //  reports exit 9 when local silver is unverified, like a normal
+    // index pass; the shared publication itself must still have succeeded.
     assert!(
-        output.status.success(),
-        "stderr={}",
+        matches!(output.status.code(), Some(0 | 9)),
+        "status={:?} response={response} stderr={}",
+        output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );
-    let response: Value = serde_json::from_slice(&output.stdout).expect("JSON response");
-    assert_eq!(response["backfill_id"], "cli-baseline");
-    let revision = response["revision"].as_i64().expect("revision");
+    assert_eq!(response["shared"]["state"], "published", "{response}");
+    assert_eq!(response["backfill"]["id"], "cli-baseline");
+    let revision = response["backfill"]["revision"].as_i64().expect("revision");
     assert!(revision >= 1, "{response}");
 
     // The server recorded a completed baseline covering every member.

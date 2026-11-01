@@ -496,6 +496,7 @@ impl Mash {
                 since_days: request.since_days,
                 all_history: request.all_history,
                 defer_publication: false,
+                backfill: None,
             }),
             Some(context),
         )
