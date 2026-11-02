@@ -96,11 +96,17 @@ impl Store {
             })
         })
         .await?;
-        if let Err(error) = self.recertify(identity).await {
-            tracing::warn!(
-                kind = ?error.error.kind,
-                "connector views synchronization failed; node views stays uncertified"
-            );
+        // A connector delivery certifies synchronously when it can, so the
+        // receipt tells the adapter whether its records are searchable yet.
+        let mut receipt = receipt;
+        match self.recertify(identity).await {
+            Ok(()) => receipt.views_ready = true,
+            Err(error) => {
+                tracing::warn!(
+                    kind = ?error.error.kind,
+                    "connector views synchronization failed; node views stays uncertified"
+                );
+            }
         }
         Ok(receipt)
     }

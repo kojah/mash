@@ -533,3 +533,46 @@ async fn slack_and_native_hits_carry_the_same_sequence_and_shape() {
     assert_eq!(connector["author"]["kind"], "human");
     service.cleanup().await;
 }
+
+/// Certification is synchronous when possible, and the receipt says so.
+#[tokio::test]
+async fn connector_receipt_reports_views_not_ready_when_certification_fails() {
+    let service = Service::canonical().await;
+    let response = upload(&service, FIRST, &batch("views-1", 0, "not searchable")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let receipt: Value = response.json().await.unwrap();
+    assert_eq!(receipt["views_ready"], false, "{receipt}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+ and installed models"]
+async fn connector_receipt_reports_views_ready_after_certification() {
+    let service = Service::qdrant(384).await;
+    let response = upload(&service, FIRST, &batch("views-2", 0, "searchable now")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let receipt: Value = response.json().await.unwrap();
+    assert_eq!(receipt["views_ready"], true, "{receipt}");
+
+    // The delivery is searchable as soon as the receipt succeeds.
+    let mut query_vector = vec![0.0; 384];
+    query_vector[0] = 1.0;
+    let found: Value = service
+        .request("search", FIRST)
+        .json(&json!({
+            "query": "searchable now",
+            "vector": query_vector,
+            "provider": null,
+            "days": null,
+            "filter": null
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(!found["lexical"].as_array().unwrap().is_empty(), "{found}");
+    service.cleanup().await;
+}
