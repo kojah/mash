@@ -57,6 +57,7 @@ pub(super) enum Endpoint {
     Index,
     Attachments,
     Attachment,
+    Query,
 }
 
 impl Endpoint {
@@ -82,6 +83,7 @@ impl Endpoint {
             Self::Index => "index",
             Self::Attachments => "attachments",
             Self::Attachment => "attachment",
+            Self::Query => "query",
         }
     }
 
@@ -93,6 +95,9 @@ impl Endpoint {
         } else if matches!(self, Self::Fingerprints) {
             // Reads every configured node's fingerprints.
             Duration::from_secs(10)
+        } else if matches!(self, Self::Query) {
+            // The server runs a bounded query; leave room for its 10s budget.
+            Duration::from_secs(15)
         } else if matches!(self, Self::Search | Self::Freshness) {
             // Exact vector retrieval over a full node can take nearly two
             // seconds before network transit and typed response decoding.
@@ -124,6 +129,15 @@ pub(super) fn request(
     let token = std::env::var(&config.token_env).map_err(|_| {
         AppError::shared(format!("set {} to this node's API token", config.token_env))
     })?;
+    request_with_token(config, method, endpoint, &token)
+}
+
+fn request_with_token(
+    config: &SharedConfig,
+    method: reqwest::Method,
+    endpoint: Endpoint,
+    token: &str,
+) -> Result<reqwest::RequestBuilder, AppError> {
     let mut headers = reqwest::header::HeaderMap::new();
     let mut authorization = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
         .map_err(|_| AppError::shared("invalid API token"))?;
@@ -346,6 +360,36 @@ pub(crate) async fn view(
         },
     )
     .await
+}
+
+#[derive(serde::Serialize)]
+struct QueryBody<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node: Option<&'a str>,
+    request: &'a crate::silver_query::Request,
+}
+
+/// Run a typed, read-only query against shared silver.
+pub(crate) async fn query(
+    config: &SharedConfig,
+    node: Option<&str>,
+    request: &crate::silver_query::Request,
+) -> Result<serde_json::Value, AppError> {
+    let token = std::env::var(&config.token_env).map_err(|_| {
+        AppError::shared(format!("set {} to this node's API token", config.token_env))
+    })?;
+    query_with_token(config, &token, node, request).await
+}
+
+pub(crate) async fn query_with_token(
+    config: &SharedConfig,
+    token: &str,
+    node: Option<&str>,
+    request: &crate::silver_query::Request,
+) -> Result<serde_json::Value, AppError> {
+    let builder = request_with_token(config, reqwest::Method::POST, Endpoint::Query, token)?
+        .json(&QueryBody { node, request });
+    response(builder, Endpoint::Query).await
 }
 
 #[cfg(test)]

@@ -31,7 +31,9 @@ mod sync;
 mod validation;
 mod views_manifest;
 
-pub(crate) use client::{fingerprints, freshness, list_chats, view};
+#[cfg(test)]
+pub(crate) use client::query_with_token;
+pub(crate) use client::{fingerprints, freshness, list_chats, query, view};
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;

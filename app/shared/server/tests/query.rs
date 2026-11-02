@@ -45,6 +45,24 @@ async fn shared_typed_queries_are_group_scoped_and_reject_sql() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
+    // The shared client sends the same request and gets the same shape.
+    let config = crate::config::SharedConfig {
+        group_id: service.first.group_id.clone(),
+        node_id: service.first.node_id.clone(),
+        api_url: service.url.clone(),
+        token_env: "unused-in-test".into(),
+        publication_redaction: crate::redaction::Policy::new(false),
+    };
+    let request = serde_json::from_value(json!({
+        "target": "messages",
+        "group_by": "source"
+    }))
+    .unwrap();
+    let value = crate::shared::query_with_token(&config, FIRST, Some("second"), &request)
+        .await
+        .unwrap();
+    assert_eq!(value["rows"], json!([{"group_key": "codex", "count": 3}]));
+
     // SQL is not part of the shared contract.
     let response = service
         .request("query", FIRST)

@@ -183,7 +183,15 @@ enum Command {
         /// Maximum rows returned in --sql mode; --request carries its own.
         #[arg(long)]
         limit: Option<usize>,
-        /// Wall-clock budget in seconds.
+        /// Query the configured shared index instead of local silver. Requires
+        /// --request; SQL is never sent to the server.
+        #[arg(long, requires = "request", conflicts_with = "sql")]
+        shared: bool,
+        /// Shared node to read; defaults to this node and must belong to the
+        /// token's group. Requires --shared.
+        #[arg(long, requires = "shared")]
+        node: Option<String>,
+        /// Wall-clock budget in seconds for local queries.
         #[arg(long, default_value_t = 10)]
         timeout_seconds: u64,
     },
@@ -456,20 +464,35 @@ impl Cli {
                 sql,
                 request,
                 limit,
+                shared,
+                node,
                 timeout_seconds,
-            } => match request {
-                Some(request) => Operation::QueryStructured {
-                    request: serde_json::from_str(&request).map_err(|error| {
-                        AppError::usage(format!("invalid query request: {error}"))
-                    })?,
-                    timeout_seconds,
-                },
-                None => Operation::QuerySilver {
-                    sql: sql.unwrap_or_default(),
-                    limit: limit.unwrap_or(200),
-                    timeout_seconds,
-                },
-            },
+            } => {
+                let parsed = |request: String| {
+                    serde_json::from_str(&request)
+                        .map_err(|error| AppError::usage(format!("invalid query request: {error}")))
+                };
+                if shared {
+                    let Some(request) = request else {
+                        return Err(AppError::usage("--shared requires --request"));
+                    };
+                    Operation::QueryShared {
+                        request: parsed(request)?,
+                        node,
+                    }
+                } else if let Some(request) = request {
+                    Operation::QueryStructured {
+                        request: parsed(request)?,
+                        timeout_seconds,
+                    }
+                } else {
+                    Operation::QuerySilver {
+                        sql: sql.unwrap_or_default(),
+                        limit: limit.unwrap_or(200),
+                        timeout_seconds,
+                    }
+                }
+            }
             Command::Export { directory } => Operation::ExportSilver { directory },
             Command::Import {
                 directory,

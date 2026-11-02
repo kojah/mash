@@ -107,6 +107,12 @@ pub(crate) enum Operation {
         request: crate::silver_query::Request,
         timeout_seconds: u64,
     },
+    /// The same request over the configured shared index, scoped by the
+    /// bearer token's group; `node` defaults to this node.
+    QueryShared {
+        request: crate::silver_query::Request,
+        node: Option<String>,
+    },
     ModelsInstall,
     ExportSilver {
         directory: PathBuf,

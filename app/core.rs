@@ -48,7 +48,9 @@ async fn execute_admitted(
         Operation::View { .. } => "view",
         Operation::Status { .. } | Operation::Installation { .. } => "status",
         Operation::Forget { .. } => "forget",
-        Operation::QuerySilver { .. } | Operation::QueryStructured { .. } => "query",
+        Operation::QuerySilver { .. }
+        | Operation::QueryStructured { .. }
+        | Operation::QueryShared { .. } => "query",
         Operation::ModelsInstall => "models_install",
         Operation::ExportSilver { .. } => "export_silver",
         Operation::ImportSilver { .. } => "import_silver",
@@ -237,6 +239,12 @@ async fn dispatch(
             })
             .await
             .map(Response::Query)
+        }
+        Operation::QueryShared { request, node } => {
+            let config = required_shared(configuration)?;
+            crate::shared::query(config, node.as_deref(), &request)
+                .await
+                .map(Response::Query)
         }
         Operation::QueryStructured {
             request,
