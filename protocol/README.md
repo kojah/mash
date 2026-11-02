@@ -366,6 +366,13 @@ recovery. Recovery is manual and retries fail closed. Individual failure during
 marker creation/removal may conservatively leave a marker; it must never authorize
 retirement without a validated import. No progress/liveness property is claimed.
 
+### Shared vocabulary
+
+`docs/source-model.md` is the reference for how publications, connectors and
+baselines relate: source identity (device- vs account-scoped), ownership, the
+connector kind/role schema, deletion rules and the deduplication contract.
+Model changes here should keep that document in sync.
+
 ### WebSocket synchronization: transfer and durable acknowledgement
 
 [SyncTransfer.tla](SyncTransfer.tla) models the publication transfer path that
