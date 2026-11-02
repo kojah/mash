@@ -4,6 +4,7 @@ import asyncio
 import fcntl
 import hashlib
 import os
+import socket
 import hashlib
 import sqlite3
 import time
@@ -48,6 +49,10 @@ R = TypeVar("R")
 MAX_RETRY_SECONDS = 60.0
 
 
+class DestinationNodes(RuntimeError):
+    """Destinations disagree about which node owns a device-scoped source."""
+
+
 class SourceInUse(RuntimeError):
     """Another connector instance already holds this source key."""
 
@@ -82,6 +87,7 @@ class Connector:
         destinations: Sequence[Destination],
         state_path: Path,
         share_state: bool = False,
+        device_scope: bool = False,
     ) -> None:
         try:
             TypeAdapter(
@@ -112,7 +118,28 @@ class Connector:
         self._tasks: set[asyncio.Task[object]] = set()
         self._entered = False
         self.share_state = share_state
+        # Device-scoped sources (local vaults, message stores) belong to one
+        # machine, so the node is part of their key; account-scoped ones must
+        # never gain it or one workspace would split across machines.
+        self.device_scope = device_scope
         self._source_lock: int | None = None
+
+    def _device_key(self) -> str:
+        from .destination import Local, Shared
+
+        nodes: set[str] = set()
+        for destination in self.destinations:
+            match destination.target:
+                case Shared(node_id=node):
+                    nodes.add(node)
+                case Local():
+                    nodes.add(socket.gethostname())
+        if len(nodes) > 1:
+            raise DestinationNodes(
+                "a device-scoped connector must publish to one node: "
+                + ", ".join(sorted(nodes))
+            )
+        return f"{self.source_id}:{nodes.pop()}"
 
     def _claim_source(self) -> None:
         """One live instance per source key, across processes.
@@ -148,6 +175,8 @@ class Connector:
         if self._entered:
             raise RuntimeError("connector is already open")
         self._entered = True
+        if self.device_scope:
+            self.source_id = self._device_key()
         if not self.share_state:
             self._claim_source()
         try:

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from mash_sdk import Connector, Destination, Mode
-from mash_sdk.connector import SourceInUse
+from mash_sdk.connector import DestinationNodes, SourceInUse
 
 
 class SourceLockTests(unittest.IsolatedAsyncioTestCase):
@@ -50,3 +50,43 @@ class SourceLockTests(unittest.IsolatedAsyncioTestCase):
             pass
         async with self.connector("external", "two"):
             pass
+
+    async def test_device_sources_carry_the_node(self) -> None:
+        import socket
+
+        device = Connector(
+            source_id="obsidian:vault",
+            modes=[Mode.snapshot],
+            destinations=[Destination.local(database=self.root / "v.sqlite3")],
+            state_path=self.root / "v-state.sqlite3",
+            device_scope=True,
+        )
+        async with device:
+            self.assertEqual(device.source_id, f"obsidian:vault:{socket.gethostname()}")
+
+    async def test_device_sources_reject_disagreeing_nodes(self) -> None:
+        first = Destination.shared(
+            api_url="http://127.0.0.1:8787", group_id="g", node_id="laptop", token_env="T"
+        )
+        second = Destination.shared(
+            api_url="http://127.0.0.1:8788", group_id="g", node_id="server", token_env="T"
+        )
+        device = Connector(
+            source_id="imessage:account",
+            modes=[Mode.snapshot],
+            destinations=[first, second],
+            state_path=self.root / "i-state.sqlite3",
+            device_scope=True,
+        )
+        with self.assertRaises(DestinationNodes):
+            await device.__aenter__()
+
+    async def test_account_sources_keep_the_node_out_of_the_key(self) -> None:
+        account = Connector(
+            source_id="slack:T0TEAM:U0ALICE",
+            modes=[Mode.snapshot],
+            destinations=[Destination.local(database=self.root / "a.sqlite3")],
+            state_path=self.root / "a-state.sqlite3",
+        )
+        async with account:
+            self.assertEqual(account.source_id, "slack:T0TEAM:U0ALICE")
