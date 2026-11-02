@@ -113,6 +113,24 @@ is the supported restore path; an explicit epoch reset is the escape hatch.
 **Decision D2.** One owner per account source; claims are atomic, transactional
 and transferable. Never inferred from content or channel overlap.
 
+### Decided identities (account connectors)
+
+These are the source keys the blueprints will emit; changing an existing
+connector's key invalidates its saved cursors, so each migration resets that
+connector's `state_dir` (or drops its cursor file) and re-ingests from the
+provider.
+
+| connector | source key | verified by |
+|---|---|---|
+| slack | `slack:<team_id>:<user_id>` | `auth.test` (team + user) — implemented |
+| github | `github:<login>:<installation_id>` | `GET /installation` (or `/user` for a PAT) |
+| google-docs | `google-docs:<sub>` | tokeninfo `sub` |
+| discord | `discord:<bot_user_id>` | `GET /users/@me` |
+
+Device-scoped connectors (obsidian, apple-notes, imessage) key on
+`<provider>:<account>:<node>` and never claim ownership; the node comes from the
+destination, so one connector may target one node only.
+
 ## 4. The object model
 
 Every ingested record is an object with one of four roles
