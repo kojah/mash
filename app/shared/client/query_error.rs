@@ -26,6 +26,16 @@ pub(super) async fn read(mut response: reqwest::Response) -> Option<AppError> {
         "shared exact candidate budget reached (10000); narrow the query or metadata filters" => {
             "shared exact candidate budget reached (10000); narrow the query or metadata filters"
         }
+        "query exceeded its time budget" => {
+            "shared query exceeded its time budget; narrow the query or choose a smaller node"
+        }
+        "node is not in this group" => "shared query named a node outside this group",
+        "query may only read; ATTACH and pragma are not allowed" => {
+            "shared query may only read; ATTACH and pragma are not allowed"
+        }
+        "this target cannot group by role or conversation" => {
+            "shared query cannot group this target by role or conversation"
+        }
         "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict" => {
             "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict"
         }

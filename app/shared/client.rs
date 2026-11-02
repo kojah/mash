@@ -96,8 +96,8 @@ impl Endpoint {
             // Reads every configured node's fingerprints.
             Duration::from_secs(10)
         } else if matches!(self, Self::Query) {
-            // The server runs a bounded query; leave room for its 10s budget.
-            Duration::from_secs(15)
+            // The server runs a bounded query; leave room for its 30s budget.
+            Duration::from_secs(35)
         } else if matches!(self, Self::Search | Self::Freshness) {
             // Exact vector retrieval over a full node can take nearly two
             // seconds before network transit and typed response decoding.
@@ -291,10 +291,24 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
         }
         if !response.status().is_success() {
             let status = response.status();
-            if search
+            let query = matches!(endpoint, Endpoint::Query);
+            if (search || query)
                 && status == reqwest::StatusCode::BAD_REQUEST
                 && let Some(error) = query_error::read(response).await
             {
+                return Err(error);
+            }
+            if query {
+                let message = match status.as_u16() {
+                    400 => "shared query was rejected; check the target, filters and time budget",
+                    404 => "shared query named a node outside this group",
+                    408 | 504 => {
+                        "shared query exceeded its time budget; narrow the query or choose a smaller node"
+                    }
+                    _ => "shared query failed; inspect `mash status --shared`",
+                };
+                let mut error = AppError::shared(message);
+                error.error.retryable = matches!(status.as_u16(), 408 | 504);
                 return Err(error);
             }
             let message = match status.as_u16() {

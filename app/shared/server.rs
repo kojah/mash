@@ -266,7 +266,7 @@ async fn query(
     };
     Ok(Json(
         app.store
-            .query(&target, request, Duration::from_secs(10))
+            .query(&target, request, Duration::from_secs(30))
             .await?,
     ))
 }
