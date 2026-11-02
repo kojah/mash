@@ -97,6 +97,7 @@ fn hit(
         role: Some(m.role.clone()),
         author_kind: None,
         author: crate::source::author(Some(m.role), None),
+        sequence: None,
         content: m.projection,
         copies: vec![],
         created_at: m.created_at,

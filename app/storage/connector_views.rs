@@ -60,6 +60,9 @@ pub(crate) struct Unit {
     /// An entry's nearest container, or a document's own anchor.
     pub(crate) group_anchor: String,
     pub(crate) created_at: Option<i64>,
+    /// Position among the container's entries, the same total order the thread
+    /// reader uses. Native messages call this `ordinal`.
+    pub(crate) sequence: i64,
     /// What is indexed and embedded; its digest decides when to re-index.
     pub(crate) text: String,
     /// Every ancestor's identity, kind and title, so renaming or moving an
@@ -252,12 +255,48 @@ pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppErro
             record_id: id.clone(),
             group_anchor,
             created_at: row.object.created_at,
+            sequence: 0,
             text: unit_text(title, content),
             ancestry,
         });
     }
     units.sort_by(|left, right| left.anchor.cmp(&right.anchor));
+    order_entries(&mut units);
     Ok(units)
+}
+
+/// Assign each entry its position among its container's entries, ordered by
+/// creation time and then id. Documents and containers stay at zero.
+fn order_entries(units: &mut [Unit]) {
+    use std::collections::BTreeMap;
+    let mut groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    for (index, unit) in units.iter().enumerate() {
+        if unit.object.role == Role::Entry {
+            groups
+                .entry((unit.source_id.clone(), unit.group_anchor.clone()))
+                .or_default()
+                .push(index);
+        }
+    }
+    for indices in groups.values_mut() {
+        indices.sort_by(|left, right| {
+            let left = &units[*left];
+            let right = &units[*right];
+            (
+                left.created_at.is_none(),
+                left.created_at,
+                left.record_id.as_str(),
+            )
+                .cmp(&(
+                    right.created_at.is_none(),
+                    right.created_at,
+                    right.record_id.as_str(),
+                ))
+        });
+        for (position, index) in indices.iter().enumerate() {
+            units[*index].sequence = i64::try_from(position).unwrap_or(i64::MAX);
+        }
+    }
 }
 
 impl Storage {
@@ -519,8 +558,8 @@ impl Storage {
 /// The digest covers kind, group and ancestry too, so moves and renames re-index.
 pub(crate) fn unit_digest_input(unit: &Unit) -> String {
     format!(
-        "{}\0{}\0{}\0{}",
-        unit.object.kind, unit.group_anchor, unit.ancestry, unit.text
+        "{}\0{}\0{}\0{}\0{}",
+        unit.object.kind, unit.group_anchor, unit.ancestry, unit.text, unit.sequence
     )
 }
 
@@ -557,6 +596,7 @@ pub(crate) fn connector_hit(
         role: None,
         author_kind: evidence.author(),
         author: crate::source::author(None, evidence.author()),
+        sequence: None,
         content: evidence.content().to_owned(),
         created_at: evidence.object.created_at,
         metadata: crate::search_results::ChatMetadata {
@@ -690,4 +730,45 @@ pub(crate) fn chats(
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod sequence_tests {
+    use super::*;
+
+    fn entry(id: &str, created_at: Option<i64>) -> Unit {
+        Unit {
+            anchor: id.to_owned(),
+            object: ObjectType {
+                role: Role::Entry,
+                kind: "slack:message".to_owned(),
+            },
+            source_id: "slack:T0TEAM:U0ALICE".to_owned(),
+            record_id: id.to_owned(),
+            group_anchor: "channel".to_owned(),
+            created_at,
+            sequence: 0,
+            text: String::new(),
+            ancestry: String::new(),
+        }
+    }
+
+    /// Connector entries get the position `thread()` reads them in: creation
+    /// time, then id, with undated entries last.
+    #[test]
+    fn entries_are_ordered_by_creation_then_id() {
+        let mut units = vec![
+            entry("b", Some(2)),
+            entry("a", Some(1)),
+            entry("c", None),
+            entry("d", Some(1)),
+        ];
+        order_entries(&mut units);
+        let mut ordered: Vec<_> = units
+            .iter()
+            .map(|unit| (unit.sequence, unit.record_id.as_str()))
+            .collect();
+        ordered.sort_unstable();
+        assert_eq!(ordered, vec![(0, "a"), (1, "d"), (2, "b"), (3, "c")]);
+    }
 }

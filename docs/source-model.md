@@ -305,8 +305,12 @@ sources:
    remain internal ranking inputs and are no longer serialized. `Entry`
    objects now require an author, and all five blueprint suites pass under
    that rule.
-8. **Ordering is split.** Native uses `ordinal`; connectors have parent/reply
-   edges but no generic position. Add `sequence` on entries/segments.
+8. ~~**Ordering is split.**~~ Closed at the retrieval boundary: connector
+   entries are ordered by `(created_at, id)` among their container's entries,
+   the same order `thread()` reads them in, and that position is indexed with
+   the point. Search hits expose one `sequence` for both origins (a native
+   message's ordinal, a connector entry's position). Segments still have no
+   independent position; they contribute ancestry, as designed.
 9. **Overlapping principals.** Two Slack users in the same channel produce two
    sources and two copies that do not collapse.
 10. **Terminology overload.** See the glossary; the document now uses distinct

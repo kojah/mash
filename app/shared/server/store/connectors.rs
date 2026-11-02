@@ -238,6 +238,7 @@ fn point(unit: &Unit, evidence: &Evidence, vector: Option<Vec<f64>>) -> Connecto
             content: evidence.content().to_owned(),
             title: evidence.title().map(str::to_owned),
             author_kind: evidence.author(),
+            sequence: unit.sequence,
             chat_created_at: group_created_at,
             chat_updated_at: group_updated_at,
             ancestors: evidence.ancestors(&unit.source_id),

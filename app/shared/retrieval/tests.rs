@@ -11,6 +11,7 @@ fn hit(node: &str, content: &str) -> SearchHit {
         role: Some(Role::User),
         author_kind: None,
         author: None,
+        sequence: None,
         content: content.into(),
         created_at: Some(123),
         metadata: ChatMetadata {

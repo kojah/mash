@@ -206,6 +206,7 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
                         content: "needle connector".into(),
                         title: None,
                         author_kind: None,
+                        sequence: 0,
                         chat_created_at: None,
                         chat_updated_at: None,
                         ancestors: Vec::new(),

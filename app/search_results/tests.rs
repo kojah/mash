@@ -130,6 +130,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
         role: Some(crate::role::Role::User),
         author_kind: None,
         author: None,
+        sequence: None,
         content: id.into(),
         copies: Vec::new(),
         created_at: Some(123),
@@ -611,6 +612,7 @@ fn native_and_connector_threads_share_one_hit_shape() {
     native.role = Some(crate::role::Role::User);
     native.author = crate::source::author(Some(crate::role::Role::User), None);
     native.ancestors = crate::source::native_ancestors(Provider::Codex, "thread", Some("Thread"));
+    native.sequence = Some(2);
 
     let mut slack = hit("thread", "message");
     slack.source = crate::source::Source::Connector("slack:T0TEAM:U0ALICE".into());
@@ -627,6 +629,7 @@ fn native_and_connector_threads_share_one_hit_shape() {
         kind: "slack:channel".into(),
         title: Some("Thread".into()),
     }];
+    slack.sequence = Some(2);
 
     let native = serde_json::to_value(&native).unwrap();
     let slack = serde_json::to_value(&slack).unwrap();
@@ -650,6 +653,10 @@ fn native_and_connector_threads_share_one_hit_shape() {
     assert_eq!(keys(&native["ancestors"][0]), keys(&slack["ancestors"][0]));
     assert_eq!(native_ancestry["role"], slack_ancestry["role"]);
     assert_eq!(native_ancestry["role"], "container");
+
+    // One ordering field, same meaning: both are the third message of the thread.
+    assert_eq!(native["sequence"], slack["sequence"]);
+    assert_eq!(native["sequence"], 2);
 
     // Copies are absent for both until another node holds the same evidence.
     assert!(native.get("copies").is_none(), "{native}");

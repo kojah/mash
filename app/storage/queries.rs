@@ -449,6 +449,7 @@ pub(super) fn search_hit(
         role: Some(role.clone()),
         author_kind: None,
         author: crate::source::author(Some(role), None),
+        sequence: None,
         content: super::required(row.content, "content")?,
         copies: Vec::new(),
         created_at: row.created_at,

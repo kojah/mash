@@ -119,6 +119,8 @@ pub(in crate::shared) struct ConnectorUnit {
     pub(in crate::shared) content: String,
     pub(in crate::shared) title: Option<String>,
     pub(in crate::shared) author_kind: Option<crate::connectors::AuthorKind>,
+    /// Position among the container's entries.
+    pub(in crate::shared) sequence: i64,
     pub(in crate::shared) chat_created_at: Option<i64>,
     pub(in crate::shared) chat_updated_at: Option<i64>,
     /// Enclosing objects, nearest first.
@@ -183,6 +185,7 @@ fn connector_hit(
         role: None,
         author_kind: d.unit.author_kind,
         author: crate::source::author(None, d.unit.author_kind),
+        sequence: Some(d.unit.sequence),
         content: d.unit.content,
         copies: vec![],
         created_at: d.created_at,

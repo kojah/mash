@@ -306,6 +306,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
             role: Some(crate::role::Role::User),
             author_kind: None,
             author: None,
+            sequence: None,
             content: id.to_owned(),
             copies: Vec::new(),
             created_at: None,

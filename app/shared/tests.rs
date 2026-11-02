@@ -128,6 +128,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
             role: Some(crate::role::Role::User),
             author_kind: None,
             author: None,
+            sequence: None,
             content: "cache the model".into(),
             copies: Vec::new(),
             created_at: None,

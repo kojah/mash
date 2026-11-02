@@ -14,6 +14,7 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
         role: Some(Role::User),
         author_kind: None,
         author: None,
+        sequence: None,
         content: content.into(),
         copies: Vec::new(),
         created_at: None,

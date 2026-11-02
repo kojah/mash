@@ -145,6 +145,10 @@ pub(crate) struct SearchHit {
     /// The same speaker in one normalized form, for both origins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) author: Option<crate::source::Author>,
+    /// Position in the conversation: a native message's ordinal, or a connector
+    /// entry's position among its container's entries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) sequence: Option<i64>,
     pub(crate) content: String,
     #[serde(default)]
     pub(crate) created_at: Option<i64>,

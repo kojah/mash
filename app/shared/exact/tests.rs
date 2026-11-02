@@ -57,6 +57,7 @@ fn hit() -> SearchHit {
         role: Some(crate::role::Role::User),
         author_kind: None,
         author: None,
+        sequence: None,
         content: "use voyage-code-4".into(),
         created_at: Some(1000),
         metadata: crate::search_results::ChatMetadata::default(),
