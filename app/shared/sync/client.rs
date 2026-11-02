@@ -168,6 +168,11 @@ fn outcome_error(failed: &wire::Failed) -> AppError {
     );
     let mut error = AppError::shared(message);
     error.error.retryable = retryable;
+    // A rejected publication keeps the server's meaning (a usage error stays
+    // one); older servers send no kind.
+    if let Some(kind) = crate::ErrorKind::parse(&failed.kind) {
+        error.error.kind = kind;
+    }
     error
 }
 
@@ -335,7 +340,11 @@ pub(crate) async fn upload_encoded_with_token(
     start: &protocol::Start,
     encoded: &wire::EncodedBatch,
 ) -> Result<protocol::Indexed, AppError> {
-    let operation_id = scoped_operation_id("publication", config, &encoded.manifest_digest);
+    let operation_id = scoped_operation_id(
+        "publication",
+        config,
+        &publication_digest(start, &encoded.manifest_digest),
+    );
     let slot = session_slot(&session_key(config, &start.instance));
     let mut guard = slot.lock_owned().await;
     let reused = guard.is_some();
@@ -349,8 +358,10 @@ pub(crate) async fn upload_encoded_with_token(
         Err(first) => {
             // The cached stream may have been closed by the peer; the operation
             // is resumable, so negotiate once more before surfacing an error.
+            // A final rejection is not retried: the resumed operation could
+            // only report that it no longer accepts data, hiding the cause.
             *guard = None;
-            if !reused {
+            if !reused || !first.error.retryable {
                 return Err(first);
             }
             let retry = async {
@@ -801,6 +812,19 @@ fn encode_backfill_manifest(
 ///
 /// Operation identity is scoped to the publishing node. Two nodes may send
 /// identical bytes, and the transfer catalog must not confuse their operations.
+/// A publication's identity: its records (the manifest) and its start
+/// metadata (revision, base revision, source certificate), which the
+/// manifest does not cover. Without the start, re-sending the same records
+/// at another revision would replay the earlier receipt unvalidated.
+fn publication_digest(start: &protocol::Start, manifest: &str) -> String {
+    let mut digest = blake3::Hasher::new();
+    digest.update(b"mash-publication-v1\0");
+    digest.update(manifest.as_bytes());
+    digest.update(b"\0");
+    digest.update(&serde_json::to_vec(start).unwrap_or_default());
+    digest.finalize().to_hex().to_string()
+}
+
 pub(crate) fn scoped_operation_id(kind: &str, config: &SharedConfig, digest: &str) -> String {
     // The catalog is service-wide, so the group belongs to the identity:
     // identical bytes published into another group must not reuse (or be
@@ -1129,7 +1153,11 @@ pub(crate) async fn upload_backfill_plan(
                         ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
                     for index in indices {
                         let batch = &plan.batches[index];
-                        let operation = scoped_operation_id("publication", config, batch.digest());
+                        let operation = scoped_operation_id(
+                            "publication",
+                            config,
+                            &publication_digest(&plan.start, batch.digest()),
+                        );
                         let indexed = publish_on_session(
                             session,
                             &operation,

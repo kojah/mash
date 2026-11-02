@@ -2511,11 +2511,6 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
         .await
         .unwrap()
         .expect("views");
-    let fingerprints: std::collections::BTreeMap<String, String> = views
-        .chats
-        .iter()
-        .map(|(id, chat)| (id.clone(), chat.fingerprint.clone()))
-        .collect();
     // The certification was built from revision 1. The stored marker predates
     // the field, so the newer-write guard does not short-circuit it.
     views.input = Some(1);
@@ -2528,7 +2523,6 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
         .certify(
             &identity,
             views,
-            &fingerprints,
             &crate::shared::activity::Progress::default(),
         )
         .await

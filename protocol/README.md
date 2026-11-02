@@ -229,6 +229,21 @@ Source mapping:
 - Existing regressions in [recovery.rs](../app/shared/qdrant_index/tests/recovery.rs)
   and [recipe.rs](../app/shared/qdrant_index/tests/recipe.rs).
 
+Concurrent certifications of one node (parallel baseline lanes) are outside the
+one-writer bound. The code keeps the model's property for them by serializing
+`certify` per node under `views_write_guard`, connector pass included, and by
+deciding there against the stored views and the silver fingerprints read under
+that lock: chats another certification recorded with the same recipe and content
+count as covered (an older certification adds its chats to a newer stored one
+instead of being discarded), and silver is claimed only when the views cover
+every chat (`synced`) and were built from the head (`current`). `sync_upload`
+writes its uncertified marker under the same lock without dropping recorded
+chats, and starts fresh (deleting documents) only when no compatible views
+exist. Regressions: `qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vectors`
+(partial rebuild after a recipe change is not current) and
+`qdrant_backfill_lanes_assign_ordered_revisions` (lanes finishing in either
+order end current). No model change: these restore the modeled guarantee.
+
 **Fixed implementation gap: `mash-8qaj`.** `Store::replay` now persists empty
 certification before clearing documents, matching the passing configuration.
 `SharedViewsReplayClearFirst.cfg` deliberately restores the historical order
@@ -422,7 +437,11 @@ Implemented source mapping:
   publication negotiates once more and resumes from the checkpoint. Control
   frames stay per-operation, so this changes cost, not the state machine.
 - `Accepted`, duplicate pieces and rejected inputs are stutters in the model;
-  the handler acknowledges accepted pieces and fails closed otherwise.
+  the handler acknowledges accepted pieces and fails closed otherwise. An
+  apply failure that did not commit and is not itself retryable (invalid
+  history) is reported as non-retryable with its error kind, so the client
+  surfaces it instead of resuming an operation that no longer receives data;
+  this narrows client retries and changes no durable state.
 
 `SyncTransferSplitClose` is a deliberate broken-behaviour configuration: it
 splits expiry into `CloseClear` (release bytes) and `CloseMark` (mark the row

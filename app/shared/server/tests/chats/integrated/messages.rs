@@ -140,7 +140,7 @@ async fn assert_scoped(
     found.sort_unstable();
     let mut expected = expected.to_vec();
     expected.sort_unstable();
-    assert_eq!(found, expected);
+    assert_eq!(found, expected, "{messages:#?}");
     assert!(
         messages.iter().all(|message| {
             let nodes: std::collections::HashSet<_> = std::iter::once(message.node_id.as_deref())

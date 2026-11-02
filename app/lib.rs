@@ -151,6 +151,20 @@ enum ErrorKind {
     SourceChanged,
 }
 
+impl ErrorKind {
+    /// The kebab-case name used in JSON errors and on the sync wire.
+    fn name(self) -> String {
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    }
+
+    fn parse(name: &str) -> Option<Self> {
+        serde_json::from_value(serde_json::Value::String(name.to_owned())).ok()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum Action {
     #[serde(rename = "index")]

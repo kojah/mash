@@ -162,7 +162,6 @@ impl Store {
         self.certify(
             identity,
             node,
-            &fingerprints,
             &crate::shared::activity::Progress::default(),
         )
         .await?;

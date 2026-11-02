@@ -97,6 +97,7 @@ async fn run(app: App, identity: Identity, socket: WebSocket) -> Result<(), AppE
                         retryable: true,
                         recovery_action: "reconnect and resume the operation".into(),
                         message: "synchronization connection was idle".into(),
+                        kind: String::new(),
                     }),
                 )
                 .await?;
@@ -120,6 +121,7 @@ async fn run(app: App, identity: Identity, socket: WebSocket) -> Result<(), AppE
                     retryable: false,
                     recovery_action: String::new(),
                     message: "invalid synchronization frame".into(),
+                    kind: String::new(),
                 }),
             )
             .await?;
@@ -164,7 +166,7 @@ async fn run(app: App, identity: Identity, socket: WebSocket) -> Result<(), AppE
             }
             client_frame::Body::Resume(resume) => {
                 active = Some(operation_id.clone());
-                handle_resume(&mut sink, &catalog, &identity, &operation_id, resume).await?;
+                handle_resume(&mut sink, &app, &catalog, &identity, &operation_id, resume).await?;
             }
             client_frame::Body::Cancel(_) => {
                 handle_cancel(&mut sink, &catalog, &identity, &operation_id).await?;
@@ -282,6 +284,7 @@ async fn handle_hello(
                     "synchronization requires protocol version {} with zstd publication data",
                     wire::PROTOCOL_VERSION
                 ),
+                kind: String::new(),
             }),
         )
         .await?;
@@ -511,12 +514,18 @@ async fn handle_begin(
                     commit_state: CommitState::NotCommitted as i32,
                     retryable: error.error.retryable,
                     recovery_action: "reconnect and resume with the same operation".into(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
             .await;
         }
     };
+    if operation.state == catalog::State::Published
+        && reject_superseded(sink, app, identity, operation_id, &operation, "begin").await?
+    {
+        return Ok(());
+    }
     if operation.state == catalog::State::Published {
         return send(
             sink,
@@ -610,6 +619,7 @@ async fn begin_operation(
                     commit_state: CommitState::NotCommitted as i32,
                     retryable: error.error.retryable,
                     recovery_action: "reconnect and resume with the same operation".into(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
@@ -728,6 +738,7 @@ async fn handle_begin_backfill(
                 commit_state: CommitState::NotCommitted as i32,
                 retryable: error.error.retryable,
                 recovery_action: "start a new backfill identity".into(),
+                kind: error.error.kind.name(),
                 message: error.error.message,
             }),
         )
@@ -997,6 +1008,7 @@ async fn handle_chunk(
                     commit_state: CommitState::NotCommitted as i32,
                     retryable: error.error.retryable,
                     recovery_action: "resume from the last acknowledged checkpoint".into(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
@@ -1038,6 +1050,7 @@ async fn handle_finish(
                     commit_state: CommitState::NotCommitted as i32,
                     retryable: error.error.retryable,
                     recovery_action: "resume and resend the missing pieces".into(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
@@ -1172,6 +1185,7 @@ async fn handle_finish(
                                 commit_state: CommitState::Committed as i32,
                                 retryable: true,
                                 recovery_action: "resend FinishUpload to record coverage".into(),
+                                kind: error.error.kind.name(),
                                 message: error.error.message,
                             }),
                         )
@@ -1296,6 +1310,7 @@ async fn handle_finish(
                         commit_state: CommitState::Unknown as i32,
                         retryable: true,
                         recovery_action: "retry after shared activity drains".into(),
+                        kind: failure.error.error.kind.name(),
                         message: failure.error.error.message,
                     }),
                 )
@@ -1312,8 +1327,11 @@ async fn handle_finish(
                     } else {
                         CommitState::NotCommitted as i32
                     },
-                    retryable: true,
+                    // Resuming verifies a committed or transient outcome; a
+                    // deterministic rejection (invalid history) cannot change.
+                    retryable: failure.committed || failure.error.error.retryable,
                     recovery_action: "reconnect and resume to verify the durable outcome".into(),
+                    kind: failure.error.error.kind.name(),
                     message: failure.error.error.message,
                 }),
             )
@@ -1829,6 +1847,7 @@ async fn finish_connector(
                     commit_state: CommitState::Unknown as i32,
                     retryable: true,
                     recovery_action: "reconnect and resume to verify the durable outcome".into(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
@@ -1995,6 +2014,7 @@ async fn handle_finish_backfill(
                     commit_state: CommitState::NotCommitted as i32,
                     retryable: true,
                     recovery_action: "transfer remaining baseline members before finishing".into(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
@@ -2268,6 +2288,7 @@ fn write_events(
 
 async fn handle_resume(
     sink: &mut Sink,
+    app: &App,
     handle: &CatalogHandle,
     identity: &Identity,
     operation_id: &str,
@@ -2286,6 +2307,15 @@ async fn handle_resume(
         Ok(operation)
     })
     .await;
+    if let Ok(operation) = &result
+        && matches!(
+            operation.state,
+            catalog::State::Published | catalog::State::ViewsPending
+        )
+        && reject_superseded(sink, app, identity, operation_id, operation, "resume").await?
+    {
+        return Ok(());
+    }
     match result {
         Ok(operation) => {
             send(
@@ -2372,12 +2402,52 @@ async fn handle_cancel(
                     commit_state: CommitState::NotCommitted as i32,
                     retryable: false,
                     recovery_action: String::new(),
+                    kind: error.error.kind.name(),
                     message: error.error.message,
                 }),
             )
             .await
         }
     }
+}
+
+/// Before replaying a committed receipt: reject it as superseded when its
+/// revision is older than the node's head (replaying would report a stale
+/// revision as current; a node publishes in order, so a lost acknowledgement
+/// is always for its latest revision), and otherwise record the node's
+/// check-in, as re-applying the same history would. Returns whether it
+/// rejected.
+async fn reject_superseded(
+    sink: &mut Sink,
+    app: &App,
+    identity: &Identity,
+    operation_id: &str,
+    operation: &catalog::Operation,
+    phase: &str,
+) -> Result<bool, AppError> {
+    let Some(revision) = operation.revision else {
+        return Ok(false);
+    };
+    let head = app.store.head_revision(identity).await?;
+    if head <= revision {
+        app.store.record_check_in(identity).await?;
+        return Ok(false);
+    }
+    send(
+        sink,
+        operation_id,
+        server_frame::Body::Rejected(Failed {
+            phase: phase.into(),
+            code: "superseded".into(),
+            commit_state: CommitState::Committed as i32,
+            retryable: false,
+            recovery_action: "publish the node's current history".into(),
+            message: format!("publication revision {revision} was superseded by revision {head}"),
+            kind: crate::ErrorKind::Conflict.name(),
+        }),
+    )
+    .await?;
+    Ok(true)
 }
 
 async fn reject(
@@ -2397,6 +2467,8 @@ async fn reject(
             retryable: false,
             recovery_action: String::new(),
             message: message.into(),
+            // Every caller rejects invalid client input.
+            kind: crate::ErrorKind::Usage.name(),
         }),
     )
     .await

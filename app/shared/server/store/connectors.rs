@@ -120,9 +120,6 @@ impl Store {
             self.views.delete_node_documents(identity).await?;
             NodeViews::empty(&self.views, identity)
         };
-        let fingerprints = self
-            .read(identity, crate::shared::silver_store::fingerprints)
-            .await?;
         // Re-certification re-reads silver under the node lock, so the chats it
         // keeps are checked against the head it records here.
         let mut views = views;
@@ -130,7 +127,6 @@ impl Store {
         self.certify(
             identity,
             views,
-            &fingerprints,
             &crate::shared::activity::Progress::default(),
         )
         .await

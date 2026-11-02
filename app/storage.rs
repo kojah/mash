@@ -167,6 +167,27 @@ pub(crate) struct SearchHit {
     pub(crate) node_id: Option<String>,
 }
 
+impl SearchHit {
+    /// Rebuild the internal speaker after a hit crosses the wire: `role` and
+    /// `author_kind` are never serialized, but `author` carries a native role
+    /// as its id and a connector author kind as its kind. Copies of one
+    /// message on several nodes only merge when their speakers match.
+    pub(crate) fn restore_speaker(&mut self) {
+        let Some(author) = &self.author else {
+            return;
+        };
+        match &self.source {
+            crate::source::Source::Provider(_) if self.role.is_none() => {
+                self.role = author.id.as_deref().map(crate::role::Role::from);
+            }
+            crate::source::Source::Connector(_) if self.author_kind.is_none() => {
+                self.author_kind = Some(author.kind);
+            }
+            _ => {}
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Message {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

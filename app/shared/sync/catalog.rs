@@ -272,6 +272,13 @@ impl Catalog {
                     "sync operation identity was already used for different bytes",
                 ));
             }
+            // Same records, different start (revision, certificate): a new
+            // publication, never a replay of the earlier receipt.
+            if operation.start_json != begin.start_json {
+                return Err(conflict(
+                    "sync operation identity was already used for different publication metadata",
+                ));
+            }
             return Ok(BeginOutcome::Existing(operation));
         }
         let timestamp = now();

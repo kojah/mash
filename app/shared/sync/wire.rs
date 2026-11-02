@@ -450,6 +450,10 @@ pub(crate) struct Failed {
     pub recovery_action: String,
     #[prost(string, tag = "6")]
     pub message: String,
+    /// The server error's kind as named in JSON errors; empty from older
+    /// servers, which clients read as a shared-index failure.
+    #[prost(string, tag = "7")]
+    pub kind: String,
 }
 
 #[derive(Clone, PartialEq, Message)]

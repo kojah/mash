@@ -164,6 +164,28 @@ impl Store {
         Ok(self.head(identity).await?.map_or(0, |head| head.revision))
     }
 
+    /// Record that the node checked in with history the server already holds:
+    /// replaying its current receipt advances `last_synced_at` like a duplicate
+    /// publication, without changing silver. One immediate transaction keeps
+    /// the read-modify-write ordered against concurrent commits.
+    pub(in crate::shared) async fn record_check_in(
+        &self,
+        identity: &Identity,
+    ) -> Result<(), AppError> {
+        let silver = self.silver.clone();
+        let identity = identity.clone();
+        crate::blocking(move || {
+            silver.write(&identity, |transaction| {
+                if let Some(mut head) = crate::shared::silver_store::head(transaction)? {
+                    head.last_synced_at = Some(crate::shared::silver_store::now());
+                    crate::shared::silver_store::put_head(transaction, &head)?;
+                }
+                Ok(())
+            })
+        })
+        .await
+    }
+
     /// Write views for the chats an upload supplied, then certify the revision.
     async fn sync_upload(
         &self,
@@ -174,6 +196,13 @@ impl Store {
         progress: &Progress,
     ) -> Result<(), AppError> {
         progress.phase(Phase::WritingViews, Unit::Records);
+        // Another certification, such as a parallel baseline lane, may have
+        // created compatible views since this commit found none; starting
+        // fresh would delete the documents it wrote.
+        let previous = match previous {
+            Some(previous) => Some(previous),
+            None => self.compatible_views(identity).await?,
+        };
         // Without prior views every document is deleted, so none can be stale.
         let fresh = previous.is_none();
         let mut views = if let Some(views) = previous {
@@ -183,7 +212,20 @@ impl Store {
             NodeViews::empty(&self.views, identity)
         };
         views.silver = None;
-        self.views.put_node_views(identity, &views).await?;
+        {
+            // Mark the views uncertified without dropping chats another
+            // certification recorded since this commit read them.
+            let _write = self.views_write_guard(identity).await?;
+            if !fresh
+                && let Some(latest) = self.views.node_views(identity).await?
+                && latest.compatible(&self.views, identity)
+            {
+                for (id, chat) in latest.chats {
+                    views.chats.entry(id).or_insert(chat);
+                }
+            }
+            self.views.put_node_views(identity, &views).await?;
+        }
         for id in &applied.deleted {
             self.views
                 .retain_documents(identity, id, Vec::new())
@@ -243,7 +285,7 @@ impl Store {
         // The revision these views were built from, not the head reached by the
         // time certification finishes; the guard below compares this.
         views.input = Some(applied.revision);
-        self.certify(identity, views, &fingerprints, progress).await
+        self.certify(identity, views, progress).await
     }
 
     /// Stream the upload's messages for the selected chats into documents.
@@ -315,53 +357,77 @@ impl Store {
         &self,
         identity: &Identity,
         mut views: NodeViews,
-        fingerprints: &BTreeMap<String, String>,
         progress: &Progress,
     ) -> Result<(), AppError> {
-        if let Some(current) = self.views.node_views(identity).await?
-            && let (Some(current), Some(incoming)) = (current.input, views.input)
-            && current > incoming
-        {
-            // A newer certification already wrote these chats. Writing ours
-            // would stamp the newer head over older content.
-            return Ok(());
-        }
-        self.sync_connectors(identity, &mut views).await?;
-        views.chats.retain(|id, _| fingerprints.contains_key(id));
-        let head = self.head(identity).await?;
-        let head_revision = head.as_ref().map(|head| head.revision);
         // Every caller records the revision its chats were built from. Treat a
         // missing input as a bug rather than silently claiming the head: the
         // receipt would otherwise assert content it cannot prove.
-        let input = views
+        views
             .input
             .ok_or_else(|| AppError::internal("certification requires an input revision"))?;
-        let synced = views.chats.len() == fingerprints.len()
-            && fingerprints.iter().all(|(id, fingerprint)| {
+        // Decide under the write lock, against the stored views and silver as
+        // they are now: concurrent certifications (parallel baseline lanes)
+        // each build only their own chats and may finish in any order, and
+        // the connector pass below writes the node's views.
+        let write = self.views_write_guard(identity).await?;
+        let latest = self.views.node_views(identity).await?;
+        let fingerprints = self
+            .read(identity, |connection| {
+                silver_store::fingerprints(connection)
+            })
+            .await?;
+        let compatible = |candidate: &NodeViews| candidate.compatible(&self.views, identity);
+        let mut views = match latest {
+            // A newer certification is stored: never replace it, but add the
+            // chats this one built that it lacks, so neither finishing order
+            // loses coverage. An older one must not stamp its revision.
+            Some(mut latest) if latest.input > views.input => {
+                if compatible(&latest) && compatible(&views) {
+                    for (id, chat) in views.chats {
+                        if !latest.chats.contains_key(&id)
+                            && fingerprints.get(&id) == Some(&chat.fingerprint)
+                        {
+                            latest.chats.insert(id, chat);
+                        }
+                    }
+                }
+                latest
+            }
+            // Chats an earlier certification recorded count when built with
+            // this recipe for the same content; a recipe change resets the
+            // stored views, so its stale chats never do.
+            Some(latest) => {
+                if compatible(&latest) {
+                    for (id, chat) in latest.chats {
+                        if !views.chats.contains_key(&id)
+                            && fingerprints.get(&id) == Some(&chat.fingerprint)
+                        {
+                            views.chats.insert(id, chat);
+                        }
+                    }
+                }
                 views
-                    .chats
-                    .get(id)
-                    .is_some_and(|t| &t.fingerprint == fingerprint)
-            });
+            }
+            None => views,
+        };
+        self.sync_connectors(identity, &mut views).await?;
+        views
+            .chats
+            .retain(|id, chat| fingerprints.get(id) == Some(&chat.fingerprint));
+        let head = self.head(identity).await?;
+        let synced = views.chats.len() == fingerprints.len();
         // A certification that finishes after a newer commit wrote every chat
         // of its own revision, but not of the head. Stamping the head would make
         // searches serve older chats as current, so it only claims the revision
         // it was built from.
-        let current = head_revision == Some(input);
+        let current = head.as_ref().map(|head| head.revision) == views.input;
         views.certified = synced && current && views.chats.values().all(|chat| chat.complete);
-        views.silver = current
+        // Claim a silver revision only when these views cover every chat of
+        // it (`synced`) and were built from it (`current`); either alone lets
+        // a partial rebuild, such as one after a recipe change, pass as current.
+        views.silver = (synced && current)
             .then(|| head.and_then(|head| head.silver_revision))
             .flatten();
-        // The guard above ran before the slow connector synchronization, so a
-        // newer certification can land in between. Re-check under the write
-        // lock: an older certification must never replace a newer one.
-        let write = self.views_write_guard(identity).await?;
-        if let Some(latest) = self.views.node_views(identity).await?
-            && let (Some(latest), Some(incoming)) = (latest.input, views.input)
-            && latest > incoming
-        {
-            return Ok(());
-        }
         self.views.put_node_views(identity, &views).await?;
         drop(write);
         self.views.settle(identity, progress).await
