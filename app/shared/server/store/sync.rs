@@ -353,7 +353,7 @@ impl Store {
         // The guard above ran before the slow connector synchronization, so a
         // newer certification can land in between. Re-check under the write
         // lock: an older certification must never replace a newer one.
-        let _write = self.views_write_guard(identity).await?;
+        let write = self.views_write_guard(identity).await?;
         if let Some(latest) = self.views.node_views(identity).await?
             && let (Some(latest), Some(incoming)) = (latest.input, views.input)
             && latest > incoming
@@ -361,7 +361,7 @@ impl Store {
             return Ok(());
         }
         self.views.put_node_views(identity, &views).await?;
-        drop(_write);
+        drop(write);
         self.views.settle(identity, progress).await
     }
 }

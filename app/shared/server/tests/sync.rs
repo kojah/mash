@@ -2482,7 +2482,7 @@ async fn account_source_claim_rejects_a_second_writer_until_transferred() {
     );
 }
 
-/// CommitCertify: a certification built from revision 1 that finishes after
+/// A certification built from revision 1 that finishes after
 /// revision 2 must not claim the newer head. Stamping the head a slow
 /// certification happens to read makes searches serve older chats as current.
 #[tokio::test]

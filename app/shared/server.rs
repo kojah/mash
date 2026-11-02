@@ -129,9 +129,7 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
     if request.uri().path() == "/v1/sync" {
         return next.run(request).await;
     }
-    let timeout = match request.uri().path() {
-        _ => Duration::from_secs(600),
-    };
+    let timeout = Duration::from_secs(600);
     tokio::time::timeout(timeout, next.run(request))
         .await
         .unwrap_or_else(|_| {
