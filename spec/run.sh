@@ -12,9 +12,10 @@ fi
 
 run() {
   local config=$1
+  local module=${MODULE:-Publication}
   local log
   log=$(mktemp)
-  if java -jar "$JAR" -workers 4 -config "$config" Publication.tla >"$log" 2>&1; then
+  if java -jar "$JAR" -workers 4 -config "$config" "$module.tla" >"$log" 2>&1; then
     echo "  ran    $config"
   else
     echo "  ran    $config (reported a violation)"
@@ -23,9 +24,16 @@ run() {
   rm -f "$log"
 }
 
+module_for() {
+  case "$1" in
+    coherence-*) echo Coherence ;;
+    *) echo Publication ;;
+  esac
+}
+
 expect_clean() {
   local config=$1 log
-  log=$(run "$config")
+  MODULE=$(module_for "$config") log=$(run "$config")
   if ! grep -q "No error has been found" <<<"$log"; then
     echo "FAIL: $config was expected to be clean"
     tail -20 <<<"$log"
@@ -36,7 +44,7 @@ expect_clean() {
 
 expect_violation() {
   local config=$1 invariant=$2 log
-  log=$(run "$config")
+  MODULE=$(module_for "$config") log=$(run "$config")
   if ! grep -q "Invariant $invariant is violated" <<<"$log"; then
     echo "FAIL: $config was expected to violate $invariant"
     tail -20 <<<"$log"
@@ -49,5 +57,9 @@ expect_clean ok.cfg
 expect_clean sequential.cfg
 expect_violation rebase-bug.cfg OrderedRevisions
 expect_violation scope-bug.cfg UniqueBackfillIdentity
+
+expect_clean coherence-ok.cfg
+expect_violation coherence-device-scope.cfg NoDoubleIngest
+expect_violation coherence-overwrite.cfg NoDoubleIngest
 
 echo "all model checks agree with the implementation"

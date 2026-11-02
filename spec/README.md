@@ -46,6 +46,20 @@ broke.
 | `rebase-bug.cfg` | violates `OrderedRevisions` | stale head read across lanes |
 | `scope-bug.cfg` | violates `UniqueBackfillIdentity` | shared `"auto"` identity |
 
+## Coherence (connectors)
+
+`Coherence.tla` encodes the two rules account-scoped connectors must satisfy
+before Slack onboarding (`docs/source-model.md` D1/D2):
+
+- device identity includes the node; account identity does not
+- one owner per account source, first writer wins
+
+| config | expectation | demonstrates |
+|---|---|---|
+| `coherence-ok.cfg` | clean | account sources are group-wide and first-writer-wins |
+| `coherence-device-scope.cfg` | violates `NoDoubleIngest` | node-qualified account identity: both machines ingest one workspace |
+| `coherence-overwrite.cfg` | violates `NoDoubleIngest` | an overwriting claim: the second node takes over while the first keeps polling |
+
 The two bug configurations are kept, not deleted: they are the regression tests
 for the spec itself. If someone models the protocol at a level where the bug
 disappears, these configs stop failing and `run.sh` fails loudly.
