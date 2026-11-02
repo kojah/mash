@@ -45,8 +45,9 @@ mise use -g github:kojah/mash
 cargo binstall --git https://github.com/kojah/mash mash
 ```
 
-On Windows (preview: the release binary builds and passes its smoke and setup
-checks in CI, but the full test suite does not run there yet), use one of:
+On Windows x64 (CI runs the library tests, setup, search, MCP, hooks and an
+upgrade while MCP is running on a native Windows runner, and releases require
+it), use one of:
 
 ```powershell
 winget install kojah.mash
@@ -59,7 +60,9 @@ the Windows `py` launcher; without one they do nothing. On Windows, long-lived
 commands (`mash mcp`, `index --watch`, `serve`) move their running executable
 aside (`.mash-running-<pid>.exe`) and leave a copy at the installed path, so
 installers can replace `mash.exe` while an agent is connected; reconnect
-afterwards. WSL works like Linux.
+afterwards. Windows identifies the installed executable by size and modification
+time, so a same-size replacement within one timestamp tick would not be noticed
+as an upgrade. WSL works like Linux.
 
 Then set it up:
 

@@ -28,18 +28,20 @@ jobs:
   validated:
     runs-on: ubuntu-latest
     steps:
-      - name: Require a successful CI run for this commit
+      - name: Require successful CI and Windows runs for this commit
         if: ${{ !inputs.allow_unvalidated }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          conclusion=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml \
-            --commit "$GITHUB_SHA" --status success --limit 1 --json conclusion \
-            -q '.[0].conclusion // ""')
-          if [ "$conclusion" != success ]; then
-            echo "::error::CI has not passed for $GITHUB_SHA; releases ship validated commits only."
-            exit 1
-          fi
+          for workflow in ci.yml windows.yml; do
+            conclusion=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$workflow" \
+              --commit "$GITHUB_SHA" --status success --limit 1 --json conclusion \
+              -q '.[0].conclusion // ""')
+            if [ "$conclusion" != success ]; then
+              echo "::error::$workflow has not passed for $GITHUB_SHA; releases ship validated commits only."
+              exit 1
+            fi
+          done
 
   build:
     needs: validated
