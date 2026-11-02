@@ -12,6 +12,16 @@ autoexamples = false
 autobenches = false
 build = "build.rs"
 
+# `cargo binstall --git https://github.com/kojah/mash mash` downloads the
+# release archive instead of compiling ("mash" on crates.io is another crate).
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/mash-{ target }{ archive-suffix }"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
 [workspace]
 members = ["crates/mash-query", "crates/mash-dev"]
 default-members = [".", "crates/mash-query", "crates/mash-dev"]

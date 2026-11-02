@@ -3,7 +3,8 @@ name: Release
 # Tagging vX.Y.Z publishes prebuilt binaries for the commit CI validated, then
 # updates each package channel whose credential is configured: the Homebrew
 # tap (HOMEBREW_TAP_TOKEN), the Scoop bucket in this repository (always),
-# winget (WINGET_TOKEN) and Chocolatey (CHOCOLATEY_API_KEY). Releases build on
+# winget (WINGET_TOKEN), Chocolatey (CHOCOLATEY_API_KEY) and npm (NPM_TOKEN).
+# mise and cargo-binstall read the release assets directly. Releases build on
 # stable Rust so they need no nightly features.
 on:
   push:
@@ -146,6 +147,29 @@ jobs:
           git add Formula/mash.rb
           git commit -m "mash ${GITHUB_REF_NAME}"
           git push
+
+  npm:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish @kojah/mash and its platform packages
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "NPM_TOKEN is not set; skipping npm."
+            exit 0
+          fi
+          python3 packaging/npm/build.py "$GITHUB_REF_NAME" dist npm
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+          for package in npm/mash-*/ npm/mash/; do
+            npm publish --access public "$package"
+          done
 
   windows-packages:
     needs: publish

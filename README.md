@@ -29,6 +29,14 @@ or
 curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
 
+or with a tool you already use:
+
+```bash
+npm install -g @kojah/mash
+mise use -g github:kojah/mash
+cargo binstall --git https://github.com/kojah/mash mash
+```
+
 On Windows (preview: the release binary builds and passes its smoke and setup
 checks in CI, but the full test suite does not run there yet), use one of:
 
