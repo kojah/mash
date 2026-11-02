@@ -2241,3 +2241,119 @@ async fn two_nodes_publish_concurrently_without_interference() {
     assert_eq!(report.nodes.len(), 2, "{report:?}");
     service.cleanup().await;
 }
+
+/// Lanes commit baseline batches concurrently. Each commit must still receive
+/// the next revision under the node lock, and coverage must end complete.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_backfill_lanes_assign_ordered_revisions() {
+    use crate::shared::sync::client::{BackfillLimits, plan_backfill, upload_backfill_plan};
+
+    let service = Service::qdrant(384).await;
+    let vector = |seed: f64| {
+        let mut values = vec![0.0; 384];
+        values[0] = seed;
+        values
+    };
+    let chat = |id: &str| crate::shared::protocol::ConversationRecord {
+        enrichment: None,
+        id: id.into(),
+        provider: crate::provider::Provider::Codex,
+        title: Some(id.into()),
+        project: None,
+        repository: None,
+        created_at: Some(1),
+        updated_at: Some(1),
+    };
+    let message = |conversation: &str, seed: f64| crate::shared::protocol::MessageRecord {
+        attachments: Vec::new(),
+        id: format!("{conversation}-1"),
+        conversation_id: conversation.into(),
+        ordinal: 0,
+        context: crate::message_context::MessageContext::Linear,
+        role: crate::role::Role::User,
+        content: format!("{conversation} content"),
+        projection: format!("{conversation} content"),
+        created_at: Some(1),
+        generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()),
+        vector: Some(vector(seed)),
+        tools: crate::tools::Activity::default(),
+    };
+    let ids = ["a", "b", "c", "d"];
+    let start = Start {
+        views_build: None,
+        source_silver: None,
+        instance: "snapshot-instance".into(),
+        revision: Some(1),
+        base_revision: Some(0),
+        snapshot: false,
+        forgets: Vec::new(),
+    };
+    let events = vec![
+        Event::Batch(crate::shared::protocol::Batch::Conversations {
+            records: ids.iter().map(|id| chat(id)).collect(),
+        }),
+        Event::Batch(crate::shared::protocol::Batch::Messages {
+            records: ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| message(id, index as f64 + 1.0))
+                .collect(),
+        }),
+    ];
+    // One conversation per batch: four batches, two lanes.
+    let plan = plan_backfill(
+        start,
+        events,
+        BackfillLimits {
+            conversations: 1,
+            decoded_bytes: 1024 * 1024,
+        },
+    )
+    .expect("plan four batches");
+    assert_eq!(plan.batches.len(), 4);
+
+    let config = crate::config::SharedConfig {
+        group_id: service.first.group_id.clone(),
+        node_id: service.first.node_id.clone(),
+        api_url: service.url.clone(),
+        token_env: "unused-in-test".into(),
+        publication_redaction: crate::redaction::Policy::new(false),
+    };
+    let completed = std::collections::BTreeSet::new();
+    let indexed = upload_backfill_plan(
+        &config,
+        FIRST.to_owned(),
+        &plan,
+        "lanes",
+        crate::shared::sync::client::BackfillResume {
+            completed: &completed,
+            last_revision: 0,
+        },
+        None,
+        2,
+        |_, _| Ok(()),
+    )
+    .await
+    .expect("four batches commit concurrently");
+
+    // Revisions are assigned under the node lock: four batches, revisions 1..4,
+    // so the head is the batch count and no two commits shared a revision.
+    assert_eq!(indexed.revision, 4, "{indexed:?}");
+    let counts = service.counts(FIRST).await;
+    assert_eq!(counts.conversations, 4);
+    assert_eq!(counts.messages, 4);
+
+    let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
+    let backfill = catalog
+        .backfill("lanes", &service.first.group_id, "first")
+        .unwrap();
+    assert_eq!(backfill.state, "complete");
+    assert_eq!(backfill.covered, backfill.total_conversations);
+
+    let freshness: crate::shared::Freshness =
+        serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+    assert_eq!(freshness.nodes[0].revision, 4);
+    assert!(freshness.nodes[0].views_current);
+    service.cleanup().await;
+}

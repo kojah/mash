@@ -85,6 +85,7 @@ async fn qdrant_retry_removes_documents_deleted_by_an_interrupted_publication() 
         fixture.store.build(),
         &crate::shared::activity::Progress::default(),
         None,
+        false,
     )
     .unwrap();
     let retry = Fixture::upload(&[Event::Start(Fixture::start(2)), Event::Finish]);

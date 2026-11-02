@@ -48,7 +48,7 @@ impl Store {
         file: tempfile::NamedTempFile,
     ) -> Result<Indexed, AppError> {
         let commit = self
-            .commit_silver(identity, file, Progress::default(), None)
+            .commit_silver(identity, file, Progress::default(), None, false)
             .await?;
         self.certify_views(commit).await
     }
@@ -62,6 +62,7 @@ impl Store {
         file: tempfile::NamedTempFile,
         progress: Progress,
         receipt: Option<&silver_store::SyncReceipt>,
+        rebase: bool,
     ) -> Result<SilverCommit, AppError> {
         progress.phase(Phase::WaitingForNode, Unit::Records);
         let node = self.lock(identity).await?;
@@ -87,6 +88,7 @@ impl Store {
                 &build,
                 &worker_progress,
                 receipt.as_ref(),
+                rebase,
             )?;
             Ok((applied, file))
         })

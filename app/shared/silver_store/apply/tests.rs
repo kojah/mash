@@ -104,11 +104,18 @@ fn retry_outer_rollback_preserves_committed_history_across_interruption() {
     let input = file(Some("original"), 1);
     let build = Build::default();
     let progress = Progress::default();
-    write(&store, &identity(), &input, &build, &progress, None).unwrap();
+    write(&store, &identity(), &input, &build, &progress, None, false).unwrap();
     let before = retained(&store);
-    let error = write_inner(&store, &identity(), &input, &build, &progress, None, || {
-        Err(AppError::internal("interrupted after rollback"))
-    })
+    let error = write_inner(
+        &store,
+        &identity(),
+        &input,
+        &build,
+        &progress,
+        None,
+        false,
+        || Err(AppError::internal("interrupted after rollback")),
+    )
     .unwrap_err();
     assert_eq!(error.error.message, "interrupted after rollback");
     assert_eq!(retained(&store), before);
@@ -120,13 +127,14 @@ fn retry_outer_rollback_preserves_committed_history_across_interruption() {
                 &file(content, 1),
                 &build,
                 &progress,
-                None
+                None,
+                false
             )
             .is_err()
         );
         assert_eq!(retained(&store), before);
     }
-    let applied = write(&store, &identity(), &input, &build, &progress, None).unwrap();
+    let applied = write(&store, &identity(), &input, &build, &progress, None, false).unwrap();
     assert!(applied.duplicate);
     assert!(!applied.changed);
     let after = retained(&store);
@@ -141,6 +149,7 @@ fn retry_outer_rollback_preserves_committed_history_across_interruption() {
         &build,
         &progress,
         None,
+        false,
     )
     .unwrap();
     assert!(!next.duplicate);

@@ -23,8 +23,18 @@ pub(in crate::shared) fn write(
     build: &Build,
     progress: &crate::shared::activity::Progress,
     receipt: Option<&super::SyncReceipt>,
+    rebase: bool,
 ) -> Result<Applied, AppError> {
-    write_inner(store, identity, file, build, progress, receipt, || Ok(()))
+    write_inner(
+        store,
+        identity,
+        file,
+        build,
+        progress,
+        receipt,
+        rebase,
+        || Ok(()),
+    )
 }
 
 fn write_inner(
@@ -34,13 +44,22 @@ fn write_inner(
     build: &Build,
     progress: &crate::shared::activity::Progress,
     receipt: Option<&super::SyncReceipt>,
+    rebase: bool,
     after_rollback: impl FnOnce() -> Result<(), AppError>,
 ) -> Result<Applied, AppError> {
     let mut connection = store.connect(identity)?;
     let transaction = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(database)?;
-    let applied = apply(&transaction, identity, file, build, progress, receipt)?;
+    let applied = apply(
+        &transaction,
+        identity,
+        file,
+        build,
+        progress,
+        receipt,
+        rebase,
+    )?;
     progress.phase(
         crate::shared::activity::Phase::CommittingSilver,
         crate::shared::activity::Unit::Records,
@@ -373,9 +392,19 @@ fn apply(
     build: &Build,
     progress: &crate::shared::activity::Progress,
     receipt: Option<&super::SyncReceipt>,
+    rebase: bool,
 ) -> Result<Applied, AppError> {
     let previous = head(tx)?;
-    let (input, lines) = first_line(file)?;
+    let (mut input, lines) = first_line(file)?;
+    // A baseline batch merges by conversation, so its ordering token only has
+    // to follow whatever committed before it. The head captured while preparing
+    // is stale when another lane committed first; rebase here, inside the write
+    // transaction, so concurrent lanes still get strictly ordered revisions.
+    if rebase && !input.snapshot {
+        let accepted = previous.as_ref().map_or(0, |head| head.revision);
+        input.base_revision = Some(accepted);
+        input.revision = Some(accepted.saturating_add(1));
+    }
     // A resent revision changes no silver; views synchronization still runs
     // when views are stale, including after a group recipe change.
     let (revision, duplicate) = start(previous.as_ref(), &input)?;

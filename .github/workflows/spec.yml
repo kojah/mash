@@ -1,0 +1,23 @@
+name: spec
+
+on:
+  push:
+    paths:
+      - "spec/**"
+      - ".github/workflows/spec.yml"
+  pull_request:
+    paths:
+      - "spec/**"
+  workflow_dispatch:
+
+jobs:
+  tlc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Model-check the publication protocol
+        run: spec/run.sh

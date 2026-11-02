@@ -1396,7 +1396,13 @@ async fn commit_publication(
             };
             // Phase one: atomic silver history and receipt.
             let committed = match store
-                .commit_silver(&scope, file, work_progress, Some(&receipt))
+                .commit_silver(
+                    &scope,
+                    file,
+                    work_progress,
+                    Some(&receipt),
+                    backfill.is_some(),
+                )
                 .await
             {
                 Ok(committed) => committed,
