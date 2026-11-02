@@ -81,6 +81,8 @@ def cursor_path(settings: Settings) -> Path:
     # SDK still skips what each destination already acknowledged.
     key = orjson.dumps(
         [
+            # Two Slack connectors sharing a state_dir must not share cursors.
+            settings.source_id,
             [item.model_dump(mode="json") for item in settings.destinations],
             settings.history_days,
         ]
