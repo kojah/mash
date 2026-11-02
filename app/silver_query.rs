@@ -15,6 +15,30 @@ use crate::AppError;
 const MAX_ROWS: usize = 10_000;
 const MAX_SQL_BYTES: usize = 64 * 1024;
 
+/// Convenience views over the generic `objects` table, installed on every
+/// read-only connection. They are the stable names diagnostics and MCP callers
+/// can rely on while the underlying columns stay free to change.
+const STABLE_VIEWS: &str = "
+CREATE TEMP VIEW IF NOT EXISTS conversations AS
+SELECT origin, source, id, kind, title, project, repository,
+       created_at, updated_at, metadata
+FROM objects
+WHERE object_role = 'container';
+
+CREATE TEMP VIEW IF NOT EXISTS messages AS
+SELECT source, conversation_id, id, kind, object_role, ordinal, role, author,
+       content, search_projection, created_at, updated_at, reply_to,
+       attachments, metadata
+FROM objects
+WHERE object_role IN ('entry', 'segment');
+
+CREATE TEMP VIEW IF NOT EXISTS documents AS
+SELECT source, id, kind, title, content, created_at, updated_at,
+       parent_id, url, metadata
+FROM objects
+WHERE object_role = 'document';
+";
+
 fn json_value(value: rusqlite::types::ValueRef<'_>) -> Value {
     use rusqlite::types::ValueRef;
     match value {
@@ -58,10 +82,15 @@ pub(crate) fn run(
     )
     .map_err(AppError::database)?;
     connection
-        .pragma_update(None, "query_only", true)
+        .busy_timeout(Duration::from_secs(5))
+        .map_err(AppError::database)?;
+    // Views are installed by us before the connection is pinned read-only, so
+    // a statement can use them but can neither create nor alter one.
+    connection
+        .execute_batch(STABLE_VIEWS)
         .map_err(AppError::database)?;
     connection
-        .busy_timeout(Duration::from_secs(5))
+        .pragma_update(None, "query_only", true)
         .map_err(AppError::database)?;
     // Abort a runaway scan when the budget expires; the handle is inert once
     // the statement has finished.
@@ -124,7 +153,28 @@ mod tests {
         connection
             .execute_batch(
                 "CREATE TABLE t (id INTEGER, name TEXT);
-                 INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');",
+                 INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');
+                 CREATE TABLE objects (
+                   storage_id INTEGER PRIMARY KEY,
+                   origin TEXT, source TEXT, id TEXT, object_role TEXT,
+                   kind TEXT, parent_id TEXT, parent_storage_id INTEGER,
+                   reply_to TEXT, conversation_id TEXT, ordinal INTEGER,
+                   context_parent INTEGER, role TEXT, author TEXT, title TEXT,
+                   content TEXT, search_projection TEXT, created_at INTEGER,
+                   updated_at INTEGER, project TEXT, repository TEXT, url TEXT,
+                   metadata TEXT, attachments TEXT DEFAULT '[]', record TEXT);
+                 INSERT INTO objects (origin, source, id, object_role, kind,
+                   conversation_id, title)
+                   VALUES ('provider', 'codex', 'chat-1', 'container',
+                           'codex:thread', 'chat-1', 'A chat');
+                 INSERT INTO objects (origin, source, id, object_role, kind,
+                   conversation_id, ordinal, role, content)
+                   VALUES ('provider', 'codex', 'message-1', 'entry',
+                           'codex:message', 'chat-1', 0, 'user', 'hello');
+                 INSERT INTO objects (origin, source, id, object_role, kind,
+                   conversation_id, title, content)
+                   VALUES ('connector', 'git:acme/app', 'commit-1', 'document',
+                           'git:commit', 'commit-1', 'fix', 'body');",
             )
             .unwrap();
         (directory, path)
@@ -143,6 +193,48 @@ mod tests {
         assert_eq!(value["columns"], json!(["id", "name"]));
         assert_eq!(value["rows"].as_array().unwrap().len(), 2);
         assert_eq!(value["truncated"], true);
+    }
+
+    #[test]
+    fn stable_views_expose_containers_messages_and_documents() {
+        let (_directory, path) = fixture();
+        let chat = run(
+            &path,
+            "SELECT id, title FROM conversations",
+            10,
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(chat["rows"], json!([{"id": "chat-1", "title": "A chat"}]));
+
+        let message = run(
+            &path,
+            "SELECT id, conversation_id, role, content FROM messages",
+            10,
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(
+            message["rows"],
+            json!([{
+                "id": "message-1",
+                "conversation_id": "chat-1",
+                "role": "user",
+                "content": "hello",
+            }])
+        );
+
+        let document = run(
+            &path,
+            "SELECT id, kind, content FROM documents",
+            10,
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(
+            document["rows"],
+            json!([{"id": "commit-1", "kind": "git:commit", "content": "body"}])
+        );
     }
 
     #[test]

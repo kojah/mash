@@ -544,7 +544,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Run one read-only SQL statement over this machine's silver database. The connection is opened read-only and pinned with query_only, so writes, ATTACH and pragma changes fail. Rows are capped (default 200, max 10000) and a wall-clock budget aborts runaway scans. Returns columns, rows and whether the result was truncated; blobs are hex. For diagnostics only: the silver schema is not a stable API."
+        description = "Run one read-only SQL statement over this machine's silver database. The connection is opened read-only and pinned with query_only, so writes, ATTACH and pragma changes fail. Rows are capped (default 200, max 10000) and a wall-clock budget aborts runaway scans. Returns columns, rows and whether the result was truncated; blobs are hex. Stable views conversations, messages and documents are defined over the raw objects table; the raw schema itself is not a stable API."
     )]
     async fn query_silver(&self, Parameters(input): Parameters<QuerySilver>) -> CallToolResult {
         self.execute(Operation::QuerySilver {

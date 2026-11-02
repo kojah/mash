@@ -168,6 +168,8 @@ enum Command {
     /// Remove one conversation and its derived search rows.
     Forget { id: String },
     /// Run one read-only SQL statement over local silver.
+    ///
+    /// The stable views are conversations, messages and documents.
     Query {
         /// SQL to run; the connection is read-only and bounded.
         #[arg(long)]
