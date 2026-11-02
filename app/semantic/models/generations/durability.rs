@@ -18,10 +18,7 @@ pub(super) fn sync_generation(
                     "model generation contains a non-file asset",
                 ));
             }
-            #[cfg(unix)]
-            fs::File::open(entry.path())
-                .and_then(|file| file.sync_all())
-                .map_err(AppError::io)?;
+            crate::platform::sync_file(entry.path()).map_err(AppError::io)?;
         }
     }
     // WalkDir visits parents first. Reverse directory order persists children
@@ -33,17 +30,5 @@ pub(super) fn sync_generation(
 }
 
 pub(super) fn sync_directory(path: &Path) -> Result<(), AppError> {
-    #[cfg(unix)]
-    {
-        fs::File::open(path)
-            .and_then(|file| file.sync_all())
-            .map_err(AppError::io)
-    }
-    #[cfg(not(unix))]
-    {
-        // Retain process-atomic activation where directory fsync is unavailable.
-        // Do not claim the Unix persistence ordering on these platforms.
-        let _ = path;
-        Ok(())
-    }
+    crate::platform::sync_directory(path).map_err(AppError::io)
 }

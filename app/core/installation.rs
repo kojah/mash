@@ -325,27 +325,12 @@ fn executable(command: &str, environment: &Environment) -> Option<PathBuf> {
         let path = environment.cwd.join(path);
         return is_executable(&path).then_some(path);
     }
-    std::env::split_paths(&environment.path)
-        .map(|part| environment.cwd.join(part).join(command))
-        .find(|path| is_executable(path))
+    crate::platform::find_program(command, &environment.path, &environment.cwd)
 }
 
 fn is_executable(path: &Path) -> bool {
-    let Ok(metadata) = path.metadata() else {
-        return false;
-    };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
+    path.metadata()
+        .is_ok_and(|metadata| crate::platform::is_executable(&metadata))
 }
 
 #[derive(Deserialize)]

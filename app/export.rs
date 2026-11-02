@@ -147,11 +147,7 @@ pub(crate) fn load(
     fs::create_dir_all(parent).map_err(AppError::io)?;
     let mut builder = tempfile::Builder::new();
     builder.prefix(".mash-import-");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        builder.permissions(fs::Permissions::from_mode(0o700));
-    }
+    crate::platform::private_tempdir(&mut builder);
     let stage = builder.tempdir_in(parent).map_err(AppError::io)?;
     let input = stage.path().join("input.jsonl");
     copy_checked(&directory.join(DATABASE), &input, &manifest.records)?;
@@ -332,15 +328,7 @@ fn parent(path: &Path) -> &Path {
 }
 
 fn sync_directory(path: &Path) -> Result<(), AppError> {
-    #[cfg(unix)]
-    {
-        fs::File::open(path)
-            .and_then(|file| file.sync_all())
-            .map_err(AppError::io)?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
+    crate::platform::sync_directory(path).map_err(AppError::io)
 }
 
 struct OutputDirectory {
@@ -352,11 +340,7 @@ impl OutputDirectory {
     fn create(path: &Path) -> Result<Self, AppError> {
         fs::create_dir_all(parent(path)).map_err(AppError::io)?;
         let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
+        crate::platform::private_directory(&mut builder);
         builder.create(path).map_err(AppError::io)?;
         Ok(Self {
             path: path.to_path_buf(),

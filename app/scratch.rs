@@ -5,11 +5,7 @@ use std::path::Path;
 pub(crate) fn directory(prefix: &str) -> Result<tempfile::TempDir, AppError> {
     let mut builder = tempfile::Builder::new();
     builder.prefix(prefix);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        builder.permissions(std::fs::Permissions::from_mode(0o700));
-    }
+    crate::platform::private_tempdir(&mut builder);
     builder.tempdir().map_err(AppError::io)
 }
 

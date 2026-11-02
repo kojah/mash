@@ -33,6 +33,7 @@ mod mcp;
 /// Build-time generation of the bundled history skill from the live MCP contract.
 pub use mcp::guidance::{generate_history_skill, validate_history_release};
 mod observability;
+mod platform;
 mod progress;
 mod redaction;
 mod runtime;
@@ -87,6 +88,7 @@ where
     match cli::run(args) {
         // MCP owns stdout for its entire session, including shutdown.
         Ok(cli::Response::McpStopped) => 0,
+        Ok(cli::Response::Delegated(code)) => code,
         Ok(response) => write_json(stdout, &response).map_or_else(
             |error| {
                 let _ = write_json(stderr, &error);

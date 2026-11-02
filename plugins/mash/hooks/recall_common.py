@@ -145,6 +145,14 @@ def resolve_project(cwd: str, timeout: float) -> tuple[str, str | None]:
     return toplevel, origin
 
 
+def path_key(path: str) -> str:
+    """A path for comparison: forward slashes, no trailing slash, and for
+    Windows drive paths (case-insensitive there) lowercase. Git reports
+    "C:/Users/x" where transcripts may record "C:\\Users\\x"."""
+    key = path.replace("\\", "/").rstrip("/")
+    return key.lower() if len(key) > 1 and key[1] == ":" else key
+
+
 def project_key(toplevel: str, repository: str | None) -> str:
     """The origin URL shared by every clone and worktree, else the checkout path."""
     identity = f"repository\0{repository}" if repository else f"path\0{toplevel}"

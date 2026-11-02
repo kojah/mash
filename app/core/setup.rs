@@ -223,37 +223,7 @@ async fn run(program: &Path, arguments: &[impl AsRef<std::ffi::OsStr>]) -> Resul
     }
 }
 
-/// The executable `program` resolves to on PATH; on Windows also npm's
-/// `.cmd` shims and the other `PATHEXT` extensions.
 fn which(program: &str) -> Option<PathBuf> {
-    let extensions: Vec<String> = if cfg!(windows) {
-        std::env::var("PATHEXT")
-            .unwrap_or_else(|_| ".EXE;.CMD;.BAT".to_owned())
-            .split(';')
-            .filter(|extension| !extension.is_empty())
-            .map(str::to_ascii_lowercase)
-            .collect()
-    } else {
-        vec![String::new()]
-    };
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .flat_map(|directory| {
-            extensions
-                .iter()
-                .map(move |extension| directory.join(format!("{program}{extension}")))
-        })
-        .find(|path| is_executable(path))
-}
-
-fn is_executable(path: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        path.metadata()
-            .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-    }
-    #[cfg(not(unix))]
-    {
-        path.is_file()
-    }
+    let path = std::env::var_os("PATH")?;
+    crate::platform::find_program(program, &path, &std::env::current_dir().ok()?)
 }

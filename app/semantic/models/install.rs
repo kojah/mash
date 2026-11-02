@@ -17,11 +17,7 @@ fn installation_lock(root: &Path) -> Result<fs::File, AppError> {
     fs::create_dir_all(root).map_err(AppError::io)?;
     let mut options = fs::OpenOptions::new();
     options.create(true).truncate(false).read(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
+    crate::platform::private_file(&mut options);
     let lock = options
         .open(root.join(assets::INSTALL_LOCK_NAME))
         .map_err(AppError::io)?;

@@ -71,7 +71,11 @@ def context(payload: Any, end: float) -> str:
     except ValueError:
         return ""  # Outside the project, history is not scoped to it.
     session_id = payload["session_id"]
-    scope = ["--repository", repository] if repository else ["--project", toplevel]
+    if repository:
+        scope = ["--repository", repository]
+    else:  # Recorded working directories may use either slash on Windows.
+        variants = dict.fromkeys([toplevel, toplevel.replace("/", "\\")])
+        scope = [part for variant in variants for part in ("--project", variant)]
     arguments = ["search", relative, "--local", "--unit", "chats"]
     arguments += ["--intent", "exact-mention", "--match-mode", "strict"]
     arguments += ["--limit", str(CHATS + 1), *scope]

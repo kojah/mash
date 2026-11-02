@@ -104,5 +104,15 @@ class Confirmation(unittest.TestCase):
         self.assertEqual(line, f"{common.CONFIRMED}2026-09-01, {today}")
 
 
+class Paths(unittest.TestCase):
+    def test_path_keys_ignore_slash_style_and_windows_drive_case(self) -> None:
+        self.assertEqual(
+            common.path_key("C:\\Users\\Ada\\repo\\"),
+            common.path_key("c:/users/ada/repo"),
+        )
+        self.assertEqual(common.path_key("/home/ada/Repo/"), "/home/ada/Repo")
+        self.assertNotEqual(common.path_key("/home/ada/Repo"), "/home/ada/repo")
+
+
 if __name__ == "__main__":
     unittest.main()

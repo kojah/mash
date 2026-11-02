@@ -54,8 +54,11 @@ scoop bucket add kojah https://github.com/kojah/mash; scoop install kojah/mash
 choco install mash
 ```
 
-The history plugin's hooks run `python3`, which Windows may not provide; WSL
-works like Linux.
+The history plugin's hooks need Python 3.9 or later as `python3`, `python` or
+the Windows `py` launcher; without one they do nothing. On Windows, long-lived
+commands (`mash mcp`, `index --watch`, `serve`) run from a per-build copy under
+the local data directory, so installers can replace `mash.exe` while an agent is
+connected; reconnect afterwards. WSL works like Linux.
 
 Then set it up:
 

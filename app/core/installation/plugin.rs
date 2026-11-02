@@ -247,8 +247,9 @@ fn hooks(
                     .map(move |(index, hook)| (group, index, hook))
             })
             .collect();
-        let expected_command =
-            format!("python3 \"${{CLAUDE_PLUGIN_ROOT}}/hooks/{script}\" 2>/dev/null || true");
+        let expected_command = format!(
+            "sh \"${{CLAUDE_PLUGIN_ROOT}}/hooks/python.sh\" \"${{CLAUDE_PLUGIN_ROOT}}/hooks/{script}\" 2>/dev/null || true"
+        );
         let matched = entries.iter().find(|(_, _, hook)| {
             hook.kind == "command" && hook.command.as_deref() == Some(&expected_command)
         });
@@ -291,7 +292,7 @@ fn hooks(
 }
 
 fn hook_dependencies(client: &mut Client, root: &Path, environment: &Environment) {
-    for helper in ["recall_common.py", "record.py"] {
+    for helper in ["recall_common.py", "record.py", "python.sh"] {
         let helper = root.join("hooks").join(helper);
         if !readable_file(&helper) {
             client.add(
@@ -303,13 +304,17 @@ fn hook_dependencies(client: &mut Client, root: &Path, environment: &Environment
             );
         }
     }
-    if executable("python3", environment).is_none() {
+    // hooks/python.sh runs the first of these that works.
+    if ["python3", "python", "py"]
+        .iter()
+        .all(|name| executable(name, environment).is_none())
+    {
         client.add(
             Component::Hooks,
             State::Missing,
             Some(&root.join("hooks/hooks.json")),
-            "python3 required by the bundled hooks is not executable on this CLI's PATH.",
-            Some("Install Python 3 and make it available to the agent's hook environment."),
+            "No Python 3 (python3, python or py) required by the bundled hooks is executable on this CLI's PATH.",
+            Some("Install Python 3.9 or later and make it available to the agent's hook environment."),
         );
     }
 }

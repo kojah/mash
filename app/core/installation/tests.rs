@@ -88,7 +88,7 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
         &plugin.join("hooks/hooks.json"),
         include_str!("../../../plugins/mash/hooks/hooks.json"),
     );
-    for script in ["session_start.py", "prompt_recall.py"] {
+    for script in ["session_start.py", "prompt_recall.py", "python.sh"] {
         write(&plugin.join("hooks").join(script), "# hook");
     }
     let report = collect(Some(&environment), &[]);
@@ -229,6 +229,7 @@ fn installation_complete_claude_user_setup_has_no_attention_findings() {
         "prompt_recall.py",
         "recall_common.py",
         "record.py",
+        "python.sh",
     ] {
         write(&plugin.join("hooks").join(name), "# script");
     }

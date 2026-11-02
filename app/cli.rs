@@ -352,6 +352,9 @@ pub(super) enum Response {
         watching: bool,
     },
     McpStopped,
+    /// A Windows copy of this executable ran the command and exited so.
+    #[serde(skip)]
+    Delegated(i32),
 }
 
 impl Cli {
@@ -572,6 +575,13 @@ where
             _ => return Err(AppError::usage(error.to_string())),
         },
     };
+    let long_lived = matches!(
+        cli.command,
+        Command::Mcp | Command::Serve { .. } | Command::Index { watch: true, .. }
+    );
+    if long_lived && let Some(code) = crate::platform::run_from_copy(&arguments) {
+        return Ok(Response::Delegated(code));
+    }
     let mut builder = if matches!(cli.command, Command::Serve { .. }) {
         tokio::runtime::Builder::new_multi_thread()
     } else {

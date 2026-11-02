@@ -103,14 +103,14 @@ def scan(
     cutoff = int(time.time() * 1000) - LOOKBACK_MS
     recent: list[Chat] = []
     pending: list[tuple[Chat, Any]] = []
-    offset, prefix = 0, toplevel.rstrip("/") + "/"
+    offset, prefix = 0, common.path_key(toplevel) + "/"
     for _ in range(PAGES):
         arguments = f"list-chats --local --limit {PAGE} --offset {offset}".split()
         page = common.run_mash(binary, arguments, end - time.monotonic())
         chats = [chat for row in page["chats"] if (chat := parse_chat(row))]
         for chat in chats:
             mine = repository and chat.repository == repository
-            under = (chat.project + "/").startswith(prefix)
+            under = (common.path_key(chat.project) + "/").startswith(prefix)
             if chat.id == session_id or not (mine or under):
                 continue
             mark = (marks.get(chat.id) or {}).get("updated_at")
@@ -176,17 +176,30 @@ def catch_up(binary: str) -> bool:
         return False
     common.write_state(path, {"started_at": int(time.time())})
 
-    def lower_priority() -> None:
-        os.nice(10)
+    devnull = subprocess.DEVNULL
+    if sys.platform == "win32":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        flags |= subprocess.BELOW_NORMAL_PRIORITY_CLASS
+        subprocess.Popen(
+            [binary, "index"],
+            stdin=devnull,
+            stdout=devnull,
+            stderr=devnull,
+            creationflags=flags,
+        )
+    else:
 
-    subprocess.Popen(
-        [binary, "index"],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        preexec_fn=lower_priority,
-    )
+        def lower_priority() -> None:
+            os.nice(10)
+
+        subprocess.Popen(
+            [binary, "index"],
+            stdin=devnull,
+            stdout=devnull,
+            stderr=devnull,
+            start_new_session=True,
+            preexec_fn=lower_priority,
+        )
     return True
 
 
