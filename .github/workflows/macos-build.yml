@@ -1,0 +1,118 @@
+name: macOS build
+
+# Prove the Apple Silicon artifact builds on a native macOS runner, without
+# touching the deployment hosts. Dispatch this from the Actions tab (or
+# `gh workflow run macos-build.yml`) and download the `mash-darwin-arm64`
+# artifact. The real release path is ci.yml -> deploy.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      codesign:
+        description: Codesign (and notarize when the notary secrets exist) the artifact
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: -Zunstable-options --jobs-frontend=4
+      BINARY: mash
+      SMOKE_SCRIPT: .github/scripts/deploy-smoke
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: jamesqo/gha-workflows/actions/setup-rust@v2
+        with:
+          toolchain: nightly
+          cache-prefix: mash
+      - name: Build Apple Silicon binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release
+          mkdir -p dist/darwin-arm64
+          cp "target/release/$BINARY" "dist/darwin-arm64/$BINARY"
+          file "dist/darwin-arm64/$BINARY" | tee /dev/stderr | grep -q 'arm64'
+          shasum -a 256 "dist/darwin-arm64/$BINARY" | tee /dev/stderr
+      - name: Smoke the macOS binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$SMOKE_SCRIPT" "dist/darwin-arm64/$BINARY" "$GITHUB_SHA"
+      - name: Import signing certificate
+        if: inputs.codesign
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_CERT_P12:-}" || -z "${MACOS_CERT_PASSWORD:-}" ]]; then
+            echo 'codesign requires MACOS_CERT_P12 and MACOS_CERT_PASSWORD' >&2
+            exit 2
+          fi
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          password="$(uuidgen)"
+          printf '%s' "$MACOS_CERT_P12" | \
+            openssl base64 -d -A -out "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain"
+          rm -f "$RUNNER_TEMP/cert.p12"
+      - name: Codesign Apple Silicon binary
+        if: inputs.codesign
+        shell: bash
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_SIGN_IDENTITY:-}" ]]; then
+            echo 'codesign requires MACOS_SIGN_IDENTITY' >&2
+            exit 2
+          fi
+          codesign --force --options runtime --timestamp \
+            --sign "$MACOS_SIGN_IDENTITY" "dist/darwin-arm64/$BINARY"
+          codesign --verify --strict --verbose=2 "dist/darwin-arm64/$BINARY"
+          codesign -dv --verbose=4 "dist/darwin-arm64/$BINARY" 2>&1 | tee /dev/stderr
+      - name: Notarize Apple Silicon binary
+        if: inputs.codesign
+        shell: bash
+        env:
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # A bare Mach-O cannot be stapled; the ticket belongs to the archive a
+          # release would ship. Deployments over scp carry no quarantine
+          # attribute, so signing alone is sufficient for those.
+          if [[ -z "${MACOS_TEAM_ID:-}" || -z "${MACOS_NOTARY_APPLE_ID:-}" || -z "${MACOS_NOTARY_PASSWORD:-}" ]]; then
+            echo 'notarization skipped: set MACOS_TEAM_ID, MACOS_NOTARY_APPLE_ID and MACOS_NOTARY_PASSWORD'
+            exit 0
+          fi
+          archive="$RUNNER_TEMP/$BINARY.zip"
+          ditto -c -k --keepParent "dist/darwin-arm64/$BINARY" "$archive"
+          xcrun notarytool submit "$archive" \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --team-id "$MACOS_TEAM_ID" \
+            --password "$MACOS_NOTARY_PASSWORD" \
+            --wait
+          rm -f "$archive"
+      - name: Show compiler cache statistics
+        run: sccache --show-stats
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: mash-darwin-arm64
+          path: dist/darwin-arm64/mash
+          if-no-files-found: error
+          retention-days: 7
