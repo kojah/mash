@@ -1612,11 +1612,22 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
         token_env: "unused-in-test".into(),
         publication_redaction: crate::redaction::Policy::new(false),
     };
-    let indexed = crate::shared::sync::client::upload_backfill_with_token(
+    let plan = crate::shared::sync::client::plan_backfill_file(
+        &file,
+        crate::shared::sync::client::BackfillLimits::default(),
+    )
+    .expect("plan the baseline");
+    let indexed = crate::shared::sync::client::upload_backfill_plan(
         &config,
         FIRST.to_owned(),
-        &file,
+        &plan,
         "baseline",
+        crate::shared::sync::client::BackfillResume {
+            completed: &std::collections::BTreeSet::new(),
+            last_revision: 0,
+        },
+        None,
+        |_, _| Ok(()),
     )
     .await
     .expect("client backfill completes");
@@ -1901,5 +1912,140 @@ async fn periodic_apply_retry_finishes_queued_publications() {
         .expect("freshness includes the recovered node");
     assert_eq!(node.revision, published.revision.unwrap());
     assert!(node.views_current);
+    service.cleanup().await;
+}
+
+/// The coordinator commits batch by batch: the first commit is searchable
+/// before the second batch is even sent.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one flow proves per-batch commits and progressive visibility"
+)]
+async fn qdrant_backfill_commits_each_batch_progressively() {
+    use crate::shared::sync::client::{BackfillLimits, plan_backfill, upload_backfill_plan};
+
+    let service = Service::qdrant(384).await;
+    let vector = |seed: f64| {
+        let mut values = vec![0.0; 384];
+        values[0] = seed;
+        values
+    };
+    let chat = |id: &str, updated_at: i64| crate::shared::protocol::ConversationRecord {
+        enrichment: None,
+        id: id.into(),
+        provider: crate::provider::Provider::Codex,
+        title: Some(id.into()),
+        project: None,
+        repository: None,
+        created_at: Some(1),
+        updated_at: Some(updated_at),
+    };
+    let message =
+        |conversation: &str, id: &str, seed: f64| crate::shared::protocol::MessageRecord {
+            attachments: Vec::new(),
+            id: id.into(),
+            conversation_id: conversation.into(),
+            ordinal: 0,
+            context: crate::message_context::MessageContext::Linear,
+            role: crate::role::Role::User,
+            content: format!("{conversation} content"),
+            projection: format!("{conversation} content"),
+            created_at: Some(1),
+            generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()),
+            vector: Some(vector(seed)),
+            tools: crate::tools::Activity::default(),
+        };
+    let start = Start {
+        views_build: None,
+        source_silver: None,
+        instance: "snapshot-instance".into(),
+        revision: Some(1),
+        base_revision: Some(0),
+        snapshot: false,
+        forgets: Vec::new(),
+    };
+    let events = vec![
+        Event::Batch(crate::shared::protocol::Batch::Conversations {
+            records: vec![chat("newer", 20), chat("older", 10)],
+        }),
+        Event::Batch(crate::shared::protocol::Batch::Messages {
+            records: vec![
+                message("newer", "newer-1", 1.0),
+                message("older", "older-1", 2.0),
+            ],
+        }),
+    ];
+    // One conversation per batch keeps the assertion deterministic.
+    let plan = plan_backfill(
+        start,
+        events,
+        BackfillLimits {
+            conversations: 1,
+            decoded_bytes: 1024 * 1024,
+        },
+    )
+    .expect("plan two batches");
+    assert_eq!(plan.batches.len(), 2);
+
+    let config = crate::config::SharedConfig {
+        group_id: service.first.group_id.clone(),
+        node_id: service.first.node_id.clone(),
+        api_url: service.url.clone(),
+        token_env: "unused-in-test".into(),
+        publication_redaction: crate::redaction::Policy::new(false),
+    };
+    let (progress, mut observed) = tokio::sync::mpsc::unbounded_channel();
+    let completed = std::collections::BTreeSet::new();
+    let upload = upload_backfill_plan(
+        &config,
+        FIRST.to_owned(),
+        &plan,
+        "progressive",
+        crate::shared::sync::client::BackfillResume {
+            completed: &completed,
+            last_revision: 0,
+        },
+        Some(progress),
+        |_, _| Ok(()),
+    );
+    tokio::pin!(upload);
+    let mut batches = 0;
+    loop {
+        tokio::select! {
+            event = observed.recv() => {
+                if let Some(event) = event {
+                    batches += 1;
+                    assert_eq!(event.index, batches - 1, "batches arrive in order");
+                    assert_eq!(event.total, 2, "both batches are planned");
+                    if batches == 1 {
+                        // The gate holds the sender here: the second batch has
+                        // not been sent, yet the first one is already durable.
+                        let counts = service.counts(FIRST).await;
+                        assert_eq!(counts.conversations, 1, "first batch committed alone");
+                        assert_eq!(counts.messages, 1);
+                        assert_eq!(service.state().await.revision, event.revision);
+                    }
+                    let _ = event.acknowledge.send(());
+                }
+            }
+            result = &mut upload => {
+                result.expect("baseline completes");
+                break;
+            }
+        }
+    }
+    assert_eq!(batches, 2, "each batch reported its own commit");
+    let counts = service.counts(FIRST).await;
+    assert_eq!(counts.conversations, 2);
+    assert_eq!(counts.messages, 2);
+
+    let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
+    let backfill = catalog
+        .backfill("progressive", &service.first.group_id, "first")
+        .unwrap();
+    assert_eq!(backfill.state, "complete");
+    assert_eq!(backfill.covered, backfill.total_conversations);
     service.cleanup().await;
 }

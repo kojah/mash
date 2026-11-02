@@ -341,7 +341,7 @@ pub(crate) async fn upload_encoded_with_token(
     let reused = guard.is_some();
     let result = async {
         let session = ensure_session(&mut guard, config, &token, &start.instance).await?;
-        publish_on_session(session, &operation_id, start, encoded).await
+        publish_on_session(session, &operation_id, start, encoded, None).await
     }
     .await;
     match result {
@@ -355,7 +355,7 @@ pub(crate) async fn upload_encoded_with_token(
             }
             let retry = async {
                 let session = ensure_session(&mut guard, config, &token, &start.instance).await?;
-                publish_on_session(session, &operation_id, start, encoded).await
+                publish_on_session(session, &operation_id, start, encoded, None).await
             }
             .await;
             if retry.is_err() {
@@ -376,6 +376,7 @@ async fn publish_on_session(
     operation_id: &str,
     start: &protocol::Start,
     encoded: &wire::EncodedBatch,
+    backfill: Option<(&str, i64)>,
 ) -> Result<protocol::Indexed, AppError> {
     let mut checkpoint = 0u64;
 
@@ -418,13 +419,13 @@ async fn publish_on_session(
             operation_id: operation_id.to_owned(),
             body: Some(client_frame::Body::BeginPublication(BeginPublication {
                 start: Some(PublicationStart::from(start)),
-                mode: if start.snapshot {
-                    PublicationMode::ReplaceSnapshot as i32
-                } else {
-                    PublicationMode::Delta as i32
+                mode: match backfill {
+                    Some(_) => PublicationMode::BackfillBatch as i32,
+                    None if start.snapshot => PublicationMode::ReplaceSnapshot as i32,
+                    None => PublicationMode::Delta as i32,
                 },
-                backfill_id: String::new(),
-                source_revision: start.revision,
+                backfill_id: backfill.map_or_else(String::new, |(id, _)| id.to_owned()),
+                source_revision: backfill.map_or(start.revision, |(_, revision)| Some(revision)),
                 journal_from_exclusive: None,
                 journal_through_inclusive: None,
                 manifest_digest: encoded.manifest_digest.clone(),
@@ -792,29 +793,95 @@ fn encode_backfill_manifest(
 
 /// Send one baseline with its manifest, batch and completion over `/v1/sync`.
 ///
-/// The sealed spool must describe a non-snapshot batch whose `revision` is the
-/// frozen baseline. The server installs the manifest, applies the batch with
-/// per-conversation ordering, records coverage, and completes the baseline.
-pub(crate) async fn upload_backfill(
-    config: &SharedConfig,
-    file: &tempfile::NamedTempFile,
-    backfill_id: &str,
-) -> Result<protocol::Indexed, AppError> {
-    upload_backfill_with_token(config, token(config)?, file, backfill_id).await
+/// How many conversations and decoded bytes one baseline batch may carry.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BackfillLimits {
+    pub(crate) conversations: usize,
+    pub(crate) decoded_bytes: u64,
 }
 
-/// Same sender with an explicit credential, so tests do not mutate process env.
+impl Default for BackfillLimits {
+    fn default() -> Self {
+        Self {
+            conversations: 128,
+            decoded_bytes: 1024 * 1024,
+        }
+    }
+}
+
+/// One independently committed baseline batch.
+#[derive(Clone)]
+pub(crate) struct PlannedBatch {
+    pub(crate) encoded: wire::EncodedBatch,
+    pub(crate) members: Vec<wire::BackfillMember>,
+}
+
+impl PlannedBatch {
+    pub(crate) fn digest(&self) -> &str {
+        &self.encoded.manifest_digest
+    }
+}
+
+/// A frozen baseline split into commits, with the membership manifest that
+/// proves completion.
+pub(crate) struct BackfillPlan {
+    pub(crate) start: protocol::Start,
+    pub(crate) baseline_revision: i64,
+    pub(crate) members: Vec<wire::BackfillMember>,
+    pub(crate) manifest_piece: wire::Piece,
+    pub(crate) manifest_digest: String,
+    pub(crate) manifest_bytes: u64,
+    pub(crate) batches: Vec<PlannedBatch>,
+}
+
+/// What a previous attempt already completed for this baseline.
+pub(crate) struct BackfillResume<'a> {
+    pub(crate) completed: &'a std::collections::BTreeSet<String>,
+    pub(crate) last_revision: i64,
+}
+
+/// A batch that just committed, with a gate the sender waits on before
+/// continuing. Tests use the gate to observe progressive visibility.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "progress gate is consumed by tests and future operator surfaces"
+    )
+)]
+pub(crate) struct BackfillProgress {
+    pub(crate) index: usize,
+    pub(crate) total: usize,
+    pub(crate) revision: i64,
+    pub(crate) acknowledge: tokio::sync::oneshot::Sender<()>,
+}
+
+struct Group {
+    id: String,
+    updated_at: i64,
+    events: Vec<Event>,
+}
+
+fn entry<'a>(groups: &'a mut std::collections::BTreeMap<String, Group>, id: &str) -> &'a mut Group {
+    groups.entry(id.to_owned()).or_insert_with(|| Group {
+        id: id.to_owned(),
+        updated_at: 0,
+        events: Vec::new(),
+    })
+}
+
+/// Split a frozen batch into independently publishable commits: whole
+/// conversations, most-recently-updated first, packed to the byte and
+/// conversation targets. A conversation is never split across batches.
 #[allow(
     clippy::too_many_lines,
-    reason = "one baseline session: handshake, manifest, batch, completion"
+    reason = "grouping, ordering, packing and manifest assembly in one pure planner"
 )]
-pub(crate) async fn upload_backfill_with_token(
-    config: &SharedConfig,
-    token: String,
-    file: &tempfile::NamedTempFile,
-    backfill_id: &str,
-) -> Result<protocol::Indexed, AppError> {
-    let (start, events) = read_events(file)?;
+pub(crate) fn plan_backfill(
+    start: protocol::Start,
+    events: Vec<Event>,
+    limits: BackfillLimits,
+) -> Result<BackfillPlan, AppError> {
     let baseline_revision = start
         .revision
         .ok_or_else(|| AppError::usage("a backfill batch requires a frozen revision"))?;
@@ -823,108 +890,267 @@ pub(crate) async fn upload_backfill_with_token(
             "a backfill batch is not a snapshot; send deltas from the frozen baseline",
         ));
     }
-    let members = backfill_members(&events)?;
-    if members.is_empty() {
+
+    let mut groups: std::collections::BTreeMap<String, Group> = std::collections::BTreeMap::new();
+    for event in events {
+        match event {
+            Event::Batch(protocol::Batch::Conversations { records }) => {
+                for record in records {
+                    let updated_at = record.updated_at.unwrap_or(0);
+                    let group = entry(&mut groups, &record.id);
+                    group.updated_at = group.updated_at.max(updated_at);
+                    group
+                        .events
+                        .push(Event::Batch(protocol::Batch::Conversations {
+                            records: vec![record],
+                        }));
+                }
+            }
+            Event::Batch(protocol::Batch::Messages { records }) => {
+                for record in records {
+                    entry(&mut groups, &record.conversation_id)
+                        .events
+                        .push(Event::Batch(protocol::Batch::Messages {
+                            records: vec![record],
+                        }));
+                }
+            }
+            Event::Batch(protocol::Batch::Tombstones { records }) => {
+                for record in records {
+                    entry(&mut groups, &record.conversation_id)
+                        .events
+                        .push(Event::Batch(protocol::Batch::Tombstones {
+                            records: vec![record],
+                        }));
+                }
+            }
+            Event::Remove { id } => entry(&mut groups, &id).events.push(Event::Remove { id }),
+            Event::Start(_) | Event::Finish => {}
+        }
+    }
+    if groups.is_empty() {
         return Err(AppError::usage(
             "a backfill batch must carry at least one conversation",
         ));
     }
-    let (manifest_piece, manifest_digest, manifest_bytes) = encode_backfill_manifest(&members)?;
-    let encoded = wire::encode_publication(&events, wire::DEFAULT_MAX_DECODED_BYTES)?;
-    let views_fingerprint = start.views_build.as_ref().map_or_else(
-        || "unspecified".to_owned(),
-        |build| serde_json::to_string(build).unwrap_or_default(),
-    );
+    let mut ordered = groups.into_values().collect::<Vec<_>>();
+    // Newest activity first; the identifier breaks ties deterministically.
+    ordered.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(a.id.cmp(&b.id)));
 
-    let request = request(config, &token)?;
-    let (socket, _) =
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async(request))
-            .await
-            .map_err(|_| AppError::shared("shared synchronization handshake timed out"))?
-            .map_err(|_| {
-                AppError::shared("could not connect to the shared synchronization endpoint")
-            })?;
-    let (mut sink, mut stream) = socket.split();
-    send(
-        &mut sink,
-        &ClientFrame {
-            operation_id: String::new(),
-            body: Some(client_frame::Body::Hello(Hello {
-                protocol_version: wire::PROTOCOL_VERSION,
-                database_instance: start.instance.clone(),
-                zstd_publication_data: true,
-                max_decoded_bytes: wire::DEFAULT_MAX_DECODED_BYTES as u64,
-            })),
-        },
-    )
-    .await?;
-    let welcome = match receive(&mut stream).await?.body {
-        Some(server_frame::Body::Welcome(welcome))
-            if welcome.protocol_version == wire::PROTOCOL_VERSION =>
-        {
-            welcome
+    let mut batches = Vec::new();
+    let mut current = Vec::new();
+    let mut conversations = 0usize;
+    let mut decoded = 0u64;
+    let flush = |events: Vec<Event>, batches: &mut Vec<PlannedBatch>| -> Result<(), AppError> {
+        if events.is_empty() {
+            return Ok(());
         }
-        Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
-            return Err(outcome_error(&failed));
-        }
-        _ => {
-            return Err(AppError::shared(
-                "shared synchronization did not accept this protocol version",
-            ));
-        }
+        let encoded = wire::encode_publication(&events, wire::DEFAULT_MAX_DECODED_BYTES)?;
+        let members = backfill_members(&events)?;
+        batches.push(PlannedBatch { encoded, members });
+        Ok(())
     };
-    let mut credit = usize::try_from(welcome.credit_bytes).unwrap_or(0);
+    for group in ordered {
+        let group_encoded =
+            wire::encode_publication(&group.events, wire::DEFAULT_MAX_DECODED_BYTES)?;
+        let group_bytes = group_encoded.decoded_bytes;
+        let over_limit = conversations + 1 > limits.conversations
+            || decoded.saturating_add(group_bytes) > limits.decoded_bytes;
+        if !current.is_empty() && over_limit {
+            flush(std::mem::take(&mut current), &mut batches)?;
+            conversations = 0;
+            decoded = 0;
+        }
+        current.extend(group.events);
+        conversations += 1;
+        decoded = decoded.saturating_add(group_bytes);
+    }
+    flush(current, &mut batches)?;
+    if batches.is_empty() {
+        return Err(AppError::usage(
+            "a backfill batch must carry at least one conversation",
+        ));
+    }
 
-    // 1. Install the baseline manifest.
-    let manifest_operation = format!("backfill-manifest:{manifest_digest}");
+    let mut members = batches
+        .iter()
+        .flat_map(|batch| batch.members.iter().cloned())
+        .collect::<Vec<_>>();
+    members.sort_by(|a, b| a.conversation_id.cmp(&b.conversation_id));
+    members.dedup_by(|a, b| a.conversation_id == b.conversation_id);
+    let (manifest_piece, manifest_digest, manifest_bytes) = encode_backfill_manifest(&members)?;
+
+    Ok(BackfillPlan {
+        start,
+        baseline_revision,
+        members,
+        manifest_piece,
+        manifest_digest,
+        manifest_bytes,
+        batches,
+    })
+}
+
+/// Plan a sealed baseline spool with the production batch targets.
+pub(crate) fn plan_backfill_file(
+    file: &tempfile::NamedTempFile,
+    limits: BackfillLimits,
+) -> Result<BackfillPlan, AppError> {
+    let (start, events) = read_events(file)?;
+    plan_backfill(start, events, limits)
+}
+
+/// Coordinator with the process credential, used by publication.
+pub(crate) async fn upload_backfill_plan_with_config(
+    config: &SharedConfig,
+    plan: &BackfillPlan,
+    backfill_id: &str,
+    resume: BackfillResume<'_>,
+    on_batch: impl FnMut(&str, i64) -> Result<(), AppError>,
+) -> Result<protocol::Indexed, AppError> {
+    upload_backfill_plan(
+        config,
+        token(config)?,
+        plan,
+        backfill_id,
+        resume,
+        None,
+        on_batch,
+    )
+    .await
+}
+
+/// Send a planned baseline: manifest, then every batch that is not already
+/// recorded as complete, then completion.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one baseline session: manifest, per-batch commits, completion"
+)]
+pub(crate) async fn upload_backfill_plan(
+    config: &SharedConfig,
+    token: String,
+    plan: &BackfillPlan,
+    backfill_id: &str,
+    resume: BackfillResume<'_>,
+    progress: Option<tokio::sync::mpsc::UnboundedSender<BackfillProgress>>,
+    mut on_batch: impl FnMut(&str, i64) -> Result<(), AppError>,
+) -> Result<protocol::Indexed, AppError> {
+    let BackfillResume {
+        completed,
+        last_revision,
+    } = resume;
+    let key = session_key(config, &plan.start.instance);
+    let slot = session_slot(&key);
+    let mut guard = slot.lock_owned().await;
+    let result = async {
+        let session = ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
+        install_backfill_manifest(session, backfill_id, plan).await?;
+
+        let mut revision = last_revision;
+        let mut sent = 0usize;
+        for (index, batch) in plan.batches.iter().enumerate() {
+            if completed.contains(batch.digest()) {
+                continue;
+            }
+            let operation = format!("publication:{}", batch.digest());
+            let indexed = publish_on_session(
+                session,
+                &operation,
+                &plan.start,
+                &batch.encoded,
+                Some((backfill_id, plan.baseline_revision)),
+            )
+            .await?;
+            revision = indexed.revision;
+            sent += 1;
+            on_batch(batch.digest(), indexed.revision)?;
+            if let Some(progress) = &progress {
+                let (acknowledge, wait) = tokio::sync::oneshot::channel();
+                if progress
+                    .send(BackfillProgress {
+                        index,
+                        total: plan.batches.len(),
+                        revision,
+                        acknowledge,
+                    })
+                    .is_ok()
+                {
+                    let _ = wait.await;
+                }
+            }
+        }
+        let _ = sent;
+        finish_backfill(session, backfill_id, plan).await?;
+        Ok(protocol::Indexed {
+            counts: crate::storage::Counts::default(),
+            revision,
+            removed_messages: 0,
+            purged_conversations: 0,
+        })
+    }
+    .await;
+    if result.is_err() {
+        *guard = None;
+    }
+    result
+}
+
+async fn install_backfill_manifest(
+    session: &mut PublisherSession,
+    backfill_id: &str,
+    plan: &BackfillPlan,
+) -> Result<(), AppError> {
+    let operation = format!("backfill-manifest:{}", plan.manifest_digest);
     send(
-        &mut sink,
+        &mut session.sink,
         &ClientFrame {
-            operation_id: manifest_operation.clone(),
+            operation_id: operation.clone(),
             body: Some(client_frame::Body::BeginBackfill(BeginBackfill {
                 backfill_id: backfill_id.to_owned(),
-                database_instance: start.instance.clone(),
-                baseline_revision,
-                views_fingerprint,
-                manifest_digest: manifest_digest.clone(),
-                total_conversations: members.len() as u64,
-                decoded_bytes: manifest_bytes,
+                database_instance: plan.start.instance.clone(),
+                baseline_revision: plan.baseline_revision,
+                views_fingerprint: views_fingerprint(&plan.start),
+                manifest_digest: plan.manifest_digest.clone(),
+                total_conversations: plan.members.len() as u64,
+                decoded_bytes: plan.manifest_bytes,
             })),
         },
     )
     .await?;
-    expect_accepted(&mut stream, &mut credit).await?;
+    let mut credit = session.credit;
+    expect_accepted(&mut session.stream, &mut credit).await?;
+    session.credit = credit;
     send(
-        &mut sink,
+        &mut session.sink,
         &ClientFrame {
-            operation_id: manifest_operation.clone(),
+            operation_id: operation.clone(),
             body: Some(client_frame::Body::Chunk(wire::EncodedBatch::chunk(
-                &manifest_piece,
+                &plan.manifest_piece,
             ))),
         },
     )
     .await?;
-    let mut manifest_finished = false;
+    let mut finished = false;
     loop {
-        match receive(&mut stream).await?.body {
-            Some(server_frame::Body::Accepted(_)) => break,
+        match receive(&mut session.stream).await?.body {
+            Some(server_frame::Body::Accepted(_)) => return Ok(()),
             Some(server_frame::Body::Credit(grant)) => {
-                credit = credit.saturating_add(grant.additional_bytes as usize);
+                session.credit = session
+                    .credit
+                    .saturating_add(grant.additional_bytes as usize);
             }
-            Some(server_frame::Body::Checkpoint(_)) => {
-                if !manifest_finished {
-                    send(
-                        &mut sink,
-                        &ClientFrame {
-                            operation_id: manifest_operation.clone(),
-                            body: Some(client_frame::Body::FinishUpload(FinishUpload {
-                                manifest_digest: manifest_digest.clone(),
-                            })),
-                        },
-                    )
-                    .await?;
-                    manifest_finished = true;
-                }
+            Some(server_frame::Body::Checkpoint(_)) if !finished => {
+                send(
+                    &mut session.sink,
+                    &ClientFrame {
+                        operation_id: operation.clone(),
+                        body: Some(client_frame::Body::FinishUpload(FinishUpload {
+                            manifest_digest: plan.manifest_digest.clone(),
+                        })),
+                    },
+                )
+                .await?;
+                finished = true;
             }
             Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
                 return Err(outcome_error(&failed));
@@ -933,75 +1159,28 @@ pub(crate) async fn upload_backfill_with_token(
             None => return Err(AppError::shared("empty synchronization response")),
         }
     }
+}
 
-    // 2. Send the frozen batch as a backfill publication.
-    let operation = format!("publication:{}", encoded.manifest_digest);
+async fn finish_backfill(
+    session: &mut PublisherSession,
+    backfill_id: &str,
+    plan: &BackfillPlan,
+) -> Result<(), AppError> {
     send(
-        &mut sink,
-        &ClientFrame {
-            operation_id: operation.clone(),
-            body: Some(client_frame::Body::BeginPublication(BeginPublication {
-                start: Some(PublicationStart::from(&start)),
-                mode: PublicationMode::BackfillBatch as i32,
-                backfill_id: backfill_id.to_owned(),
-                source_revision: Some(baseline_revision),
-                journal_from_exclusive: None,
-                journal_through_inclusive: None,
-                manifest_digest: encoded.manifest_digest.clone(),
-                decoded_bytes: encoded.decoded_bytes,
-                record_count: encoded.record_count,
-            })),
-        },
-    )
-    .await?;
-    expect_accepted(&mut stream, &mut credit).await?;
-    for piece in &encoded.pieces {
-        send(
-            &mut sink,
-            &ClientFrame {
-                operation_id: operation.clone(),
-                body: Some(client_frame::Body::Chunk(wire::EncodedBatch::chunk(piece))),
-            },
-        )
-        .await?;
-    }
-    send(
-        &mut sink,
-        &ClientFrame {
-            operation_id: operation.clone(),
-            body: Some(client_frame::Body::FinishUpload(FinishUpload {
-                manifest_digest: encoded.manifest_digest.clone(),
-            })),
-        },
-    )
-    .await?;
-    let indexed = loop {
-        match receive(&mut stream).await?.body {
-            Some(server_frame::Body::Published(published)) => break indexed(published.revision),
-            Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
-                return Err(outcome_error(&failed));
-            }
-            Some(_) => {}
-            None => return Err(AppError::shared("empty synchronization response")),
-        }
-    };
-
-    // 3. Verify complete baseline coverage.
-    send(
-        &mut sink,
+        &mut session.sink,
         &ClientFrame {
             operation_id: format!("finish-backfill:{backfill_id}"),
             body: Some(client_frame::Body::FinishBackfill(FinishBackfill {
                 backfill_id: backfill_id.to_owned(),
-                baseline_revision,
-                manifest_digest,
+                baseline_revision: plan.baseline_revision,
+                manifest_digest: plan.manifest_digest.clone(),
             })),
         },
     )
     .await?;
     loop {
-        match receive(&mut stream).await?.body {
-            Some(server_frame::Body::BackfillComplete(_)) => break,
+        match receive(&mut session.stream).await?.body {
+            Some(server_frame::Body::BackfillComplete(_)) => return Ok(()),
             Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
                 return Err(outcome_error(&failed));
             }
@@ -1009,7 +1188,13 @@ pub(crate) async fn upload_backfill_with_token(
             None => return Err(AppError::shared("empty synchronization response")),
         }
     }
-    Ok(indexed)
+}
+
+fn views_fingerprint(start: &protocol::Start) -> String {
+    start.views_build.as_ref().map_or_else(
+        || "unspecified".to_owned(),
+        |build| serde_json::to_string(build).unwrap_or_default(),
+    )
 }
 
 /// Wait for the first `Accepted`, honouring intervening credit/checkpoint frames.
@@ -1061,6 +1246,148 @@ pub(crate) fn close_sessions() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chat(id: &str, updated_at: i64) -> Event {
+        Event::Batch(crate::shared::protocol::Batch::Conversations {
+            records: vec![crate::shared::protocol::ConversationRecord {
+                enrichment: None,
+                id: id.into(),
+                provider: crate::provider::Provider::Codex,
+                title: Some(id.into()),
+                project: None,
+                repository: None,
+                created_at: Some(1),
+                updated_at: Some(updated_at),
+            }],
+        })
+    }
+
+    fn start() -> crate::shared::protocol::Start {
+        crate::shared::protocol::Start {
+            views_build: None,
+            source_silver: None,
+            instance: "planner".into(),
+            revision: Some(1),
+            base_revision: Some(0),
+            snapshot: false,
+            forgets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_planner_splits_whole_conversations_newest_first() {
+        let events = || vec![chat("old", 10), chat("new", 30), chat("mid", 20)];
+        let limits = BackfillLimits {
+            conversations: 2,
+            decoded_bytes: 1024 * 1024,
+        };
+        let plan = plan_backfill(start(), events(), limits).unwrap();
+        assert_eq!(plan.batches.len(), 2, "three chats at two per batch");
+        // Membership is identified by conversation id; recency decides order.
+        assert_eq!(
+            plan.batches[0]
+                .members
+                .iter()
+                .map(|member| member.conversation_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mid", "new"],
+            "the newest two conversations fill the first batch"
+        );
+        assert_eq!(
+            plan.batches[1].members[0].conversation_id, "old",
+            "the oldest conversation is sent last"
+        );
+        assert_eq!(plan.members.len(), 3, "manifest covers every conversation");
+
+        // Planning is deterministic: retries produce identical batch digests.
+        let again = plan_backfill(start(), events(), limits).unwrap();
+        assert_eq!(
+            plan.batches
+                .iter()
+                .map(PlannedBatch::digest)
+                .collect::<Vec<_>>(),
+            again
+                .batches
+                .iter()
+                .map(PlannedBatch::digest)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn the_planner_never_splits_a_conversation_across_batches() {
+        // Two conversations forced into separate batches by the byte target.
+        let events = vec![
+            Event::Batch(crate::shared::protocol::Batch::Conversations {
+                records: vec![crate::shared::protocol::ConversationRecord {
+                    enrichment: None,
+                    id: "big".into(),
+                    provider: crate::provider::Provider::Codex,
+                    title: Some("big".into()),
+                    project: None,
+                    repository: None,
+                    created_at: Some(1),
+                    updated_at: Some(2),
+                }],
+            }),
+            Event::Batch(crate::shared::protocol::Batch::Messages {
+                records: vec![crate::shared::protocol::MessageRecord {
+                    attachments: Vec::new(),
+                    id: "big-1".into(),
+                    conversation_id: "big".into(),
+                    ordinal: 0,
+                    context: crate::message_context::MessageContext::Linear,
+                    role: crate::role::Role::User,
+                    content: "x".repeat(2048),
+                    projection: "x".repeat(2048),
+                    created_at: Some(1),
+                    generation: None,
+                    vector: None,
+                    tools: crate::tools::Activity::default(),
+                }],
+            }),
+            chat("small", 1),
+        ];
+        let plan = plan_backfill(
+            start(),
+            events,
+            BackfillLimits {
+                conversations: 128,
+                decoded_bytes: 1024,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.batches.len(), 2);
+        let big = plan
+            .batches
+            .iter()
+            .find(|batch| {
+                batch
+                    .members
+                    .iter()
+                    .any(|member| member.conversation_id == "big")
+            })
+            .expect("big conversation present");
+        // The conversation record and its message travel together.
+        let bound = crate::shared::protocol::ConversationRecord {
+            enrichment: None,
+            id: "big".into(),
+            provider: crate::provider::Provider::Codex,
+            title: Some("big".into()),
+            project: None,
+            repository: None,
+            created_at: Some(1),
+            updated_at: Some(2),
+        };
+        assert_eq!(
+            big.members[0].digest,
+            crate::shared::sync::wire::member_digest(&bound).unwrap()
+        );
+        assert!(
+            big.encoded.decoded_bytes > 2048,
+            "message stayed in the batch"
+        );
+    }
 
     /// One publication spool with a conversation record.
     fn spool(instance: &str) -> tempfile::NamedTempFile {

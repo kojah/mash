@@ -498,9 +498,21 @@ Known implementation/model gaps, recorded in Beads:
    conversation or resurrect a deletion. Opening a baseline behind the node head
    fails closed. `mash index --backfill` drives the whole flow.
    `journal_pruning_waits_for_baseline_completion_and_contiguous_coverage`
-   enforces the journal gate. Remaining gaps: no scheduling heuristics, no
-   multi-session or restored-baseline ordering, and the journal gate is only
-   exercised by the incremental path in production.
+   enforces the journal gate.
+
+   The client plans the baseline itself: conversations are grouped whole,
+   ordered by `updated_at` descending with the identifier as tie-breaker, and
+   greedily packed to 128 conversations or 1 MiB of decoded Protobuf records. A
+   conversation is never split across batches. Each batch is one
+   `BeginPublication` with mode `BackfillBatch`, so **the server commits and
+   certifies it as soon as its last piece lands**, independently of the others;
+   the first batch is searchable while later batches are still uploading.
+   Per-batch receipts persist beside the database
+   (`<database>.backfill.json`), and a retry with the same identity skips
+   completed batch digests before finishing. Remaining gaps: no priority
+   scheduling beyond recency, no multi-session or restored-baseline ordering,
+   and the journal gate is only exercised by the incremental path in
+   production.
 6. Connector batches and attachments now use the same transfer path
    (`BeginConnectorBatch`, `BeginAttachment`, then `Chunk`/`FinishUpload`).
    Connector batches commit through the existing `Store::ingest_connector`
@@ -611,12 +623,15 @@ coverage equals the manifest, and views are certified.
 
 The operator surface is `mash index --backfill[=ID]` — one command for one
 intent, with the baseline as a delivery modifier. It indexes local sources, then
-freezes the next local revision, spools the node's complete history as a
-non-snapshot batch, sends it through the client sender under the publisher lock,
-acknowledges the journal with the baseline-complete gate, and reports
+freezes the next local revision, plans the history into batches (128
+conversations or 1 MiB each), installs the member manifest, and publishes those
+batches in order under the publisher lock. Each batch commits independently and
+the journal is acknowledged with the baseline-complete gate once coverage is
+complete; the command reports
 `{"shared": {"state": "published"}, "backfill": {"id": ..., "revision": ...}}`.
-Retrying with the same identity resumes the same server session. It requires the
-default views recipe and a configured shared destination, and conflicts with
+Retrying with the same identity resumes the same server session and skips
+batches already recorded in `<database>.backfill.json`. It requires the default
+views recipe and a configured shared destination, and conflicts with
 `--watch`, `--connector-batch` and `--rebuild-local-views`.
 `qdrant_backfill_command_publishes_a_baseline_through_the_cli` runs the real
 binary against a real server and asserts the catalog reports `complete` with

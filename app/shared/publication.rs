@@ -402,6 +402,41 @@ async fn acknowledge_with(
     .await
 }
 
+/// Durable per-batch progress for one baseline, so a restart resumes instead of
+/// re-sending every batch.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct BackfillReceipts {
+    backfill_id: String,
+    revision: i64,
+    completed: std::collections::BTreeSet<String>,
+}
+
+fn backfill_receipts_path(database: &Path) -> PathBuf {
+    let mut path = database.as_os_str().to_owned();
+    path.push(".backfill.json");
+    PathBuf::from(path)
+}
+
+fn load_backfill_receipts(path: &Path, backfill_id: &str, revision: i64) -> BackfillReceipts {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<BackfillReceipts>(&bytes).ok())
+        .filter(|receipts| receipts.backfill_id == backfill_id && receipts.revision == revision)
+        .unwrap_or_else(|| BackfillReceipts {
+            backfill_id: backfill_id.to_owned(),
+            revision,
+            completed: std::collections::BTreeSet::new(),
+        })
+}
+
+fn store_backfill_receipts(path: &Path, receipts: &BackfillReceipts) -> Result<(), AppError> {
+    let temporary = path.with_extension("json.tmp");
+    let bytes =
+        serde_json::to_vec(receipts).map_err(|_| AppError::internal("encode backfill receipts"))?;
+    std::fs::write(&temporary, bytes).map_err(AppError::io)?;
+    std::fs::rename(&temporary, path).map_err(AppError::io)
+}
+
 /// Publish one frozen baseline progressively through `/v1/sync` and complete
 /// it. This is the operator entry point behind `mash backfill`.
 pub(crate) async fn publish_backfill(
@@ -424,7 +459,31 @@ pub(crate) async fn publish_backfill(
         ));
     }
     let (file, revision) = prepare_backfill(path, &target).await?;
-    let indexed = super::sync::client::upload_backfill(config, &file, backfill_id).await?;
+    let plan = super::sync::client::plan_backfill_file(
+        &file,
+        super::sync::client::BackfillLimits::default(),
+    )?;
+    let receipts_path = backfill_receipts_path(path);
+    let mut receipts = load_backfill_receipts(&receipts_path, backfill_id, revision);
+    let completed = receipts.completed.clone();
+    let resume = super::sync::client::BackfillResume {
+        completed: &completed,
+        last_revision: receipts.revision,
+    };
+    let indexed = super::sync::client::upload_backfill_plan_with_config(
+        config,
+        &plan,
+        backfill_id,
+        resume,
+        |digest, revision| {
+            receipts.completed.insert(digest.to_owned());
+            receipts.revision = revision;
+            store_backfill_receipts(&receipts_path, &receipts)
+        },
+    )
+    .await?;
+    // Every batch is committed and covered; progress no longer needs retaining.
+    let _ = std::fs::remove_file(&receipts_path);
     acknowledge_with(
         path,
         config,
