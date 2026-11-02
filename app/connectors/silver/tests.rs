@@ -375,3 +375,38 @@ fn commits_record_declared_modes_and_when_each_trigger_last_ran() {
     );
     assert_eq!(second.modes, first.modes);
 }
+
+#[test]
+fn complete_snapshot_deletes_containers_it_no_longer_captures() {
+    use crate::connectors::Trigger;
+
+    let directory = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&directory.path().join("silver.sqlite3")).unwrap();
+
+    let mut first = batch(
+        "source",
+        "scope-1",
+        0,
+        json!([
+            container("kept"),
+            container("dropped"),
+            entry("kept-message", "kept", "kept text"),
+            entry("dropped-message", "dropped", "dropped text")
+        ]),
+    );
+    first.trigger = Some(Trigger::CompleteSnapshot);
+    store.apply(&first).unwrap();
+    assert!(content(&store, "source", "dropped-message").is_some());
+
+    let mut second = batch("source", "scope-2", 1, json!([container("kept")]));
+    second.trigger = Some(Trigger::CompleteSnapshot);
+    store.apply(&second).unwrap();
+    assert!(
+        store
+            .object(&id("source"), &id("dropped"))
+            .unwrap()
+            .is_none()
+    );
+    assert!(content(&store, "source", "dropped-message").is_none());
+    assert!(content(&store, "source", "kept-message").is_some());
+}

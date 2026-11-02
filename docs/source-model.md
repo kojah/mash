@@ -296,8 +296,13 @@ sources:
    sources; `auth.test` must report the configured team and principal before
    anything is read, so a token cannot write into another principal's source.
    The other blueprints keep their existing ids.
-4. **Connector omission deletion is not implemented** and capture scope is not
-   stored.
+4. ~~**Connector omission deletion is not implemented.**~~ Implemented for
+   `CompleteSnapshot`: the stored root containers are the captured scope, a
+   root container absent from a complete snapshot is deleted (children cascade
+   in the same transaction), and any other trigger never deletes by absence. A
+   snapshot naming no root container is treated as malformed rather than as an
+   empty capture, so a truncated batch cannot wipe a source. Connectors must
+   mark completeness; the Slack blueprint still sends partial snapshots.
 5. **Connector `Published` does not certify views** (`views_ready` is false).
 6. **Restore/copy semantics are undefined.** A copied silver DB is a new device
    source; `forget` does not fan out.

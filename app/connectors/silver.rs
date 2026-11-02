@@ -163,6 +163,15 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
     for change in &batch.changes {
         mutate(transaction, &batch.source_id, change)?;
     }
+    // A complete snapshot owns its scope: a root container that was stored and
+    // is absent from this batch is gone from the source. Part of the same
+    // transaction, so a failed batch deletes nothing.
+    if matches!(
+        batch.trigger,
+        Some(crate::connectors::Trigger::CompleteSnapshot)
+    ) {
+        prune_absent_containers(transaction, &batch.source_id, &batch.changes)?;
+    }
     let source = batch.source_id.as_str();
     let schema = stored_schema(transaction, source)?;
     let mut checked = BTreeSet::new();
@@ -319,6 +328,56 @@ fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result
                 .execute(transaction)
                 .map_err(database)?;
         }
+    }
+    Ok(())
+}
+
+/// Delete root containers the complete snapshot no longer captures. Children go
+/// with them through the cascading parent edge. A snapshot that names no root
+/// container is treated as malformed rather than as "capture nothing", so a
+/// truncated batch cannot wipe a source.
+fn prune_absent_containers(
+    connection: &rusqlite::Connection,
+    source: &Id,
+    changes: &[Change],
+) -> Result<(), Error> {
+    let present: std::collections::BTreeSet<&str> = changes
+        .iter()
+        .filter_map(|change| match change {
+            Change::UpsertObject(object)
+                if object.role == Role::Container && object.parent.is_none() =>
+            {
+                Some(object.id.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    if present.is_empty() {
+        return Ok(());
+    }
+    let existing = {
+        let mut statement = connection
+            .prepare(
+                "SELECT id FROM objects
+                 WHERE origin = 'connector' AND source = ?1
+                   AND object_role = 'container' AND parent_storage_id IS NULL",
+            )
+            .map_err(database)?;
+        let rows = statement
+            .query_map([source.as_str()], |row| row.get::<_, String>(0))
+            .map_err(database)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(database)?
+    };
+    for id in existing {
+        if present.contains(id.as_str()) {
+            continue;
+        }
+        sql::ConnectorDeleteObject::builder()
+            .source_id(source.as_str())
+            .id(id.as_str())
+            .build()
+            .execute(connection)
+            .map_err(database)?;
     }
     Ok(())
 }
