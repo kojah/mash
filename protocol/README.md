@@ -532,13 +532,19 @@ Known implementation/model gaps, recorded in Beads:
    (`Compression::NONE`), validated against the published message metadata, and
    written with `fsync` before `AttachmentStored`.
 
-   **Cutover:** `/v1/index`, `/v1/connector-batches` and
-   `/v1/attachment-upload` are removed from the released router;
-   `released_server_no_longer_exposes_legacy_mutation_routes` runs the real
-   binary and asserts all three answer 404 while `/v1/sync` is still mounted.
-   The old handlers and client endpoint remain compiled for `cfg(test)` only, so
-   transport and silver-limit tests keep their HTTP-level coverage; they are not
-   reachable in a release build and are not a compatibility surface.
+   **Cutover:** native publication moved to `/v1/sync` first. `POST /v1/index`
+   and `/v1/attachment-upload`, their handlers and the base64 attachment writer
+   are deleted outright — no test-only route remains. Server tests publish
+   through the production WebSocket client, so the suite exercises the shipped
+   path rather than a retired one, and
+   `released_server_no_longer_exposes_legacy_mutation_routes` proves the routes
+   answer 404.
+   `/v1/connector-batches` is the one mutation route still mounted: connector
+   batches carry a source-scoped receipt (source revision, views readiness) that
+   `/v1/sync` does not yet return, so moving them before adding those fields
+   would regress the connector contract. The server already accepts
+   `BeginConnectorBatch`; the remaining work is a client sender plus the receipt
+   fields, after which the route can go.
 7. Multiple concurrent sessions are serialized by an in-process catalog mutex
    plus operation ownership checks. Client publication is fenced per local
    database and destination by an advisory file lock

@@ -40,39 +40,15 @@ impl SilverCommit {
 }
 
 impl Store {
+    /// Test helper: commit silver and certify views in one call.
     #[cfg(test)]
     pub(in crate::shared) async fn index(
         &self,
         identity: &Identity,
         file: tempfile::NamedTempFile,
     ) -> Result<Indexed, AppError> {
-        self.index_tracked(identity, file, Progress::default())
-            .await
-    }
-
-    #[tracing::instrument(name = "backend_index", skip_all, fields(backend = "sqlite+qdrant"))]
-    pub(in crate::shared) async fn index_tracked(
-        &self,
-        identity: &Identity,
-        file: tempfile::NamedTempFile,
-        progress: Progress,
-    ) -> Result<Indexed, AppError> {
-        self.index_tracked_receipt(identity, file, progress, None)
-            .await
-    }
-
-    /// Commit a `/v1/sync` publication together with its transfer receipt. The
-    /// receipt is written in the silver transaction, so recovery can tell
-    /// whether history committed without trusting transport bookkeeping.
-    pub(in crate::shared) async fn index_tracked_receipt(
-        &self,
-        identity: &Identity,
-        file: tempfile::NamedTempFile,
-        progress: Progress,
-        receipt: Option<&silver_store::SyncReceipt>,
-    ) -> Result<Indexed, AppError> {
         let commit = self
-            .commit_silver(identity, file, progress, receipt)
+            .commit_silver(identity, file, Progress::default(), None)
             .await?;
         self.certify_views(commit).await
     }

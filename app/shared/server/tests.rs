@@ -214,6 +214,38 @@ async fn remote_space_contract(service: Service) {
     service.cleanup().await;
 }
 
+/// Status-shaped result of a `/v1/sync` publication, so tests can keep
+/// asserting HTTP-like outcomes without the retired HTTP mutation route.
+pub(super) struct Upload {
+    status: StatusCode,
+    body: Value,
+}
+
+impl Upload {
+    pub(super) fn status(&self) -> StatusCode {
+        self.status
+    }
+    pub(super) fn error_for_status(self) -> Result<Self, String> {
+        if self.status.is_success() {
+            Ok(self)
+        } else {
+            Err(self.body.to_string())
+        }
+    }
+    pub(super) async fn json<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<T, serde_json::Error> {
+        // The body is already materialized; the yield keeps the reqwest-shaped
+        // `.json().await` call sites working without an HTTP response.
+        tokio::task::yield_now().await;
+        serde_json::from_value(self.body.clone())
+    }
+    pub(super) async fn text(&self) -> Result<String, serde_json::Error> {
+        tokio::task::yield_now().await;
+        Ok(self.body.to_string())
+    }
+}
+
 struct Service {
     attachments: tempfile::TempDir,
     silver_dir: tempfile::TempDir,
@@ -404,7 +436,7 @@ impl Drop for Service {
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
 async fn qdrant_publication_http_authorization_vectors_groups_rollback_and_retry() {
-    http_storage_contract(Service::qdrant(384).await).await;
+    Box::pin(http_storage_contract(Service::qdrant(384).await)).await;
 }
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
@@ -644,18 +676,52 @@ impl Service {
             .await
             .unwrap()
     }
-    async fn upload(&self, token: &str, events: &[Value]) -> reqwest::Response {
-        use std::fmt::Write;
-        let mut body = String::new();
-        for event in events {
-            writeln!(&mut body, "{event}").unwrap();
+    /// Publish through the production `/v1/sync` client. Tests keep the
+    /// familiar status-shaped API without a legacy HTTP mutation route.
+    async fn upload(&self, token: &str, events: &[Value]) -> Upload {
+        use std::io::Write as _;
+        let Some(identity) = self.identities.get(&blake3::hash(token.as_bytes())) else {
+            return Upload {
+                status: StatusCode::UNAUTHORIZED,
+                body: json!({"error": {"kind": "unauthorized"}}),
+            };
+        };
+        let config = crate::config::SharedConfig {
+            group_id: identity.group_id.clone(),
+            node_id: identity.node_id.clone(),
+            api_url: self.url.clone(),
+            token_env: "unused-in-test".into(),
+            publication_redaction: crate::redaction::Policy::new(false),
+        };
+        let file = tempfile::NamedTempFile::new().unwrap();
+        {
+            let mut writer = std::io::BufWriter::new(file.as_file());
+            for event in events {
+                writeln!(writer, "{event}").unwrap();
+            }
+            writer.flush().unwrap();
         }
-        self.request("index", token)
-            .header("content-type", "application/x-ndjson")
-            .body(body)
-            .send()
-            .await
-            .unwrap()
+        match crate::shared::sync::client::upload_with_token(&config, &file, token.to_owned()).await
+        {
+            Ok(indexed) => Upload {
+                status: StatusCode::OK,
+                body: serde_json::to_value(indexed).unwrap(),
+            },
+            Err(error) => {
+                let status = match error.error.kind {
+                    crate::ErrorKind::Usage | crate::ErrorKind::Configuration => {
+                        StatusCode::BAD_REQUEST
+                    }
+                    crate::ErrorKind::Conflict => StatusCode::CONFLICT,
+                    _ => StatusCode::SERVICE_UNAVAILABLE,
+                };
+                Upload {
+                    status,
+                    body: serde_json::to_value(&error)
+                        .unwrap_or_else(|_| json!({"error": {"message": error.error.message}})),
+                }
+            }
+        }
     }
     async fn cleanup(&self) {
         for group in [&self.group, &format!("{}-other", self.group)] {
@@ -738,14 +804,6 @@ async fn authorization_and_request_limits_apply_before_database_access() {
         .await
         .unwrap();
     assert_eq!(oversized.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    let line = service
-        .request("index", FIRST)
-        .header("content-type", "application/x-ndjson")
-        .body("x".repeat(64 * 1024 * 1024 + 1))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(line.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 #[allow(clippy::too_many_lines)]

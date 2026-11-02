@@ -17,6 +17,10 @@ async fn call(
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with disposable Qdrant 1.19+"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one flow proves membership, ownership and retrieval over the transport"
+)]
 async fn qdrant_http_attachments_require_current_membership_and_group_authorization() {
     let service = Service::qdrant(384).await;
     let source = crate::attachments::Source::Base64 {
@@ -58,18 +62,38 @@ async fn qdrant_http_attachments_require_current_membership_and_group_authorizat
         attachment: record.clone(),
         data: crate::attachments::read(cache.path(), &record).unwrap(),
     };
-    assert_eq!(
-        call(&service, "attachment-upload", SECOND, &file)
-            .await
-            .status(),
-        StatusCode::NOT_FOUND
+    let bytes = STANDARD.decode(&file.data).unwrap();
+    let config = crate::config::SharedConfig {
+        group_id: service.first.group_id.clone(),
+        node_id: service.first.node_id.clone(),
+        api_url: service.url.clone(),
+        token_env: "unused-in-test".into(),
+        publication_redaction: crate::redaction::Policy::new(false),
+    };
+    // Another node cannot store bytes for a message it does not own.
+    assert!(
+        crate::shared::sync::client::upload_attachment_with_token(
+            &crate::config::SharedConfig {
+                node_id: "second".into(),
+                ..config.clone()
+            },
+            SECOND.to_owned(),
+            "searchable",
+            &record,
+            &bytes,
+        )
+        .await
+        .is_err()
     );
-    assert_eq!(
-        call(&service, "attachment-upload", FIRST, &file)
-            .await
-            .status(),
-        StatusCode::OK
-    );
+    crate::shared::sync::client::upload_attachment_with_token(
+        &config,
+        FIRST.to_owned(),
+        "searchable",
+        &record,
+        &bytes,
+    )
+    .await
+    .expect("owner stores the attachment over /v1/sync");
     let downloaded: crate::attachments::Retrieved = service
         .request("attachment", SECOND)
         .json(&request)
@@ -94,13 +118,17 @@ async fn qdrant_http_attachments_require_current_membership_and_group_authorizat
         call(&service, "attachment", OTHER, &request).await.status(),
         StatusCode::NOT_FOUND
     );
-    let mut corrupted = serde_json::to_value(&file).unwrap();
-    corrupted["data"] = json!(STANDARD.encode("tampered"));
-    assert_eq!(
-        call(&service, "attachment-upload", FIRST, &corrupted)
-            .await
-            .status(),
-        StatusCode::BAD_REQUEST
+    assert!(
+        crate::shared::sync::client::upload_attachment_with_token(
+            &config,
+            FIRST.to_owned(),
+            "searchable",
+            &record,
+            b"tampered",
+        )
+        .await
+        .is_err(),
+        "tampered bytes must be rejected"
     );
     // Metadata is in silver snapshots, so immutable replacement removes access even
     // while a deduplicated blob still exists on disk.

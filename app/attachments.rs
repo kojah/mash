@@ -123,23 +123,6 @@ fn valid_digest(digest: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "legacy HTTP mutation path retained for test coverage only; /v1/sync replaces it"
-    )
-)]
-pub(crate) fn write(root: &Path, metadata: &Metadata, data: &str) -> Result<(), AppError> {
-    if data.len() > MAX_BYTES.div_ceil(3) * 4 {
-        return Err(AppError::usage("invalid attachment upload"));
-    }
-    let bytes = STANDARD
-        .decode(data)
-        .map_err(|_| AppError::usage("invalid attachment base64"))?;
-    write_bytes(root, metadata, &bytes)
-}
-
 /// Persist already-decoded attachment bytes. Binary `/v1/sync` uploads use
 /// this path directly; HTTP JSON uploads decode base64 first.
 pub(crate) fn write_bytes(root: &Path, metadata: &Metadata, bytes: &[u8]) -> Result<(), AppError> {

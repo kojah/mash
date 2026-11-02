@@ -335,7 +335,8 @@ pub(crate) async fn upload_encoded_with_token(
     start: &protocol::Start,
     encoded: &wire::EncodedBatch,
 ) -> Result<protocol::Indexed, AppError> {
-    let operation_id = format!("publication:{}", encoded.manifest_digest);
+    let operation_id =
+        scoped_operation_id("publication", &config.node_id, &encoded.manifest_digest);
     let slot = session_slot(&session_key(config, &start.instance));
     let mut guard = slot.lock_owned().await;
     let reused = guard.is_some();
@@ -585,7 +586,7 @@ pub(crate) async fn upload_attachment_with_token(
         })
         .collect::<Vec<_>>();
     let manifest = wire::manifest_digest(bytes.len() as u64, 1, &entries);
-    let operation_id = format!("attachment:{manifest}");
+    let operation_id = scoped_operation_id("attachment", &config.node_id, &manifest);
     let request = request(config, &token)?;
     let (socket, _) =
         tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async(request))
@@ -793,6 +794,12 @@ fn encode_backfill_manifest(
 
 /// Send one baseline with its manifest, batch and completion over `/v1/sync`.
 ///
+/// Operation identity is scoped to the publishing node. Two nodes may send
+/// identical bytes, and the transfer catalog must not confuse their operations.
+pub(crate) fn scoped_operation_id(kind: &str, node: &str, digest: &str) -> String {
+    format!("{kind}:{node}:{digest}")
+}
+
 /// How many conversations and decoded bytes one baseline batch may carry.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BackfillLimits {
@@ -1044,7 +1051,7 @@ pub(crate) async fn upload_backfill_plan(
     let mut guard = slot.lock_owned().await;
     let result = async {
         let session = ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
-        install_backfill_manifest(session, backfill_id, plan).await?;
+        install_backfill_manifest(session, backfill_id, plan, &config.node_id).await?;
 
         let mut revision = last_revision;
         let mut sent = 0usize;
@@ -1052,7 +1059,7 @@ pub(crate) async fn upload_backfill_plan(
             if completed.contains(batch.digest()) {
                 continue;
             }
-            let operation = format!("publication:{}", batch.digest());
+            let operation = scoped_operation_id("publication", &config.node_id, batch.digest());
             let indexed = publish_on_session(
                 session,
                 &operation,
@@ -1099,8 +1106,9 @@ async fn install_backfill_manifest(
     session: &mut PublisherSession,
     backfill_id: &str,
     plan: &BackfillPlan,
+    node_id: &str,
 ) -> Result<(), AppError> {
-    let operation = format!("backfill-manifest:{}", plan.manifest_digest);
+    let operation = scoped_operation_id("backfill-manifest", node_id, &plan.manifest_digest);
     send(
         &mut session.sink,
         &ClientFrame {

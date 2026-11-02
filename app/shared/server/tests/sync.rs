@@ -10,6 +10,8 @@ use serde_json::json;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+use crate::shared::sync::client::scoped_operation_id;
+
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
@@ -150,7 +152,11 @@ async fn websocket_requires_authentication_before_upgrade() {
 async fn websocket_resumes_durable_checkpoints_and_reports_application_failure() {
     let service = Service::new(false).await;
     let (start, encoded) = publication();
-    let operation = format!("publication:{}", encoded.manifest_digest);
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
     assert!(encoded.pieces.len() > 1, "test needs multiple pieces");
 
     let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
@@ -262,7 +268,11 @@ async fn websocket_resumes_durable_checkpoints_and_reports_application_failure()
 async fn qdrant_websocket_publishes_typed_batch_and_certifies_views() {
     let service = Service::qdrant(384).await;
     let (start, encoded) = publication();
-    let operation = format!("publication:{}", encoded.manifest_digest);
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
     let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
 
     client
@@ -704,7 +714,11 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
     let (manifest_piece, manifest) = transfer(&manifest_bytes, records);
     let manifest_operation = format!("backfill-manifest:{manifest}");
     let encoded = wire::encode_publication(&events, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
-    let batch_operation = format!("publication:{}", encoded.manifest_digest);
+    let batch_operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
 
     let mut client = SyncClient::connect(&service, FIRST, "snapshot-instance").await;
     begin_upload(
@@ -909,7 +923,11 @@ async fn qdrant_attachment_upload_uses_the_websocket_transport() {
 async fn qdrant_startup_recovery_resumes_queued_publications() {
     let service = Service::qdrant(384).await;
     let (start, encoded) = publication();
-    let operation = format!("publication:{}", encoded.manifest_digest);
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
     let group = service.first.group_id.clone();
     let start_json = serde_json::to_string(&Event::Start(start)).unwrap();
     {
@@ -1395,7 +1413,11 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
         forgets: Vec::new(),
     };
     let edit_encoded = wire::encode_publication(&edit, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
-    let edit_operation = format!("publication:{}", edit_encoded.manifest_digest);
+    let edit_operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &edit_encoded.manifest_digest,
+    );
     assert!(
         publish_over_socket(&service, &edit_operation, &edit_start, &edit_encoded)
             .await
@@ -1422,7 +1444,11 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     };
     let delete_encoded =
         wire::encode_publication(&delete, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
-    let delete_operation = format!("publication:{}", delete_encoded.manifest_digest);
+    let delete_operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &delete_encoded.manifest_digest,
+    );
     assert!(
         publish_over_socket(&service, &delete_operation, &delete_start, &delete_encoded)
             .await
@@ -1452,7 +1478,11 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
         }),
     ];
     let encoded = wire::encode_publication(&late, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
-    let operation = format!("publication:{}", encoded.manifest_digest);
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
     client
         .send(
             &operation,
@@ -1662,7 +1692,11 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
 async fn qdrant_reports_silver_committed_before_a_certification_failure() {
     let service = Service::qdrant_views_failure(384).await;
     let (start, encoded) = publication();
-    let operation = format!("publication:{}", encoded.manifest_digest);
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
     let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
 
     begin_upload(
@@ -1840,7 +1874,11 @@ async fn periodic_sweep_reclaims_an_abandoned_receiving_spool() {
 async fn periodic_apply_retry_finishes_queued_publications() {
     let service = Service::qdrant(384).await;
     let (start, encoded) = publication();
-    let operation = format!("publication:{}", encoded.manifest_digest);
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
     let group = service.first.group_id.clone();
     let start_json = serde_json::to_string(&Event::Start(start)).unwrap();
     {

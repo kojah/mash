@@ -71,15 +71,12 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
     let body = String::from_utf8(file).unwrap();
     assert!(!body.contains("hunter2") && !body.contains("rosebud") && !body.contains(APP_TOKEN));
     assert!(body.contains("token = fetch_token()"));
+    let events = body
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect::<Vec<Value>>();
     assert_eq!(
-        service
-            .request("index", FIRST)
-            .header("content-type", "application/x-ndjson")
-            .body(body)
-            .send()
-            .await
-            .unwrap()
-            .status(),
+        service.upload(FIRST, &events).await.status(),
         StatusCode::OK
     );
     service.cleanup().await;

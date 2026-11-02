@@ -48,7 +48,7 @@ fn remove_value(record: &mut ConversationRecord, field: Field) {
     }
 }
 
-async fn publish(service: &Service, events: &[Event]) -> reqwest::Response {
+async fn publish(service: &Service, events: &[Event]) -> Upload {
     let encoded = events
         .iter()
         .map(|event| serde_json::to_value(event).unwrap())

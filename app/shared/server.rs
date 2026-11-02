@@ -18,7 +18,6 @@ mod connectors;
 mod contexts;
 pub(super) mod store;
 mod sync;
-mod upload;
 
 use super::protocol;
 use crate::AppError;
@@ -153,18 +152,10 @@ fn router(app: App) -> Router {
         .route("/v1/contexts", post(contexts::read))
         .route("/v1/attachments", post(attachments::list))
         .route("/v1/attachment", post(attachments::get))
-        .route("/v1/sync", get(sync::upgrade));
-    // The legacy HTTP mutation routes were removed in the protocol-matched
-    // release. Tests still mount them to keep HTTP-level coverage of the silver
-    // limits and authorization they used; no released router exposes them.
-    #[cfg(test)]
-    let router = router
-        .route("/v1/index", post(index))
+        // Connector batches keep their source-scoped receipt contract until the
+        // client can send them over /v1/sync with a connector receipt.
         .route("/v1/connector-batches", post(connectors::ingest))
-        .route(
-            "/v1/attachment-upload",
-            post(attachments::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
-        );
+        .route("/v1/sync", get(sync::upgrade));
     router
         .method_not_allowed_fallback(|| async {
             ApiError(
@@ -313,41 +304,6 @@ async fn view(
         redaction.tools(&mut message.tools);
     }
     Ok(Json(messages))
-}
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "legacy HTTP mutation handler retained for test coverage only; /v1/sync replaces it"
-    )
-)]
-async fn index(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-    request: Request,
-) -> Result<Json<protocol::Indexed>, ApiError> {
-    let progress = app.activity.start(
-        &id.group_id,
-        &id.node_id,
-        super::activity::Kind::Publication,
-    );
-    let permit = admission::reserve(&app.uploads, &app.waiters, &progress).await?;
-    if request
-        .headers()
-        .get("content-type")
-        .and_then(|h| h.to_str().ok())
-        != Some("application/x-ndjson")
-    {
-        return Err(AppError::usage("index uploads require application/x-ndjson").into());
-    }
-    let max_bytes = app.store.max_node_bytes();
-    let file = upload::spool_tracked(request.into_body(), max_bytes, &progress).await?;
-    Ok(Json(
-        Box::pin(admission::run(permit, async move {
-            app.store.index_tracked(&id, file, progress).await
-        }))
-        .await?,
-    ))
 }
 /// Explicit operator changes applied before serving.
 pub(crate) struct Activation {

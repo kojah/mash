@@ -1233,10 +1233,10 @@ carries typed Protobuf envelopes with zstd publication data, durable piece
 checkpoints and resume; a first publication of a large history is planned into
 independently committed batches, so recent conversations become searchable
 while the rest uploads; publication, connector-batch, attachment-upload and
-progressive-backfill operations share one transfer protocol. It is the only
-mutation route: the former `POST /v1/index` (NDJSON), `/v1/connector-batches`
-and `/v1/attachment-upload` routes were removed in the protocol-matched
-release. Search carries a query
+progressive-backfill operations share one transfer protocol. The former
+`POST /v1/index` (NDJSON) and `/v1/attachment-upload` routes and handlers were
+removed in the protocol-matched release; `/v1/connector-batches` remains until
+the WebSocket client returns the same source-scoped connector receipt. Search carries a query
 embedding and returns candidates for node-side fusion and reranking. The HTTP
 server needs no model assets. Interrupted or invalid uploads leave the visible
 revision and freshness unchanged. Uploads are bounded by 128 records per batch,

@@ -34,7 +34,7 @@ const PRUNE_RECEIPTS: usize = 64;
 
 type CatalogHandle = Arc<Mutex<Catalog>>;
 
-fn open_catalog(root: &std::path::Path) -> Result<Catalog, AppError> {
+pub(super) fn open_catalog(root: &std::path::Path) -> Result<Catalog, AppError> {
     Catalog::open_with_limit(root, SPOOL_QUOTA)
 }
 type Sink = futures_util::stream::SplitSink<WebSocket, Message>;
