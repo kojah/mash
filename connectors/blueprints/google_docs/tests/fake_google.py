@@ -57,6 +57,8 @@ class FakeGoogle:
     # Statuses to return, in order, before serving a path normally.
     failures: dict[str, list[int]] = field(default_factory=dict)
     token_status: int = 200
+    # What tokeninfo reports as the credential principal.
+    principal: str = "test"
     token_error: str = "invalid_grant"
     calls: list[str] = field(default_factory=list)
 
@@ -87,6 +89,8 @@ class FakeGoogle:
         pending = self.failures.get(path)
         if pending:
             return pending.pop(0), {"retry-after": "1"}, b'{"error":{"code":429}}'
+        if url.hostname == "oauth2.googleapis.com" and url.path == "/tokeninfo":
+            return 200, {}, orjson.dumps({"sub": self.principal, "email": "mash@example.com"})
         if url.hostname == "oauth2.googleapis.com":
             assert isinstance(request.data, bytes)
             form = urllib.parse.parse_qs(request.data.decode())

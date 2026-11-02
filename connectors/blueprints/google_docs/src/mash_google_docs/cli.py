@@ -3,6 +3,7 @@
 import asyncio
 import sqlite3
 import sys
+import urllib.request
 from pathlib import Path
 
 import click
@@ -11,12 +12,17 @@ from mash_sdk import DeliveryError
 from mash_sdk.prerequisites import emit
 from pydantic import ValidationError
 
-from .api import HttpError, urlopen
+from .api import HttpError, fetch, urlopen
 from .auth import AuthorizationRequired, Credentials, authorize, load_client, load_token
 from .config import Settings, load
 from .connector import Result, run
 from .drive import Drive
 from .prerequisites import check
+
+
+
+class WrongPrincipal(Exception):
+    """The token belongs to a different Google account than `account_id`."""
 
 
 def fail(kind: str, exit_code: int, **details: object) -> click.exceptions.Exit:
@@ -98,6 +104,16 @@ def sync(settings: Settings, watch: bool) -> None:
             load_token(settings.token),
             send=urlopen,
         )
+        # Bind the credential to the source key before reading anything: the
+        # key is google-docs:<sub>, so a token for another account must not
+        # write here.
+        request = urllib.request.Request("https://oauth2.googleapis.com/tokeninfo")
+        request.add_header("Authorization", credentials.header())
+        info = orjson.loads(fetch(urlopen, __import__("time").sleep, request))
+        if info.get("sub") != settings.account_id:
+            raise WrongPrincipal(
+                f"the token belongs to {info.get('sub')}; account_id is {settings.account_id}"
+            )
         asyncio.run(
             run(settings, Drive(credentials, send=urlopen), watch=watch, report=report)
         )
