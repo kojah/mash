@@ -223,7 +223,7 @@ impl Store {
         for id in &supplied {
             let chat = written.get(id);
             if !fresh {
-                let current = chat.map(|t| t.ids.clone()).unwrap_or_default();
+                let current = chat.map_or_else(Default::default, |t| t.ids.clone());
                 self.views.retain_documents(identity, id, current).await?;
             }
             let fingerprint = fingerprints

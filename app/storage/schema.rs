@@ -204,11 +204,7 @@ pub(super) fn attach_views(
     views: &Path,
     writable: bool,
 ) -> Result<(), AppError> {
-    let attached = if writable || views.is_file() {
-        attach(connection, views, writable).is_ok()
-    } else {
-        false
-    };
+    let attached = (writable || views.is_file()) && attach(connection, views, writable).is_ok();
     let usable = attached && views_usable(connection).unwrap_or(false);
     if !usable {
         if attached {

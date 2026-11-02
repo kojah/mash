@@ -123,8 +123,8 @@ pub(super) async fn local(
             let scans = providers
                 .into_iter()
                 .map(|provider| {
-                    let (state, rejected_sources) = storage.as_ref().map_or_else(
-                        || Ok((crate::silver::certificate::Completeness::Unverified, 0)),
+                    let (state, rejected_sources) = storage.as_ref().map_or(
+                        Ok((crate::silver::certificate::Completeness::Unverified, 0)),
                         |storage| storage.coverage_scan(provider),
                     )?;
                     Ok(Scan {
