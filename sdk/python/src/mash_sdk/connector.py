@@ -1,6 +1,9 @@
 """High-level delivery; revisions, identities and saved batches stay private."""
 
 import asyncio
+import fcntl
+import hashlib
+import os
 import hashlib
 import sqlite3
 import time
@@ -45,6 +48,17 @@ R = TypeVar("R")
 MAX_RETRY_SECONDS = 60.0
 
 
+class SourceInUse(RuntimeError):
+    """Another connector instance already holds this source key."""
+
+
+def _locks_root() -> Path:
+    configured = os.environ.get("MASH_CONNECTOR_LOCKS")
+    if configured:
+        return Path(configured)
+    return Path.home() / ".local" / "share" / "mash" / "connectors" / "locks"
+
+
 class Connector:
     """Send typed changes to one or more destinations and recover unfinished delivery.
 
@@ -67,6 +81,7 @@ class Connector:
         modes: Collection[Mode],
         destinations: Sequence[Destination],
         state_path: Path,
+        share_state: bool = False,
     ) -> None:
         try:
             TypeAdapter(
@@ -96,11 +111,45 @@ class Connector:
         self._lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[object]] = set()
         self._entered = False
+        self.share_state = share_state
+        self._source_lock: int | None = None
+
+    def _claim_source(self) -> None:
+        """One live instance per source key, across processes.
+
+        Two pollers over one account produce two cursors and two copies; the
+        operator who really wants that passes share_state=True.
+        """
+        root = _locks_root()
+        root.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(self.source_id.encode()).hexdigest()[:32]
+        path = root / f"{digest}.lock"
+        handle = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(handle)
+            raise SourceInUse(
+                f"another connector already publishes {self.source_id}; "
+                "stop it or pass share_state=True"
+            ) from None
+        os.ftruncate(handle, 0)
+        os.write(handle, str(os.getpid()).encode())
+        self._source_lock = handle
+
+    def _release_source(self) -> None:
+        if self._source_lock is None:
+            return
+        fcntl.flock(self._source_lock, fcntl.LOCK_UN)
+        os.close(self._source_lock)
+        self._source_lock = None
 
     async def __aenter__(self) -> Self:
         if self._entered:
             raise RuntimeError("connector is already open")
         self._entered = True
+        if not self.share_state:
+            self._claim_source()
         try:
             await self.resume()
         except BaseException:
@@ -115,6 +164,7 @@ class Connector:
         traceback: TracebackType | None,
     ) -> None:
         self._entered = False
+        self._release_source()
         if self._tasks:
             await asyncio.shield(
                 asyncio.gather(*tuple(self._tasks), return_exceptions=True)
