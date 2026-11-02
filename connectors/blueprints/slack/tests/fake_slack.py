@@ -95,7 +95,7 @@ class FakeSlack:
             return pending.pop(0)
         match method:
             case "auth.test":
-                return ok(team_id=TEAM, team="Acme", url=URL)
+                return ok(team_id=TEAM, user_id="U0ALICE", team="Acme", url=URL)
             case "users.info":
                 if query["user"] not in self.users:
                     return ok_false("user_not_found")

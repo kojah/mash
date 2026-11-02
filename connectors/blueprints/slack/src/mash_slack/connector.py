@@ -48,6 +48,10 @@ class WrongWorkspace(Exception):
     """The token belongs to a different team than `team_id`."""
 
 
+class WrongPrincipal(Exception):
+    """The token acts as a different Slack user than `principal`."""
+
+
 class Cursor(BaseModel):
     """The newest listed message, and each listed thread's last reply."""
 
@@ -105,10 +109,19 @@ def earlier(left: str | None, right: str) -> str | None:
     return left if Decimal(left) <= Decimal(right) else right
 
 
-async def workspace(slack: AsyncWebClient, team_id: str) -> Workspace:
+async def workspace(slack: AsyncWebClient, team_id: str, principal: str) -> Workspace:
+    """Bind the token to its team and its principal before anything is read.
+
+    The source identity is `slack:<team>:<principal>`; a token that acts as a
+    different user would write a second principal's history into the first
+    principal's source.
+    """
     response = await slack.auth_test()
     if response["team_id"] != team_id:
         raise WrongWorkspace(f"the token is for team {response['team_id']}")
+    acting = response.get("user_id")
+    if acting != principal:
+        raise WrongPrincipal(f"the token acts as {acting}; principal is {principal}")
     return Workspace(id=team_id, name=response["team"], url=response["url"])
 
 
@@ -218,7 +231,7 @@ async def synchronize(
     cursors = load_cursors(path)
     result = Result(settings.source_id, 0, 0, 0, 0, 0, [])
     try:
-        team = await workspace(slack, settings.team_id)
+        team = await workspace(slack, settings.team_id, settings.principal)
     except (SlackApiError, ClientError, TimeoutError) as error:
         result.issues.append(f"auth.test: {failure(error)}")
         return result

@@ -293,7 +293,9 @@ sources:
 3. ~~**Principal-scoped connector ids are missing.**~~ Closed for Slack: the
    blueprint's source id is `slack:<team>:<principal>` and `principal` is
    required configuration, so two credentials in one workspace are two
-   sources. The other blueprints keep their existing ids.
+   sources; `auth.test` must report the configured team and principal before
+   anything is read, so a token cannot write into another principal's source.
+   The other blueprints keep their existing ids.
 4. **Connector omission deletion is not implemented** and capture scope is not
    stored.
 5. **Connector `Published` does not certify views** (`views_ready` is false).
