@@ -21,6 +21,201 @@ const MAX_SQL_BYTES: usize = 64 * 1024;
 const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 const ROW_OVERHEAD_BYTES: usize = 8;
 
+/// A typed, declarative query over the stable views. Every value is bound as a
+/// parameter and every identifier comes from an enum, so callers cannot name a
+/// table, column or SQL fragment. This is the shape a remote shared-silver
+/// query can accept without parsing arbitrary SQL.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Request {
+    pub target: Target,
+    #[serde(default)]
+    pub filter: Filter,
+    #[serde(default)]
+    pub group_by: Option<GroupBy>,
+    #[serde(default)]
+    pub order: Option<Order>,
+    #[serde(default)]
+    pub descending: bool,
+    #[serde(default = "default_request_limit")]
+    pub limit: usize,
+}
+
+fn default_request_limit() -> usize {
+    200
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Target {
+    Messages,
+    Conversations,
+    Documents,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum GroupBy {
+    Source,
+    Role,
+    Conversation,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Order {
+    CreatedAt,
+    UpdatedAt,
+    Id,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields, default)]
+pub(crate) struct Filter {
+    pub source: Option<String>,
+    pub conversation: Option<String>,
+    pub role: Option<String>,
+    /// Inclusive lower bound in Unix milliseconds.
+    pub since: Option<i64>,
+    /// Exclusive upper bound in Unix milliseconds.
+    pub until: Option<i64>,
+    /// Case-insensitive substring over the target's text column.
+    pub text: Option<String>,
+}
+
+impl Target {
+    fn view(self) -> &'static str {
+        match self {
+            Self::Messages => "messages",
+            Self::Conversations => "conversations",
+            Self::Documents => "documents",
+        }
+    }
+
+    fn columns(self) -> &'static str {
+        match self {
+            Self::Messages => {
+                "id, conversation_id, source, role, ordinal, created_at, updated_at, content"
+            }
+            Self::Conversations => {
+                "id, source, kind, title, project, repository, created_at, updated_at, metadata"
+            }
+            Self::Documents => {
+                "id, source, kind, title, content, created_at, updated_at, parent_id, url"
+            }
+        }
+    }
+
+    fn text_column(self) -> &'static str {
+        match self {
+            Self::Messages | Self::Documents => "content",
+            Self::Conversations => "title",
+        }
+    }
+
+    fn group_column(self, group: GroupBy) -> Result<&'static str, AppError> {
+        match (self, group) {
+            (_, GroupBy::Source) => Ok("source"),
+            (Self::Messages, GroupBy::Role) => Ok("role"),
+            (Self::Messages, GroupBy::Conversation) => Ok("conversation_id"),
+            _ => Err(AppError::usage(
+                "this target cannot group by role or conversation",
+            )),
+        }
+    }
+}
+
+impl Order {
+    fn column(self) -> &'static str {
+        match self {
+            Self::CreatedAt => "created_at",
+            Self::UpdatedAt => "updated_at",
+            Self::Id => "id",
+        }
+    }
+}
+
+/// Build a single parameterized statement from the request.
+fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>), AppError> {
+    use rusqlite::types::Value;
+    let mut where_clauses: Vec<String> = Vec::new();
+    let mut params = Vec::new();
+    if let Some(source) = &request.filter.source {
+        where_clauses.push("source = ?".to_owned());
+        params.push(Value::Text(source.clone()));
+    }
+    if let Some(conversation) = &request.filter.conversation {
+        where_clauses.push("conversation_id = ?".to_owned());
+        params.push(Value::Text(conversation.clone()));
+    }
+    if let Some(role) = &request.filter.role {
+        where_clauses.push("role = ?".to_owned());
+        params.push(Value::Text(role.clone()));
+    }
+    if let Some(since) = request.filter.since {
+        where_clauses.push("created_at >= ?".to_owned());
+        params.push(Value::Integer(since));
+    }
+    if let Some(until) = request.filter.until {
+        where_clauses.push("created_at < ?".to_owned());
+        params.push(Value::Integer(until));
+    }
+    if let Some(text) = &request.filter.text {
+        where_clauses.push(format!(
+            "instr(lower(coalesce({}, '')), lower(?)) > 0",
+            request.target.text_column()
+        ));
+        params.push(Value::Text(text.clone()));
+    }
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", where_clauses.join(" AND "))
+    };
+    let (select, group_sql, default_order) = match request.group_by {
+        Some(group) => {
+            let column = request.target.group_column(group)?;
+            (
+                format!("{column} AS group_key, COUNT(*) AS count"),
+                format!(" GROUP BY {column}"),
+                "count",
+            )
+        }
+        None => (request.target.columns().to_owned(), String::new(), "id"),
+    };
+    let order = request.order.map_or(default_order, |order| order.column());
+    let direction = if request.descending || (request.group_by.is_some() && request.order.is_none())
+    {
+        "DESC"
+    } else {
+        "ASC"
+    };
+    let limit = request.limit.clamp(1, MAX_ROWS);
+    let sql = format!(
+        "SELECT {select} FROM {}{where_sql}{group_sql} ORDER BY {order} {direction} LIMIT {limit}",
+        request.target.view()
+    );
+    Ok((sql, params))
+}
+
+/// Run a typed request with the same read-only connection and output bounds as
+/// `run`.
+pub(crate) fn run_request(
+    database: &Path,
+    request: &Request,
+    timeout: Duration,
+) -> Result<Value, AppError> {
+    let (sql, params) = request_sql(request)?;
+    run_params(
+        database,
+        &sql,
+        &params,
+        request.limit,
+        timeout,
+        MAX_OUTPUT_BYTES,
+    )
+}
+
 /// Allow only actions a read-only query needs. `query_only` already blocks
 /// data changes, but it does not block ATTACH or every pragma: the authorizer
 /// closes that gap and makes the documented contract enforceable.
@@ -121,6 +316,17 @@ pub(crate) fn run_bounded(
     timeout: Duration,
     byte_budget: usize,
 ) -> Result<Value, AppError> {
+    run_params(database, sql, &[], limit, timeout, byte_budget)
+}
+
+fn run_params(
+    database: &Path,
+    sql: &str,
+    params: &[rusqlite::types::Value],
+    limit: usize,
+    timeout: Duration,
+    byte_budget: usize,
+) -> Result<Value, AppError> {
     let sql = sql.trim();
     if sql.is_empty() {
         return Err(AppError::usage("query is empty"));
@@ -164,17 +370,19 @@ pub(crate) fn run_bounded(
         .into_iter()
         .map(str::to_owned)
         .collect();
-    let mut rows = statement.query([]).map_err(|error| {
-        if matches!(
-            error,
-            rusqlite::Error::SqliteFailure(failure, _)
-                if failure.code == ErrorCode::AuthorizationForStatementDenied
-        ) {
-            AppError::usage("query may only read; ATTACH and pragma are not allowed")
-        } else {
-            AppError::usage(format!("query failed: {error}"))
-        }
-    })?;
+    let mut rows = statement
+        .query(rusqlite::params_from_iter(params.iter()))
+        .map_err(|error| {
+            if matches!(
+                error,
+                rusqlite::Error::SqliteFailure(failure, _)
+                    if failure.code == ErrorCode::AuthorizationForStatementDenied
+            ) {
+                AppError::usage("query may only read; ATTACH and pragma are not allowed")
+            } else {
+                AppError::usage(format!("query failed: {error}"))
+            }
+        })?;
     let mut output = Vec::new();
     let mut truncated = false;
     let mut bytes = 0;
@@ -373,6 +581,44 @@ mod tests {
             run_bounded(&path, "SELECT * FROM big", 10, Duration::from_secs(5), 1500).unwrap();
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
         assert_eq!(value["truncated"], true);
+    }
+
+    #[test]
+    fn typed_requests_filter_group_and_bound_without_sql() {
+        let (_directory, path) = fixture();
+        let request: Request = serde_json::from_str(
+            r#"{"target":"messages","filter":{"source":"codex","text":"ELL"}}"#,
+        )
+        .unwrap();
+        let value = run_request(&path, &request, Duration::from_secs(5)).unwrap();
+        assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+
+        let grouped: Request =
+            serde_json::from_str(r#"{"target":"messages","group_by":"source"}"#).unwrap();
+        let value = run_request(&path, &grouped, Duration::from_secs(5)).unwrap();
+        assert_eq!(value["rows"], json!([{"group_key": "codex", "count": 1}]));
+
+        let documents: Request =
+            serde_json::from_str(r#"{"target":"documents","group_by":"source"}"#).unwrap();
+        let value = run_request(&path, &documents, Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            value["rows"],
+            json!([{"group_key": "git:acme/app", "count": 1}])
+        );
+
+        // Zero is clamped to one row rather than returning nothing.
+        let clamped: Request = serde_json::from_str(r#"{"target":"messages","limit":0}"#).unwrap();
+        let value = run_request(&path, &clamped, Duration::from_secs(5)).unwrap();
+        assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+
+        // Unknown fields, including a raw SQL escape, are rejected by serde.
+        assert!(
+            serde_json::from_str::<Request>(r#"{"target":"messages","sql":"SELECT 1"}"#).is_err()
+        );
+        // Role is not a conversation column.
+        let invalid: Request =
+            serde_json::from_str(r#"{"target":"conversations","group_by":"role"}"#).unwrap();
+        assert!(run_request(&path, &invalid, Duration::from_secs(5)).is_err());
     }
 
     #[test]

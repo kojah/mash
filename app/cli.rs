@@ -167,16 +167,22 @@ enum Command {
     },
     /// Remove one conversation and its derived search rows.
     Forget { id: String },
-    /// Run one read-only SQL statement over local silver.
+    /// Run one read-only query over local silver.
     ///
-    /// The stable views are conversations, messages and documents.
+    /// Use --request for the typed contract (target, filter, group_by, order,
+    /// limit) or --sql for a read-only SQL escape hatch. Stable views are
+    /// conversations, messages and documents.
     Query {
         /// SQL to run; the connection is read-only and bounded.
+        #[arg(long, required_unless_present = "request", conflicts_with = "request")]
+        sql: Option<String>,
+        /// Typed request as JSON, e.g.
+        /// '{"target":"messages","filter":{"source":"codex"},"limit":20}'.
+        #[arg(long, conflicts_with = "sql")]
+        request: Option<String>,
+        /// Maximum rows returned in --sql mode; --request carries its own.
         #[arg(long)]
-        sql: String,
-        /// Maximum rows returned.
-        #[arg(long, default_value_t = 200)]
-        limit: usize,
+        limit: Option<usize>,
         /// Wall-clock budget in seconds.
         #[arg(long, default_value_t = 10)]
         timeout_seconds: u64,
@@ -448,12 +454,19 @@ impl Cli {
             Command::Forget { id } => Operation::Forget { id },
             Command::Query {
                 sql,
+                request,
                 limit,
                 timeout_seconds,
-            } => Operation::QuerySilver {
-                sql,
-                limit,
-                timeout_seconds,
+            } => match request {
+                Some(request) => Operation::QueryStructured {
+                    request,
+                    timeout_seconds,
+                },
+                None => Operation::QuerySilver {
+                    sql: sql.unwrap_or_default(),
+                    limit: limit.unwrap_or(200),
+                    timeout_seconds,
+                },
             },
             Command::Export { directory } => Operation::ExportSilver { directory },
             Command::Import {

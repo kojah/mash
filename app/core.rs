@@ -48,7 +48,7 @@ async fn execute_admitted(
         Operation::View { .. } => "view",
         Operation::Status { .. } | Operation::Installation { .. } => "status",
         Operation::Forget { .. } => "forget",
-        Operation::QuerySilver { .. } => "query",
+        Operation::QuerySilver { .. } | Operation::QueryStructured { .. } => "query",
         Operation::ModelsInstall => "models_install",
         Operation::ExportSilver { .. } => "export_silver",
         Operation::ImportSilver { .. } => "import_silver",
@@ -232,6 +232,23 @@ async fn dispatch(
                     &database,
                     &sql,
                     limit,
+                    std::time::Duration::from_secs(timeout_seconds),
+                )
+            })
+            .await
+            .map(Response::Query)
+        }
+        Operation::QueryStructured {
+            request,
+            timeout_seconds,
+        } => {
+            let request: crate::silver_query::Request = serde_json::from_str(&request)
+                .map_err(|error| AppError::usage(format!("invalid query request: {error}")))?;
+            let database = database.to_path_buf();
+            crate::blocking(move || {
+                crate::silver_query::run_request(
+                    &database,
+                    &request,
                     std::time::Duration::from_secs(timeout_seconds),
                 )
             })

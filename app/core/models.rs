@@ -102,6 +102,11 @@ pub(crate) enum Operation {
         limit: usize,
         timeout_seconds: u64,
     },
+    /// A typed, declarative query over the stable views.
+    QueryStructured {
+        request: String,
+        timeout_seconds: u64,
+    },
     ModelsInstall,
     ExportSilver {
         directory: PathBuf,
