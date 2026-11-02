@@ -44,6 +44,20 @@ impl Store {
         self
     }
 
+    #[cfg(test)]
+    pub(in crate::shared) fn with_views_partial_interruption(self) -> Self {
+        self.views_partial_interruption
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self
+    }
+
+    /// Test hook: allow the next views write to certify again.
+    #[cfg(test)]
+    pub(in crate::shared) fn clear_views_partial_interruption(&self) {
+        self.views_partial_interruption
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Commit silver first. View follows on a best-effort basis: a failure
     /// leaves the node uncertified until the next ingest, upload or replay.
     pub(in crate::shared) async fn ingest_connector(

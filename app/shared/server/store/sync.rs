@@ -187,6 +187,17 @@ impl Store {
         let written = self
             .write_upload(identity, file, &supplied, progress)
             .await?;
+        #[cfg(test)]
+        if self
+            .views_partial_interruption
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            // Documents were written; certification never runs. A retry must
+            // rewrite and certify rather than trust the stale metadata.
+            return Err(AppError::internal(
+                "injected views failure after document writes",
+            ));
+        }
         for id in &supplied {
             let chat = written.get(id);
             if !fresh {

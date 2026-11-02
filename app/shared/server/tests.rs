@@ -465,6 +465,19 @@ impl Service {
     async fn qdrant(dimensions: usize) -> Self {
         Self::with_parameters(true, dimensions, 64 * 1024 * 1024, FIRST).await
     }
+    /// Qdrant-backed service that fails after documents are written.
+    async fn qdrant_partial_views(dimensions: usize) -> Self {
+        Self::with_backend(
+            TestBackend::Qdrant,
+            dimensions,
+            64 * 1024 * 1024,
+            FIRST,
+            false,
+            true,
+        )
+        .await
+    }
+
     /// Qdrant-backed service whose views certification fails after silver commits.
     async fn qdrant_views_failure(dimensions: usize) -> Self {
         Self::with_backend(
@@ -473,6 +486,7 @@ impl Service {
             64 * 1024 * 1024,
             FIRST,
             true,
+            false,
         )
         .await
     }
@@ -492,12 +506,21 @@ impl Service {
             max_node_bytes,
             first_token,
             false,
+            false,
         )
         .await
     }
 
     async fn canonical() -> Self {
-        Self::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST, false).await
+        Self::with_backend(
+            TestBackend::Silver,
+            384,
+            64 * 1024 * 1024,
+            FIRST,
+            false,
+            false,
+        )
+        .await
     }
 
     #[allow(
@@ -510,6 +533,7 @@ impl Service {
         max_node_bytes: usize,
         first_token: &str,
         views_failure: bool,
+        partial_views: bool,
     ) -> Self {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
@@ -579,8 +603,13 @@ impl Service {
             )
             .unwrap();
             let store = with_test_embedder(Store::new(silver, views, max_node_bytes as u64));
-            if views_failure {
+            let store = if views_failure {
                 store.with_views_interruption()
+            } else {
+                store
+            };
+            if partial_views {
+                store.with_views_partial_interruption()
             } else {
                 store
             }

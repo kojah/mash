@@ -38,6 +38,10 @@ pub(in crate::shared) struct Store {
     /// Test hook: fail views certification after a committed silver write.
     #[cfg(test)]
     views_interruption: bool,
+    /// Test hook: fail after documents were written but before they are
+    /// certified, leaving a partially written view behind.
+    #[cfg(test)]
+    views_partial_interruption: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub(super) async fn initialize(
@@ -123,6 +127,10 @@ impl Store {
             connector_interruption: false,
             #[cfg(test)]
             views_interruption: false,
+            #[cfg(test)]
+            views_partial_interruption: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+                false,
+            )),
         }
     }
 

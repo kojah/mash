@@ -2099,3 +2099,97 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
     assert_eq!(baseline.state, "complete");
     service.cleanup().await;
 }
+
+/// Documents are written, certification fails, and a retry repairs and
+/// certifies without re-committing silver.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_partial_views_are_repaired_by_resending_finish() {
+    let service = Service::qdrant_partial_views(384).await;
+    let (start, encoded) = publication();
+    let operation = scoped_operation_id(
+        "publication",
+        &service.first.node_id,
+        &encoded.manifest_digest,
+    );
+    let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
+
+    begin_upload(
+        &mut client,
+        &operation,
+        wire::client_frame::Body::BeginPublication(begin(&start, &encoded)),
+    )
+    .await;
+    for piece in &encoded.pieces {
+        client
+            .send(
+                &operation,
+                wire::client_frame::Body::Chunk(wire::EncodedBatch::chunk(piece)),
+            )
+            .await;
+    }
+    client
+        .send(
+            &operation,
+            wire::client_frame::Body::FinishUpload(wire::FinishUpload {
+                manifest_digest: encoded.manifest_digest.clone(),
+            }),
+        )
+        .await;
+    let failure = loop {
+        match client.receive().await.body {
+            Some(wire::server_frame::Body::Failed(failed)) => break failed,
+            Some(
+                wire::server_frame::Body::Checkpoint(_)
+                | wire::server_frame::Body::Credit(_)
+                | wire::server_frame::Body::Progress(_)
+                | wire::server_frame::Body::SilverCommitted(_),
+            ) => {}
+            other => panic!("unexpected response: {other:?}"),
+        }
+    };
+    assert_eq!(failure.commit_state, wire::CommitState::Committed as i32);
+    assert_eq!(failure.code, "publication_failed");
+    // Silver committed, documents were written, certification did not run.
+    let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
+    assert_eq!(
+        catalog
+            .select(&operation, &service.first.group_id, "first")
+            .unwrap()
+            .state,
+        catalog::State::ViewsPending
+    );
+    let freshness: crate::shared::Freshness =
+        serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+    assert!(!freshness.nodes[0].views_current);
+
+    // A retry repairs views and certifies without a fresh silver commit.
+    service.store.clear_views_partial_interruption();
+    client
+        .send(
+            &operation,
+            wire::client_frame::Body::FinishUpload(wire::FinishUpload {
+                manifest_digest: encoded.manifest_digest.clone(),
+            }),
+        )
+        .await;
+    let published = loop {
+        match client.receive().await.body {
+            Some(wire::server_frame::Body::Published(published)) => break published,
+            Some(
+                wire::server_frame::Body::Checkpoint(_)
+                | wire::server_frame::Body::Credit(_)
+                | wire::server_frame::Body::Progress(_)
+                | wire::server_frame::Body::SilverCommitted(_),
+            ) => {}
+            other => panic!("unexpected retry response: {other:?}"),
+        }
+    };
+    assert!(published.views_current);
+    let freshness: crate::shared::Freshness =
+        serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+    assert!(freshness.nodes[0].views_current);
+    assert_eq!(freshness.nodes[0].revision, published.revision);
+    drop(client);
+    service.cleanup().await;
+}
