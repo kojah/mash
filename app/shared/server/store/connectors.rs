@@ -65,6 +65,28 @@ impl Store {
         identity: &Identity,
         batch: Batch,
     ) -> Result<Receipt, AppError> {
+        // An account-scoped source has exactly one writer in a group. Claim it
+        // before any silver write, through the durable group-wide table, so
+        // both transports inherit the same enforcement point.
+        if let Some(claims) = &self.claims {
+            let claims = claims.clone();
+            let group = identity.group_id.clone();
+            let node = identity.node_id.clone();
+            let source = batch.source_id.as_str().to_owned();
+            let label = source.clone();
+            let owner = crate::blocking(move || {
+                let catalog = claims
+                    .lock()
+                    .map_err(|_| AppError::internal("source claim lock is poisoned"))?;
+                catalog.claim_source(&group, &source, &node)
+            })
+            .await?;
+            if owner != identity.node_id {
+                return Err(crate::shared::validation::conflict(&format!(
+                    "source_owned_elsewhere; {label} is owned by {owner}"
+                )));
+            }
+        }
         let _node = self.lock(identity).await?;
         let store = self.silver.clone();
         let scope = identity.clone();

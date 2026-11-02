@@ -37,6 +37,10 @@ pub(in crate::shared) fn write(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one transaction needs identity, file, build, progress, receipt and rebase"
+)]
 fn write_inner(
     store: &super::SilverStore,
     identity: &Identity,

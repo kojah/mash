@@ -213,6 +213,14 @@ impl Catalog {
                 );
                 CREATE INDEX IF NOT EXISTS operations_owner
                     ON operations(group_id, node_id, manifest_digest);
+                CREATE TABLE IF NOT EXISTS source_claims (
+                    group_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    node_id TEXT NOT NULL,
+                    claimed_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (group_id, source_id)
+                );
                 CREATE TABLE IF NOT EXISTS backfills (
                     backfill_id TEXT PRIMARY KEY,
                     group_id TEXT NOT NULL,
@@ -587,6 +595,68 @@ impl Catalog {
 
     /// Create or re-open a progressive-backfill session. Identity and manifest
     /// are immutable once the session exists.
+    /// Claim an account-scoped source for a node. First writer wins; the
+    /// catalog is service-wide, so the key is the group plus the source.
+    pub(crate) fn claim_source(
+        &self,
+        group_id: &str,
+        source_id: &str,
+        node_id: &str,
+    ) -> Result<String, AppError> {
+        let timestamp = now();
+        self.connection
+            .execute(
+                "INSERT OR IGNORE INTO source_claims (
+                    group_id, source_id, node_id, claimed_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?4)",
+                params![group_id, source_id, node_id, timestamp],
+            )
+            .map_err(database)?;
+        self.source_owner(group_id, source_id)?
+            .ok_or_else(|| AppError::internal("source claim disappeared after insert"))
+    }
+
+    pub(crate) fn source_owner(
+        &self,
+        group_id: &str,
+        source_id: &str,
+    ) -> Result<Option<String>, AppError> {
+        use rusqlite::OptionalExtension as _;
+        self.connection
+            .query_row(
+                "SELECT node_id FROM source_claims WHERE group_id = ?1 AND source_id = ?2",
+                params![group_id, source_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(database)
+    }
+
+    /// Move ownership explicitly. Unlike polling overlap, this is an operator
+    /// action: the caller must name the current owner.
+    pub(crate) fn transfer_source(
+        &self,
+        group_id: &str,
+        source_id: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<(), AppError> {
+        let changed = self
+            .connection
+            .execute(
+                "UPDATE source_claims SET node_id = ?4, updated_at = ?5
+                 WHERE group_id = ?1 AND source_id = ?2 AND node_id = ?3",
+                params![group_id, source_id, from, to, now()],
+            )
+            .map_err(database)?;
+        if changed == 0 {
+            return Err(conflict(
+                "source claim does not belong to the transferring node",
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn begin_backfill(&self, input: &BackfillBegin<'_>) -> Result<Backfill, AppError> {
         if input.backfill_id.is_empty() || input.backfill_id.len() > 4096 {
             return Err(AppError::usage("invalid backfill identity"));

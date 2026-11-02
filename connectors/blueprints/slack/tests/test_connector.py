@@ -26,7 +26,7 @@ class Recorder(Connector):
 
     def __init__(self, state: Path) -> None:
         super().__init__(
-            source_id=f"slack:{TEAM}",
+            source_id=f"slack:{TEAM}:U0ALICE",
             modes=[Mode.snapshot],
             destinations=[Destination.local(database=state / "unused.sqlite3")],
             state_path=state / "unused-state.sqlite3",
@@ -64,6 +64,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         return Settings.model_validate(
             {
                 "team_id": TEAM,
+                "principal": "U0ALICE",
                 "state_dir": self.state,
                 "channels": ["C01"],
                 "destinations": [
@@ -72,6 +73,13 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                 **values,
             }
         )
+
+    def test_source_id_is_scoped_by_the_principal(self) -> None:
+        alice = self.settings(principal="U0ALICE")
+        bob = self.settings(principal="U0BOB")
+        assert alice.source_id == f"slack:{TEAM}:U0ALICE"
+        # Two credentials in one workspace are two sources, never one.
+        assert alice.source_id != bob.source_id
 
     async def poll(self, settings: Settings) -> tuple[Result, Recorder]:
         recorder = Recorder(self.state)

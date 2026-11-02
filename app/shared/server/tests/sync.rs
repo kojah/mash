@@ -2246,6 +2246,10 @@ async fn two_nodes_publish_concurrently_without_interference() {
 /// the next revision under the node lock, and coverage must end complete.
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one end-to-end ordering scenario: plan, upload, coverage, freshness"
+)]
 async fn qdrant_backfill_lanes_assign_ordered_revisions() {
     use crate::shared::sync::client::{BackfillLimits, plan_backfill, upload_backfill_plan};
 
@@ -2296,8 +2300,8 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
         Event::Batch(crate::shared::protocol::Batch::Messages {
             records: ids
                 .iter()
-                .enumerate()
-                .map(|(index, id)| message(id, index as f64 + 1.0))
+                .zip([1.0, 2.0, 3.0, 4.0])
+                .map(|(id, seed)| message(id, seed))
                 .collect(),
         }),
     ];

@@ -19,8 +19,8 @@ search path or a special case in retrieval.
 | Progressive baseline publication | **implemented** | automatic scheduling beyond recency |
 | Native publication transport (`/v1/sync`) | **implemented** | — |
 | Connector publication transport | both `/v1/sync` `BeginConnectorBatch` **and** legacy `POST /v1/connector-batches` are mounted | `/v1/sync` only, after the SDK migrates |
-| Connector source ownership | **not implemented** | claim in `ingest_connector`, transferable |
-| Principal-scoped connector ids | **not implemented** (Slack is `slack:<team>`) | `provider:tenant:principal` |
+| Connector source ownership | **implemented**: durable group-wide claim checked in `ingest_connector`; `POST /v1/source-transfer` | — |
+| Principal-scoped connector ids | **implemented for Slack** (`slack:<team>:<principal>`, `principal` required) | `provider:tenant:principal` for the other blueprints |
 | Connector omission deletion | **not implemented** (`CompleteSnapshot` records a timestamp only) | capture-scope validated deletion |
 | Owner liveness (stale claims) | **not implemented**; a claim blocks the source until a manual transfer | staleness in status, `transfer --force` |
 | Restore under the same node id | **not implemented**; a regressed revision is applied | destination rejects a revision below its head |
@@ -286,10 +286,14 @@ sources:
 
 1. **Connector transport is not cut over.** `POST /v1/connector-batches` is
    still mounted in the release router, and the Python SDK still calls it.
-2. **No ownership.** Nothing prevents two nodes ingesting the same account
-   source; revisions are per `(node, source)`.
-3. **Principal-scoped connector ids are missing.** Slack uses
-   `slack:<team>`; two users in one workspace collide.
+2. ~~**No ownership.**~~ Closed: `ingest_connector` claims `(group, source)`
+   in the transfer catalog before any silver write, rejects a second writer
+   with `source_owned_elsewhere`, and `POST /v1/source-transfer` moves the
+   claim explicitly. Revisions are still per `(node, source)`.
+3. ~~**Principal-scoped connector ids are missing.**~~ Closed for Slack: the
+   blueprint's source id is `slack:<team>:<principal>` and `principal` is
+   required configuration, so two credentials in one workspace are two
+   sources. The other blueprints keep their existing ids.
 4. **Connector omission deletion is not implemented** and capture scope is not
    stored.
 5. **Connector `Published` does not certify views** (`views_ready` is false).

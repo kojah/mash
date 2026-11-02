@@ -18,6 +18,9 @@ class Settings(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     team_id: StrictStr = Field(pattern=r"^T[A-Z0-9]{2,}$")
+    # The Slack user the token acts as. Two credentials in one workspace are two
+    # sources, not one: cursors, rate limits and visibility follow the principal.
+    principal: StrictStr = Field(pattern=r"^[UW][A-Z0-9]{2,}$")
     token_env: StrictStr = Field(
         default="SLACK_TOKEN", pattern=r"^[A-Za-z_][A-Za-z0-9_]*$"
     )
@@ -30,7 +33,7 @@ class Settings(BaseModel):
 
     @property
     def source_id(self) -> str:
-        return f"slack:{self.team_id}"
+        return f"slack:{self.team_id}:{self.principal}"
 
     def cutoff(self, now: datetime) -> datetime | None:
         """Creation-time window start; None ingests all history."""

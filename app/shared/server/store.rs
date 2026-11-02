@@ -29,6 +29,8 @@ pub(in crate::shared) struct Store {
     embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
+    /// Group-wide ownership of account-scoped connector sources.
+    claims: Option<std::sync::Arc<std::sync::Mutex<crate::shared::sync::catalog::Catalog>>>,
     /// Whether HTTP read responses mask recognizable credentials.
     responses: crate::redaction::Policy,
     #[cfg(test)]
@@ -109,6 +111,16 @@ pub(super) async fn initialize(
 const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
 impl Store {
+    /// Attach the durable, group-wide claim table. Production always sets it;
+    /// tests that do not exercise ownership leave it unset.
+    pub(in crate::shared) fn with_source_claims(
+        mut self,
+        claims: std::sync::Arc<std::sync::Mutex<crate::shared::sync::catalog::Catalog>>,
+    ) -> Self {
+        self.claims = Some(claims);
+        self
+    }
+
     pub(in crate::shared) fn new(
         silver: SilverStore,
         views: qdrant_index::Store,
@@ -120,6 +132,7 @@ impl Store {
             embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
+            claims: None,
             responses: crate::redaction::Policy::ON,
             #[cfg(test)]
             replay_fault: None,

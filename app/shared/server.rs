@@ -152,6 +152,7 @@ fn router(app: App) -> Router {
         .route("/v1/view", post(view))
         .route("/v1/contexts", post(contexts::read))
         .route("/v1/fingerprints", get(fingerprints))
+        .route("/v1/source-transfer", post(source_transfer))
         .route("/v1/attachments", post(attachments::list))
         .route("/v1/attachment", post(attachments::get))
         // Connector batches keep their source-scoped receipt contract until the
@@ -176,6 +177,56 @@ fn router(app: App) -> Router {
         .layer(middleware::from_fn_with_state(app.clone(), authorize))
         .with_state(app)
 }
+#[derive(serde::Deserialize)]
+struct SourceTransfer {
+    source_id: String,
+    from: String,
+    to: String,
+}
+
+/// Move ownership of an account-scoped source. Both nodes must belong to the
+/// caller's group; the caller must name the current owner.
+async fn source_transfer(
+    State(app): State<App>,
+    Extension(identity): Extension<Identity>,
+    Json(request): Json<SourceTransfer>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if request.source_id.is_empty() || request.source_id.len() > 256 {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            AppError::usage("source_id is required"),
+        ));
+    }
+    let caller_group = identity.group_id.clone();
+    for node in [&request.from, &request.to] {
+        let known = app
+            .identities
+            .values()
+            .any(|candidate| candidate.group_id == caller_group && candidate.node_id == *node);
+        if !known {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                AppError::usage("transfer names a node outside this group"),
+            ));
+        }
+    }
+    let catalog = app.catalog.clone();
+    let group = identity.group_id.clone();
+    let source = request.source_id.clone();
+    let (from, to) = (request.from.clone(), request.to.clone());
+    crate::blocking(move || {
+        let catalog = catalog
+            .lock()
+            .map_err(|_| AppError::internal("source claim lock is poisoned"))?;
+        catalog.transfer_source(&group, &source, &from, &to)
+    })
+    .await
+    .map_err(ApiError::from)?;
+    Ok(Json(
+        serde_json::json!({"source_id": request.source_id, "node_id": request.to}),
+    ))
+}
+
 async fn fingerprints(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
@@ -367,6 +418,7 @@ pub(crate) async fn run(
     crate::write_json(&mut std::io::stderr(), &Listening { listening: address })?;
     let transfer_dir = config.silver_dir()?.join("sync");
     let catalog = std::sync::Arc::new(std::sync::Mutex::new(sync::open_catalog(&transfer_dir)?));
+    let store = store.with_source_claims(catalog.clone());
     let app = App {
         activity: super::activity::Registry::default(),
         mutation_capacity: config.max_concurrent_uploads,

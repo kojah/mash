@@ -15,7 +15,7 @@ from mash_slack.cli import main
 from mash_slack.client import TokenMissing, token
 
 CONFIG = (
-    "team_id='T0TEAM'\nstate_dir='state'\nchannels=['C01']\n"
+    "team_id='T0TEAM'\nprincipal='U0ALICE'\nstate_dir='state'\nchannels=['C01']\n"
     "[[destinations]]\ntype='local'\ndatabase='mash.sqlite3'\n"
 )
 

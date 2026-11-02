@@ -384,3 +384,63 @@ async fn verify_kinds(service: &Service) {
             .is_empty()
     );
 }
+
+/// An account-scoped source has one writer in the group. The claim is checked
+/// before any silver write, and transfer moves it explicitly.
+#[tokio::test]
+async fn account_source_claim_rejects_a_second_writer_until_transferred() {
+    let service = Service::canonical().await;
+    let claims = std::sync::Arc::new(std::sync::Mutex::new(
+        crate::shared::sync::catalog::Catalog::open(&service.silver_dir.path().join("sync"))
+            .unwrap(),
+    ));
+    // The fixture's server owns its own handle on the same catalog file; this
+    // store is the one under test.
+    let store = service.store.clone().with_source_claims(claims.clone());
+
+    let batch: crate::connectors::Batch =
+        serde_json::from_value(batch("ownership-1", 0, "owned once")).unwrap();
+    let source = batch.source_id.as_str().to_owned();
+    let first = service.first.clone();
+    let second = service.identities[&blake3::hash(SECOND.as_bytes())].clone();
+    assert_eq!(second.group_id, first.group_id);
+    assert_ne!(second.node_id, first.node_id);
+
+    store.ingest_connector(&first, batch.clone()).await.unwrap();
+
+    let error = store
+        .ingest_connector(&second, batch.clone())
+        .await
+        .unwrap_err();
+    assert!(
+        error.error.message.contains("source_owned_elsewhere"),
+        "{error:?}"
+    );
+
+    // Transfer is explicit and authenticated: any group member names the
+    // current owner and the destination.
+    let transferred = service
+        .request("source-transfer", FIRST)
+        .json(&json!({
+            "source_id": source,
+            "from": first.node_id,
+            "to": second.node_id,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(transferred.status(), StatusCode::OK);
+    // The batch still claims expected_revision 0, so accepting it proves the
+    // rejected write left no silver behind on the second node.
+    store
+        .ingest_connector(&second, batch.clone())
+        .await
+        .unwrap();
+
+    // The previous owner is now the one rejected.
+    let error = store.ingest_connector(&first, batch).await.unwrap_err();
+    assert!(
+        error.error.message.contains("source_owned_elsewhere"),
+        "{error:?}"
+    );
+}

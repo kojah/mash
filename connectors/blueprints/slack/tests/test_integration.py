@@ -85,7 +85,7 @@ class IntegrationTests(unittest.TestCase):
             slack.failures["auth.test"] = [limited()]
             config = self.root / "slack.toml"
             config.write_text(
-                f"team_id='{TEAM}'\nstate_dir='state'\nchannels=['C01']\n"
+                f"team_id='{TEAM}'\nprincipal='U0ALICE'\nstate_dir='state'\nchannels=['C01']\n"
                 "[[destinations]]\ntype='local'\ndatabase='silver.sqlite3'\n"
                 f"executable='{self.binary}'\nconfig='mash.toml'\n"
             )
