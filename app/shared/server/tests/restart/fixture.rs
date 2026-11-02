@@ -386,32 +386,37 @@ impl Api {
             .await
             .unwrap()
     }
+    /// Publish through the production `/v1/sync` client, as a node would.
     pub(super) async fn upload(
         &self,
         token: &str,
         events: &[crate::shared::protocol::Event],
-    ) -> reqwest::Response {
-        self.upload_stream("index", token, events).await
-    }
-    pub(super) async fn upload_stream<T: Serialize>(
-        &self,
-        route: &str,
-        token: &str,
-        events: &[T],
-    ) -> reqwest::Response {
-        let mut body = Vec::new();
-        for event in events {
-            serde_json::to_writer(&mut body, event).unwrap();
-            body.push(b'\n');
+    ) -> Result<crate::shared::protocol::Indexed, crate::AppError> {
+        use std::io::Write as _;
+        let (group, node) = if token == super::SECOND {
+            ("restart-main", "second")
+        } else if token == super::OTHER {
+            ("restart-other", "first")
+        } else {
+            ("restart-main", "first")
+        };
+        let config = crate::config::SharedConfig {
+            group_id: group.into(),
+            node_id: node.into(),
+            api_url: self.url.clone(),
+            token_env: "unused-in-test".into(),
+            publication_redaction: crate::redaction::Policy::new(false),
+        };
+        let file = tempfile::NamedTempFile::new().unwrap();
+        {
+            let mut writer = std::io::BufWriter::new(file.as_file());
+            for event in events {
+                serde_json::to_writer(&mut writer, event).unwrap();
+                writer.write_all(b"\n").unwrap();
+            }
+            writer.flush().unwrap();
         }
-        self.client
-            .post(format!("{}/v1/{route}", self.url))
-            .bearer_auth(token)
-            .header("content-type", "application/x-ndjson")
-            .body(body)
-            .send()
-            .await
-            .unwrap()
+        crate::shared::sync::client::upload_with_token(&config, &file, token.to_owned()).await
     }
 }
 impl Drop for Api {

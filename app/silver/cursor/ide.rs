@@ -70,11 +70,10 @@ fn project(root: &Root, state: &proto::Root) -> Option<String> {
                 .authority
                 .as_deref()
                 .is_some_and(|a| !a.is_empty() && a != "localhost")
-            || !Path::new(&uri.path).is_absolute()
         {
             return None;
         }
-        paths.push(uri.path.clone());
+        paths.push(crate::platform::uri_path(&uri.path)?);
     }
     for uri in &state.workspaces {
         paths.push(crate::platform::file_uri_path(uri)?);

@@ -121,13 +121,21 @@ pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
     if !cfg!(windows) || url.host_str().is_some_and(|host| !host.is_empty()) {
         return None;
     }
-    let path = percent_decode(url.path())?;
-    // An encoded drive (`/c%3A/...`) decodes to `/c:/...`: a native path.
+    uri_path(&percent_decode(url.path())?)
+}
+
+/// The local path for a decoded URI path, as structured editor URIs carry
+/// it: always `/`-rooted. On Windows a drive path (`/c:/...`) becomes native
+/// (`c:\...`); any other rooted path keeps its POSIX form.
+pub(crate) fn uri_path(path: &str) -> Option<String> {
+    if !path.starts_with('/') {
+        return None;
+    }
     let bytes = path.as_bytes();
-    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
+    if cfg!(windows) && bytes.len() >= 3 && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
         return Some(path[1..].replace('/', "\\"));
     }
-    Some(path)
+    Some(path.to_owned())
 }
 
 fn percent_decode(text: &str) -> Option<String> {

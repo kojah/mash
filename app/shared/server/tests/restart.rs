@@ -122,14 +122,13 @@ async fn publish(api: &Api, token: &str, revision: i64, second: bool) {
     let result: protocol::Indexed = api
         .upload(token, &snapshot(revision, second))
         .await
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
         .unwrap();
     assert_eq!(result.revision, revision);
+    // A /v1/sync receipt carries no counts; read the node's from the server.
+    let node = if second { "second" } else { "first" };
+    let (_, messages) = node_counts(api, token, node).await.expect("published node");
     assert_eq!(
-        result.counts.messages,
+        messages,
         if second {
             1
         } else if revision == 1 {
@@ -339,8 +338,12 @@ async fn shared_backend_snapshot_restore_preserves_silver_views_and_revision_gua
     assert_eq!(verify(&api, 2).await, before);
     verify_views(&api).await;
     assert_eq!(
-        api.upload(FIRST, &snapshot(1, false)).await.status(),
-        reqwest::StatusCode::CONFLICT
+        api.upload(FIRST, &snapshot(1, false))
+            .await
+            .unwrap_err()
+            .error
+            .kind,
+        crate::ErrorKind::Conflict
     );
     assert_eq!(verify(&api, 2).await, before);
     publish(&api, FIRST, 3, false).await;
@@ -366,7 +369,7 @@ async fn shared_backend_persisted_restart_contract() {
     assert_eq!(verify(&api, 2).await, before, "persisted freshness Qdrant");
     verify_views(&api).await;
     let stale = api.upload(FIRST, &snapshot(1, false)).await;
-    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(stale.unwrap_err().error.kind, crate::ErrorKind::Conflict);
     assert_eq!(verify(&api, 2).await, before, "stale update changed Qdrant");
     publish(&api, FIRST, 3, false).await;
     let before_crash = verify(&api, 3).await;
@@ -382,7 +385,7 @@ async fn shared_backend_persisted_restart_contract() {
         "persisted freshness after process crash Qdrant"
     );
     let stale = api.upload(FIRST, &snapshot(2, false)).await;
-    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(stale.unwrap_err().error.kind, crate::ErrorKind::Conflict);
     assert_eq!(
         verify(&api, 3).await,
         before_crash,
