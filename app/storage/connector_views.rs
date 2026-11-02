@@ -556,6 +556,7 @@ pub(crate) fn connector_hit(
         ancestors: evidence.ancestors(source_id),
         role: None,
         author_kind: evidence.author(),
+        author: crate::source::author(None, evidence.author()),
         content: evidence.content().to_owned(),
         created_at: evidence.object.created_at,
         metadata: crate::search_results::ChatMetadata {

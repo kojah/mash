@@ -141,6 +141,9 @@ pub(crate) struct SearchHit {
     pub(crate) role: Option<crate::role::Role>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
+    /// The same speaker in one normalized form, for both origins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) author: Option<crate::source::Author>,
     pub(crate) content: String,
     #[serde(default)]
     pub(crate) created_at: Option<i64>,

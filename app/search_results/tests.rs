@@ -129,6 +129,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
         ancestors: Vec::new(),
         role: Some(crate::role::Role::User),
         author_kind: None,
+        author: None,
         content: id.into(),
         copies: Vec::new(),
         created_at: Some(123),

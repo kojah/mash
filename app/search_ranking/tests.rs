@@ -13,6 +13,7 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
         ancestors: Vec::new(),
         role: Some(Role::User),
         author_kind: None,
+        author: None,
         content: content.into(),
         copies: Vec::new(),
         created_at: None,

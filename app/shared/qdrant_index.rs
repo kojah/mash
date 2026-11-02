@@ -182,6 +182,7 @@ fn connector_hit(
         ancestors: d.unit.ancestors,
         role: None,
         author_kind: d.unit.author_kind,
+        author: crate::source::author(None, d.unit.author_kind),
         content: d.unit.content,
         copies: vec![],
         created_at: d.created_at,

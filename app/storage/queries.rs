@@ -436,6 +436,7 @@ pub(super) fn search_hit(
     row: sql::SearchHitRow,
 ) -> Result<SearchHit, AppError> {
     let provider: crate::provider::Provider = row.provider.parse()?;
+    let role: crate::role::Role = super::required(row.role, "role")?.into();
     Ok(SearchHit {
         ancestors: super::objects::ancestors(connection, row.parent_storage_id)?,
         id: row.id,
@@ -445,8 +446,9 @@ pub(super) fn search_hit(
             role: crate::connectors::Role::Entry,
             kind: row.kind,
         },
-        role: Some(super::required(row.role, "role")?.into()),
+        role: Some(role.clone()),
         author_kind: None,
+        author: crate::source::author(Some(role), None),
         content: super::required(row.content, "content")?,
         copies: Vec::new(),
         created_at: row.created_at,

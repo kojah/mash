@@ -56,6 +56,7 @@ fn hit() -> SearchHit {
         ancestors: Vec::new(),
         role: Some(crate::role::Role::User),
         author_kind: None,
+        author: None,
         content: "use voyage-code-4".into(),
         created_at: Some(1000),
         metadata: crate::search_results::ChatMetadata::default(),

@@ -10,6 +10,7 @@ fn hit(node: &str, content: &str) -> SearchHit {
         ancestors: Vec::new(),
         role: Some(Role::User),
         author_kind: None,
+        author: None,
         content: content.into(),
         created_at: Some(123),
         metadata: ChatMetadata {
