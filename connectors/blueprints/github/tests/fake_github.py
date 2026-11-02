@@ -155,6 +155,8 @@ class FakeGitHub:
     # Responses to return, in order, before serving a path normally.
     failures: dict[str, list[httpx.Response]] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list)
+    # What GET /user reports as the token's login.
+    principal: str = "test"
 
     def add(self, repository: str, *items: dict) -> None:
         self.issues.setdefault(repository, []).extend(items)
@@ -167,6 +169,8 @@ class FakeGitHub:
         assert request.headers["authorization"] == f"token {TOKEN}"
         path = request.url.path
         self.calls.append(str(request.url).removeprefix(API))
+        if path == "/user":
+            return httpx.Response(200, json={"id": 1, "login": self.principal})
         pending = self.failures.get(path)
         if pending:
             return pending.pop(0)
