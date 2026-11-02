@@ -1,0 +1,41 @@
+class Mash < Formula
+  desc "Search your coding agents' past conversations from a CLI and MCP server"
+  homepage "https://github.com/kojah/mash"
+  version "{version}"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/kojah/mash/releases/download/v#{{version}}/mash-aarch64-apple-darwin.tar.gz"
+      sha256 "{macos_arm}"
+    end
+  end
+
+  on_linux do
+    on_intel do
+      url "https://github.com/kojah/mash/releases/download/v#{{version}}/mash-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "{linux_intel}"
+    end
+    on_arm do
+      url "https://github.com/kojah/mash/releases/download/v#{{version}}/mash-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "{linux_arm}"
+    end
+  end
+
+  def install
+    bin.install "mash"
+  end
+
+  def caveats
+    <<~EOS
+      Set Mash up for the agent histories on this machine:
+        mash init
+      For semantic search, first run:
+        mash models install
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{{bin}}/mash --version")
+  end
+end

@@ -36,6 +36,8 @@ elif command == "view":
         found = [m for m in data["messages"] if m["id"].startswith(PREFIX)]
         found.sort(key=lambda m: m["created_at"])
     print(json.dumps({"messages": found}))
+elif command == "index" and "--connector-batch" not in arguments:
+    open(path + ".auto-index", "a").write("index\\n")
 elif command == "index":
     batch = json.load(open(arguments[arguments.index("--connector-batch") + 1]))
     if batch["expected_revision"] != len(data["batches"]):
@@ -115,6 +117,7 @@ class Recall(unittest.TestCase):
         self.state = self.root / "state"
         self.env = {**os.environ, "MASH_BIN": str(binary)}
         self.env["MASH_RECALL_STATE_DIR"] = str(self.state)
+        self.env["MASH_AUTO_INDEX"] = "off"
         self.env["FAKE_MASH"] = str(self.root / "fake.json")
         self.fake(chats=[])
 
@@ -151,6 +154,19 @@ class Recall(unittest.TestCase):
         self.assertEqual(self.hook(cwd=self.root / "gone"), "")
         result = self.run_script("session_start.py", b"{not json")
         self.assertEqual((result.returncode, result.stdout), (0, b""))
+
+    def test_starts_one_background_index_per_interval(self) -> None:
+        self.env["MASH_AUTO_INDEX"] = "on"
+        log = self.root / "fake.json.auto-index"
+        self.hook()
+        self.hook()
+        deadline = time.monotonic() + 5
+        while not log.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        self.assertEqual(log.read_text(), "index\n")
+        state = json.loads((self.state / "auto-index.json").read_text())
+        self.assertLessEqual(time.time() - state["started_at"], 10)
 
     def test_deadline(self) -> None:
         self.fake(chats=[chat("other", str(self.repo))], sleep=10)

@@ -205,7 +205,8 @@ fn cargo_and_ci_make_semantic_support_unconditional() {
     assert!(!manifest.contains("semantic = ["));
     assert!(ci.contains("cargo nextest run --profile ci"));
     assert!(!ci.contains("--no-default-features"));
-    assert!(release.contains("cargo build --release --locked"));
+    assert!(release.contains("cargo +stable build --release --locked"));
+    assert!(!release.contains("--no-default-features"));
     assert!(!root.join("app/semantic_disabled.rs").exists());
 }
 

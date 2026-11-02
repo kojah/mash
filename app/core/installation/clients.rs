@@ -251,7 +251,7 @@ fn claude(client: &mut Client, environment: &Environment) {
                 State::Disabled,
                 Some(&path),
                 "Mash plugin is disabled.",
-                Some("Enable mash@mash-local in Claude Code's plugin settings."),
+                Some("Enable mash@mash in Claude Code's plugin settings, or run `mash init`."),
             );
         }
     }

@@ -15,12 +15,14 @@ mod maintenance;
 mod models;
 pub(crate) mod output;
 mod search;
+mod setup;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
     BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Request, Response, SearchMode,
     SearchResponse, ViewResponse,
 };
+pub(crate) use setup::{InitRequest, MARKETPLACE};
 
 pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
     execute_admitted(request, None).await
@@ -39,6 +41,7 @@ async fn execute_admitted(
 ) -> Result<Response, AppError> {
     use tracing::Instrument;
     let operation = match &request.operation {
+        Operation::Init(_) => "init",
         Operation::Index(_) => "index",
         Operation::IngestConnector { .. } | Operation::DeliverConnector { .. } => {
             "ingest_connector"
@@ -93,6 +96,18 @@ async fn execute_inner(
     request: Request,
     capacity: Option<&tokio::sync::Semaphore>,
 ) -> Result<Response, AppError> {
+    let mut request = request;
+    let mut initialized = None;
+    if let Operation::Init(init) = &request.operation {
+        let index = init.index;
+        let response = setup::init(request.paths.clone(), init.clone()).await?;
+        if !index {
+            return Ok(Response::Init(response));
+        }
+        // Continue as the first index, without re-entering this function.
+        initialized = Some(response);
+        request.operation = setup::first_index();
+    }
     if let Operation::Installation { agents, probe } = &request.operation {
         return installation::inspect(agents.clone(), *probe, request.paths.clone())
             .boxed()
@@ -134,6 +149,10 @@ async fn execute_inner(
         .await?;
     if let Response::Search(search) = &mut response {
         search.query = configuration.redaction.output().text(&search.query);
+    }
+    if let Some(mut initialized) = initialized {
+        initialized.index = Some(Box::new(response));
+        return Ok(Response::Init(initialized));
     }
     Ok(response)
 }
@@ -366,6 +385,7 @@ async fn dispatch(
                 .await
                 .map(Response::ModelsInstall)
         }
+        Operation::Init(_) => Err(AppError::internal("init runs before configuration loads")),
     }
 }
 

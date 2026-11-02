@@ -339,6 +339,7 @@ pub(crate) fn render(
         Response::ListChats(value) => list(&mut out, value)?,
         Response::Status(value) => status(&mut out, &Status::from(value.as_ref()))?,
         Response::Installation(value) => json(&mut out, "Installation", value)?,
+        Response::Init(value) => json(&mut out, "Init", value)?,
         Response::View(value) => operations::view(&mut out, value)?,
         Response::Index(value) => operations::index(&mut out, value)?,
         Response::IngestConnector(value) => {

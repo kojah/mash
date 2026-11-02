@@ -1,12 +1,17 @@
-"""SessionStart hook: inject project-scoped Mash recall as additional context.
+"""SessionStart hook: inject project-scoped Mash recall as additional context,
+and keep the index current without a daemon.
 
-Reads Mash and the watermark file only. Fails open: any error, a missing
+Reads Mash and the watermark file. At most once per CATCH_UP seconds it starts
+a detached, low-priority incremental `mash index` and returns without waiting;
+`MASH_AUTO_INDEX=off` disables that. Fails open: any error, a missing
 executable or index, or the deadline produces no output and exit status 0.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -20,6 +25,7 @@ RECENT, PENDING, RECORDS, PAGE, PAGES = 4, 3, 6, 100, 3
 WINDOW = 24
 LOOKBACK_MS = 7 * 24 * 3600 * 1000
 HELPER = Path(__file__).resolve().parent / "record.py"
+CATCH_UP = 600
 EXAMPLE = (
     '{"records":[{"kind":"decision|preference|fact|open_question","statement":"...",'
     '"evidence":[{"message_id":"...","quote":"exact substring"}],'
@@ -159,10 +165,39 @@ def fit(header: list[str], sections: list[list[str]], tail: list[str]) -> str:
     return "\n".join(header + body + tail)
 
 
+def catch_up(binary: str) -> bool:
+    """Start one background `mash index` unless one started recently. Mash's
+    own writer lock turns a concurrent index or watcher into a no-op."""
+    if os.environ.get("MASH_AUTO_INDEX", "").strip().lower() in ("0", "off", "false"):
+        return False
+    path = common.state_dir() / "auto-index.json"
+    started = common.read_state(path).get("started_at", 0)
+    if isinstance(started, (int, float)) and time.time() - started < CATCH_UP:
+        return False
+    common.write_state(path, {"started_at": int(time.time())})
+
+    def lower_priority() -> None:
+        os.nice(10)
+
+    subprocess.Popen(
+        [binary, "index"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        preexec_fn=lower_priority,
+    )
+    return True
+
+
 def context(payload: Any, end: float) -> str:
     binary = common.resolve_binary()
     if binary is None:
         return ""
+    try:
+        catch_up(binary)
+    except Exception:
+        pass  # Recall still works from the existing index.
     git_timeout = min(1.0, end - time.monotonic())
     toplevel, repository = common.resolve_project(payload["cwd"], git_timeout)
     key = common.project_key(toplevel, repository)

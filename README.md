@@ -4,12 +4,6 @@
 
 # mash
 
-Agent work is tracked with [Beads](https://github.com/steveyegge/beads). With `bd`
-and Dolt installed, run `bd bootstrap` after cloning, then `bd prime` and `bd ready`.
-Issue history lives on a separate Dolt Git remote in this GitHub repository;
-`bd dolt commit` and `bd dolt push` persist tracking updates. The entire `.beads/` directory, including configuration, stays local and is ignored
-by Git. `bd bootstrap` discovers the Dolt history from the Git origin.
-
 mash (Multi-Agent Search History) searches Claude Code, Codex, Copilot, Cursor,
 OpenCode, and Antigravity histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
@@ -20,6 +14,45 @@ hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
 The service keeps shared silver (published canonical history) in SQLite and derived
 shared views (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
+
+## Quick start
+
+Install a prebuilt binary (macOS Apple Silicon, Linux x86_64 or arm64):
+
+```bash
+brew install kojah/tap/mash
+```
+
+or
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
+```
+
+Then set it up:
+
+```bash
+mash init
+```
+
+`mash init` finds the Claude Code, Codex, Copilot, Cursor, OpenCode and
+Antigravity histories in their default locations, writes `config.toml`,
+registers the Mash MCP server and history plugin with the Claude Code and Codex
+CLIs it finds on `PATH`, and indexes the last 90 days. Restart your agents and
+ask them about past work. Without models search matches exact words; for
+semantic search run `mash models install` (about 170 MB), then
+`mash init --force`. `--no-agents` leaves agent settings alone, `--no-index`
+skips indexing, and an existing configuration is kept unless `--force` is given
+(the old file is saved as `config.toml.previous`).
+
+The plugin keeps the index current: when an agent session starts it begins a
+low-priority incremental `mash index` in the background, at most every ten
+minutes (`MASH_AUTO_INDEX=off` disables it). For continuous updates run
+`mash index --watch` yourself; Mash installs no daemon.
+
+To build from source instead: `cargo +stable install --locked --git https://github.com/kojah/mash mash`.
+
+## Privacy
 
 Mash masks recognizable credentials in CLI/MCP search results, chat metadata,
 and `view` output, shared HTTP read responses and outgoing publications, and text
@@ -69,6 +102,7 @@ CI checks regeneration against committed output. Dynamic predicates and FTS rank
 reuse the generated projection and decoder; migrations and writes remain explicit.
 
 ```text
+mash init [--force] [--no-agents] [--no-index] [--marketplace SOURCE]
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-views [--full]
 mash search <query> [--unit chats|messages] [--local | --shared] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
@@ -250,14 +284,15 @@ MCP server. The plugin requires a configured Mash executable/index; install and
 connect Mash using the setup above. Its hooks are the read-only session recall
 and prompt nudge below; the plugin never indexes history or downloads models.
 
-From this repository, install the local plugin:
+`mash init` installs the plugin from the `kojah/mash` marketplace. From a
+clone of this repository, install the local plugin instead:
 
 ```bash
 codex plugin marketplace add .
-codex plugin add mash@mash-local
+codex plugin add mash@mash
 
 claude plugin marketplace add "$PWD"
-claude plugin install mash@mash-local
+claude plugin install mash@mash
 ```
 
 If Claude Code does not already have the Mash MCP connection, register it:
@@ -1660,6 +1695,11 @@ queries from being compared with the stored embedding space.
 
 ## Automatic synchronization
 
+The history plugin's SessionStart hook starts a detached, low-priority
+incremental `mash index` at most every ten minutes and never waits for it, so
+new sessions find a recent index; `MASH_AUTO_INDEX=off` disables it. A pass that
+finds the database busy (another index or a watcher) exits without changes.
+
 Run `mash index --watch` for opt-in synchronization while the process remains
 running. It indexes once at startup, then waits for one second of quiet after
 history changes before refreshing. Set `--debounce-ms 500` to change that delay
@@ -1964,6 +2004,14 @@ modules are grouped by responsibility:
 
 Keep assertions in individual tests. Share setup for repeated fixtures, and
 split independent cases so each failure names the behavior that broke.
+
+## Development
+
+Agent work is tracked with [Beads](https://github.com/steveyegge/beads). With `bd`
+and Dolt installed, run `bd bootstrap` after cloning, then `bd prime` and `bd ready`.
+Issue history lives on a separate Dolt Git remote in this GitHub repository;
+`bd dolt commit` and `bd dolt push` persist tracking updates. The entire `.beads/` directory, including configuration, stays local and is ignored
+by Git. `bd bootstrap` discovers the Dolt history from the Git origin.
 
 ## Verification
 

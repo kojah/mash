@@ -1,9 +1,17 @@
 name: Release
 
+# Tagging vX.Y.Z publishes prebuilt binaries for the commit CI validated, then
+# updates the Homebrew tap when HOMEBREW_TAP_TOKEN is configured. Releases
+# build on stable Rust so they need no nightly features.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      allow_unvalidated:
+        description: Build even though CI has not passed for this commit (artifacts only; never published)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -11,58 +19,95 @@ permissions:
 env:
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -Zunstable-options --jobs-frontend=4 -C link-arg=-fuse-ld=mold
-  RUSTC_WRAPPER: sccache
-  SCCACHE_GHA_ENABLED: "true"
-  SCCACHE_GHA_VERSION: mash-v1
-  SCCACHE_BASEDIRS: ${{ github.workspace }}
 
 jobs:
-  linux-x86_64:
+  validated:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    steps:
+      - name: Require a successful CI run for this commit
+        if: ${{ !inputs.allow_unvalidated }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --commit "$GITHUB_SHA" --status success --limit 1 --json conclusion \
+            -q '.[0].conclusion // ""')
+          if [ "$conclusion" != success ]; then
+            echo "::error::CI has not passed for $GITHUB_SHA; releases ship validated commits only."
+            exit 1
+          fi
+
+  build:
+    needs: validated
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
-          toolchain: nightly
-      - name: Restore Cargo cache
-        id: cargo-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: mash-${{ runner.os }}-cargo-sources-${{ hashFiles('Cargo.lock') }}
-      - name: Configure compiler cache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-        with:
-          version: v0.16.0
-      - name: Install mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3
-        with:
-          mold-version: 2.42.0
-          make-default: false
-      - name: Build semantic binary
-        run: cargo build --release --locked
+          toolchain: stable
+      - name: Build
+        env:
+          MASH_BUILD_REVISION: ${{ github.sha }}
+        run: cargo +stable build --release --locked --bin mash
+      - name: Smoke
+        run: .github/scripts/deploy-smoke target/release/mash "$GITHUB_SHA"
       - name: Package
-        run: tar -C target/release -czf mash-linux-x86_64.tar.gz mash
-      - run: sccache --show-stats
-      - name: Save Cargo cache
-        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: mash-${{ runner.os }}-cargo-sources-${{ hashFiles('Cargo.lock') }}
+        run: |
+          archive="mash-${{ matrix.target }}.tar.gz"
+          tar -C target/release -czf "$archive" mash
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: mash-linux-x86_64
-          path: mash-linux-x86_64.tar.gz
-          retention-days: 1
-      - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+          name: mash-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          files: mash-linux-x86_64.tar.gz
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum mash-*.tar.gz > SHA256SUMS
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+      - name: Update the Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; skipping the tap update."
+            exit 0
+          fi
+          python3 packaging/homebrew/render.py "${GITHUB_REF_NAME#v}" dist/SHA256SUMS > mash.rb
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/kojah/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp mash.rb tap/Formula/mash.rb
+          cd tap
+          git config user.name "mash release"
+          git config user.email "mash-release@users.noreply.github.com"
+          git add Formula/mash.rb
+          git commit -m "mash ${GITHUB_REF_NAME}"
+          git push

@@ -4,8 +4,10 @@
 
 mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
-Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`, `status`,
-`forget`, `export`, `import`, `models install`, `mcp`, and `serve`.
+Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`, `view`,
+`status`, `forget`, `export`, `import`, `models install`, `mcp`, and `serve`.
+`init` is first-run setup: it writes configuration for detected histories, registers
+Mash with agent CLIs through their own commands, and indexes; it never downloads models.
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
@@ -49,7 +51,8 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
   Clearly document that exports preserve sensitive canonical history.
 - CLI searches execute directly. MCP runs in one process; reconnect after upgrades.
 - Support opt-in debounced synchronization only with `index --watch` in a
-  separate process. MCP reads the refreshed index and permits explicit indexing;
+  separate process, plus the plugin's throttled one-shot SessionStart catch-up
+  (a detached incremental `mash index`, opt-out with `MASH_AUTO_INDEX=off`). MCP reads the refreshed index and permits explicit indexing;
   it does not own watchers. Do not install a daemon. Superseded long-lived
   runtimes refuse new writes; already admitted operations may finish.
 - Use concrete, enum-selected history adapters with typed input models. The

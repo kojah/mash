@@ -32,6 +32,22 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum Command {
+    /// Set up Mash: write a configuration for this machine's agent histories,
+    /// register the MCP server and plugin with Claude Code and Codex, and index.
+    Init {
+        /// Replace an existing configuration (kept as config.toml.previous).
+        #[arg(long)]
+        force: bool,
+        /// Leave agent settings unchanged.
+        #[arg(long)]
+        no_agents: bool,
+        /// Skip the first index.
+        #[arg(long)]
+        no_index: bool,
+        /// Plugin marketplace to add: a GitHub owner/repo, URL or local path.
+        #[arg(long, default_value = crate::core::MARKETPLACE)]
+        marketplace: String,
+    },
     /// List chat metadata without inference, ordered by activity, creation or title.
     ListChats {
         #[command(flatten)]
@@ -354,6 +370,17 @@ impl Cli {
     fn into_request(self) -> Result<Request, AppError> {
         let paths = self.paths();
         let operation = match self.command {
+            Command::Init {
+                force,
+                no_agents,
+                no_index,
+                marketplace,
+            } => Operation::Init(crate::core::InitRequest {
+                force,
+                agents: !no_agents,
+                index: !no_index,
+                marketplace,
+            }),
             Command::ListChats {
                 input,
                 local,
@@ -940,6 +967,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "init",
                 "list-chats",
                 "index",
                 "search",

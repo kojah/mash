@@ -9,7 +9,7 @@ use std::{
 };
 
 pub(super) fn missing(client: &mut Client, path: &Path) {
-    client.add(Component::Plugin, State::Missing, Some(path), "Mash history plugin registration or installed files are missing.", Some("Install and enable mash@mash-local from the Mash marketplace, then restart the agent. See README: Codex and Claude Code history plugin."));
+    client.add(Component::Plugin, State::Missing, Some(path), "Mash history plugin registration or installed files are missing.", Some("Run `mash init` (or install and enable mash@mash from the kojah/mash marketplace), then restart the agent."));
 }
 
 pub(super) fn cached_roots(client: &mut Client, path: &Path) -> Vec<PathBuf> {

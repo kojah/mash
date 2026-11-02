@@ -6,12 +6,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 mod document;
+pub(crate) mod init;
 mod loading;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use document::validate_identifier;
-pub(crate) use loading::load;
+pub(crate) use loading::{default_path, load};
 
 const DEFAULT_SINCE_DAYS: u32 = 90;
 const MAX_SINCE_DAYS: u32 = 36_500;

@@ -52,6 +52,8 @@ pub(crate) struct IndexRequest {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Operation {
+    /// Configure, register with agents and index for the first time.
+    Init(super::setup::InitRequest),
     Index(IndexRequest),
     IngestConnector {
         batch_file: PathBuf,
@@ -136,6 +138,7 @@ pub(crate) enum Operation {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub(crate) enum Response {
+    Init(super::setup::InitResponse),
     Index(IndexResponse),
     IngestConnector(crate::connectors::Receipt),
     ListChats(super::chats::Response),
@@ -198,7 +201,14 @@ pub(crate) struct BackfillSummary {
 
 impl Response {
     pub(crate) fn needs_retry(&self) -> bool {
-        matches!(self, Self::Index(result) if result.needs_retry())
+        match self {
+            Self::Index(result) => result.needs_retry(),
+            Self::Init(result) => result
+                .index
+                .as_ref()
+                .is_some_and(|index| index.needs_retry()),
+            _ => false,
+        }
     }
 }
 
