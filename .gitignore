@@ -25,3 +25,4 @@
 .dolt/
 *.db
 .beads-credential-key
+node_modules/
