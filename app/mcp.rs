@@ -147,6 +147,14 @@ struct QuerySilver {
     request: Option<crate::silver_query::Request>,
     /// One read-only SQL statement over local silver. Local diagnostics only.
     sql: Option<String>,
+    /// Query the configured shared index instead of local silver. Requires
+    /// request; SQL is never sent to another machine.
+    #[serde(default)]
+    shared: bool,
+    /// Shared node to read; defaults to this node and must belong to the
+    /// token's group. Requires shared.
+    #[serde(default)]
+    node: Option<String>,
     /// Maximum rows in sql mode; request carries its own limit.
     limit: Option<usize>,
 }
@@ -547,9 +555,27 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Query this machine's silver with a typed, declarative request (preferred): target messages/conversations/documents, filter by source, conversation, role, time or substring, group by source/role/conversation, order and limit. Identifiers come from an allowlist and values are bound, so a request cannot name a table, column or SQL fragment. The local-only sql escape hatch runs one read-only statement on a connection pinned to query_only with an authorizer that permits only reads, plus row and payload caps and a wall-clock budget. Provide exactly one of request or sql. Stable views for sql are conversations, messages and documents; the raw schema is not a stable API."
+        description = "Query silver with a typed, declarative request (preferred): target messages/conversations/documents, filter by source, conversation, role, time or substring, group by source/role/conversation, order and limit. Identifiers come from an allowlist and values are bound, so a request cannot name a table, column or SQL fragment. Set shared=true to read the configured shared index, optionally naming a node in this token's group; otherwise the request reads this machine. The local-only sql escape hatch runs one read-only statement with query_only, a read-only authorizer, row and payload caps and a wall-clock budget, and is never sent to shared silver. Provide exactly one of request or sql. Stable views for sql are conversations, messages and documents; the raw schema is not a stable API."
     )]
     async fn query_silver(&self, Parameters(input): Parameters<QuerySilver>) -> CallToolResult {
+        if input.shared {
+            let Some(request) = input.request else {
+                return CallToolResult::error(vec![ContentBlock::text(
+                    "shared queries require request; SQL is local only",
+                )]);
+            };
+            return self
+                .execute(Operation::QueryShared {
+                    request,
+                    node: input.node,
+                })
+                .await;
+        }
+        if input.node.is_some() {
+            return CallToolResult::error(vec![ContentBlock::text(
+                "node requires shared; local queries always read this machine",
+            )]);
+        }
         match (input.request, input.sql) {
             (Some(request), None) => {
                 self.execute(Operation::QueryStructured {

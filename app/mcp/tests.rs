@@ -422,6 +422,8 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         "typed requests are discoverable"
     );
     assert!(properties.get("sql").is_some());
+    assert!(properties.get("shared").is_some());
+    assert!(properties.get("node").is_some());
     let write_guard = write_gate.lock().await;
     let model_permit = model_work.acquire().await.expect("model permit");
     let status = tokio::time::timeout(
