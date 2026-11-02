@@ -162,10 +162,15 @@ fn percent_decode(text: &str) -> Option<String> {
 /// running) and restores an ordinary copy at the installed path for installers
 /// to replace. The runtime lease keeps watching the installed path, so an
 /// upgrade still stops new writes. A directory the user cannot write (an
-/// administrator install) keeps running in place. No-op elsewhere.
+/// administrator install) keeps running in place. Between the two renames the
+/// installed path is briefly absent, so `MASH_KEEP_EXECUTABLE=1` opts out
+/// where processes start constantly (test runners). No-op elsewhere.
 pub(crate) fn release_installed_executable() {
     #[cfg(windows)]
     {
+        if std::env::var_os("MASH_KEEP_EXECUTABLE").is_some_and(|value| value == "1") {
+            return;
+        }
         let Ok(installed) = std::env::current_exe() else {
             return;
         };

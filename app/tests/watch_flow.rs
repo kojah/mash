@@ -155,6 +155,8 @@ fn configure(root: &Path, sources: &Path) {
     .unwrap();
 }
 
+// Bounding the write burst needs SIGSTOP/SIGCONT, which Windows lacks.
+#[cfg(unix)]
 #[test]
 fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
     let dir = tempfile::tempdir().unwrap();

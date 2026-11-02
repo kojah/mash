@@ -60,7 +60,9 @@ the Windows `py` launcher; without one they do nothing. On Windows, long-lived
 commands (`mash mcp`, `index --watch`, `serve`) move their running executable
 aside (`.mash-running-<pid>.exe`) and leave a copy at the installed path, so
 installers can replace `mash.exe` while an agent is connected; reconnect
-afterwards. Windows identifies the installed executable by size and modification
+afterwards. Between those two renames the installed path is briefly absent;
+set `MASH_KEEP_EXECUTABLE=1` where Mash starts constantly, such as test
+runners. Windows identifies the installed executable by size and modification
 time, so a same-size replacement within one timestamp tick would not be noticed
 as an upgrade. WSL works like Linux.
 

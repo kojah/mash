@@ -1,3 +1,8 @@
+//! `mash init` against a redirected home. Unix only: Windows resolves Mash's
+//! directories through the Known Folders API, not HOME/XDG variables, and its
+//! `mash init` is covered by the Windows workflow on a real profile.
+#![cfg(unix)]
+
 use super::*;
 
 /// A home with Claude Code history and stand-in agent CLIs that log calls.

@@ -19,6 +19,9 @@ fn cli_rejects_retired_provider_arguments_before_opening_an_index() {
     }
 }
 
+// Redirects Mash's directories through HOME/XDG variables, which Windows
+// ignores: it resolves them through the Known Folders API.
+#[cfg(unix)]
 #[test]
 fn legacy_provider_root_environment_variables_are_ignored() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -80,6 +83,9 @@ fn legacy_provider_root_environment_variables_are_ignored() {
     );
 }
 
+// Redirects Mash's directories through HOME/XDG variables, which Windows
+// ignores: it resolves them through the Known Folders API.
+#[cfg(unix)]
 #[test]
 fn every_public_command_rejects_malformed_configuration_before_effects() {
     let command_arguments: &[&[&str]] = &[

@@ -1,7 +1,7 @@
 name: Windows
 
 # Proves the stable release binary builds, starts, sets up and searches on a
-# native Windows runner, and that the library tests pass there.
+# native Windows runner, and that the library and CLI tests pass there.
 on:
   push:
     branches: [main]
@@ -33,6 +33,18 @@ jobs:
           prefix-key: mash-windows-v1
       - name: Build
         run: cargo +stable build --release --locked --bin mash
+      # The test suites run first, on a clean profile: the steps after them
+      # write configuration and an index into the runner's real profile, which
+      # Mash's default paths would pick up. Test processes start Mash
+      # constantly, so they keep the executable in place (no relocation).
+      - name: Library tests
+        env:
+          MASH_KEEP_EXECUTABLE: "1"
+        run: cargo +stable test --locked --lib --no-fail-fast
+      - name: CLI contract tests
+        env:
+          MASH_KEEP_EXECUTABLE: "1"
+        run: cargo +stable test --locked --test cli_contract --no-fail-fast
       - name: Smoke
         run: .github/scripts/deploy-smoke target/release/mash.exe "$GITHUB_SHA"
       # The runner is disposable, so its real profile stands in for a user's:
@@ -48,8 +60,3 @@ jobs:
           grep -q '"chat_id":"s1"' search.json
       - name: MCP, upgrade while running, and hooks
         run: python .github/scripts/windows-smoke.py target/release/mash.exe
-      - name: Library tests
-        run: cargo +stable test --locked --lib --no-fail-fast
-      - name: CLI contract tests (informational while porting)
-        continue-on-error: true
-        run: cargo +stable test --locked --test cli_contract --no-fail-fast
