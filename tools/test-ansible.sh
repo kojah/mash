@@ -103,45 +103,45 @@ fi
 [[ $(jq -r .state "$scratch/deploy-unavailable-api/api.json") == skipped ]]
 rm -f "$scratch/unavailable-api"
 run_playbook deploy '["one","offline","api"]' deployment/playbooks/deploy.yml successful
-[[ $(rg -c '^build$' "$scratch/actions") == 1 ]]
+[[ $(grep -c '^build$' "$scratch/actions") == 1 ]]
 [[ $(jq -r .state "$scratch/deploy-successful/offline.json") == skipped ]]
 [[ $(jq -r .state "$scratch/deploy-successful/one.json") == succeeded ]]
-api_line=$(rg -n '^api-install$' "$scratch/actions" | cut -d: -f1)
-node_line=$(rg -n '^one-install$' "$scratch/actions" | cut -d: -f1)
+api_line=$(grep -n '^api-install$' "$scratch/actions" | cut -d: -f1)
+node_line=$(grep -n '^one-install$' "$scratch/actions" | cut -d: -f1)
 [[ "$api_line" -lt "$node_line" ]]
-[[ $(rg -c '^check$' "$scratch/actions") == 1 ]]
-if rg -q '^(sync|local-views)$' "$scratch/actions"; then echo 'Ordinary deployment ingested history.' >&2; exit 1; fi
-before=$(rg -c '^one-install$' "$scratch/actions")
-builds=$(rg -c '^build$' "$scratch/actions")
+[[ $(grep -c '^check$' "$scratch/actions") == 1 ]]
+if grep -qE '^(sync|local-views)$' "$scratch/actions"; then echo 'Ordinary deployment ingested history.' >&2; exit 1; fi
+before=$(grep -c '^one-install$' "$scratch/actions")
+builds=$(grep -c '^build$' "$scratch/actions")
 touch "$scratch/fail-api"
 if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed; then echo 'API failure was accepted.' >&2; exit 1; fi
-[[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
-[[ $(rg -c '^build$' "$scratch/actions") == "$builds" ]]
+[[ $(grep -c '^one-install$' "$scratch/actions") == "$before" ]]
+[[ $(grep -c '^build$' "$scratch/actions") == "$builds" ]]
 rm "$scratch/fail-api"
 touch "$scratch/fail-after-api-install"
 if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed-after-install; then
     echo 'Post-install API readiness failure was accepted.' >&2; exit 1
 fi
-[[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
+[[ $(grep -c '^one-install$' "$scratch/actions") == "$before" ]]
 rm -f "$scratch/fail-after-api-install" "$scratch/fail-api"
-binary_installs=$(rg -c '^one-binary-install$' "$scratch/actions")
+binary_installs=$(grep -c '^one-binary-install$' "$scratch/actions")
 touch "$scratch/fail-upgrade"
 if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed-upgrade; then
     echo 'Failed upgrade was accepted.' >&2; exit 1
 fi
-[[ $(rg -c '^one-binary-install$' "$scratch/actions") == "$binary_installs" ]]
-[[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
-rg -q 'Installation step 1 failed for one' "$scratch/deploy-failed-upgrade/runner.log"
+[[ $(grep -c '^one-binary-install$' "$scratch/actions") == "$binary_installs" ]]
+[[ $(grep -c '^one-install$' "$scratch/actions") == "$before" ]]
+grep -qF 'Installation step 1 failed for one' "$scratch/deploy-failed-upgrade/runner.log"
 rm "$scratch/fail-upgrade"
 touch "$scratch/upgrade"
 run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml upgraded
-[[ $(rg -c '^sync$' "$scratch/actions") == 1 ]]
-if rg -q '^local-views$' "$scratch/actions"; then echo 'Upgrade replayed views before refreshing interpretation.' >&2; exit 1; fi
+[[ $(grep -c '^sync$' "$scratch/actions") == 1 ]]
+if grep -q '^local-views$' "$scratch/actions"; then echo 'Upgrade replayed views before refreshing interpretation.' >&2; exit 1; fi
 rm "$scratch/upgrade"
 run_playbook sync '["one"]' deployment/playbooks/refresh.yml explicit
-[[ $(rg -c '^sync$' "$scratch/actions") == 2 ]]
+[[ $(grep -c '^sync$' "$scratch/actions") == 2 ]]
 run_playbook local-views '["one"]' deployment/playbooks/refresh.yml offline
-[[ $(rg -c '^local-views$' "$scratch/actions") == 1 ]]
+[[ $(grep -c '^local-views$' "$scratch/actions") == 1 ]]
 if run_playbook sync '["api"]' deployment/playbooks/refresh.yml invalid; then echo 'API refresh was accepted.' >&2; exit 1; fi
 MASH_DEPLOY_INVENTORY="$scratch/inventory.yml" MASH_DEPLOY_LOGS="$scratch/launcher" \
     bash "$repository/tools/fleet.sh" check api one offline > "$scratch/summary.jsonl"

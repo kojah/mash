@@ -55,41 +55,41 @@ if run_build >/dev/null 2>&1; then echo 'Failed Clippy was accepted.' >&2; exit 
 rm -f "$TEST_BUILD_CLIPPY_FAIL"
 : > "$TEST_BUILD_CALLS"
 run_build --validate-only >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
 grep -Fxq 'test-clif --locked --profile ci --test-threads 4' "$TEST_BUILD_CALLS"
 ! grep -q '^build --release' "$TEST_BUILD_CALLS"
 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
-[[ $(rg -c '^build --release' "$TEST_BUILD_CALLS") == 2 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
+[[ $(grep -c '^build --release' "$TEST_BUILD_CALLS") == 2 ]]
 fixture_commit
 run_build >/dev/null
 MASH_BUILD_REVISION=1111111111111111111111111111111111111111 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
-[[ $(rg -c '^build --release' "$TEST_BUILD_CALLS") == 4 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
+[[ $(grep -c '^build --release' "$TEST_BUILD_CALLS") == 4 ]]
 run_build --validate-only >/dev/null
-[[ $(rg -c '^build --release' "$TEST_BUILD_CALLS") == 4 ]]
+[[ $(grep -c '^build --release' "$TEST_BUILD_CALLS") == 4 ]]
 printf changed >> "$scratch/repository/app/source.rs"
 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 2 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 2 ]]
 touch "$TEST_BUILD_FAIL"
 printf changed >> "$scratch/repository/app/source.rs"
 if run_build >/dev/null 2>&1; then echo 'Failed gates were accepted.' >&2; exit 1; fi
 rm "$TEST_BUILD_FAIL"
 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 4 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 4 ]]
 touch "$TEST_BUILD_MUTATE"
 printf changed >> "$scratch/repository/app/source.rs"
 if run_build >/dev/null 2>&1; then echo 'Changing source was certified.' >&2; exit 1; fi
 rm "$TEST_BUILD_MUTATE"
 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 6 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 6 ]]
 TEST_BUILD_COMPILER_VERSION=rustc-new run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 7 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 7 ]]
 RUSTFLAGS=test-flags run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 8 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 8 ]]
 rm "$scratch/repository/app/source.rs"
 run_build >/dev/null
-[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 9 ]]
+[[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 9 ]]
 echo 'Development build gate reuse and invalidation checks passed.'
