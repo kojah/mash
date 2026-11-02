@@ -1,12 +1,28 @@
 # The source model
 
 This document is the design reference for how Mash represents *everything it
-ingests*: native agent histories and external connectors. It records the model
-that exists today, the decisions behind it, and the gaps that are still open.
+ingests*: native agent histories and external connectors. It states both what
+exists today and what the target model is; those are marked explicitly, because
+several parts of the target are not implemented yet.
 
-The goal is one vocabulary — **source, scope, owner, object role, revision** —
-so adding a feed does not add a storage branch, a search path or a special case
-in retrieval.
+The goal is one vocabulary — **source, source key, claim, publisher instance,
+capture scope, object role** — so adding a feed does not add a storage branch, a
+search path or a special case in retrieval.
+
+## 0. Implementation status
+
+| Element | Current | Target |
+|---|---|---|
+| Unified object storage (`objects`, roles, schema validation) | **implemented** | — |
+| Read-time copy collapse (native and same-source connectors) | **implemented**, window-bounded | — |
+| Duplicate detection (`/v1/fingerprints`, status) | **implemented** (native, same conversation id) | add divergence |
+| Progressive baseline publication | **implemented** | automatic scheduling beyond recency |
+| Native publication transport (`/v1/sync`) | **implemented** | — |
+| Connector publication transport | both `/v1/sync` `BeginConnectorBatch` **and** legacy `POST /v1/connector-batches` are mounted | `/v1/sync` only, after the SDK migrates |
+| Connector source ownership | **not implemented** | claim in `ingest_connector`, transferable |
+| Principal-scoped connector ids | **not implemented** (Slack is `slack:<team>`) | `provider:tenant:principal` |
+| Connector omission deletion | **not implemented** (`CompleteSnapshot` records a timestamp only) | capture-scope validated deletion |
+| Best-effort device dedup skip | **not implemented** | optional |
 
 ## 1. What a source is
 
@@ -29,7 +45,9 @@ provider : tenant : principal
 | principal | the local OS user | token identity `U0ALICE` | **what data is visible** |
 
 A **node** is a machine plus its silver database, publishing into a group. A
-node is a writer, not a source.
+node is a writer, not a source. "Source" is also the name of the wire type
+`crate::source::Source::{Provider, Connector}`; see the glossary for the
+distinction.
 
 ## 2. Two scopes
 
@@ -39,37 +57,42 @@ The single important asymmetry:
 |---|---|---|
 | Data lives | a filesystem on one machine | an external system behind a credential |
 | Identity includes the node | **yes** | no |
-| Owner | implicit (that node) | claimed |
+| Owner | implicit (that node) | claimed (target) |
 | Same source on two machines | two independent sources | a collision |
 | Duplicate data from copying | possible, benign | possible, wasteful and divergent |
 
 Device data belongs to a machine because that is where it lives. Two machines
-with the same history are not a conflict; they simply each own their copy.
-Account data belongs to a credential because visibility, rate limits and
-cursors are properties of that credential, not of a laptop. Running the same
-credential in two places produces two pollers over one dataset with two
-cursors that can drift.
+with the same history are not a conflict; they each own their copy. Account data
+belongs to a credential because visibility, rate limits and cursors are
+properties of that credential, not of a laptop. Running the same credential in
+two places produces two pollers over one dataset with two cursors that can
+drift.
 
 **Decision D1.** Device-scoped identity includes the node. Account-scoped
-identity does not.
+identity does not (target; native already behaves this way, connectors do not
+yet).
 
 ## 3. Ownership
 
-Every account-scoped source has exactly one owner node in a group:
+Target: every account-scoped source has exactly one owner node in a group:
 
 ```
-(group_id, source_id) -> owner_node
+(group_id, source_key) -> owner_node
 ```
 
-- Claimed atomically at the first `BeginConnectorBatch` for that source.
-  `first writer wins`; the loser is rejected with `source_owned_elsewhere`
-  before any bytes or silver writes, and the connector reports it and stops.
+- The claim is enforced inside `ingest_connector`'s transaction, so it covers
+  both transports. `BeginConnectorBatch` is an advisory fast-fail, not the
+  enforcement point: the legacy HTTP route never sends it.
+- First writer wins; the loser is rejected with `source_owned_elsewhere` before
+  any silver writes, and the connector reports it and stops.
 - Device-scoped sources need no claim: the node is the owner by construction.
-- Ownership transfers explicitly (`transfer` command) so replacing a laptop
-  does not orphan a source.
+  A **restored or copied** silver database is a new device source, not a move.
+- Ownership transfers explicitly (`transfer` command), including the connector
+  revision/schema/activity state, so replacing a laptop does not orphan a source
+  and does not reset `expected_revision`.
 
-**Decision D2.** One owner per account source; claims are first-writer-wins and
-transferable. Never inferred from content or channel overlap.
+**Decision D2.** One owner per account source; claims are atomic, transactional
+and transferable. Never inferred from content or channel overlap.
 
 ## 4. The object model
 
@@ -95,8 +118,8 @@ Edges and ordering:
 **Decision D3.** Structure variation is expressed as a per-source *schema*, not
 as storage branches. Connectors declare `Schema { kinds: [{kind, role, root,
 parents}] }`; Mash validates at ingest (declared kinds, role/parent agreement,
-acyclic parent graph). Native providers are a built-in schema with the same
-roles.
+acyclic parent graph). Native providers are conceptually a built-in schema with
+the same roles; native ingestion does not run that validator today.
 
 ## 5. Ingestion runtimes
 
@@ -107,9 +130,9 @@ There are two runtimes behind one model:
 | Runs | in-process parser | external program |
 | Reads | local files | a remote API |
 | Emits | `ConversationRecord`/`MessageRecord` events | `connectors::Batch` JSON |
-| Delivered by | the node over `/v1/sync` | the owning node over `/v1/sync` (`BeginConnectorBatch`) |
-| Revision | node publication revision | source revision (`expected_revision`) |
-| Deletion | replace snapshot; absence = deletion for that node | explicit tombstones / complete snapshot |
+| Delivered by | the node over `/v1/sync` | the writing node: `/v1/sync` `BeginConnectorBatch`, or the still-mounted `POST /v1/connector-batches` |
+| Revision | node publication revision | recorded per **(node, source)** destination today |
+| Deletion | replace snapshot; absence = deletion for that node | explicit `DeleteObject` only |
 
 Both end up in the same silver tables (`objects` with `origin` and `source`),
 the same view builder, and the same retrieval.
@@ -121,13 +144,19 @@ columns or query paths.
 
 - A **node publication revision** orders a node's own history. It is what
   `/v1/sync` commits and what freshness reports.
-- A **source revision** orders a connector's dataset (`expected_revision`,
-  `source_revision` in receipts). It is independent of any node.
+- A **connector revision** (`expected_revision` / `source_revision`) is stored
+  in `connector_sources` inside the receiving node's silver, and `Receipt` says
+  "at this ingestion destination". It is therefore scoped to `(node, source)`
+  today, not to the account source. Moving a source to another node must
+  migrate this state; otherwise the connector's next batch conflicts.
 - Delivery is typed, compressed, resumable and acknowledged:
-  `SilverCommitted` means silver and the receipt are durable; `Published` means
-  views are certified.
+  - `SilverCommitted` — silver and the receipt are durable.
+  - `Published` — views are certified **for native publications**. For
+    connectors the frame currently carries `views_ready`, which is false because
+    connector receipts do not certify views synchronously.
 - Progressive baselines deliver a first history in batches that commit
-  independently, with a manifest that proves coverage.
+  independently, with a manifest that proves coverage. Baseline batches never
+  delete by absence.
 
 ## 7. Deletion
 
@@ -135,43 +164,56 @@ Only explicit evidence deletes:
 
 - A replace snapshot from a node means "this is everything that node has"; chats
   absent from it are deleted **for that node**.
-- A connector batch deletes through explicit tombstones or a complete snapshot.
-  Absence from a partial or polling window never deletes: deleted Slack
-  messages stay until a tombstone arrives.
+- A connector batch deletes only through explicit `Change::DeleteObject`.
+  `Trigger::CompleteSnapshot` records a timestamp, not a deletion set; nothing
+  stores the capture scope that would define "complete". Clients must emit
+  deletes for objects that vanish from their capture scope.
 - A device-scoped baseline batch never deletes by absence.
+- `forget` is local to the node that issues it. It does not remove identical
+  copies on other nodes; a copied/restored device source keeps resurfacing until
+  forgotten there too.
 
 **Decision D5.** Absence means deletion only inside a complete replacement from
-the writer that owns the scope.
+the writer that owns the scope. Connector omission deletion is a target, not a
+current behaviour.
 
 ## 8. Duplication
 
 Duplication happens for two reasons: device histories copied across machines,
 and account sources configured twice.
 
-**Read-time collapse (implemented).** Search keys evidence by
-`(source, conversation_id, (role, author_kind), blake3(normalized text))` and
-merges copies into `hit.copies`; chat listing dedups by provider/chat id. Users
-see one result. Documented in `app/search_results.rs::deduplicate`.
+**Read-time collapse (implemented, conditional).** Search keys evidence by
+`(source, conversation_id, (role, author_kind), blake3(ws-normalized text))`
+(plus the message id for message results) and merges copies into `hit.copies`.
+Chat listing dedups by provider/chat id. Collapse requires:
 
-Consequences worth stating:
+- the same `Source` value — for native that is the provider, shared across
+  nodes, so device copies collapse; for connectors it is the `source_id`, so two
+  principals over one channel do **not** collapse;
+- the same conversation/message ids — restored or re-imported histories with new
+  ids do not match;
+- the same normalized text — divergent copies stay separate;
+- both copies reaching the same bounded retrieval window; dedup runs inside
+  fusion/diversification, not over the whole corpus.
 
-- Device copies collapse because `source` is the provider, shared across nodes.
-- Connector copies collapse only within one `source_id`; two principals reading
-  the same channel are two sources and show twice.
+**Duplicate detection (implemented).** `GET /v1/fingerprints` returns a
+`FingerprintReport`: duplicated conversations (same conversation id and
+thread fingerprint on more than one node), redundant copies, redundant messages,
+estimated duplicated vector bytes, and per-node summaries. It cannot see copies
+with different ids and does not report divergence (same id, different
+fingerprint) separately.
 
 **Write-time avoidance.**
 
-- Account sources: prevented by ownership (D2), not by dedup.
+- Account sources: the target is ownership (D2), not dedup.
 - Device sources: **not deduped in silver** (D6). Two machines may legitimately
   hold different histories, and per-node silver must remain exportable. An
-  optional best-effort skip (comparing per-conversation fingerprints across
-  nodes) can avoid most of the cost, at the price of incomplete node silver.
-- Detection is cheap and useful: report duplicated and divergent conversation
-  counts per group.
+  optional best-effort skip could avoid most of the cost, at the price of
+  incomplete node silver; it is not implemented.
 
 **Decision D6.** No write-time dedup for device-scoped sources. Read-time
-collapse is the contract; ownership is the contract for account sources;
-detection is a status feature.
+collapse (under the conditions above) is the contract; ownership is the target
+contract for account sources; detection is a status feature.
 
 ## 9. Retrieval contract
 
@@ -189,8 +231,14 @@ strings beyond the user-visible filter values.
 
 ## 10. Status
 
-`mash status --shared` reports per-node freshness. The unified surface adds a
-source list:
+Current:
+
+- `mash status --shared` reports per-node freshness (revision, counts,
+  readiness) and the most recent baseline coverage for the node
+  (`baseline: {id, state, covered, total}`).
+- Duplicate history is reported through the fingerprint report.
+
+Target: a source list with owner and revision, replacing the per-node-only view:
 
 ```
 sources:
@@ -198,32 +246,41 @@ sources:
   slack:T0123:U0ALICE      account  owner=laptop   revision=981  complete
 ```
 
-and, for device duplication, duplicated/divergent conversation counts.
-
 ## 11. Open gaps
 
-1. **Authorship is split.** Native entries use `role`; connectors use `author`.
+1. **Connector transport is not cut over.** `POST /v1/connector-batches` is
+   still mounted in the release router, and the Python SDK still calls it.
+2. **No ownership.** Nothing prevents two nodes ingesting the same account
+   source; revisions are per `(node, source)`.
+3. **Principal-scoped connector ids are missing.** Slack uses
+   `slack:<team>`; two users in one workspace collide.
+4. **Connector omission deletion is not implemented** and capture scope is not
+   stored.
+5. **Connector `Published` does not certify views** (`views_ready` is false).
+6. **Restore/copy semantics are undefined.** A copied silver DB is a new device
+   source; `forget` does not fan out.
+7. **Authorship is split.** Native entries use `role`; connectors use `author`.
    Normalize on `Author { id, kind }` and map native roles into it.
-2. **Ordering is split.** Native uses `ordinal`; connectors have parent/reply
+8. **Ordering is split.** Native uses `ordinal`; connectors have parent/reply
    edges but no generic position. Add `sequence` on entries/segments.
-3. **Overlapping principals.** Two Slack users in the same channel produce two
-   sources and two copies that do not collapse. Either accept (per-principal
-   corpora) or extend the dedup key for connector records.
-4. **Source catalog** does not exist yet; ownership, revision and capture scope
-   are not visible in one place.
-5. **Native schema declaration.** Native providers do not declare a schema
-   explicitly; doing so would let them share the connector validator.
-6. **Principal-scoped Slack ids.** The blueprint currently uses
-   `slack:<team>`; it should use `slack:<team>:<principal>`.
+9. **Overlapping principals.** Two Slack users in the same channel produce two
+   sources and two copies that do not collapse.
+10. **Terminology overload.** See the glossary; the document now uses distinct
+    names, but the code does not.
 
 ## 12. Phased plan
 
-1. `SourceIdentity` type used by both paths (no behaviour change).
-2. Source catalog + ownership claims at `BeginConnectorBatch`; `transfer`.
-3. Status: sources, ownership, revisions.
-4. Principal-scoped connector ids (Slack first).
-5. Author and ordering normalization.
-6. Optional device dedup detection, then best-effort skip.
+1. **Principal-scoped connector ids** (Slack first) and a migration note.
+2. **Ownership**: a group-level claim table enforced in `ingest_connector`,
+   covering both transports; `transfer` migrates revision/schema/activity.
+3. **Transport cutover**: port `sdk/python` to `BeginConnectorBatch`, then
+   remove the HTTP connector route.
+4. **Connector views certification** in the `Published` frame, or a separate
+   frame that reports receipt readiness.
+5. **Status**: unified source list with owner, revision and state.
+6. **Author and ordering normalization.**
+7. **Optional device dedup detection refinements** (divergence), then
+   best-effort skip.
 
 Each phase ships alone and preserves D1–D7.
 
@@ -234,5 +291,25 @@ Each phase ships alone and preserves D1–D7.
 3. One owner per account source; claims are atomic and transferable.
 4. Structure is declared, never special-cased in storage or retrieval.
 5. Absence deletes only in a complete replacement from the owning scope.
-6. Read-time collapse is guaranteed; write-time dedup is not.
+6. Read-time collapse holds only for copies with the same source key,
+   conversation/message ids, speaker and normalized text that reach the same
+   retrieval window.
 7. Ranking never branches on origin or kind.
+8. A connector revision is scoped to its destination node until ownership and
+   transfer migrate it.
+9. `Published` certifies views for native publications; connector publication
+   reports receipt readiness instead.
+
+## 14. Glossary
+
+| Term | Meaning | Not to be confused with |
+|---|---|---|
+| **source** | a dataset: native provider on a machine, or connector export | `crate::source::Source`, the wire enum |
+| **source key** | `provider : tenant : principal` | the connector `source_id`, which is one encoding of it |
+| **scope** | device vs account (ownership semantics) | search filters; connector capture allowlists |
+| **node** | a machine + its silver DB, the writer | a source |
+| **owner** | the node allowed to write an account source | `owner` in publication snapshots (DB instance check) |
+| **claim** | the `(group, source key) -> owner` record | a lease or a lock |
+| **publisher instance** | the local DB instance that publishes | a node identity |
+| **capture scope** | what a source deliberately covers (roots, channels) | query filters |
+| **dedup key** | `(source, conversation, speaker, text hash)` | the fingerprint report key `(conversation, thread fingerprint)` |
