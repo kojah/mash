@@ -1,8 +1,10 @@
 name: Release
 
 # Tagging vX.Y.Z publishes prebuilt binaries for the commit CI validated, then
-# updates the Homebrew tap when HOMEBREW_TAP_TOKEN is configured. Releases
-# build on stable Rust so they need no nightly features.
+# updates each package channel whose credential is configured: the Homebrew
+# tap (HOMEBREW_TAP_TOKEN), the Scoop bucket in this repository (always),
+# winget (WINGET_TOKEN) and Chocolatey (CHOCOLATEY_API_KEY). Releases build on
+# stable Rust so they need no nightly features.
 on:
   push:
     tags: ["v*"]
@@ -45,12 +47,21 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
+            archive: tar.gz
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
+            archive: tar.gz
           - target: aarch64-apple-darwin
             runner: macos-14
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive: zip
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
@@ -61,11 +72,18 @@ jobs:
           MASH_BUILD_REVISION: ${{ github.sha }}
         run: cargo +stable build --release --locked --bin mash
       - name: Smoke
-        run: .github/scripts/deploy-smoke target/release/mash "$GITHUB_SHA"
+        run: |
+          binary=target/release/mash
+          [ -f "$binary.exe" ] && binary="$binary.exe"
+          .github/scripts/deploy-smoke "$binary" "$GITHUB_SHA"
       - name: Package
         run: |
-          archive="mash-${{ matrix.target }}.tar.gz"
-          tar -C target/release -czf "$archive" mash
+          archive="mash-${{ matrix.target }}.${{ matrix.archive }}"
+          if [ "${{ matrix.archive }}" = zip ]; then
+            (cd target/release && 7z a -tzip "$GITHUB_WORKSPACE/$archive" mash.exe)
+          else
+            tar -C target/release -czf "$archive" mash
+          fi
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -80,19 +98,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          ref: main
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: dist
           merge-multiple: true
       - name: Checksums
         working-directory: dist
-        run: sha256sum mash-*.tar.gz > SHA256SUMS
+        run: sha256sum mash-* > SHA256SUMS
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+          retention-days: 7
+      - name: Update the Scoop bucket
+        run: |
+          python3 packaging/render.py "$GITHUB_REF_NAME" dist/SHA256SUMS \
+            packaging/scoop/mash.json.in bucket/mash.json
+          git config user.name "mash release"
+          git config user.email "mash-release@users.noreply.github.com"
+          git add bucket/mash.json
+          git commit -m "Scoop: mash ${GITHUB_REF_NAME}"
+          git push origin HEAD:main
       - name: Update the Homebrew tap
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -101,7 +135,8 @@ jobs:
             echo "HOMEBREW_TAP_TOKEN is not set; skipping the tap update."
             exit 0
           fi
-          python3 packaging/homebrew/render.py "${GITHUB_REF_NAME#v}" dist/SHA256SUMS > mash.rb
+          python3 packaging/render.py "$GITHUB_REF_NAME" dist/SHA256SUMS \
+            packaging/homebrew/mash.rb.in mash.rb
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/kojah/homebrew-tap.git" tap
           mkdir -p tap/Formula
           cp mash.rb tap/Formula/mash.rb
@@ -111,3 +146,39 @@ jobs:
           git add Formula/mash.rb
           git commit -m "mash ${GITHUB_REF_NAME}"
           git push
+
+  windows-packages:
+    needs: publish
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: SHA256SUMS
+          path: dist
+      - name: Render manifests
+        run: |
+          $version = "$env:GITHUB_REF_NAME".TrimStart('v')
+          foreach ($name in 'kojah.mash.yaml', 'kojah.mash.installer.yaml', 'kojah.mash.locale.en-US.yaml') {
+            python packaging/render.py $version dist/SHA256SUMS "packaging/winget/$name.in" "winget/$name"
+          }
+          python packaging/render.py $version dist/SHA256SUMS packaging/chocolatey/mash.nuspec.in chocolatey/mash.nuspec
+          python packaging/render.py $version dist/SHA256SUMS packaging/chocolatey/tools/chocolateyinstall.ps1.in chocolatey/tools/chocolateyinstall.ps1
+      - name: Submit to winget
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { "WINGET_TOKEN is not set; skipping winget."; exit 0 }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe submit --token $env:WINGET_TOKEN winget
+      - name: Push to Chocolatey
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          if (-not $env:CHOCOLATEY_API_KEY) { "CHOCOLATEY_API_KEY is not set; skipping Chocolatey."; exit 0 }
+          choco pack chocolatey/mash.nuspec --outputdirectory chocolatey
+          $package = Get-ChildItem chocolatey/mash.*.nupkg | Select-Object -First 1
+          choco push $package.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY

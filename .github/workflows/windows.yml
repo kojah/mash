@@ -1,0 +1,49 @@
+name: Windows
+
+# Windows is a preview platform: this proves the stable release binary builds,
+# starts and passes the deployment smoke on a native runner. The library tests
+# run for information only until their Unix assumptions are removed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: stable
+      - name: Build
+        run: cargo +stable build --release --locked --bin mash
+      - name: Smoke
+        run: .github/scripts/deploy-smoke target/release/mash.exe "$GITHUB_SHA"
+      # The runner is disposable, so its real profile stands in for a user's:
+      # Windows resolves profile folders through the shell, not environment.
+      - name: Init and search
+        run: |
+          projects="$(cygpath -u "$USERPROFILE")/.claude/projects/p"
+          mkdir -p "$projects"
+          printf '%s\n' '{"type":"user","sessionId":"s1","uuid":"m1","cwd":"C:/work","timestamp":"2026-10-28T09:00:00Z","message":{"role":"user","content":"windowsneedle schema"}}' \
+            > "$projects/s1.jsonl"
+          target/release/mash.exe init --no-agents | tee init.json
+          target/release/mash.exe search windowsneedle --local | tee search.json
+          grep -q '"chat_id":"s1"' search.json
+      - name: Library tests (informational)
+        continue-on-error: true
+        run: cargo +stable test --locked --lib

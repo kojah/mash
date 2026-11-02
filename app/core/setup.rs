@@ -154,18 +154,19 @@ pub(super) fn first_index() -> Operation {
 /// failure is reported per step; it never stops the others.
 async fn register(command: &[OsString], marketplace: &str) -> Vec<AgentOutcome> {
     let mut outcomes = Vec::new();
-    for (agent, program, install) in [
+    for (agent, name, install) in [
         ("claude-code", "claude", "install"),
         ("codex", "codex", "add"),
     ] {
-        if which(program).is_none() {
+        let Some(program) = which(name) else {
             continue;
-        }
+        };
+        let program = program.as_path();
         let mcp = if run(program, &["mcp", "get", "mash"]).await.is_ok() {
             Step::AlreadyPresent
         } else {
             let mut arguments: Vec<OsString> = ["mcp", "add"].map(OsString::from).to_vec();
-            if program == "claude" {
+            if name == "claude" {
                 arguments.extend(["--scope", "user"].map(OsString::from));
             }
             arguments.extend(["mash", "--"].map(OsString::from));
@@ -184,11 +185,11 @@ async fn register(command: &[OsString], marketplace: &str) -> Vec<AgentOutcome> 
     outcomes
 }
 
-async fn step(program: &str, arguments: &[OsString]) -> Step {
+async fn step(program: &Path, arguments: &[OsString]) -> Step {
     match run(program, arguments).await {
         Ok(()) => Step::Done,
         Err(message) => Step::Failed {
-            command: std::iter::once(program.to_owned())
+            command: std::iter::once(program.display().to_string())
                 .chain(arguments.iter().map(|a| a.to_string_lossy().into_owned()))
                 .collect::<Vec<_>>()
                 .join(" "),
@@ -197,7 +198,7 @@ async fn step(program: &str, arguments: &[OsString]) -> Step {
     }
 }
 
-async fn run(program: &str, arguments: &[impl AsRef<std::ffi::OsStr>]) -> Result<(), String> {
+async fn run(program: &Path, arguments: &[impl AsRef<std::ffi::OsStr>]) -> Result<(), String> {
     let output = tokio::process::Command::new(program)
         .args(arguments)
         .stdin(std::process::Stdio::null())
@@ -222,9 +223,25 @@ async fn run(program: &str, arguments: &[impl AsRef<std::ffi::OsStr>]) -> Result
     }
 }
 
+/// The executable `program` resolves to on PATH; on Windows also npm's
+/// `.cmd` shims and the other `PATHEXT` extensions.
 fn which(program: &str) -> Option<PathBuf> {
+    let extensions: Vec<String> = if cfg!(windows) {
+        std::env::var("PATHEXT")
+            .unwrap_or_else(|_| ".EXE;.CMD;.BAT".to_owned())
+            .split(';')
+            .filter(|extension| !extension.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect()
+    } else {
+        vec![String::new()]
+    };
     std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|directory| directory.join(program))
+        .flat_map(|directory| {
+            extensions
+                .iter()
+                .map(move |extension| directory.join(format!("{program}{extension}")))
+        })
         .find(|path| is_executable(path))
 }
 

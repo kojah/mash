@@ -17,7 +17,7 @@ shared views (search documents and vectors) in Qdrant. Local SQLite is required 
 
 ## Quick start
 
-Install a prebuilt binary (macOS Apple Silicon, Linux x86_64 or arm64):
+Install a prebuilt binary (macOS Apple Silicon, Linux x86_64 or arm64, Windows x64):
 
 ```bash
 brew install kojah/tap/mash
@@ -28,6 +28,18 @@ or
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
+
+On Windows (preview: the release binary builds and passes its smoke and setup
+checks in CI, but the full test suite does not run there yet), use one of:
+
+```powershell
+winget install kojah.mash
+scoop bucket add kojah https://github.com/kojah/mash; scoop install kojah/mash
+choco install mash
+```
+
+The history plugin's hooks run `python3`, which Windows may not provide; WSL
+works like Linux.
 
 Then set it up:
 

@@ -28,11 +28,14 @@ pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
     let config_home = variable("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"));
     let data_home = variable("XDG_DATA_HOME").unwrap_or_else(|| home.join(".local/share"));
     // VS Code-family editors keep per-user state here.
+    let roaming = variable("APPDATA").unwrap_or_else(|| home.join("AppData/Roaming"));
     let editor = |application: &str| {
         if cfg!(target_os = "macos") {
             home.join("Library/Application Support")
                 .join(application)
                 .join("User")
+        } else if cfg!(windows) {
+            roaming.join(application).join("User")
         } else {
             config_home.join(application).join("User")
         }
