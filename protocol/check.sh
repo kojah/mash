@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication BackfillOrdering Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill)
+models=(Publication BackfillOrdering Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|BackfillOrdering|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill) ;;
+            Publication|BackfillOrdering|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -141,4 +141,5 @@ if $self_test; then
     check ProgressiveBackfill ProgressiveBackfillResurrection NoResurrection
     check ProgressiveBackfill ProgressiveBackfillEarlyFinish CompleteHasCoverage
     check ProgressiveBackfill ProgressiveBackfillSparseAck JournalRetainsGaps
+    check PublishFairness PublishFairnessBug NoOvertake
 fi
