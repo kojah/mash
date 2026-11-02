@@ -38,6 +38,7 @@ pub(crate) use publication::Inference;
 pub(crate) use publication::write_event;
 pub(crate) use publication::{publish, status};
 pub(crate) use retrieval::{SearchOutcome, require_dense, search};
+pub(crate) use sync::client::deliver_connector;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]

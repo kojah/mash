@@ -2370,3 +2370,37 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
     assert!(freshness.nodes[0].views_current);
     service.cleanup().await;
 }
+
+/// The adapter path: encode a batch, deliver it over /v1/sync, get the receipt.
+#[tokio::test]
+async fn client_delivers_a_connector_batch_over_the_socket() {
+    let service = Service::canonical().await;
+    let batch = json!({
+        "schema_version": 2,
+        "source_id": "github:installation",
+        "batch_id": "client-first",
+        "expected_revision": 0,
+        "changes": [
+            {"op":"upsert-object","id":"note","role":"document","kind":"obsidian:note","content":"Client note"}
+        ]
+    });
+    let bytes = serde_json::to_vec(&batch).unwrap();
+    let config = crate::config::SharedConfig {
+        group_id: service.first.group_id.clone(),
+        node_id: service.first.node_id.clone(),
+        api_url: service.url.clone(),
+        token_env: "unused-in-test".into(),
+        publication_redaction: crate::redaction::Policy::new(false),
+    };
+    let receipt = crate::shared::sync::client::deliver_connector_with_token(
+        &config,
+        FIRST.to_owned(),
+        &bytes,
+    )
+    .await
+    .unwrap();
+    assert_eq!(receipt.source_id.as_str(), "github:installation");
+    assert_eq!(receipt.batch_id.as_str(), "client-first");
+    assert_eq!(receipt.source_revision, 1);
+    assert!(receipt.silver_revision >= 1);
+}

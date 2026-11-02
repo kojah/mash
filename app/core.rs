@@ -40,7 +40,9 @@ async fn execute_admitted(
     use tracing::Instrument;
     let operation = match &request.operation {
         Operation::Index(_) => "index",
-        Operation::IngestConnector { .. } => "ingest_connector",
+        Operation::IngestConnector { .. } | Operation::DeliverConnector { .. } => {
+            "ingest_connector"
+        }
         Operation::ListChats { .. } => "list_chats",
         Operation::Search { .. } => "search",
         Operation::View { .. } => "view",
@@ -210,6 +212,14 @@ async fn dispatch(
         Operation::IngestConnector { batch_file } => connector_ingestion::run(database, batch_file)
             .await
             .map(Response::IngestConnector),
+        Operation::DeliverConnector { batch_file } => {
+            let shared = configuration.shared.as_ref().ok_or_else(|| {
+                AppError::configuration("configure [shared] to deliver connector batches")
+            })?;
+            let bytes = std::fs::read(&batch_file).map_err(AppError::io)?;
+            let receipt = crate::shared::deliver_connector(shared, &bytes).await?;
+            Ok(Response::IngestConnector(receipt))
+        }
         Operation::ExportSilver { directory } => {
             let database = database.to_path_buf();
             let source_node = configuration

@@ -56,6 +56,10 @@ pub(crate) enum Operation {
     IngestConnector {
         batch_file: PathBuf,
     },
+    /// Deliver a connector batch to the configured shared destination.
+    DeliverConnector {
+        batch_file: PathBuf,
+    },
     ListChats {
         input: Box<crate::chat_catalog::Request>,
         local: bool,
