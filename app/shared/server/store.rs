@@ -222,6 +222,105 @@ impl Store {
         self.views.node_views(identity).await
     }
 
+    /// Configured nodes of one group, in identity order.
+    pub(in crate::shared) fn nodes(&self, group: &str) -> &[String] {
+        self.silver.nodes(group)
+    }
+
+    /// Fingerprint and message count per conversation, for duplicate accounting.
+    async fn fingerprinted_conversations(
+        &self,
+        identity: &Identity,
+    ) -> Result<std::collections::BTreeMap<String, (String, u64)>, AppError> {
+        self.read(identity, |connection| {
+            let mut counts = std::collections::BTreeMap::new();
+            let mut statement = connection
+                .prepare(
+                    "SELECT conversation_id, COUNT(*) FROM objects
+                     WHERE origin = 'provider' AND object_role = 'entry'
+                     GROUP BY conversation_id",
+                )
+                .map_err(AppError::database)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
+                .map_err(AppError::database)?;
+            for row in rows {
+                let (id, count) = row.map_err(AppError::database)?;
+                counts.insert(id, u64::try_from(count).unwrap_or(u64::MAX));
+            }
+            drop(statement);
+            let fingerprints = silver_store::fingerprints(connection)?;
+            Ok(fingerprints
+                .into_iter()
+                .map(|(id, fingerprint)| {
+                    let messages = counts.get(&id).copied().unwrap_or(0);
+                    (id, (fingerprint, messages))
+                })
+                .collect())
+        })
+        .await
+    }
+
+    /// Count conversations another node already holds with the same content.
+    pub(in crate::shared) async fn fingerprint_report(
+        &self,
+        group: &str,
+        dimensions: usize,
+    ) -> Result<crate::shared::FingerprintReport, AppError> {
+        let nodes = self.nodes(group).to_vec();
+        let mut copies: std::collections::HashMap<(String, String), (u64, u64)> =
+            std::collections::HashMap::new();
+        let mut per_node = Vec::new();
+        for node in &nodes {
+            let identity = silver_store::node_identity(group, node);
+            let fingerprints = self.fingerprinted_conversations(&identity).await?;
+            for (id, (fingerprint, messages)) in &fingerprints {
+                let copy = copies
+                    .entry((id.clone(), fingerprint.clone()))
+                    .or_insert((0, *messages));
+                copy.0 += 1;
+            }
+            per_node.push((node.clone(), fingerprints));
+        }
+        let mut summaries = Vec::new();
+        for (node, fingerprints) in per_node {
+            let duplicated = fingerprints
+                .iter()
+                .filter(|(id, (fingerprint, _))| {
+                    copies
+                        .get(&((*id).clone(), (*fingerprint).clone()))
+                        .is_some_and(|(count, _)| *count > 1)
+                })
+                .count();
+            summaries.push(crate::shared::NodeFingerprintSummary {
+                node_id: node,
+                conversations: u64::try_from(fingerprints.len()).unwrap_or(u64::MAX),
+                duplicated: u64::try_from(duplicated).unwrap_or(u64::MAX),
+            });
+        }
+        let mut duplicated_conversations = 0u64;
+        let mut redundant_copies = 0u64;
+        let mut redundant_messages = 0u64;
+        for (count, messages) in copies.values().filter(|(count, _)| *count > 1) {
+            duplicated_conversations += 1;
+            let extra = count - 1;
+            redundant_copies += extra;
+            redundant_messages += extra.saturating_mul(*messages);
+        }
+        let dimensions = u64::try_from(dimensions).unwrap_or(0);
+        Ok(crate::shared::FingerprintReport {
+            duplicated_conversations,
+            redundant_copies,
+            redundant_messages,
+            duplicate_vector_bytes: redundant_messages
+                .saturating_mul(dimensions)
+                .saturating_mul(4),
+            nodes: summaries,
+        })
+    }
+
     /// Receipt recorded on the silver head for the last `/v1/sync` operation.
     #[cfg(test)]
     pub(in crate::shared) async fn sync_receipt(

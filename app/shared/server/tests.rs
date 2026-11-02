@@ -1027,3 +1027,43 @@ async fn http_storage_contract(service: Service) {
     assert_eq!(incompatible.status(), StatusCode::SERVICE_UNAVAILABLE);
     service.cleanup().await;
 }
+
+/// Two nodes holding the same history are reported, not silently duplicated.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn fingerprint_report_counts_conversations_shared_by_two_nodes() {
+    let service = Service::qdrant(384).await;
+    assert_eq!(
+        service.upload(FIRST, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        service.upload(SECOND, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    let report: crate::shared::FingerprintReport =
+        serde_json::from_value(service.get("fingerprints", FIRST).await).unwrap();
+    assert_eq!(report.duplicated_conversations, 1, "{report:?}");
+    assert_eq!(report.redundant_copies, 1);
+    // The fixture conversation carries three messages; vectors are estimated
+    // at one f32 per message at the group's width.
+    assert_eq!(report.redundant_messages, 3, "{report:?}");
+    assert_eq!(report.duplicate_vector_bytes, 3 * 384 * 4);
+    assert_eq!(report.nodes.len(), 2);
+    for node in &report.nodes {
+        assert_eq!(node.conversations, 1, "{node:?}");
+        assert_eq!(node.duplicated, 1, "{node:?}");
+    }
+
+    // The report is available to every group member, including the second one.
+    let from_second: crate::shared::FingerprintReport =
+        serde_json::from_value(service.get("fingerprints", SECOND).await).unwrap();
+    assert_eq!(from_second.duplicated_conversations, 1);
+
+    // Another group sees only its own membership.
+    let other: crate::shared::FingerprintReport =
+        serde_json::from_value(service.get("fingerprints", OTHER).await).unwrap();
+    assert_eq!(other.duplicated_conversations, 0);
+    assert_eq!(other.nodes.len(), 1);
+    service.cleanup().await;
+}

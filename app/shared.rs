@@ -31,7 +31,7 @@ mod sync;
 mod validation;
 mod views_manifest;
 
-pub(crate) use client::{freshness, list_chats, view};
+pub(crate) use client::{fingerprints, freshness, list_chats, view};
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;
@@ -77,6 +77,30 @@ impl Publication {
             error: None,
         }
     }
+}
+
+/// Duplicate-history report across the group, keyed by canonical conversation
+/// fingerprint. Fingerprints are content hashes; no plaintext is exposed.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct FingerprintReport {
+    /// Conversation identifiers that appear with the same fingerprint in more
+    /// than one node.
+    pub(crate) duplicated_conversations: u64,
+    /// Extra copies beyond the first, per duplicated conversation.
+    pub(crate) redundant_copies: u64,
+    /// Messages carried by those redundant copies.
+    pub(crate) redundant_messages: u64,
+    /// Approximate duplicated vector storage in Qdrant (f32 per message at the
+    /// group's embedding width). Text and index overhead are excluded.
+    pub(crate) duplicate_vector_bytes: u64,
+    pub(crate) nodes: Vec<NodeFingerprintSummary>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct NodeFingerprintSummary {
+    pub(crate) node_id: String,
+    pub(crate) conversations: u64,
+    pub(crate) duplicated: u64,
 }
 
 /// Baseline coverage for one node, read from the transfer catalog.

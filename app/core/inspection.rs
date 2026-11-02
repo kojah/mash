@@ -66,6 +66,10 @@ pub(super) async fn view(
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one status report assembles local, coverage and shared sections"
+)]
 pub(super) async fn status(
     configuration: &ResolvedConfig,
     database: &Path,
@@ -84,12 +88,16 @@ pub(super) async fn status(
         response.coverage = Some(super::coverage::local(database, configuration, scope).await?);
     }
     if inspect_shared {
-        match shared::freshness(required_shared(configuration)?).await {
+        let shared_config = required_shared(configuration)?;
+        match shared::freshness(shared_config).await {
             Ok(freshness) => {
                 if let Some(report) = &mut response.coverage {
                     report.add_shared(&freshness)?;
                 }
                 response.shared_index = Some(freshness);
+                if let Ok(duplicates) = shared::fingerprints(shared_config).await {
+                    response.duplicates = Some(duplicates);
+                }
             }
             Err(error) => response.shared_error = Some(error.error.message),
         }
@@ -119,6 +127,10 @@ fn local_view(
     Ok(ViewResponse { id, messages })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one local status report assembles readiness, counts and artifacts"
+)]
 fn local_status(
     database_path: &Path,
     models_dir: &Path,
@@ -160,6 +172,7 @@ fn local_status(
             sources: native_sources(configuration),
             shared: publication_config(configuration).map(|_| shared::Publication::pending()),
             shared_index: None,
+            duplicates: None,
         });
     }
 
@@ -224,6 +237,7 @@ fn local_status(
         sources: [native_sources(configuration), snapshot.connectors].concat(),
         shared: shared::status(database_path, publication_config(configuration))?,
         shared_index: None,
+        duplicates: None,
     })
 }
 

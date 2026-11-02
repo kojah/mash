@@ -33,10 +33,18 @@ pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppErr
     get(config, Endpoint::Freshness).await
 }
 
+/// Group-wide duplicate-history report keyed by canonical fingerprints.
+pub(crate) async fn fingerprints(
+    config: &SharedConfig,
+) -> Result<super::FingerprintReport, AppError> {
+    get(config, Endpoint::Fingerprints).await
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum Endpoint {
     Freshness,
     Search,
+    Fingerprints,
     Chats,
     View,
     Contexts,
@@ -67,6 +75,7 @@ impl Endpoint {
         match self {
             Self::Freshness => "freshness",
             Self::Search => "search",
+            Self::Fingerprints => "fingerprints",
             Self::Chats => "chats",
             Self::View => "view",
             Self::Contexts => "contexts",
@@ -81,6 +90,9 @@ impl Endpoint {
             super::BULK_TIMEOUT
         } else if matches!(self, Self::Attachment) {
             Duration::from_secs(15)
+        } else if matches!(self, Self::Fingerprints) {
+            // Reads every configured node's fingerprints.
+            Duration::from_secs(10)
         } else if matches!(self, Self::Search | Self::Freshness) {
             // Exact vector retrieval over a full node can take nearly two
             // seconds before network transit and typed response decoding.

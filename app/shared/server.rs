@@ -150,6 +150,7 @@ fn router(app: App) -> Router {
         .route("/v1/chats", post(list_chats))
         .route("/v1/view", post(view))
         .route("/v1/contexts", post(contexts::read))
+        .route("/v1/fingerprints", get(fingerprints))
         .route("/v1/attachments", post(attachments::list))
         .route("/v1/attachment", post(attachments::get))
         // Connector batches keep their source-scoped receipt contract until the
@@ -174,6 +175,17 @@ fn router(app: App) -> Router {
         .layer(middleware::from_fn_with_state(app.clone(), authorize))
         .with_state(app)
 }
+async fn fingerprints(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+) -> Result<Json<super::FingerprintReport>, ApiError> {
+    Ok(Json(
+        app.store
+            .fingerprint_report(&id.group_id, id.dimensions)
+            .await?,
+    ))
+}
+
 async fn freshness(
     State(app): State<App>,
     Extension(id): Extension<Identity>,

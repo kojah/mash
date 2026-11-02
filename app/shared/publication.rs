@@ -180,6 +180,19 @@ const PUBLISH_LOCK_POLL: Duration = Duration::from_millis(50);
 const SHARED_PENDING: &str =
     "another process is publishing this database and destination; retry when it finishes";
 
+/// Test-only crash injection. Debug builds abort at a named point so an
+/// integration test can rerun the command and prove recovery converges.
+/// Release builds ignore the variable entirely.
+#[cfg(debug_assertions)]
+fn crash_point(name: &str) {
+    if std::env::var("MASH_TEST_CRASH_AT").is_ok_and(|value| value == name) {
+        std::process::abort();
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn crash_point(_name: &str) {}
+
 /// Histories at least this large publish as a baseline when the node has
 /// nothing on the server yet: the first batches become searchable while the
 /// rest uploads.
@@ -349,6 +362,7 @@ async fn publish_result(
         let (file, revision, preparation) =
             snapshot::prepare(path, &target, inference, started, allow_delta).await?;
         upload(config, &file).await?;
+        crash_point("after_publish_before_ack");
         acknowledge(path, config, revision).await?;
         return Ok(preparation);
     }
@@ -421,6 +435,7 @@ async fn publish_result(
         upload_bytes: file.as_file().metadata().map_err(AppError::io)?.len(),
     };
     upload(config, &file).await?;
+    crash_point("after_publish_before_ack");
     acknowledge(path, config, revision).await?;
     Ok(preparation)
 }

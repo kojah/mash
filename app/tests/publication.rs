@@ -509,3 +509,97 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
     assert!(total >= 1);
     shared_server::cleanup_group(&group);
 }
+
+/// A crash after the server published but before the client acknowledged leaves
+/// the local journal pending; the next run acknowledges without republishing.
+#[test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn a_crash_before_acknowledgement_recovers_without_republishing() {
+    let dir = tempfile::tempdir().expect("temp");
+    let database = dir.path().join("local.sqlite3");
+    seed_readiness_database(&database, Some(""));
+    let models = dir.path().join("models");
+    create_valid_model_marker(&models);
+    let config = dir.path().join("config.toml");
+    let group = format!(
+        "ack-{}",
+        dir.path().file_name().expect("name").to_string_lossy()
+    );
+    let server = shared_server::Server::new(dir.path(), &group, &["cli-node"]);
+    std::fs::write(
+        &config,
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {}
+            shared = {
+            group_id = (group.as_str()),node_id = "cli-node",api_url = (server.url.as_str()),token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
+            }
+        })
+        .expect("TOML"),
+    )
+    .expect("config");
+    let invoke = |crash: Option<&str>| {
+        let mut command = Command::cargo_bin("mash").expect("binary");
+        command
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models.to_str().unwrap(),
+                "index",
+            ])
+            .env(
+                "MASH_TEST_SHARED_CLIENT_TOKEN",
+                shared_server::token("cli-node"),
+            );
+        if let Some(point) = crash {
+            command.env("MASH_TEST_CRASH_AT", point);
+        }
+        let output = command.output().expect("run");
+        let response: Value = serde_json::from_slice(&output.stdout).unwrap_or(Value::Null);
+        (output.status.code(), response)
+    };
+
+    let (code, _) = invoke(Some("after_publish_before_ack"));
+    assert_ne!(code, Some(0), "the process aborts before acknowledging");
+
+    // The second run finds the server already at this revision and only
+    // acknowledges; it must not create another revision.
+    let (code, response) = invoke(None);
+    assert!(
+        matches!(code, Some(0 | 9)),
+        "retry status={code:?} response={response}"
+    );
+    assert_eq!(response["shared"]["state"], "published", "{response}");
+    let freshness = service_status(&config, &database, &models);
+    assert_eq!(
+        freshness["shared_index"]["nodes"][0]["revision"].as_i64(),
+        Some(1),
+        "{freshness}"
+    );
+    shared_server::cleanup_group(&group);
+}
+
+fn service_status(config: &Path, database: &Path, models: &Path) -> Value {
+    let output = Command::cargo_bin("mash")
+        .expect("binary")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "status",
+            "--shared",
+        ])
+        .env(
+            "MASH_TEST_SHARED_CLIENT_TOKEN",
+            shared_server::token("cli-node"),
+        )
+        .output()
+        .expect("run status");
+    serde_json::from_slice(&output.stdout).expect("status JSON")
+}

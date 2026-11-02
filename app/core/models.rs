@@ -260,6 +260,9 @@ pub(crate) struct StatusResponse {
     pub(super) shared: Option<shared::Publication>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared_index: Option<shared::Freshness>,
+    /// Duplicate-history report, only when `--shared` asked for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) duplicates: Option<shared::FingerprintReport>,
 }
 
 #[derive(Debug, Serialize)]

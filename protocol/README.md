@@ -524,6 +524,14 @@ Known implementation/model gaps, recorded in Beads:
    Remaining gaps: no priority scheduling beyond recency, no multi-session or
    restored-baseline ordering, and the journal gate is only exercised by the
    incremental path in production.
+
+   Duplicate history across nodes is measured, not hidden. Silver already stores
+   a canonical per-conversation fingerprint, and `GET /v1/fingerprints` folds
+   those across the group into `duplicated_conversations`, `redundant_copies`,
+   `redundant_messages` and `duplicate_vector_bytes` (an f32-per-message
+   estimate at the group's embedding width; text and index overhead excluded).
+   `mash status --shared` reports it as `duplicates`. The endpoint exposes
+   content hashes only, never plaintext.
 6. Connector batches and attachments now use the same transfer path
    (`BeginConnectorBatch`, `BeginAttachment`, then `Chunk`/`FinishUpload`).
    Connector batches commit through the existing `Store::ingest_connector`
