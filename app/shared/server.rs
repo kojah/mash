@@ -147,6 +147,7 @@ fn router(app: App) -> Router {
         .route("/v1/chats", post(list_chats))
         .route("/v1/view", post(view))
         .route("/v1/contexts", post(contexts::read))
+        .route("/v1/query", post(query))
         .route("/v1/fingerprints", get(fingerprints))
         .route("/v1/source-transfer", post(source_transfer))
         .route("/v1/attachments", post(attachments::list))
@@ -227,6 +228,45 @@ async fn fingerprints(
     Ok(Json(
         app.store
             .fingerprint_report(&id.group_id, id.dimensions)
+            .await?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SharedQuery {
+    /// Member of the caller's group; defaults to the caller's own node.
+    #[serde(default)]
+    node: Option<String>,
+    request: crate::silver_query::Request,
+}
+
+/// Typed, read-only query over one node's shared silver. Scope is derived from
+/// the token, never the body: `node` may only name a member of that group, and
+/// there is no SQL field to accept.
+async fn query(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+    input: Result<Json<SharedQuery>, JsonRejection>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let SharedQuery { node, request } = json(input)?;
+    let target = match node {
+        None => id,
+        Some(node) => app
+            .identities
+            .values()
+            .find(|candidate| candidate.group_id == id.group_id && candidate.node_id == node)
+            .cloned()
+            .ok_or_else(|| {
+                ApiError(
+                    StatusCode::NOT_FOUND,
+                    AppError::usage("node is not in this group"),
+                )
+            })?,
+    };
+    Ok(Json(
+        app.store
+            .query(&target, request, Duration::from_secs(10))
             .await?,
     ))
 }

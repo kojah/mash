@@ -198,6 +198,21 @@ impl Store {
         Ok(lock.lock_owned().await)
     }
 
+    /// Run a typed, read-only query over this node's shared silver. The
+    /// connection gets the same views, query_only, authorizer and budgets as a
+    /// local query; it is opened per call and discarded.
+    pub(in crate::shared) async fn query(
+        &self,
+        identity: &Identity,
+        request: crate::silver_query::Request,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, AppError> {
+        self.read(identity, move |connection| {
+            crate::silver_query::run_request_on(connection, &request, timeout)
+        })
+        .await
+    }
+
     /// One publication per node at a time within this process.
     async fn lock(
         &self,

@@ -14,6 +14,7 @@ mod enrichment;
 mod exact;
 mod freshness;
 mod native;
+mod query;
 mod redaction;
 mod relevance;
 mod restart;

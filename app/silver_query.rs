@@ -256,7 +256,7 @@ SELECT source, conversation_id, id, kind, object_role, ordinal, role, author,
        content, search_projection, created_at, updated_at, reply_to,
        attachments, metadata
 FROM objects
-WHERE object_role IN ('entry', 'segment');
+WHERE object_role = 'entry';
 
 CREATE TEMP VIEW IF NOT EXISTS documents AS
 SELECT source, id, kind, title, content, created_at, updated_at,
@@ -340,6 +340,14 @@ fn run_params(
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(AppError::database)?;
+    prepare_read_only(&connection, timeout)?;
+    execute(&connection, sql, params, limit, byte_budget)
+}
+
+/// Install the stable views, pin the connection read-only and arm the time
+/// budget. Shared-silver reads call this on a server connection as well, so a
+/// typed query gets exactly the same guardrails as a local one.
+fn prepare_read_only(connection: &Connection, timeout: Duration) -> Result<(), AppError> {
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(AppError::database)?;
@@ -363,7 +371,34 @@ fn run_params(
         std::thread::sleep(timeout);
         interrupt.interrupt();
     });
+    Ok(())
+}
 
+/// Run a typed request on an already-open connection, applying the same
+/// read-only setup as `run_request`.
+pub(crate) fn run_request_on(
+    connection: &Connection,
+    request: &Request,
+    timeout: Duration,
+) -> Result<Value, AppError> {
+    let (sql, params) = request_sql(request)?;
+    prepare_read_only(connection, timeout)?;
+    execute(
+        connection,
+        &sql,
+        &params,
+        request.limit.clamp(1, MAX_ROWS),
+        MAX_OUTPUT_BYTES,
+    )
+}
+
+fn execute(
+    connection: &Connection,
+    sql: &str,
+    params: &[rusqlite::types::Value],
+    limit: usize,
+    byte_budget: usize,
+) -> Result<Value, AppError> {
     let mut statement = connection.prepare(sql).map_err(sql_error)?;
     let columns: Vec<String> = statement
         .column_names()
