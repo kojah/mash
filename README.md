@@ -26,10 +26,15 @@ and `view` output, shared HTTP read responses and outgoing publications, and tex
 sent to remote embedding APIs. Full values use `[REDACTED_SECRET]`; excerpts use
 masking characters to retain their source offsets. Original provider histories
 and local canonical SQLite data remain intact. Detection is best effort, not a
-guarantee that arbitrary or obfuscated secrets are absent. Text a person wraps in
-`<private>…</private>` (any case, closed in the same message) is masked the same
-way; an unclosed tag masks nothing. Like credentials it stays in local silver,
-exports and local lexical matching.
+guarantee that arbitrary or obfuscated secrets are absent.
+
+Text a person wraps in `<private>…</private>` (any case, closed in the same
+message) is replaced by `[PRIVATE]` before it is stored: in native message
+text, search projections, tool inputs and chat titles, and in connector titles,
+content and metadata. Every index, view, export and publication derives from
+silver, so none of them holds it, whatever the `[redaction]` settings. An
+unclosed tag masks nothing. Mash cannot change the provider's own history files,
+and retained text attachments are stored as submitted.
 
 Masking is on by default and can be turned off per destination in the node
 configuration:

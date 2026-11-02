@@ -1,8 +1,9 @@
 //! Offline credential masking. This is a bounded policy, not proof of absence.
 use regex::Regex;
-use std::{ops::Range, sync::OnceLock};
+use std::{borrow::Cow, ops::Range, sync::OnceLock};
 
 const MARKER: &str = "[REDACTED_SECRET]";
+const PRIVATE_MARKER: &str = "[PRIVATE]";
 const MAX_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MATCHES: usize = 4096;
 
@@ -20,9 +21,6 @@ const PATTERNS: &[&str] = &[
     r#"(?i)\b(?:[a-z0-9]+[_-])*(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token)\s*=\s*(?P<bare>[^\s'",;()\[\]]+)"#,
     r"(?s)-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----.*?(?:-----END (?:[A-Z0-9]+ )?PRIVATE KEY-----|\z)",
     r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
-    // Text a person marks private, closed on the same text. An unclosed tag
-    // (often one being discussed) masks nothing.
-    r"(?is)<private>(?P<secret>.*?)</private>",
 ];
 
 fn patterns() -> Option<&'static [Regex]> {
@@ -154,6 +152,31 @@ pub(crate) fn ranges(text: &str) -> Vec<Range<usize>> {
         }
     }
     merged
+}
+
+/// Replaces what a person wrapped in `<private>…</private>` (any case, closed in
+/// the same text). An unclosed tag, often one being discussed, masks nothing.
+pub(crate) fn private(text: &str) -> Cow<'_, str> {
+    static PRIVATE: OnceLock<Option<Regex>> = OnceLock::new();
+    let Some(pattern) = PRIVATE
+        .get_or_init(|| Regex::new(r"(?is)(<private>)(.*?)(</private>)").ok())
+        .as_ref()
+    else {
+        return Cow::Owned(PRIVATE_MARKER.to_owned());
+    };
+    if !pattern.is_match(text) {
+        return Cow::Borrowed(text);
+    }
+    let masked = pattern.replace_all(text, |captures: &regex::Captures<'_>| {
+        let inner = &captures[2];
+        let inner = if inner.is_empty() { "" } else { PRIVATE_MARKER };
+        format!("{}{inner}{}", &captures[1], &captures[3])
+    });
+    if masked == text {
+        Cow::Borrowed(text)
+    } else {
+        masked
+    }
 }
 
 pub(crate) fn text(text: &str) -> String {

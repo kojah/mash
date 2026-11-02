@@ -1,9 +1,10 @@
 mod detection;
-pub(crate) use detection::{projection, text};
+pub(crate) use detection::{private, projection, text};
 use serde::{Deserialize, Serialize};
 
 /// Where a node masks recognizable credentials, configured under `[redaction]`.
-/// Each destination defaults on; canonical silver is never masked.
+/// Each destination defaults on; credentials in canonical silver are never
+/// masked (`<private>` spans never reach it: see [`private_text`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Settings {
@@ -107,6 +108,48 @@ impl Settings {
 
     pub(crate) const fn remote_embeddings(self) -> Policy {
         Policy::new(self.remote_embeddings)
+    }
+}
+
+/// Masks `<private>` spans before silver stores a value, so no index, view,
+/// export or publication derived from silver holds them.
+pub(crate) fn private_text(value: &mut String) {
+    if let std::borrow::Cow::Owned(masked) = private(value) {
+        *value = masked;
+    }
+}
+
+/// Copies a message only when it holds a `<private>` tag.
+pub(crate) fn private_message(
+    message: &mut std::borrow::Cow<'_, crate::silver::NormalizedMessage>,
+) {
+    let tagged = |text: &str| text.to_ascii_lowercase().contains("<private>");
+    let tools = message.tools.encode().ok().flatten();
+    if !(tagged(&message.content)
+        || message.dialogue_text.as_deref().is_some_and(tagged)
+        || tools.as_deref().is_some_and(tagged))
+    {
+        return;
+    }
+    let message = message.to_mut();
+    private_text(&mut message.content);
+    if let Some(text) = &mut message.dialogue_text {
+        private_text(text);
+    }
+    message
+        .tools
+        .map_strings(|value| private(value).into_owned());
+}
+
+pub(crate) fn private_object(object: &mut crate::connectors::Object) {
+    for value in [&mut object.title, &mut object.content]
+        .into_iter()
+        .flatten()
+    {
+        private_text(value);
+    }
+    if let Some(metadata) = &mut object.metadata {
+        metadata.map_strings(private_text);
     }
 }
 

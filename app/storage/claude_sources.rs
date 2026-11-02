@@ -118,11 +118,15 @@ impl Storage {
                 moved = storage.refresh_claude_thread(&previous.conversation_id)?;
             }
             let repaired = storage.repair_claude_source_identity(source)?;
+            let title = source.title.clone().map(|mut title| {
+                crate::redaction::private_text(&mut title);
+                title
+            });
             sql::UpsertClaudeSource::builder()
                 .source_key(&key)
                 .source_path(&source.source.path.to_string_lossy())
                 .conversation_id(&source.id)
-                .title(source.title.as_deref())
+                .title(title.as_deref())
                 .project(source.project.as_deref())
                 .repository(source.repository.as_deref())
                 .build()
@@ -158,7 +162,8 @@ impl Storage {
             .prepare_cached(sql::UpsertClaudeSourceMessage::QUERY)
             .map_err(AppError::database)?;
         for message in source.messages.rows()? {
-            let message = message?;
+            let mut message = message?;
+            crate::redaction::private_message(&mut message);
             if !written.insert(message.id.clone()) {
                 return Err(AppError::database_data(
                     "Claude contribution repeats a message",

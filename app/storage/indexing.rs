@@ -317,11 +317,15 @@ impl Storage {
         }
 
         let existing_messages = self.message_states(&conversation.id)?;
+        let title = conversation.title.clone().map(|mut title| {
+            crate::redaction::private_text(&mut title);
+            title
+        });
         sql::UpsertNativeChat::builder()
             .provider(conversation.provider.as_str())
             .id(&conversation.id)
             .kind(&format!("{}:chat", conversation.provider.as_str()))
-            .title(conversation.title.as_deref())
+            .title(title.as_deref())
             .created_at(conversation.created_at)
             .updated_at(conversation.updated_at)
             .project(conversation.project.as_deref())
@@ -476,7 +480,8 @@ impl Storage {
         self.park_moved_ordinals(conversation, existing_messages)?;
 
         for message in conversation.messages.rows()? {
-            let message = message?;
+            let mut message = message?;
+            crate::redaction::private_message(&mut message);
             let fingerprint = message_fingerprint(&message);
             if existing_messages
                 .get(&message.id)

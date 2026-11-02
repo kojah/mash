@@ -188,18 +188,48 @@ fn a_disabled_policy_passes_text_metadata_and_ancestors_through() {
 #[test]
 fn private_spans_are_masked_only_when_closed() {
     let source = "keep <private>home address</private> and <PRIVATE>\nphone\n</Private> too";
+    let masked = private(source);
     assert_eq!(
-        text(source),
-        "keep <private>[REDACTED_SECRET]</private> and <PRIVATE>[REDACTED_SECRET]</Private> too"
+        masked,
+        "keep <private>[PRIVATE]</private> and <PRIVATE>[PRIVATE]</Private> too"
     );
-    assert_eq!(text(&text(source)), text(source));
-    let masked = projection(source);
-    assert_eq!(masked.len(), source.len());
-    assert!(!masked.contains("address") && !masked.contains("phone"));
+    assert_eq!(private(&masked), masked);
     for benign in [
         "wrap it in <private> tags",
         "an empty <private></private> pair",
     ] {
-        assert_eq!(text(benign), benign);
+        assert!(matches!(private(benign), std::borrow::Cow::Borrowed(_)));
     }
+    // Output masking is for credentials; private spans are gone before storage.
+    assert_eq!(text("<private>x</private>"), "<private>x</private>");
+}
+
+#[test]
+fn private_spans_leave_messages_and_connector_objects() {
+    let message: crate::silver::NormalizedMessage = serde_json::from_value(serde_json::json!({
+        "id": "m", "ordinal": 0, "context": {"kind": "linear"}, "role": "user",
+        "content": "a <private>secret plan</private>",
+        "dialogue_text": "a <private>secret plan</private>",
+        "created_at": null
+    }))
+    .unwrap();
+    let mut message = std::borrow::Cow::Borrowed(&message);
+    super::private_message(&mut message);
+    assert!(matches!(message, std::borrow::Cow::Owned(_)));
+    assert_eq!(message.content, "a <private>[PRIVATE]</private>");
+    assert_eq!(
+        message.dialogue_text.as_deref(),
+        Some("a <private>[PRIVATE]</private>")
+    );
+    let mut object: crate::connectors::Object = serde_json::from_value(serde_json::json!({
+        "id": "o", "role": "entry", "kind": "x:entry", "parent": "p",
+        "title": "<private>title words</private>",
+        "content": "body <private>body words</private>",
+        "metadata": {"nested": ["<private>leaf words</private>", 3]}
+    }))
+    .unwrap();
+    super::private_object(&mut object);
+    let stored = serde_json::to_string(&object).unwrap();
+    assert!(!stored.contains("words"), "{stored}");
+    assert_eq!(stored.matches("[PRIVATE]").count(), 3);
 }

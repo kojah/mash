@@ -146,16 +146,21 @@ impl Activity {
     /// Mask recognizable credentials in every label and string leaf of the
     /// opaque inputs, keeping the inputs valid JSON.
     pub(crate) fn redact(&mut self) {
+        self.map_strings(crate::redaction::text);
+    }
+
+    /// Replace every label and string leaf of the opaque inputs.
+    pub(crate) fn map_strings(&mut self, map: impl Fn(&str) -> String + Copy) {
         let mask = |value: &mut Option<String>| {
             if let Some(value) = value {
-                *value = crate::redaction::text(value);
+                *value = map(value);
             }
         };
         for call in &mut self.tool_calls {
             mask(&mut call.name);
             mask(&mut call.call_id);
             if let Some(input) = &mut call.input {
-                redact_value(input);
+                map_value(input, map);
             }
         }
         for result in &mut self.tool_results {
@@ -177,11 +182,11 @@ fn value_size(value: &Value) -> usize {
         }
 }
 
-fn redact_value(value: &mut Value) {
+fn map_value(value: &mut Value, map: impl Fn(&str) -> String + Copy) {
     match value {
-        Value::String(text) => *text = crate::redaction::text(text),
-        Value::Array(items) => items.iter_mut().for_each(redact_value),
-        Value::Object(map) => map.values_mut().for_each(redact_value),
+        Value::String(text) => *text = map(text),
+        Value::Array(items) => items.iter_mut().for_each(|item| map_value(item, map)),
+        Value::Object(fields) => fields.values_mut().for_each(|item| map_value(item, map)),
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }

@@ -382,12 +382,16 @@ fn prune_absent_containers(
     Ok(())
 }
 
-/// Store one object exactly as submitted; grouping happens after the batch.
+/// Store one object as submitted, apart from its `<private>` spans; grouping
+/// happens after the batch.
 pub(crate) fn put_object(
     connection: &Connection,
     source: &Id,
     object: &Object,
 ) -> Result<(), Error> {
+    let mut object = object.clone();
+    crate::redaction::private_object(&mut object);
+    let object = &object;
     sql::ConnectorPutObject::builder()
         .source_id(source.as_str())
         .id(object.id.as_str())
