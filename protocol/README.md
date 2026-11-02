@@ -554,12 +554,12 @@ Known implementation/model gaps, recorded in Beads:
    path rather than a retired one, and
    `released_server_no_longer_exposes_legacy_mutation_routes` proves the routes
    answer 404.
-   `/v1/connector-batches` is the one mutation route still mounted: connector
-   batches carry a source-scoped receipt (source revision, views readiness) that
-   `/v1/sync` does not yet return, so moving them before adding those fields
-   would regress the connector contract. The server already accepts
-   `BeginConnectorBatch`; the remaining work is a client sender plus the receipt
-   fields, after which the route can go.
+   `/v1/connector-batches` is gone as well. `Published` now carries the
+   source-scoped `ConnectorReceipt` (source id, batch id, source revision,
+   silver revision) plus views readiness, the Rust client ships
+   `deliver_connector`, and the Python SDK delivers by running
+   `mash index --connector-batch <file> --shared` over `/v1/sync`. The cutover
+   test asserts 404 for the old route.
 7. Multiple concurrent sessions are serialized by an in-process catalog mutex
    plus operation ownership checks. Client publication is fenced per local
    database and destination by an advisory file lock

@@ -170,7 +170,7 @@ There are two runtimes behind one model:
 | Runs | in-process parser | external program |
 | Reads | local files | a remote API |
 | Emits | `ConversationRecord`/`MessageRecord` events | `connectors::Batch` JSON |
-| Delivered by | the node over `/v1/sync` | the writing node: `/v1/sync` `BeginConnectorBatch`, or the still-mounted `POST /v1/connector-batches` |
+| Delivered by | the node over `/v1/sync` | the writing node over `/v1/sync` `BeginConnectorBatch`; the HTTP route is deleted |
 | Revision | node publication revision | recorded per **(node, source)** destination today |
 | Deletion | replace snapshot; absence = deletion for that node | explicit `DeleteObject` only |
 
