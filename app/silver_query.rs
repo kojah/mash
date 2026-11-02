@@ -15,6 +15,11 @@ use crate::AppError;
 
 const MAX_ROWS: usize = 10_000;
 const MAX_SQL_BYTES: usize = 64 * 1024;
+/// Rows are capped by count, but one row can still hold a huge blob or text.
+/// Bound the approximate decoded payload as well so a single statement cannot
+/// exhaust memory through the row limit alone.
+const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+const ROW_OVERHEAD_BYTES: usize = 8;
 
 /// Allow only actions a read-only query needs. `query_only` already blocks
 /// data changes, but it does not block ATTACH or every pragma: the authorizer
@@ -77,6 +82,17 @@ fn json_value(value: rusqlite::types::ValueRef<'_>) -> Value {
     }
 }
 
+fn value_bytes(value: rusqlite::types::ValueRef<'_>) -> usize {
+    use rusqlite::types::ValueRef;
+    match value {
+        ValueRef::Null => 4,
+        ValueRef::Integer(_) | ValueRef::Real(_) => 8,
+        ValueRef::Text(bytes) => bytes.len(),
+        // Blobs are returned as hex, so the decoded payload is twice the size.
+        ValueRef::Blob(bytes) => bytes.len() * 2,
+    }
+}
+
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     let mut text = String::with_capacity(bytes.len() * 2);
@@ -93,6 +109,17 @@ pub(crate) fn run(
     sql: &str,
     limit: usize,
     timeout: Duration,
+) -> Result<Value, AppError> {
+    run_bounded(database, sql, limit, timeout, MAX_OUTPUT_BYTES)
+}
+
+/// `run` with an explicit decoded-payload budget, so the bound is testable.
+pub(crate) fn run_bounded(
+    database: &Path,
+    sql: &str,
+    limit: usize,
+    timeout: Duration,
+    byte_budget: usize,
 ) -> Result<Value, AppError> {
     let sql = sql.trim();
     if sql.is_empty() {
@@ -150,6 +177,7 @@ pub(crate) fn run(
     })?;
     let mut output = Vec::new();
     let mut truncated = false;
+    let mut bytes = 0;
     loop {
         let row = rows.next().map_err(|error| {
             if matches!(error, rusqlite::Error::SqliteFailure(failure, _) if failure.code == rusqlite::ErrorCode::OperationInterrupted)
@@ -165,10 +193,17 @@ pub(crate) fn run(
             break;
         }
         let mut object = serde_json::Map::with_capacity(columns.len());
+        let mut row_bytes = 0;
         for (index, name) in columns.iter().enumerate() {
             let value = row.get_ref(index).map_err(AppError::database)?;
+            row_bytes += value_bytes(value) + ROW_OVERHEAD_BYTES + name.len();
             object.insert(name.clone(), json_value(value));
         }
+        if bytes + row_bytes > byte_budget {
+            truncated = true;
+            break;
+        }
+        bytes += row_bytes;
         output.push(Value::Object(object));
     }
     Ok(json!({
@@ -320,6 +355,24 @@ mod tests {
                 "denied: {sql}"
             );
         }
+    }
+
+    #[test]
+    fn the_decoded_payload_budget_truncates_wide_rows() {
+        let (_directory, path) = fixture();
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE big (id INTEGER, body TEXT);
+                 INSERT INTO big VALUES (1, printf('%.1000c', 'a'));
+                 INSERT INTO big VALUES (2, printf('%.1000c', 'a'));",
+            )
+            .unwrap();
+        // One 1000-byte body plus overhead fits; the second row does not.
+        let value =
+            run_bounded(&path, "SELECT * FROM big", 10, Duration::from_secs(5), 1500).unwrap();
+        assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(value["truncated"], true);
     }
 
     #[test]
