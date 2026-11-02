@@ -116,8 +116,11 @@ impl Store {
             views,
             current,
             progress,
-            _node,
+            _node: node,
         } = commit;
+        // Silver ordering is settled by the commit above; certification writes
+        // views and must not block another batch's commit for this node.
+        drop(node);
         if !(applied.duplicate && current) {
             #[cfg(test)]
             if self.views_interruption {
@@ -220,6 +223,9 @@ impl Store {
             );
         }
         progress.phase(Phase::CertifyingViews, Unit::Chats);
+        // The revision these views were built from, not the head reached by the
+        // time certification finishes; the guard below compares this.
+        views.input = Some(applied.revision);
         self.certify(identity, views, &fingerprints, progress).await
     }
 
@@ -295,6 +301,14 @@ impl Store {
         fingerprints: &BTreeMap<String, String>,
         progress: &Progress,
     ) -> Result<(), AppError> {
+        if let Some(current) = self.views.node_views(identity).await?
+            && let (Some(current), Some(incoming)) = (current.input, views.input)
+            && current > incoming
+        {
+            // A newer certification already wrote these chats. Writing ours
+            // would stamp the newer head over older content.
+            return Ok(());
+        }
         self.sync_connectors(identity, &mut views).await?;
         views.chats.retain(|id, _| fingerprints.contains_key(id));
         let head = self.head(identity).await?;
