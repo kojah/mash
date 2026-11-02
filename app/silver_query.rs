@@ -7,13 +7,39 @@
 use std::path::Path;
 use std::time::Duration;
 
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+use rusqlite::{Connection, ErrorCode, OpenFlags};
 use serde_json::{Value, json};
 
 use crate::AppError;
 
 const MAX_ROWS: usize = 10_000;
 const MAX_SQL_BYTES: usize = 64 * 1024;
+
+/// Allow only actions a read-only query needs. `query_only` already blocks
+/// data changes, but it does not block ATTACH or every pragma: the authorizer
+/// closes that gap and makes the documented contract enforceable.
+fn authorize(context: AuthContext<'_>) -> Authorization {
+    match context.action {
+        AuthAction::Select
+        | AuthAction::Read { .. }
+        | AuthAction::Function { .. }
+        | AuthAction::Recursive => Authorization::Allow,
+        _ => Authorization::Deny,
+    }
+}
+
+fn sql_error(error: rusqlite::Error) -> AppError {
+    if matches!(
+        error,
+        rusqlite::Error::SqliteFailure(failure, _)
+            if failure.code == ErrorCode::AuthorizationForStatementDenied
+    ) {
+        AppError::usage("query may only read; ATTACH and pragma are not allowed")
+    } else {
+        AppError::usage(format!("query is not valid SQL: {error}"))
+    }
+}
 
 /// Convenience views over the generic `objects` table, installed on every
 /// read-only connection. They are the stable names diagnostics and MCP callers
@@ -92,6 +118,11 @@ pub(crate) fn run(
     connection
         .pragma_update(None, "query_only", true)
         .map_err(AppError::database)?;
+    // The authorizer runs after our own setup, so the stable views and
+    // query_only are installed while it is still absent.
+    connection
+        .authorizer(Some(authorize))
+        .map_err(AppError::database)?;
     // Abort a runaway scan when the budget expires; the handle is inert once
     // the statement has finished.
     let interrupt = connection.get_interrupt_handle();
@@ -100,17 +131,23 @@ pub(crate) fn run(
         interrupt.interrupt();
     });
 
-    let mut statement = connection
-        .prepare(sql)
-        .map_err(|error| AppError::usage(format!("query is not valid SQL: {error}")))?;
+    let mut statement = connection.prepare(sql).map_err(sql_error)?;
     let columns: Vec<String> = statement
         .column_names()
         .into_iter()
         .map(str::to_owned)
         .collect();
-    let mut rows = statement
-        .query([])
-        .map_err(|error| AppError::usage(format!("query failed: {error}")))?;
+    let mut rows = statement.query([]).map_err(|error| {
+        if matches!(
+            error,
+            rusqlite::Error::SqliteFailure(failure, _)
+                if failure.code == ErrorCode::AuthorizationForStatementDenied
+        ) {
+            AppError::usage("query may only read; ATTACH and pragma are not allowed")
+        } else {
+            AppError::usage(format!("query failed: {error}"))
+        }
+    })?;
     let mut output = Vec::new();
     let mut truncated = false;
     loop {
@@ -246,6 +283,43 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM t", [], |row| row.get(0))
             .unwrap();
         assert_eq!(remaining, 3, "the rejected write changed nothing");
+    }
+
+    #[test]
+    fn attachments_and_pragmas_are_denied() {
+        let (_directory, path) = fixture();
+        let attach = run(
+            &path,
+            "ATTACH DATABASE '/tmp/mash-silver-query-attach.db' AS probe",
+            10,
+            Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(attach.error.message.contains("may only read"), "{attach:?}");
+        let pragma = run(
+            &path,
+            "PRAGMA writable_schema=ON",
+            10,
+            Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(pragma.error.message.contains("may only read"), "{pragma:?}");
+    }
+
+    #[test]
+    fn read_only_diagnostics_and_ctes_are_allowed() {
+        let (_directory, path) = fixture();
+        for sql in [
+            "EXPLAIN QUERY PLAN SELECT * FROM t",
+            "WITH x AS (SELECT 1 AS n) SELECT n FROM x",
+            "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 3) SELECT n FROM c",
+            "SELECT lower(name) FROM t",
+        ] {
+            assert!(
+                run(&path, sql, 10, Duration::from_secs(5)).is_ok(),
+                "denied: {sql}"
+            );
+        }
     }
 
     #[test]
