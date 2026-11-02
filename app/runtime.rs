@@ -15,6 +15,11 @@ pub(crate) enum Kind {
     IndexWatch,
 }
 
+/// What identifies an installed executable. Unix adds the device and inode,
+/// so any replacement is seen. Windows has only size and modification time on
+/// stable Rust (its file ID API is unstable, and FFI would need `unsafe`): an
+/// upgrade written later or with a different size is seen, but a same-size
+/// replacement within one timestamp tick would not be.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 struct Identity {
     bytes: u64,

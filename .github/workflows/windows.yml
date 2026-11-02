@@ -46,5 +46,7 @@ jobs:
           target/release/mash.exe init --no-agents | tee init.json
           target/release/mash.exe search windowsneedle --local | tee search.json
           grep -q '"chat_id":"s1"' search.json
+      - name: MCP, upgrade while running, and hooks
+        run: python .github/scripts/windows-smoke.py target/release/mash.exe
       - name: Library tests
         run: cargo +stable test --locked --lib --no-fail-fast

@@ -88,7 +88,12 @@ fn repository(root: &Root, state: &proto::Root) -> Option<String> {
         .map(|r| &r.path)
         .chain(state.repositories.iter().map(|r| &r.path))
         .collect::<Vec<_>>();
-    if paths.iter().any(|p| !Path::new(p).is_absolute()) {
+    // Native paths, or `/`-rooted ones (WSL and remote repositories, which
+    // Windows does not call absolute).
+    if paths
+        .iter()
+        .any(|p| !(Path::new(p).is_absolute() || p.starts_with('/')))
+    {
         return None;
     }
     super::unique(paths.into_iter().cloned())

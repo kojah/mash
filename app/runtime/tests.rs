@@ -46,7 +46,9 @@ fn runtime_admission_and_inventory_follow_executable_replacement() {
     assert_eq!(report.processes.len(), 1);
     assert_eq!(report.processes[0].state, State::Current);
     let replacement = root.path().join("replacement");
-    std::fs::write(&replacement, "new").unwrap();
+    // A different size: Windows identity is size and modification time, and
+    // writes milliseconds apart can share a timestamp tick.
+    std::fs::write(&replacement, "new release").unwrap();
     std::fs::rename(replacement, &executable).unwrap();
     assert!(lease.ensure_current().is_err());
     assert_eq!(inspect(&paths).processes[0].state, State::Superseded);
