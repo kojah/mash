@@ -335,8 +335,7 @@ pub(crate) async fn upload_encoded_with_token(
     start: &protocol::Start,
     encoded: &wire::EncodedBatch,
 ) -> Result<protocol::Indexed, AppError> {
-    let operation_id =
-        scoped_operation_id("publication", &config.node_id, &encoded.manifest_digest);
+    let operation_id = scoped_operation_id("publication", config, &encoded.manifest_digest);
     let slot = session_slot(&session_key(config, &start.instance));
     let mut guard = slot.lock_owned().await;
     let reused = guard.is_some();
@@ -586,7 +585,7 @@ pub(crate) async fn upload_attachment_with_token(
         })
         .collect::<Vec<_>>();
     let manifest = wire::manifest_digest(bytes.len() as u64, 1, &entries);
-    let operation_id = scoped_operation_id("attachment", &config.node_id, &manifest);
+    let operation_id = scoped_operation_id("attachment", config, &manifest);
     let request = request(config, &token)?;
     let (socket, _) =
         tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async(request))
@@ -796,8 +795,11 @@ fn encode_backfill_manifest(
 ///
 /// Operation identity is scoped to the publishing node. Two nodes may send
 /// identical bytes, and the transfer catalog must not confuse their operations.
-pub(crate) fn scoped_operation_id(kind: &str, node: &str, digest: &str) -> String {
-    format!("{kind}:{node}:{digest}")
+pub(crate) fn scoped_operation_id(kind: &str, config: &SharedConfig, digest: &str) -> String {
+    // The catalog is service-wide, so the group belongs to the identity:
+    // identical bytes published into another group must not reuse (or be
+    // rejected by) the first group's operation.
+    format!("{kind}:{}:{}:{digest}", config.group_id, config.node_id)
 }
 
 /// How many conversations and decoded bytes one baseline batch may carry.
@@ -1095,9 +1097,7 @@ pub(crate) async fn upload_backfill_plan(
     let manifest = {
         let guard = &mut workers[0].0;
         match ensure_session(guard, config, &token, &plan.start.instance).await {
-            Ok(session) => {
-                install_backfill_manifest(session, backfill_id, plan, &config.node_id).await
-            }
+            Ok(session) => install_backfill_manifest(session, backfill_id, plan, config).await,
             Err(error) => Err(error),
         }
     };
@@ -1123,8 +1123,7 @@ pub(crate) async fn upload_backfill_plan(
                         ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
                     for index in indices {
                         let batch = &plan.batches[index];
-                        let operation =
-                            scoped_operation_id("publication", &config.node_id, batch.digest());
+                        let operation = scoped_operation_id("publication", config, batch.digest());
                         let indexed = publish_on_session(
                             session,
                             &operation,
@@ -1190,9 +1189,9 @@ async fn install_backfill_manifest(
     session: &mut PublisherSession,
     backfill_id: &str,
     plan: &BackfillPlan,
-    node_id: &str,
+    config: &SharedConfig,
 ) -> Result<(), AppError> {
-    let operation = scoped_operation_id("backfill-manifest", node_id, &plan.manifest_digest);
+    let operation = scoped_operation_id("backfill-manifest", config, &plan.manifest_digest);
     send(
         &mut session.sink,
         &ClientFrame {
@@ -1381,7 +1380,7 @@ pub(crate) async fn deliver_connector_with_token(
         digest: &piece.digest,
     };
     let manifest = wire::manifest_digest(piece.decoded_length, 0, &[entry]);
-    let operation = scoped_operation_id("connector", &config.node_id, &manifest);
+    let operation = scoped_operation_id("connector", config, &manifest);
 
     let instance = format!("connector:{}", config.node_id);
     let mut session = PublisherSession::connect(config, &token, &instance).await?;

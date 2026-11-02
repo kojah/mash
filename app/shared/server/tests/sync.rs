@@ -12,6 +12,17 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use crate::shared::sync::client::scoped_operation_id;
 
+/// The shared configuration the client would hold for this fixture.
+fn config_for(service: &Service) -> crate::config::SharedConfig {
+    crate::config::SharedConfig {
+        group_id: service.first.group_id.clone(),
+        node_id: service.first.node_id.clone(),
+        api_url: service.url.clone(),
+        token_env: "unused-in-test".into(),
+        publication_redaction: crate::redaction::Policy::new(false),
+    }
+}
+
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
@@ -154,7 +165,7 @@ async fn websocket_resumes_durable_checkpoints_and_reports_application_failure()
     let (start, encoded) = publication();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     assert!(encoded.pieces.len() > 1, "test needs multiple pieces");
@@ -270,7 +281,7 @@ async fn qdrant_websocket_publishes_typed_batch_and_certifies_views() {
     let (start, encoded) = publication();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
@@ -725,7 +736,7 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
     let encoded = wire::encode_publication(&events, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
     let batch_operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
 
@@ -934,7 +945,7 @@ async fn qdrant_startup_recovery_resumes_queued_publications() {
     let (start, encoded) = publication();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     let group = service.first.group_id.clone();
@@ -1424,7 +1435,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     let edit_encoded = wire::encode_publication(&edit, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
     let edit_operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &edit_encoded.manifest_digest,
     );
     assert!(
@@ -1455,7 +1466,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
         wire::encode_publication(&delete, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
     let delete_operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &delete_encoded.manifest_digest,
     );
     assert!(
@@ -1489,7 +1500,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     let encoded = wire::encode_publication(&late, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     client
@@ -1704,7 +1715,7 @@ async fn qdrant_reports_silver_committed_before_a_certification_failure() {
     let (start, encoded) = publication();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
@@ -1886,7 +1897,7 @@ async fn periodic_apply_retry_finishes_queued_publications() {
     let (start, encoded) = publication();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     let group = service.first.group_id.clone();
@@ -2120,7 +2131,7 @@ async fn qdrant_partial_views_are_repaired_by_resending_finish() {
     let (start, encoded) = publication();
     let operation = scoped_operation_id(
         "publication",
-        &service.first.node_id,
+        &config_for(&service),
         &encoded.manifest_digest,
     );
     let mut client = SyncClient::connect(&service, FIRST, &start.instance).await;
