@@ -134,7 +134,24 @@ impl Store {
             revision: applied.revision,
             removed_messages: applied.removed,
             purged_conversations: applied.purged,
+            views_current: self.views_current(&identity).await?,
         })
+    }
+
+    /// Whether this node's stored views cover the current head. Certification
+    /// can complete successfully without claiming the head when a newer commit
+    /// landed first, so the receipt must ask instead of assuming.
+    pub(in crate::shared) async fn views_current(
+        &self,
+        identity: &Identity,
+    ) -> Result<bool, AppError> {
+        let head = self.head(identity).await?;
+        let silver = head.as_ref().and_then(|head| head.silver_revision.as_ref());
+        Ok(self
+            .views
+            .node_views(identity)
+            .await?
+            .is_some_and(|views| views.current(&self.views, identity, silver)))
     }
 
     /// Current accepted source revision for this node; 0 before its first

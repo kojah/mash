@@ -222,6 +222,10 @@ pub(super) struct Indexed {
     pub revision: i64,
     pub removed_messages: u64,
     pub purged_conversations: u64,
+    /// Whether the node's stored views cover the head after certification.
+    /// A certification that finished behind a newer commit reports false.
+    #[serde(default)]
+    pub views_current: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

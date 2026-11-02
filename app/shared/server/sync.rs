@@ -1198,7 +1198,7 @@ async fn handle_finish(
                         operation_id,
                         server_frame::Body::Published(Published {
                             revision,
-                            views_current: true,
+                            views_current: app.store.views_current(identity).await.unwrap_or(false),
                             coverage_through: expected_revision,
                             connector: None,
                         }),
@@ -1271,7 +1271,7 @@ async fn handle_finish(
                 operation_id,
                 server_frame::Body::Published(Published {
                     revision: indexed.revision,
-                    views_current: true,
+                    views_current: indexed.views_current,
                     coverage_through: expected_revision,
                     connector: None,
                 }),

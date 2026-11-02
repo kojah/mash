@@ -386,7 +386,6 @@ async fn qdrant_native_publisher_spools_and_uploads_over_websocket() {
         .await
         .unwrap();
     assert!(indexed.revision >= 1);
-
     let freshness: crate::shared::Freshness =
         serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
     let node = freshness
@@ -2543,6 +2542,10 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
         .expect("views");
     assert_eq!(after.silver, None, "stale views claimed the newer head");
     assert!(!after.certified, "stale views were certified");
+    assert!(
+        !service.store.views_current(&identity).await.unwrap(),
+        "the receipt would claim views ready"
+    );
 
     let freshness: crate::shared::Freshness =
         serde_json::from_value(service.get("freshness", FIRST).await).unwrap();

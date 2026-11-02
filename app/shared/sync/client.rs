@@ -394,7 +394,9 @@ async fn publish_on_session(
     match receive(&mut session.stream).await?.body {
         Some(server_frame::Body::Outcome(outcome)) => {
             if outcome.state == wire::OutcomeState::Published as i32 {
-                return Ok(indexed(outcome.revision.unwrap_or_default()));
+                // A stored published outcome predates this release's field; keep the
+                // historical assumption for resumed operations.
+                return Ok(indexed(outcome.revision.unwrap_or_default(), true));
             }
             checkpoint = outcome.checkpoint_sequence;
             if outcome.state == wire::OutcomeState::Applying as i32
@@ -446,7 +448,9 @@ async fn publish_on_session(
             Some(server_frame::Body::Outcome(outcome))
                 if outcome.state == wire::OutcomeState::Published as i32 =>
             {
-                return Ok(indexed(outcome.revision.unwrap_or_default()));
+                // A stored published outcome predates this release's field; keep the
+                // historical assumption for resumed operations.
+                return Ok(indexed(outcome.revision.unwrap_or_default(), true));
             }
             Some(server_frame::Body::Credit(grant)) => {
                 session.credit = session
@@ -514,7 +518,7 @@ async fn publish_on_session(
             }
             Some(server_frame::Body::Published(published)) => {
                 session.last_used = tokio::time::Instant::now();
-                return Ok(indexed(published.revision));
+                return Ok(indexed(published.revision, published.views_current));
             }
             Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
                 return Err(outcome_error(&failed));
@@ -528,7 +532,9 @@ async fn publish_on_session(
                 if outcome.state == wire::OutcomeState::Published as i32 =>
             {
                 session.last_used = tokio::time::Instant::now();
-                return Ok(indexed(outcome.revision.unwrap_or_default()));
+                // A stored published outcome predates this release's field; keep the
+                // historical assumption for resumed operations.
+                return Ok(indexed(outcome.revision.unwrap_or_default(), true));
             }
             Some(_) => {}
             None => return Err(AppError::shared("empty synchronization response")),
@@ -1182,6 +1188,7 @@ pub(crate) async fn upload_backfill_plan(
         revision,
         removed_messages: 0,
         purged_conversations: 0,
+        views_current: true,
     })
 }
 
@@ -1315,12 +1322,13 @@ async fn expect_accepted(
     }
 }
 
-fn indexed(revision: i64) -> protocol::Indexed {
+fn indexed(revision: i64, views_current: bool) -> protocol::Indexed {
     protocol::Indexed {
         counts: crate::storage::Counts::default(),
         revision,
         removed_messages: 0,
         purged_conversations: 0,
+        views_current,
     }
 }
 
