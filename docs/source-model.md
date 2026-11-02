@@ -14,7 +14,7 @@ search path or a special case in retrieval.
 | Element | Current | Target |
 |---|---|---|
 | Unified object storage (`objects`, roles, schema validation) | **implemented** | — |
-| Read-time copy collapse (native and same-source connectors) | **implemented**, window-bounded | — |
+| Read-time copy collapse (native and same-source connectors) | **implemented**, window-bounded; merges duplicates for display, not their ranking pressure | — |
 | Duplicate detection (`/v1/fingerprints`, status) | **implemented** (native, same conversation id) | add divergence |
 | Progressive baseline publication | **implemented** | automatic scheduling beyond recency |
 | Native publication transport (`/v1/sync`) | **implemented** | — |
@@ -22,6 +22,8 @@ search path or a special case in retrieval.
 | Connector source ownership | **not implemented** | claim in `ingest_connector`, transferable |
 | Principal-scoped connector ids | **not implemented** (Slack is `slack:<team>`) | `provider:tenant:principal` |
 | Connector omission deletion | **not implemented** (`CompleteSnapshot` records a timestamp only) | capture-scope validated deletion |
+| Owner liveness (stale claims) | **not implemented**; a claim blocks the source until a manual transfer | staleness in status, `transfer --force` |
+| Restore under the same node id | **not implemented**; a regressed revision is applied | destination rejects a revision below its head |
 | Best-effort device dedup skip | **not implemented** | optional |
 
 ## 1. What a source is
@@ -91,6 +93,23 @@ Target: every account-scoped source has exactly one owner node in a group:
   revision/schema/activity state, so replacing a laptop does not orphan a source
   and does not reset `expected_revision`.
 
+**Owner liveness.** A claim is a correctness record, not a lease. If the
+owning node disappears, the source must not stay blocked forever: `status`
+reports the claim's last known revision and the last time the owner was seen,
+and marks the owner `stale` after a configurable idle period. `transfer
+--force` moves the claim without cooperation from the old owner. A stale
+claim never expires on its own — two live pollers is exactly the bug D2
+exists to prevent, so recovery stays explicit and logged.
+
+**Restore guard.** Restoring a silver backup under the *same* node id is the
+one case where D5's absence rule is destructive. The destination still holds
+the newer history; the restored node reports a lower revision; its next
+replace snapshot deletes the newer rows by absence. The destination
+therefore records the epoch of each node's published history and rejects a
+publication whose revision is below its head with `revision_regressed`
+instead of applying it. Publishing the restored database under a new node id
+is the supported restore path; an explicit epoch reset is the escape hatch.
+
 **Decision D2.** One owner per account source; claims are atomic, transactional
 and transferable. Never inferred from content or channel overlap.
 
@@ -108,7 +127,10 @@ Every ingested record is an object with one of four roles
 
 Edges and ordering:
 
-- `parent` / `parent_storage_id` — the container or segment an object sits in.
+- `parent` / `parent_storage_id` — the container or segment an object sits
+  in. An object can have more than one ancestor (a thread inside a channel),
+  so the model is a set of edges — D3's `parents` — even though the current
+  storage column holds a single parent.
 - `reply_to` — a thread reply's parent entry.
 - `ordinal` + `context_parent` — native ordering (linear or tree).
 - `author` (connector entries) or `role` (native entries) — who spoke.
@@ -149,6 +171,11 @@ columns or query paths.
   "at this ingestion destination". It is therefore scoped to `(node, source)`
   today, not to the account source. Moving a source to another node must
   migrate this state; otherwise the connector's next batch conflicts.
+
+  Read the split as: **identity is global, delivery state is a per-destination
+  cache keyed by node.** `expected_revision` is not part of what the source
+  *is*; it is what one destination last acknowledged. Ownership transfer moves
+  the cache, never the identity.
 - Delivery is typed, compressed, resumable and acknowledged:
   - `SilverCommitted` — silver and the receipt are durable.
   - `Published` — views are certified **for native publications**. For
@@ -195,6 +222,15 @@ Chat listing dedups by provider/chat id. Collapse requires:
 - the same normalized text — divergent copies stay separate;
 - both copies reaching the same bounded retrieval window; dedup runs inside
   fusion/diversification, not over the whole corpus.
+
+Collapse is a **display** guarantee, not a ranking guarantee. Copies are
+merged after fusion and diversification have already spent candidate slots,
+so a conversation present on three nodes can still push distinct evidence out
+of a bounded window before it collapses to one hit. The contract in §9
+("copies are references, not extra evidence") therefore holds for what the
+user sees, not for what ranking selected. Collapsing before fusion, or
+choosing one canonical node per conversation earlier in the pipeline, is what
+would make the two agree; it is not implemented.
 
 **Duplicate detection (implemented).** `GET /v1/fingerprints` returns a
 `FingerprintReport`: duplicated conversations (same conversation id and
@@ -267,20 +303,31 @@ sources:
    sources and two copies that do not collapse.
 10. **Terminology overload.** See the glossary; the document now uses distinct
     names, but the code does not.
+11. **Collapse runs after ranking.** Duplicates occupy candidate slots before
+    they merge (§8), so "references, not extra evidence" holds for display
+    only.
+12. **No owner liveness.** A dead owner blocks an account source until someone
+    transfers it; nothing distinguishes a stale claim from an active one.
+13. **A restored database under the same node id can delete newer shared
+    history** by publishing a regressed revision (§3, restore guard).
 
 ## 12. Phased plan
 
 1. **Principal-scoped connector ids** (Slack first) and a migration note.
+   This changes `source_id`, so it invalidates existing `connector_sources`
+   rows and read-collapse keys; plan the migration, do not discover it.
 2. **Ownership**: a group-level claim table enforced in `ingest_connector`,
-   covering both transports; `transfer` migrates revision/schema/activity.
+   covering both transports; `transfer` migrates revision/schema/activity;
+   owner liveness in `status`; the restore guard on published revisions.
 3. **Transport cutover**: port `sdk/python` to `BeginConnectorBatch`, then
    remove the HTTP connector route.
 4. **Connector views certification** in the `Published` frame, or a separate
    frame that reports receipt readiness.
-5. **Status**: unified source list with owner, revision and state.
-6. **Author and ordering normalization.**
-7. **Optional device dedup detection refinements** (divergence), then
-   best-effort skip.
+5. **Author and ordering normalization.** This is what lets connector results
+   rank alongside native ones; it outranks a nicer status command.
+6. **Status**: unified source list with owner, revision, state and staleness.
+7. **Optional device dedup refinements** (divergence), then pre-fusion
+   collapse, then best-effort skip.
 
 Each phase ships alone and preserves D1–D7.
 
@@ -299,6 +346,13 @@ Each phase ships alone and preserves D1–D7.
    transfer migrate it.
 9. `Published` certifies views for native publications; connector publication
    reports receipt readiness instead.
+10. A claim is atomic and never self-expires; `status` exposes staleness and
+    `transfer --force` is the only way to take it, from a live owner or a dead
+    one.
+11. A destination never accepts a publication whose revision is below the
+    node's published head; restore is a new node id or an explicit epoch reset.
+12. Collapse merges duplicates for display; it does not remove their ranking
+    pressure.
 
 ## 14. Glossary
 
