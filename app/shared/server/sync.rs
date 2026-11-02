@@ -1390,8 +1390,14 @@ async fn commit_publication(
     let operation_id = operation.operation_id.clone();
     let manifest_digest = operation.manifest_digest.clone();
     let conversations = conversation_ids(events);
+    // Certification runs after the permit is released, so it needs its own
+    // handles: the permit guards the silver commit, not the views write.
+    let phase_store = store.clone();
+    let phase_catalog = catalog_handle.clone();
+    let phase_operation = operation_id.clone();
+    let phase_manifest = manifest_digest.clone();
     let outcome = admission::run(permit, async move {
-        let outcome: Result<crate::shared::protocol::Indexed, CommitFailure> = async {
+        let outcome: Result<_, CommitFailure> = async {
             let receipt = silver_store::SyncReceipt {
                 operation_id: operation_id.clone(),
                 manifest_digest: manifest_digest.clone(),
@@ -1456,30 +1462,32 @@ async fn commit_publication(
             if let Some(silver) = silver {
                 let _ = silver.send(revision).await;
             }
-            // Phase two: views writes and certification.
-            let indexed = match store.certify_views(committed).await {
-                Ok(indexed) => indexed,
-                Err(error) => {
-                    set_views_pending(&catalog_handle, &operation_id, revision).await;
-                    return Err(CommitFailure::new(error, true));
-                }
-            };
-            let receipt = silver_store::receipt_digest(&manifest_digest, indexed.revision);
-            let _ = catalog(&catalog_handle, move |catalog| {
-                catalog.published(&operation_id, indexed.revision, &receipt)
-            })
-            .await;
-            crash_point("after_published");
-            Ok(indexed)
+            Ok(committed)
         }
         .await;
         Ok::<_, AppError>(outcome)
     })
     .await;
-    match outcome {
-        Ok(outcome) => outcome,
-        Err(error) => Err(CommitFailure::new(error, false)),
-    }
+    let committed = match outcome {
+        Ok(Ok(committed)) => committed,
+        Ok(Err(failure)) => return Err(failure),
+        Err(error) => return Err(CommitFailure::new(error, false)),
+    };
+    let revision = committed.revision();
+    let indexed = match phase_store.certify_views(committed).await {
+        Ok(indexed) => indexed,
+        Err(error) => {
+            set_views_pending(&phase_catalog, &phase_operation, revision).await;
+            return Err(CommitFailure::new(error, true));
+        }
+    };
+    let receipt = silver_store::receipt_digest(&phase_manifest, indexed.revision);
+    let _ = catalog(&phase_catalog, move |catalog| {
+        catalog.published(&phase_operation, indexed.revision, &receipt)
+    })
+    .await;
+    crash_point("after_published");
+    Ok(indexed)
 }
 
 async fn set_views_pending(handle: &CatalogHandle, operation_id: &str, revision: i64) {
