@@ -38,6 +38,7 @@ struct App {
     mutation_capacity: usize,
     attachments_dir: Option<std::path::PathBuf>,
     transfer_dir: std::path::PathBuf,
+    catalog: sync::CatalogHandle,
     store: Store,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
     uploads: Arc<tokio::sync::Semaphore>,
@@ -365,11 +366,13 @@ pub(crate) async fn run(
         .map_err(|_| AppError::internal("get HTTP listener address"))?;
     crate::write_json(&mut std::io::stderr(), &Listening { listening: address })?;
     let transfer_dir = config.silver_dir()?.join("sync");
+    let catalog = std::sync::Arc::new(std::sync::Mutex::new(sync::open_catalog(&transfer_dir)?));
     let app = App {
         activity: super::activity::Registry::default(),
         mutation_capacity: config.max_concurrent_uploads,
         attachments_dir: config.attachments_dir,
         transfer_dir,
+        catalog,
         store,
         identities: Arc::new(identities),
         uploads: Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_uploads)),

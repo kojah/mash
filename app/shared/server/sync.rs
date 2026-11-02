@@ -32,7 +32,7 @@ const EXPIRY_SWEEP: Duration = Duration::from_mins(1);
 const HEARTBEAT_MS: u32 = 30_000;
 const PRUNE_RECEIPTS: usize = 64;
 
-type CatalogHandle = Arc<Mutex<Catalog>>;
+pub(super) type CatalogHandle = Arc<Mutex<Catalog>>;
 
 pub(super) fn open_catalog(root: &std::path::Path) -> Result<Catalog, AppError> {
     Catalog::open_with_limit(root, SPOOL_QUOTA)
@@ -65,7 +65,10 @@ async fn connection(app: App, identity: Identity, socket: WebSocket) {
     reason = "one connection state machine keeps frame handling and shutdown together"
 )]
 async fn run(app: App, identity: Identity, socket: WebSocket) -> Result<(), AppError> {
-    let catalog = Arc::new(Mutex::new(open_catalog(&app.transfer_dir)?));
+    // One catalog handle for the whole process: every connection shares it so
+    // concurrent lanes queue on the in-process lock instead of contending for
+    // SQLite's file lock.
+    let catalog = app.catalog.clone();
     // Expire transfers abandoned by earlier sessions before accepting new work.
     let cutoff = epoch_millis()
         .saturating_sub(i64::try_from(INCOMPLETE_RETENTION.as_millis()).unwrap_or(i64::MAX));
@@ -2049,7 +2052,7 @@ pub(super) fn spawn_apply_retry(app: App, period: Duration) -> tokio::task::Join
 }
 
 async fn sweep_expired(app: &App, retention: Duration) -> Result<usize, AppError> {
-    let handle: CatalogHandle = Arc::new(Mutex::new(open_catalog(&app.transfer_dir)?));
+    let handle: CatalogHandle = app.catalog.clone();
     let cutoff =
         epoch_millis().saturating_sub(i64::try_from(retention.as_millis()).unwrap_or(i64::MAX));
     catalog(&handle, move |catalog| catalog.expire_incomplete(cutoff)).await
@@ -2063,7 +2066,7 @@ async fn sweep_expired(app: &App, retention: Duration) -> Result<usize, AppError
 /// retained pieces. Silver duplicate detection makes that a views-only repair,
 /// and the receipt on the silver head proves whether history committed.
 pub(super) async fn recover(app: &App) -> Result<usize, AppError> {
-    let handle: CatalogHandle = Arc::new(Mutex::new(open_catalog(&app.transfer_dir)?));
+    let handle: CatalogHandle = app.catalog.clone();
     let cutoff = epoch_millis()
         .saturating_sub(i64::try_from(INCOMPLETE_RETENTION.as_millis()).unwrap_or(i64::MAX));
     let expired = catalog(&handle, move |catalog| catalog.expire_incomplete(cutoff)).await?;

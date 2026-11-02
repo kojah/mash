@@ -1049,6 +1049,7 @@ pub(crate) fn backfill_lanes() -> usize {
 /// concurrently; each session carries one active operation.
 #[allow(
     clippy::too_many_lines,
+    clippy::too_many_arguments,
     reason = "one baseline session: manifest, per-batch commits, completion"
 )]
 pub(crate) async fn upload_backfill_plan(

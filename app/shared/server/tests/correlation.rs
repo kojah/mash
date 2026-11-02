@@ -27,6 +27,14 @@ fn traced_router(dispatcher: tracing::Dispatch) -> Router {
         activity: crate::shared::activity::Registry::default(),
         mutation_capacity: 1,
         attachments_dir: None,
+        catalog: std::sync::Arc::new(std::sync::Mutex::new(
+            super::super::sync::open_catalog(&std::env::temp_dir().join(format!(
+                "mash-sync-test-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            )))
+            .unwrap(),
+        )),
         transfer_dir: std::env::temp_dir().join(format!(
             "mash-sync-test-{}-{:?}",
             std::process::id(),
