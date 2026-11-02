@@ -74,6 +74,13 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         result = await synchronize(settings, self.github.github(), recorder, NOW)
         return result, recorder
 
+    async def test_a_token_for_another_account_is_rejected(self) -> None:
+        from mash_github.connector import WrongPrincipal
+
+        self.github.principal = "someone-else"
+        with self.assertRaises(WrongPrincipal):
+            await self.poll(self.settings())
+
     async def test_issues_prs_comments_reviews_and_review_comments_map(self) -> None:
         self.github.add(
             "acme/app",
