@@ -1027,8 +1027,15 @@ pub(crate) async fn upload_backfill_plan_with_config(
     .await
 }
 
+/// Baseline batches in flight at once. The server admits this many commits
+/// and queues the rest, so more lanes only add waiters.
+const BACKFILL_LANES: usize = 2;
+
 /// Send a planned baseline: manifest, then every batch that is not already
 /// recorded as complete, then completion.
+///
+/// Batches are independent, so they are spread across sessions and committed
+/// concurrently; each session carries one active operation.
 #[allow(
     clippy::too_many_lines,
     reason = "one baseline session: manifest, per-batch commits, completion"
@@ -1047,59 +1054,118 @@ pub(crate) async fn upload_backfill_plan(
         last_revision,
     } = resume;
     let key = session_key(config, &plan.start.instance);
-    let slot = session_slot(&key);
-    let mut guard = slot.lock_owned().await;
-    let result = async {
-        let session = ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
-        install_backfill_manifest(session, backfill_id, plan, &config.node_id).await?;
+    // A connection carries exactly one active operation, so batches pipeline
+    // across sessions instead of waiting for each commit before sending the
+    // next one. Baseline batches are independent by construction.
+    let lanes = BACKFILL_LANES.min(plan.batches.len().max(1));
+    let mut workers = Vec::with_capacity(lanes);
+    for lane in 0..lanes {
+        let lane_key = if lane == 0 {
+            key.clone()
+        } else {
+            format!("{key}\u{0}lane-{lane}")
+        };
+        let guard = session_slot(&lane_key).lock_owned().await;
+        let batches: Vec<usize> = (lane..plan.batches.len())
+            .step_by(lanes)
+            .filter(|index| !completed.contains(plan.batches[*index].digest()))
+            .collect();
+        workers.push((guard, batches));
+    }
 
-        let mut revision = last_revision;
-        let mut sent = 0usize;
-        for (index, batch) in plan.batches.iter().enumerate() {
-            if completed.contains(batch.digest()) {
-                continue;
+    // The manifest must exist before any batch references it.
+    let manifest = {
+        let guard = &mut workers[0].0;
+        match ensure_session(guard, config, &token, &plan.start.instance).await {
+            Ok(session) => {
+                install_backfill_manifest(session, backfill_id, plan, &config.node_id).await
             }
-            let operation = scoped_operation_id("publication", &config.node_id, batch.digest());
-            let indexed = publish_on_session(
-                session,
-                &operation,
-                &plan.start,
-                &batch.encoded,
-                Some((backfill_id, plan.baseline_revision)),
-            )
-            .await?;
-            revision = indexed.revision;
-            sent += 1;
-            on_batch(batch.digest(), indexed.revision)?;
-            if let Some(progress) = &progress {
-                let (acknowledge, wait) = tokio::sync::oneshot::channel();
-                if progress
-                    .send(BackfillProgress {
-                        index,
-                        total: plan.batches.len(),
-                        revision,
-                        acknowledge,
-                    })
-                    .is_ok()
-                {
-                    let _ = wait.await;
-                }
-            }
+            Err(error) => Err(error),
         }
-        let _ = sent;
-        finish_backfill(session, backfill_id, plan).await?;
-        Ok(protocol::Indexed {
-            counts: crate::storage::Counts::default(),
-            revision,
-            removed_messages: 0,
-            purged_conversations: 0,
-        })
+    };
+    if let Err(error) = manifest {
+        for (guard, _) in &mut workers {
+            **guard = None;
+        }
+        return Err(error);
+    }
+
+    let receipts = std::sync::Mutex::new(&mut on_batch);
+    let revision = std::sync::atomic::AtomicI64::new(last_revision);
+    let total = plan.batches.len();
+    let workers =
+        futures_util::future::try_join_all(workers.into_iter().map(|(mut guard, indices)| {
+            let token = token.clone();
+            let progress = progress.clone();
+            let receipts = &receipts;
+            let revision = &revision;
+            async move {
+                let result: Result<(), AppError> = async {
+                    let session =
+                        ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
+                    for index in indices {
+                        let batch = &plan.batches[index];
+                        let operation =
+                            scoped_operation_id("publication", &config.node_id, batch.digest());
+                        let indexed = publish_on_session(
+                            session,
+                            &operation,
+                            &plan.start,
+                            &batch.encoded,
+                            Some((backfill_id, plan.baseline_revision)),
+                        )
+                        .await?;
+                        revision.fetch_max(indexed.revision, std::sync::atomic::Ordering::Relaxed);
+                        {
+                            let mut callback = receipts
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            (**callback)(batch.digest(), indexed.revision)?;
+                        }
+                        if let Some(progress) = &progress {
+                            let (acknowledge, wait) = tokio::sync::oneshot::channel();
+                            if progress
+                                .send(BackfillProgress {
+                                    index,
+                                    total,
+                                    revision: indexed.revision,
+                                    acknowledge,
+                                })
+                                .is_ok()
+                            {
+                                let _ = wait.await;
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                .await;
+                if result.is_err() {
+                    *guard = None;
+                }
+                result
+            }
+        }))
+        .await;
+    workers?;
+
+    let revision = revision.load(std::sync::atomic::Ordering::Relaxed);
+    let mut guard = session_slot(&key).lock_owned().await;
+    let finish = async {
+        let session = ensure_session(&mut guard, config, &token, &plan.start.instance).await?;
+        finish_backfill(session, backfill_id, plan).await
     }
     .await;
-    if result.is_err() {
+    if finish.is_err() {
         *guard = None;
     }
-    result
+    finish?;
+    Ok(protocol::Indexed {
+        counts: crate::storage::Counts::default(),
+        revision,
+        removed_messages: 0,
+        purged_conversations: 0,
+    })
 }
 
 async fn install_backfill_manifest(
