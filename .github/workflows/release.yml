@@ -3,7 +3,8 @@ name: Release
 # Tagging vX.Y.Z publishes prebuilt binaries for the commit CI validated, then
 # updates each package channel whose credential is configured: the Homebrew
 # tap (HOMEBREW_TAP_TOKEN), the Scoop bucket in this repository (always),
-# winget (WINGET_TOKEN), Chocolatey (CHOCOLATEY_API_KEY) and npm (NPM_TOKEN).
+# winget (WINGET_TOKEN), Chocolatey (CHOCOLATEY_API_KEY), npm (NPM_TOKEN) and
+# the signed apt repository on GitHub Pages (APT_GPG_PRIVATE_KEY).
 # mise and cargo-binstall read the release assets directly. Releases build on
 # stable Rust so they need no nightly features.
 on:
@@ -170,6 +171,45 @@ jobs:
           for package in npm/mash-*/ npm/mash/; do
             npm publish --access public "$package"
           done
+
+  apt:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish .deb packages and the apt repository
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$APT_GPG_PRIVATE_KEY" ]; then
+            echo "APT_GPG_PRIVATE_KEY is not set; skipping apt."
+            exit 0
+          fi
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          command -v apt-ftparchive >/dev/null || sudo apt-get install -y apt-utils
+          if git ls-remote --exit-code origin gh-pages >/dev/null; then
+            git clone --branch gh-pages --depth 1 \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+          else
+            git init -b gh-pages site
+            git -C site remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            touch site/.nojekyll
+          fi
+          packaging/apt/build-repo.sh "$GITHUB_REF_NAME" dist site/apt
+          gh release upload "$GITHUB_REF_NAME" dist/mash_*.deb --repo "$GITHUB_REPOSITORY"
+          cd site
+          git config user.name "mash release"
+          git config user.email "mash-release@users.noreply.github.com"
+          git add -A
+          git commit -m "apt: mash ${GITHUB_REF_NAME}"
+          git push origin gh-pages
 
   windows-packages:
     needs: publish

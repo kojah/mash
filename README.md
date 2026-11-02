@@ -29,6 +29,14 @@ or
 curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
 
+On Debian or Ubuntu, from the signed apt repository:
+
+```bash
+curl -fsSL https://kojah.github.io/mash/apt/mash-archive-keyring.gpg | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://kojah.github.io/mash/apt stable main" | sudo tee /etc/apt/sources.list.d/mash.list
+sudo apt update && sudo apt install mash
+```
+
 or with a tool you already use:
 
 ```bash
