@@ -1,4 +1,4 @@
------------------------------- MODULE Publication ------------------------------
+--------------------------- MODULE BackfillOrdering ---------------------------
 \* Two invariants that concurrency broke in production, and the fixes:
 \*
 \*   OrderedRevisions        - two batches committed for one node must never
@@ -16,7 +16,7 @@
 \*
 \* Deliberately not modelled: SQLite busy timeouts, QoS/retry, and wire credit.
 \* Those are implementation-resource properties, not protocol ordering.
-EXTENDS Naturals, FiniteSets, TLC
+EXTENDS Naturals, FiniteSets
 
 CONSTANTS Batches,  \* batches in one publication
           Lanes,    \* operations a node may have in flight

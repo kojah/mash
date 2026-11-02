@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill)
+models=(Publication BackfillOrdering Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill) ;;
+            Publication|BackfillOrdering|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -123,6 +123,13 @@ if $self_test; then
     check RuntimeUpgrade RuntimeUpgradeNoGuard AdmissionChecked
     check MutationAdmission MutationAdmissionReleaseWorker WorkOwnsCapacity
     check MutationAdmission MutationAdmissionUnfair FairOrder
+    # Concurrency regressions found by running four baseline lanes for one node.
+    check BackfillOrdering BackfillOrderingSequential
+    check BackfillOrdering BackfillOrderingRebaseBug OrderedRevisions
+    check BackfillOrdering BackfillOrderingScopeBug UniqueBackfillIdentity
+    # Connector coherence rules Slack onboarding depends on (source-model D1/D2).
+    check Coherence CoherenceDeviceScope NoDoubleIngest
+    check Coherence CoherenceOverwrite NoDoubleIngest
     # Proposed synchronization contracts, not deliberate mutations of Rust code.
     check SyncTransfer SyncTransferEarlyCheckpoint CheckpointIsDurable
     check SyncTransfer SyncTransferSplitReceipt CommitHasReceipt
