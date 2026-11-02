@@ -809,9 +809,12 @@ pub(crate) struct BackfillLimits {
 
 impl Default for BackfillLimits {
     fn default() -> Self {
+        // Baseline commits are apply-bound: fewer, larger batches amortize the
+        // per-operation transaction, fsync, Qdrant flush and certification.
+        // The cost is coarser resume granularity.
         Self {
-            conversations: 128,
-            decoded_bytes: 1024 * 1024,
+            conversations: 512,
+            decoded_bytes: 4 * 1024 * 1024,
         }
     }
 }
@@ -1322,9 +1325,133 @@ fn indexed(revision: i64) -> protocol::Indexed {
     }
 }
 
+/// Deliver one connector batch over `/v1/sync` and return its source-scoped
+/// receipt. This is the path adapters use instead of an HTTP POST of JSON.
+pub(crate) async fn deliver_connector(
+    config: &SharedConfig,
+    batch: &[u8],
+) -> Result<crate::connectors::Receipt, AppError> {
+    deliver_connector_with_token(config, token(config)?, batch).await
+}
+
+/// Delivery with an explicit token, for callers that already hold one.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one resumable connector delivery with explicit frame outcomes"
+)]
+pub(crate) async fn deliver_connector_with_token(
+    config: &SharedConfig,
+    token: String,
+    batch: &[u8],
+) -> Result<crate::connectors::Receipt, AppError> {
+    let metadata: serde_json::Value = serde_json::from_slice(batch)
+        .map_err(|_| AppError::usage("connector batch is not valid JSON"))?;
+    let text = |name: &str| {
+        metadata
+            .get(name)
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| AppError::usage(format!("connector batch is missing {name}")))
+    };
+    let source_id = text("source_id")?;
+    let batch_id = text("batch_id")?;
+    let expected_revision = match metadata.get("expected_revision") {
+        Some(serde_json::Value::Number(number)) => number.to_string(),
+        Some(serde_json::Value::String(value)) => value.clone(),
+        _ => {
+            return Err(AppError::usage(
+                "connector batch is missing expected_revision",
+            ));
+        }
+    };
+
+    let encoded = wire::compress(batch)?;
+    let piece = wire::Piece {
+        sequence: 0,
+        decoded_offset: 0,
+        decoded_length: u64::try_from(batch.len()).unwrap_or(u64::MAX),
+        digest: blake3::hash(batch).to_hex().to_string(),
+        encoded,
+        compression: wire::Compression::Zstd as i32,
+    };
+    let entry = wire::ManifestPiece {
+        sequence: 0,
+        decoded_offset: 0,
+        decoded_length: piece.decoded_length,
+        digest: &piece.digest,
+    };
+    let manifest = wire::manifest_digest(piece.decoded_length, 0, &[entry]);
+    let operation = scoped_operation_id("connector", &config.node_id, &manifest);
+
+    let instance = format!("connector:{}", config.node_id);
+    let mut session = PublisherSession::connect(config, &token, &instance).await?;
+
+    for body in [
+        client_frame::Body::BeginConnectorBatch(wire::BeginConnectorBatch {
+            source_id: source_id.clone(),
+            batch_id: batch_id.clone(),
+            expected_revision,
+            manifest_digest: manifest.clone(),
+            decoded_bytes: piece.decoded_length,
+        }),
+        client_frame::Body::Chunk(wire::EncodedBatch::chunk(&piece)),
+        client_frame::Body::FinishUpload(wire::FinishUpload {
+            manifest_digest: manifest.clone(),
+        }),
+    ] {
+        send(
+            &mut session.sink,
+            &ClientFrame {
+                operation_id: operation.clone(),
+                body: Some(body),
+            },
+        )
+        .await?;
+    }
+
+    loop {
+        match receive(&mut session.stream).await?.body {
+            Some(server_frame::Body::Published(published)) => {
+                let Some(receipt) = published.connector else {
+                    return Err(AppError::internal("connector delivery returned no receipt"));
+                };
+                return Ok(crate::connectors::Receipt {
+                    schema_version: crate::connectors::Version,
+                    source_id: receipt
+                        .source_id
+                        .try_into()
+                        .map_err(|_| AppError::internal("connector receipt source is invalid"))?,
+                    batch_id: receipt
+                        .batch_id
+                        .try_into()
+                        .map_err(|_| AppError::internal("connector receipt batch is invalid"))?,
+                    source_revision: receipt.source_revision,
+                    silver_revision: receipt.silver_revision,
+                    views_ready: published.views_current,
+                });
+            }
+            Some(
+                server_frame::Body::Accepted(_)
+                | server_frame::Body::SilverCommitted(_)
+                | server_frame::Body::Checkpoint(_)
+                | server_frame::Body::Credit(_)
+                | server_frame::Body::Progress(_),
+            ) => {}
+            Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
+                return Err(outcome_error(&failed));
+            }
+            other => {
+                return Err(AppError::shared(format!(
+                    "unexpected connector response: {other:?}"
+                )));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 /// Close every cached publisher session. Tests use this once a publication is
 /// done so a fake server that answers on disconnect can finish.
-#[cfg(test)]
 pub(crate) fn close_sessions() {
     let mut slots = session_slots()
         .lock()
@@ -1706,125 +1833,5 @@ mod tests {
             "ws://127.0.0.1:8787/v1/sync"
         );
         assert!(endpoint("ftp://example.test").is_err());
-    }
-}
-
-/// Deliver one connector batch over `/v1/sync` and return its source-scoped
-/// receipt. This is the path adapters use instead of POSTing JSON.
-pub(crate) async fn deliver_connector(
-    config: &SharedConfig,
-    batch: &[u8],
-) -> Result<crate::connectors::Receipt, AppError> {
-    deliver_connector_with_token(config, token(config)?, batch).await
-}
-
-/// Delivery with an explicit token, for callers that already hold one.
-pub(crate) async fn deliver_connector_with_token(
-    config: &SharedConfig,
-    token: String,
-    batch: &[u8],
-) -> Result<crate::connectors::Receipt, AppError> {
-    let metadata: serde_json::Value = serde_json::from_slice(batch)
-        .map_err(|_| AppError::usage("connector batch is not valid JSON"))?;
-    let text = |name: &str| {
-        metadata
-            .get(name)
-            .and_then(|value| value.as_str())
-            .map(str::to_owned)
-            .ok_or_else(|| AppError::usage(format!("connector batch is missing {name}")))
-    };
-    let source_id = text("source_id")?;
-    let batch_id = text("batch_id")?;
-    let expected_revision = match metadata.get("expected_revision") {
-        Some(serde_json::Value::Number(number)) => number.to_string(),
-        Some(serde_json::Value::String(value)) => value.clone(),
-        _ => {
-            return Err(AppError::usage(
-                "connector batch is missing expected_revision",
-            ));
-        }
-    };
-
-    let encoded = wire::compress(batch)?;
-    let piece = wire::Piece {
-        sequence: 0,
-        decoded_offset: 0,
-        decoded_length: u64::try_from(batch.len()).unwrap_or(u64::MAX),
-        digest: blake3::hash(batch).to_hex().to_string(),
-        encoded,
-        compression: wire::Compression::Zstd as i32,
-    };
-    let entry = wire::ManifestPiece {
-        sequence: 0,
-        decoded_offset: 0,
-        decoded_length: piece.decoded_length,
-        digest: &piece.digest,
-    };
-    let manifest = wire::manifest_digest(piece.decoded_length, 0, &[entry]);
-    let operation = scoped_operation_id("connector", &config.node_id, &manifest);
-
-    let instance = format!("connector:{}", config.node_id);
-    let mut session = PublisherSession::connect(config, &token, &instance).await?;
-
-    for body in [
-        client_frame::Body::BeginConnectorBatch(wire::BeginConnectorBatch {
-            source_id: source_id.clone(),
-            batch_id: batch_id.clone(),
-            expected_revision,
-            manifest_digest: manifest.clone(),
-            decoded_bytes: piece.decoded_length,
-        }),
-        client_frame::Body::Chunk(wire::EncodedBatch::chunk(&piece)),
-        client_frame::Body::FinishUpload(wire::FinishUpload {
-            manifest_digest: manifest.clone(),
-        }),
-    ] {
-        send(
-            &mut session.sink,
-            &ClientFrame {
-                operation_id: operation.clone(),
-                body: Some(body),
-            },
-        )
-        .await?;
-    }
-
-    loop {
-        match receive(&mut session.stream).await?.body {
-            Some(server_frame::Body::Published(published)) => {
-                let Some(receipt) = published.connector else {
-                    return Err(AppError::internal("connector delivery returned no receipt"));
-                };
-                return Ok(crate::connectors::Receipt {
-                    schema_version: crate::connectors::Version,
-                    source_id: receipt
-                        .source_id
-                        .try_into()
-                        .map_err(|_| AppError::internal("connector receipt source is invalid"))?,
-                    batch_id: receipt
-                        .batch_id
-                        .try_into()
-                        .map_err(|_| AppError::internal("connector receipt batch is invalid"))?,
-                    source_revision: receipt.source_revision,
-                    silver_revision: receipt.silver_revision,
-                    views_ready: published.views_current,
-                });
-            }
-            Some(
-                server_frame::Body::Accepted(_)
-                | server_frame::Body::SilverCommitted(_)
-                | server_frame::Body::Checkpoint(_)
-                | server_frame::Body::Credit(_)
-                | server_frame::Body::Progress(_),
-            ) => {}
-            Some(server_frame::Body::Rejected(failed) | server_frame::Body::Failed(failed)) => {
-                return Err(outcome_error(&failed));
-            }
-            other => {
-                return Err(AppError::shared(format!(
-                    "unexpected connector response: {other:?}"
-                )));
-            }
-        }
     }
 }

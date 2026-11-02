@@ -231,7 +231,7 @@ fn released_server_no_longer_exposes_legacy_mutation_routes() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     runtime.block_on(async {
         let client = reqwest::Client::new();
-        for route in ["index", "attachment-upload"] {
+        for route in ["index", "attachment-upload", "connector-batches"] {
             let response = client
                 .post(format!("{}/v1/{route}", server.url))
                 .bearer_auth(&token)
@@ -246,21 +246,6 @@ fn released_server_no_longer_exposes_legacy_mutation_routes() {
                 "{route} must be gone from the released router"
             );
         }
-        // Connector ingress intentionally remains until the WebSocket client can
-        // return the source-scoped connector receipt; it is mounted, not 404.
-        let response = client
-            .post(format!("{}/v1/connector-batches", server.url))
-            .bearer_auth(&token)
-            .header("content-type", "application/x-ndjson")
-            .body("{}")
-            .send()
-            .await
-            .expect("request");
-        assert_eq!(
-            response.status(),
-            reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "connector ingress is still mounted"
-        );
         // The synchronization endpoint is still mounted; a plain GET is a rejected
         // upgrade, not an unknown route.
         let response = client

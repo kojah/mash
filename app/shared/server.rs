@@ -14,7 +14,6 @@ use serde::Deserialize;
 mod admission;
 mod attachments;
 mod configuration;
-mod connectors;
 mod contexts;
 pub(super) mod store;
 mod sync;
@@ -155,9 +154,6 @@ fn router(app: App) -> Router {
         .route("/v1/source-transfer", post(source_transfer))
         .route("/v1/attachments", post(attachments::list))
         .route("/v1/attachment", post(attachments::get))
-        // Connector batches keep their source-scoped receipt contract until the
-        // client can send them over /v1/sync with a connector receipt.
-        .route("/v1/connector-batches", post(connectors::ingest))
         .route("/v1/sync", get(sync::upgrade));
     router
         .method_not_allowed_fallback(|| async {

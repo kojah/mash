@@ -6,7 +6,6 @@ mod admission;
 mod antigravity;
 mod attachments;
 mod chats;
-mod connectors;
 mod context;
 mod contexts;
 mod correlation;

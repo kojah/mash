@@ -96,6 +96,12 @@ pub(crate) enum Operation {
     Forget {
         id: String,
     },
+    /// One read-only SQL statement over local silver.
+    QuerySilver {
+        sql: String,
+        limit: usize,
+        timeout_seconds: u64,
+    },
     ModelsInstall,
     ExportSilver {
         directory: PathBuf,
@@ -127,6 +133,7 @@ pub(crate) enum Response {
     Status(Box<StatusResponse>),
     Installation(super::installation::Report),
     Forget(ForgetResponse),
+    Query(serde_json::Value),
     ModelsInstall(ModelsInstallResponse),
     ExportSilver(crate::export::Exported),
     ImportSilver(crate::export::Imported),

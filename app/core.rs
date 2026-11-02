@@ -48,6 +48,7 @@ async fn execute_admitted(
         Operation::View { .. } => "view",
         Operation::Status { .. } | Operation::Installation { .. } => "status",
         Operation::Forget { .. } => "forget",
+        Operation::QuerySilver { .. } => "query",
         Operation::ModelsInstall => "models_install",
         Operation::ExportSilver { .. } => "export_silver",
         Operation::ImportSilver { .. } => "import_silver",
@@ -219,6 +220,23 @@ async fn dispatch(
             let bytes = std::fs::read(&batch_file).map_err(AppError::io)?;
             let receipt = crate::shared::deliver_connector(shared, &bytes).await?;
             Ok(Response::IngestConnector(receipt))
+        }
+        Operation::QuerySilver {
+            sql,
+            limit,
+            timeout_seconds,
+        } => {
+            let database = database.to_path_buf();
+            crate::blocking(move || {
+                crate::silver_query::run(
+                    &database,
+                    &sql,
+                    limit,
+                    std::time::Duration::from_secs(timeout_seconds),
+                )
+            })
+            .await
+            .map(Response::Query)
         }
         Operation::ExportSilver { directory } => {
             let database = database.to_path_buf();

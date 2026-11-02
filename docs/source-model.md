@@ -18,7 +18,7 @@ search path or a special case in retrieval.
 | Duplicate detection (`/v1/fingerprints`, status) | **implemented** (native, same conversation id) | add divergence |
 | Progressive baseline publication | **implemented** | automatic scheduling beyond recency |
 | Native publication transport (`/v1/sync`) | **implemented** | — |
-| Connector publication transport | both `/v1/sync` `BeginConnectorBatch` **and** legacy `POST /v1/connector-batches` are mounted | `/v1/sync` only, after the SDK migrates |
+| Connector publication transport | **implemented**: `/v1/sync` `BeginConnectorBatch` only; the SDK runs `mash index --connector-batch --shared` | — |
 | Connector source ownership | **implemented**: durable group-wide claim checked in `ingest_connector`; `POST /v1/source-transfer` | — |
 | Principal-scoped connector ids | **implemented for Slack** (`slack:<team>:<principal>`, `principal` required) | `provider:tenant:principal` for the other blueprints |
 | Connector omission deletion | **not implemented** (`CompleteSnapshot` records a timestamp only) | capture-scope validated deletion |
@@ -284,8 +284,10 @@ sources:
 
 ## 11. Open gaps
 
-1. **Connector transport is not cut over.** `POST /v1/connector-batches` is
-   still mounted in the release router, and the Python SDK still calls it.
+1. ~~**Connector transport is not cut over.**~~ Closed: `POST
+   /v1/connector-batches` is gone from the router, and the Python SDK delivers
+   by running `mash index --connector-batch <file> --shared`, which publishes
+   over `/v1/sync` and prints the source-scoped receipt the socket returns.
 2. ~~**No ownership.**~~ Closed: `ingest_connector` claims `(group, source)`
    in the transfer catalog before any silver write, rejects a second writer
    with `source_owned_elsewhere`, and `POST /v1/source-transfer` moves the

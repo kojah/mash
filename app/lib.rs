@@ -6,6 +6,7 @@ mod message_context;
 mod provider;
 mod role;
 mod silver;
+mod silver_query;
 mod source;
 mod tools;
 

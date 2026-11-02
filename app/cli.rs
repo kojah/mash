@@ -167,6 +167,18 @@ enum Command {
     },
     /// Remove one conversation and its derived search rows.
     Forget { id: String },
+    /// Run one read-only SQL statement over local silver.
+    Query {
+        /// SQL to run; the connection is read-only and bounded.
+        #[arg(long)]
+        sql: String,
+        /// Maximum rows returned.
+        #[arg(long, default_value_t = 200)]
+        limit: usize,
+        /// Wall-clock budget in seconds.
+        #[arg(long, default_value_t = 10)]
+        timeout_seconds: u64,
+    },
     /// Export local silver and retained attachments to a new private directory.
     Export { directory: PathBuf },
     /// Import verified silver into a new database; project views explicitly afterward.
@@ -432,6 +444,15 @@ impl Cli {
                 }
             }
             Command::Forget { id } => Operation::Forget { id },
+            Command::Query {
+                sql,
+                limit,
+                timeout_seconds,
+            } => Operation::QuerySilver {
+                sql,
+                limit,
+                timeout_seconds,
+            },
             Command::Export { directory } => Operation::ExportSilver { directory },
             Command::Import {
                 directory,
@@ -885,6 +906,7 @@ mod tests {
                 "view",
                 "status",
                 "forget",
+                "query",
                 "export",
                 "import",
                 "models",

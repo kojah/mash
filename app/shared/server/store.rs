@@ -234,15 +234,6 @@ impl Store {
             .filter(|views| views.compatible(&self.views, identity)))
     }
 
-    /// One node's views state, for tests.
-    #[cfg(test)]
-    pub(in crate::shared) async fn views_state(
-        &self,
-        identity: &Identity,
-    ) -> Result<Option<NodeViews>, AppError> {
-        self.views.node_views(identity).await
-    }
-
     /// Configured nodes of one group, in identity order.
     pub(in crate::shared) fn nodes(&self, group: &str) -> &[String] {
         self.silver.nodes(group)

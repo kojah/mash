@@ -2404,3 +2404,70 @@ async fn client_delivers_a_connector_batch_over_the_socket() {
     assert_eq!(receipt.source_revision, 1);
     assert!(receipt.silver_revision >= 1);
 }
+
+/// One owner per account source, enforced before silver, movable by an
+/// authenticated transfer. The HTTP connector route is gone; this is the store
+/// both transports use.
+#[tokio::test]
+async fn account_source_claim_rejects_a_second_writer_until_transferred() {
+    let service = Service::canonical().await;
+    let claims = std::sync::Arc::new(std::sync::Mutex::new(
+        crate::shared::sync::catalog::Catalog::open(&service.silver_dir.path().join("sync"))
+            .unwrap(),
+    ));
+    let store = service.store.clone().with_source_claims(claims);
+
+    let batch: crate::connectors::Batch = serde_json::from_value(json!({
+        "schema_version": 2,
+        "source_id": "github:installation",
+        "batch_id": "ownership-1",
+        "expected_revision": 0,
+        "changes": [
+            {"op":"upsert-object","id":"pr:42","role":"container",
+             "kind":"github:pull-request","title":"Review"},
+            {"op":"upsert-object","id":"review:1","role":"entry",
+             "kind":"github:review-comment","parent":"pr:42","content":"Review comment",
+             "author":{"id":"human","kind":"human"}}
+        ]
+    }))
+    .unwrap();
+    let source = batch.source_id.as_str().to_owned();
+    let first = service.first.clone();
+    let second = service.identities[&blake3::hash(SECOND.as_bytes())].clone();
+    assert_eq!(second.group_id, first.group_id);
+    assert_ne!(second.node_id, first.node_id);
+
+    store.ingest_connector(&first, batch.clone()).await.unwrap();
+    let error = store
+        .ingest_connector(&second, batch.clone())
+        .await
+        .unwrap_err();
+    assert!(
+        error.error.message.contains("source_owned_elsewhere"),
+        "{error:?}"
+    );
+
+    let transferred = service
+        .request("source-transfer", FIRST)
+        .json(&json!({
+            "source_id": source,
+            "from": first.node_id,
+            "to": second.node_id,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(transferred.status(), StatusCode::OK);
+    // The batch still claims expected_revision 0, so accepting it proves the
+    // rejected write left no silver behind on the second node.
+    store
+        .ingest_connector(&second, batch.clone())
+        .await
+        .unwrap();
+
+    let error = store.ingest_connector(&first, batch).await.unwrap_err();
+    assert!(
+        error.error.message.contains("source_owned_elsewhere"),
+        "{error:?}"
+    );
+}
