@@ -155,57 +155,49 @@ fn percent_decode(text: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
-/// Set on a long-lived Windows process started by `run_from_copy`: the
-/// installed executable it stands in for.
-pub(crate) const COPY_OF: &str = "MASH_COPY_OF";
-
 /// Windows cannot replace a running `.exe`, so a long-lived command (MCP,
-/// `index --watch`, `serve`) would make every upgrade fail. It instead runs
-/// from a copy kept per installed build under the local data directory, and
-/// the runtime lease watches the installed path, so an upgrade still stops new
-/// writes. Returns the copy's exit code, or None to run in place (on other
-/// platforms, inside the copy, or when the copy cannot be made).
-#[cfg(windows)]
-pub(crate) fn run_from_copy(arguments: &[std::ffi::OsString]) -> Option<i32> {
-    if std::env::var_os(COPY_OF).is_some() {
-        return None;
-    }
-    let installed = std::env::current_exe().ok()?;
-    let metadata = fs::metadata(&installed).ok()?;
-    let modified = metadata
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_nanos();
-    let build = format!("{}-{modified}", metadata.len());
-    let root = directories::ProjectDirs::from("dev", "jamesqo", "mash")?
-        .data_local_dir()
-        .join("run");
-    let copy = root.join(&build).join("mash.exe");
-    if !copy.is_file() {
-        fs::create_dir_all(root.join(&build)).ok()?;
-        let staged = root.join(&build).join("mash.exe.partial");
-        fs::copy(&installed, &staged).ok()?;
-        fs::rename(&staged, &copy).ok()?;
-    }
-    // Copies of earlier builds go; one still running is locked and stays.
-    for entry in fs::read_dir(&root).into_iter().flatten().flatten() {
-        if entry.file_name() != build.as_str() {
-            let _ = fs::remove_dir_all(entry.path());
+/// `index --watch`, `serve`) would make every upgrade of the installed file
+/// fail. It may rename itself, though: the process moves its executable aside
+/// (`.mash-running-<pid>.exe`, removed by a later start once no longer
+/// running) and restores an ordinary copy at the installed path for installers
+/// to replace. The runtime lease keeps watching the installed path, so an
+/// upgrade still stops new writes. A directory the user cannot write (an
+/// administrator install) keeps running in place. No-op elsewhere.
+pub(crate) fn release_installed_executable() {
+    #[cfg(windows)]
+    {
+        let Ok(installed) = std::env::current_exe() else {
+            return;
+        };
+        let Some(directory) = installed.parent() else {
+            return;
+        };
+        for entry in fs::read_dir(directory).into_iter().flatten().flatten() {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".mash-running-")
+            {
+                let _ = fs::remove_file(entry.path()); // Running ones stay locked.
+            }
+        }
+        let id = std::process::id();
+        let moved = directory.join(format!(".mash-running-{id}.exe"));
+        let staged = directory.join(format!(".mash-staged-{id}.exe"));
+        if fs::copy(&installed, &staged).is_err() {
+            let _ = fs::remove_file(&staged);
+            return;
+        }
+        if fs::rename(&installed, &moved).is_err() {
+            let _ = fs::remove_file(&staged);
+            return;
+        }
+        if fs::rename(&staged, &installed).is_err() {
+            // Put the running file back rather than leave no executable.
+            let _ = fs::rename(&moved, &installed);
+            let _ = fs::remove_file(&staged);
         }
     }
-    let status = std::process::Command::new(&copy)
-        .args(arguments.iter().skip(1))
-        .env(COPY_OF, &installed)
-        .status()
-        .ok()?;
-    Some(status.code().unwrap_or(1))
-}
-
-#[cfg(not(windows))]
-pub(crate) fn run_from_copy(_arguments: &[std::ffi::OsString]) -> Option<i32> {
-    None
 }
 
 #[cfg(test)]

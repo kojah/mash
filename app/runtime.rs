@@ -57,13 +57,6 @@ fn superseded() -> AppError {
 // Keep the invocation path, including its final symlink: current_exe alone can
 // point into an immutable old release after the installed symlink is replaced.
 fn executable() -> Result<(PathBuf, Identity), AppError> {
-    // A Windows copy (`platform::run_from_copy`) stands in for the installed
-    // executable, which is the one an upgrade replaces.
-    if let Some(installed) = std::env::var_os(crate::platform::COPY_OF) {
-        let installed = PathBuf::from(installed);
-        let identity = identity(&installed)?;
-        return Ok((installed, identity));
-    }
     let argument = std::env::args_os().next().ok_or_else(superseded)?;
     let argument = PathBuf::from(argument);
     let path = if argument.is_absolute() {

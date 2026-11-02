@@ -4,7 +4,7 @@
 
 1. `mash mcp` answers the MCP handshake and lists tools over stdio.
 2. While it runs, the installed mash.exe can be overwritten (an upgrade):
-   long-lived commands run from a per-build copy, never the installed file.
+   long-lived commands move their running image aside and leave a copy.
 3. The SessionStart hook runs under Windows Python and starts its detached
    background index (Windows creation flags, not preexec_fn).
 Standard library only.
@@ -71,7 +71,8 @@ def mcp_and_upgrade(binary: Path, root: Path) -> None:
         tools = request(process, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = {tool["name"] for tool in tools["result"]["tools"]}
         assert {"search", "view", "status"} <= names, names
-        # An upgrade replaces the installed file while the agent is connected.
+        # An upgrade replaces the installed file while the agent is connected;
+        # mash moved its running image aside, so the installed one is free.
         replacement = root / "replacement.exe"
         shutil.copy2(binary, replacement)
         os.replace(replacement, installed)

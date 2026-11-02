@@ -88,7 +88,6 @@ where
     match cli::run(args) {
         // MCP owns stdout for its entire session, including shutdown.
         Ok(cli::Response::McpStopped) => 0,
-        Ok(cli::Response::Delegated(code)) => code,
         Ok(response) => write_json(stdout, &response).map_or_else(
             |error| {
                 let _ = write_json(stderr, &error);
