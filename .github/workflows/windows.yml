@@ -50,3 +50,6 @@ jobs:
         run: python .github/scripts/windows-smoke.py target/release/mash.exe
       - name: Library tests
         run: cargo +stable test --locked --lib --no-fail-fast
+      - name: CLI contract tests (informational while porting)
+        continue-on-error: true
+        run: cargo +stable test --locked --test cli_contract --no-fail-fast

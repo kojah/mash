@@ -75,24 +75,34 @@ async fn chunked_preview_boundary_preserves_data_and_selects_decode_mode() {
         let service =
             serve(Router::new().route("/", get(move || async { Response::new(chunked(bytes)) })))
                 .await;
-        let (trace, subscriber) = crate::observability::test_support::capture();
-        let actual: String = response_admitted(
-            reqwest::Client::new().get(format!("{}/", service.url)),
-            endpoint,
-            &CAPACITY,
-        )
-        .with_subscriber(subscriber)
-        .await
-        .unwrap();
-        assert_eq!(actual, expected);
-        let output = String::from_utf8(trace.lock().unwrap().clone()).unwrap();
-        let modes: Vec<_> = output
-            .lines()
-            .map(|line| serde_json::from_str::<Event>(line).unwrap())
-            .filter_map(|event| event.span)
-            .filter(|span| span.name == "shared_http_decode")
-            .filter_map(|span| span.mode)
-            .collect();
+        // tracing caches each callsite's interest process-wide, and other
+        // tests' subscribers coming and going can leave a callsite briefly
+        // disabled for this one. Retry when no decode span was captured; the
+        // decoded data is checked on every attempt.
+        let mut modes = Vec::new();
+        for _attempt in 0..3 {
+            let (trace, subscriber) = crate::observability::test_support::capture();
+            let actual: String = response_admitted(
+                reqwest::Client::new().get(format!("{}/", service.url)),
+                endpoint,
+                &CAPACITY,
+            )
+            .with_subscriber(subscriber)
+            .await
+            .unwrap();
+            assert_eq!(actual, expected);
+            let output = String::from_utf8(trace.lock().unwrap().clone()).unwrap();
+            modes = output
+                .lines()
+                .map(|line| serde_json::from_str::<Event>(line).unwrap())
+                .filter_map(|event| event.span)
+                .filter(|span| span.name == "shared_http_decode")
+                .filter_map(|span| span.mode)
+                .collect();
+            if !modes.is_empty() {
+                break;
+            }
+        }
         assert_ne!(modes.len(), 0);
         assert!(modes.iter().all(|value| value == mode));
     }
