@@ -29,7 +29,7 @@ from mash_google_docs.auth import (
     authorize,
     load_token,
 )
-from mash_google_docs.cli import main
+from mash_google_docs.cli import WrongPrincipal, main
 
 SECRETS = (REFRESH_TOKEN, ACCESS_TOKEN, CLIENT_SECRET)
 
@@ -131,6 +131,34 @@ class AuthTests(unittest.TestCase):
         self.assertIn("auth` again", output)
         for secret in SECRETS:
             self.assertNotIn(secret, output)
+
+
+    def test_a_token_for_another_account_is_rejected(self) -> None:
+        self.google.add(item("a", parent="top"))
+        self.google.principal = "someone-else"
+        client = self.root / "client.json"
+        client.write_bytes(
+            orjson.dumps(
+                {
+                    "installed": {
+                        "client_id": CLIENT.client_id,
+                        "client_secret": CLIENT_SECRET,
+                    }
+                }
+            )
+        )
+        store_token(self.root / "token.json")
+        config = self.root / "google-docs.toml"
+        config.write_text(
+            "account_id='test'\nclient_secret='client.json'\ntoken='token.json'\n"
+            "state_dir='state'\nfolders=['top']\n"
+            "[[destinations]]\ntype='local'\ndatabase='mash.sqlite3'\n"
+        )
+        patcher = patch("mash_google_docs.cli.urlopen", self.google.send)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        result = CliRunner().invoke(main, ["--config", str(config), "sync"])
+        self.assertIsInstance(result.exception, WrongPrincipal)
 
 
 if __name__ == "__main__":
