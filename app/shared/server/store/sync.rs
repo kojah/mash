@@ -330,10 +330,12 @@ impl Store {
         views.chats.retain(|id, _| fingerprints.contains_key(id));
         let head = self.head(identity).await?;
         let head_revision = head.as_ref().map(|head| head.revision);
-        // A rebuild under the node lock rebuilds current state and may omit the
-        // revision; an upload sets it. The lock-held paths therefore fall back
-        // to the head they just read.
-        let input = views.input.or(head_revision);
+        // Every caller records the revision its chats were built from. Treat a
+        // missing input as a bug rather than silently claiming the head: the
+        // receipt would otherwise assert content it cannot prove.
+        let input = views
+            .input
+            .ok_or_else(|| AppError::internal("certification requires an input revision"))?;
         let synced = views.chats.len() == fingerprints.len()
             && fingerprints.iter().all(|(id, fingerprint)| {
                 views
@@ -345,7 +347,7 @@ impl Store {
         // of its own revision, but not of the head. Stamping the head would make
         // searches serve older chats as current, so it only claims the revision
         // it was built from.
-        let current = input.is_some() && input == head_revision;
+        let current = head_revision == Some(input);
         views.certified = synced && current && views.chats.values().all(|chat| chat.complete);
         views.silver = current
             .then(|| head.and_then(|head| head.silver_revision))
