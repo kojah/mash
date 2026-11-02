@@ -6,6 +6,10 @@ on:
       release_requested:
         type: boolean
         required: true
+      codesign:
+        type: boolean
+        required: false
+        default: false
     secrets:
       TS_OAUTH_CLIENT_ID:
         required: true
@@ -15,6 +19,18 @@ on:
         required: true
       DEPLOY_SSH_KNOWN_HOSTS:
         required: true
+      MACOS_CERT_P12:
+        required: false
+      MACOS_CERT_PASSWORD:
+        required: false
+      MACOS_SIGN_IDENTITY:
+        required: false
+      MACOS_TEAM_ID:
+        required: false
+      MACOS_NOTARY_APPLE_ID:
+        required: false
+      MACOS_NOTARY_PASSWORD:
+        required: false
 
 permissions:
   contents: read
@@ -24,6 +40,12 @@ concurrency:
   # A queued older run must recheck main after a newer deployment finishes.
   group: deploy-mash-main
   cancel-in-progress: false
+
+env:
+  BINARY: mash
+  SMOKE_SCRIPT: .github/scripts/deploy-smoke
+  DEPLOY_TARGETS: >-
+    [{"ssh":"deploy@linux-node","platform":"linux-amd64"},{"ssh":"deploy@mac-node-1","platform":"darwin-arm64"},{"ssh":"deploy@mac-node-2","platform":"darwin-arm64"}]
 
 jobs:
   gate:
@@ -47,19 +69,211 @@ jobs:
           TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
-  deploy:
+
+  build-linux:
     needs: gate
     if: needs.gate.outputs.deploy == 'true'
-    uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v3
-    with:
-      binary: mash
-      rust-toolchain: nightly
-      cache-prefix: mash
-      rustflags: -Zunstable-options --jobs-frontend=4
-      deploy-targets: >-
-        [{"ssh":"deploy@linux-node","platform":"linux-amd64"},{"ssh":"deploy@mac-node-1","platform":"darwin-arm64"},{"ssh":"deploy@mac-node-2","platform":"darwin-arm64"}]
-    secrets:
-      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: -Zunstable-options --jobs-frontend=4 -C link-arg=-fuse-ld=mold
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: jamesqo/gha-workflows/actions/setup-rust@v2
+        with:
+          toolchain: nightly
+          cache-prefix: mash
+          mold: "true"
+      - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3
+        with:
+          mold-version: 2.42.0
+          make-default: false
+      - name: Build Linux binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release
+          mkdir -p dist/linux-amd64
+          cp "target/release/$BINARY" "dist/linux-amd64/$BINARY"
+          "$SMOKE_SCRIPT" "dist/linux-amd64/$BINARY" "$GITHUB_SHA"
+      - name: Show compiler cache statistics
+        run: sccache --show-stats
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: mash-linux-amd64
+          path: dist/linux-amd64/mash
+          if-no-files-found: error
+          retention-days: 1
+
+  build-macos:
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: -Zunstable-options --jobs-frontend=4
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: jamesqo/gha-workflows/actions/setup-rust@v2
+        with:
+          toolchain: nightly
+          cache-prefix: mash
+      - name: Build Apple Silicon binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release
+          mkdir -p dist/darwin-arm64
+          cp "target/release/$BINARY" "dist/darwin-arm64/$BINARY"
+          file "dist/darwin-arm64/$BINARY" | tee /dev/stderr | grep -q 'arm64'
+          shasum -a 256 "dist/darwin-arm64/$BINARY"
+      - name: Import signing certificate
+        if: inputs.codesign
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_CERT_P12:-}" || -z "${MACOS_CERT_PASSWORD:-}" ]]; then
+            echo 'codesign requires MACOS_CERT_P12 and MACOS_CERT_PASSWORD' >&2
+            exit 2
+          fi
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          password="$(uuidgen)"
+          printf '%s' "$MACOS_CERT_P12" | \
+            openssl base64 -d -A -out "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain"
+          rm -f "$RUNNER_TEMP/cert.p12"
+      - name: Codesign Apple Silicon binary
+        if: inputs.codesign
+        shell: bash
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_SIGN_IDENTITY:-}" ]]; then
+            echo 'codesign requires MACOS_SIGN_IDENTITY' >&2
+            exit 2
+          fi
+          codesign --force --options runtime --timestamp \
+            --sign "$MACOS_SIGN_IDENTITY" "dist/darwin-arm64/$BINARY"
+          codesign --verify --strict --verbose=2 "dist/darwin-arm64/$BINARY"
+      - name: Notarize Apple Silicon binary
+        if: inputs.codesign
+        shell: bash
+        env:
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # A bare Mach-O cannot be stapled; the ticket belongs to an archive a
+          # release would ship. Deployments over scp carry no quarantine
+          # attribute, so signing alone is sufficient for those.
+          if [[ -z "${MACOS_TEAM_ID:-}" || -z "${MACOS_NOTARY_APPLE_ID:-}" || -z "${MACOS_NOTARY_PASSWORD:-}" ]]; then
+            echo 'notarization skipped: set MACOS_TEAM_ID, MACOS_NOTARY_APPLE_ID and MACOS_NOTARY_PASSWORD'
+            exit 0
+          fi
+          archive="$RUNNER_TEMP/$BINARY.zip"
+          ditto -c -k --keepParent "dist/darwin-arm64/$BINARY" "$archive"
+          xcrun notarytool submit "$archive" \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --team-id "$MACOS_TEAM_ID" \
+            --password "$MACOS_NOTARY_PASSWORD" \
+            --wait
+          rm -f "$archive"
+      - name: Show compiler cache statistics
+        run: sccache --show-stats
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: mash-darwin-arm64
+          path: dist/darwin-arm64/mash
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
       DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: mash-linux-amd64
+          path: dist/linux-amd64
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: mash-darwin-arm64
+          path: dist/darwin-arm64
+      - name: Join tailnet
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github-actions
+      - name: Configure deployment SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          install -m 600 /dev/null "$HOME/.ssh/id_ed25519"
+          install -m 600 /dev/null "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" >"$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" >"$HOME/.ssh/known_hosts"
+      - name: Deploy concurrently over Tailscale
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! jq -e 'type == "array" and length > 0 and all(.[]; (.ssh | type == "string") and (.platform == "linux-amd64" or .platform == "darwin-arm64"))' \
+            <<<"$DEPLOY_TARGETS" >/dev/null; then
+            echo 'deploy-targets must be a non-empty JSON array of supported targets' >&2
+            exit 2
+          fi
+
+          deploy() {
+            local target=$1
+            local platform=$2
+            local staged_binary=".local/bin/.${BINARY}-${GITHUB_SHA}"
+            local staged_smoke=".cache/.${BINARY}-deploy-smoke-${GITHUB_SHA}"
+            ssh "$target" 'mkdir -p "$HOME/.local/bin" "$HOME/.cache"'
+            scp "dist/${platform}/${BINARY}" "${target}:${staged_binary}"
+            scp "$SMOKE_SCRIPT" "${target}:${staged_smoke}"
+            ssh "$target" sh -s -- "$staged_binary" "$staged_smoke" "$BINARY" "$GITHUB_SHA" <<'REMOTE_SCRIPT'
+              set -eu
+              staged_binary=$1
+              staged_smoke=$2
+              binary=$3
+              revision=$4
+              chmod 0755 "$HOME/$staged_binary" "$HOME/$staged_smoke"
+              "$HOME/$staged_smoke" "$HOME/$staged_binary" "$revision"
+              mv -f "$HOME/$staged_binary" "$HOME/.local/bin/$binary"
+              rm -f "$HOME/$staged_smoke"
+          REMOTE_SCRIPT
+          }
+
+          pids=""
+          while IFS= read -r row; do
+            target=$(jq -r .ssh <<<"$row")
+            platform=$(jq -r .platform <<<"$row")
+            deploy "$target" "$platform" &
+            pids="$pids $!"
+          done < <(jq -c '.[]' <<<"$DEPLOY_TARGETS")
+
+          failed=0
+          for pid in $pids; do
+            if ! wait "$pid"; then
+              failed=1
+            fi
+          done
+          exit "$failed"
