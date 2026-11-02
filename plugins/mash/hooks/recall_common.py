@@ -4,13 +4,16 @@ library only, because both scripts run in the agent host's own `python3`."""
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +24,10 @@ ENTRY_PREFIX = f"connector#entry#{SOURCE_ID}#"
 # "Superseded <heading>" and "Superseded by: <entry id> (<its heading>)", and
 # its replacement lists "Supersedes: <entry id> (<heading>)" before "Evidence:".
 SUPERSEDED, SUPERSEDED_BY, SUPERSEDES = "Superseded ", "Superseded by: ", "Supersedes: "
+# The UTC days a record was recorded or re-recorded, oldest first, listed before
+# "Evidence:". A record written before this line existed has only its time.
+CONFIRMED = "Confirmed: "
+CONFIRMATIONS = 10  # Older days add little under power-law decay.
 
 
 def superseded_by(content: str) -> str | None:
@@ -30,6 +37,50 @@ def superseded_by(content: str) -> str | None:
     if not heading.startswith(SUPERSEDED) or not marker.startswith(SUPERSEDED_BY):
         return None
     return short_id(marker[len(SUPERSEDED_BY) :].partition(" ")[0]) or None
+
+
+def confirmations(content: str, created_at: int) -> list[str]:
+    """The days a record was confirmed, oldest first."""
+    header = content.partition("\nEvidence:")[0].split("\n")
+    for line in header:
+        if line.startswith(CONFIRMED):
+            return [day.strip() for day in line[len(CONFIRMED) :].split(",")]
+    return [day(created_at)]
+
+
+def day(milliseconds: int) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(milliseconds // 1000))
+
+
+def strength(days: list[str], now_ms: int) -> float:
+    """ACT-R base-level activation: each confirmation decays as age^-0.5 in days,
+    so a statement confirmed repeatedly outranks one recorded once, recently."""
+    total = 0.0
+    for value in days:
+        try:
+            then = calendar.timegm(time.strptime(value, "%Y-%m-%d"))
+        except ValueError:
+            continue
+        total += max(1.0, (now_ms / 1000 - then) // 86400) ** -0.5
+    return math.log1p(total)
+
+
+def project_records(
+    binary: str, latest: str | None, window: int, timeout: float
+) -> list[Any]:
+    """Current records of a project as `view` rows, newest first, read from
+    silver around its latest record. Superseded records keep their place and
+    time, so the window is wider than the number used."""
+    if not latest:
+        return []
+    view = run_mash(binary, ["view", latest, "--context", str(window)], timeout)
+    rows = sorted(view["messages"], key=lambda row: -(row.get("created_at") or 0))
+    return [
+        row
+        for row in rows
+        if row["id"].startswith(ENTRY_PREFIX)
+        and superseded_by(row.get("content") or "") is None
+    ]
 
 
 def short_id(value: str) -> str:

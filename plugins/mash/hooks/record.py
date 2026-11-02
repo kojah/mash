@@ -18,6 +18,13 @@ rewritten as kind `recall:superseded` with a "Superseded by" line, keeping its
 text, evidence and time. Watermarks advance only for the covered chats, and only
 after the write succeeded.
 
+Each record lists the UTC days it was recorded ("Confirmed:"), so re-recording a
+statement that still holds confirms it and SessionStart ranks it higher. Before
+writing, statements are compared with the project's recent current records: one
+equal to a stored statement apart from case, punctuation and spacing re-records
+that statement, and a close rewording (IDF-weighted cosine) is reported under
+`similar` so it can be superseded or kept deliberately.
+
 `--history RECORD_ID` prints a record's supersession history without writing.
 """
 
@@ -26,7 +33,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
+import re
 import sys
 import tempfile
 import time
@@ -47,6 +56,11 @@ MAX_SUPERSEDES = 4
 # Bounds a history walk over records that only this helper links.
 HISTORY_LIMIT = 64
 CONFLICT_EXIT = 12
+# Duplicate detection reads this many records around the project's latest one.
+DUPLICATE_WINDOW = 64
+# A rewording shares at least this many words and this IDF-weighted cosine,
+# and its differing words carry no digits (versions, sizes and IDs).
+SIMILAR_WORDS, SIMILAR_COSINE = 2, 0.8
 
 
 class Stored(NamedTuple):
@@ -320,11 +334,16 @@ def changes(
             f"{common.SUPERSEDES}{common.ENTRY_PREFIX}{tid} ({text})"
             for tid, text in item.replaces
         ]
-        lines = [headings[item.id], f"Project: {label}", *replaced, "Evidence:"]
-        content = "\n".join(lines + quotes)
+        previous = stored.get(item.id)
+        days = []
+        if previous is not None:
+            days = common.confirmations(previous.content, previous.created_at)
+        days = [d for d in days if d != common.day(now_ms)] + [common.day(now_ms)]
+        confirmed = common.CONFIRMED + ", ".join(days[-common.CONFIRMATIONS :])
+        lines = [headings[item.id], f"Project: {label}", *replaced, confirmed]
+        content = "\n".join([*lines, "Evidence:", *quotes])
         # Distinct, ordered times keep `view` context in submission order.
         created_at, connector = now_ms + offset, connector_kind(kind)
-        previous = stored.get(item.id)
         holder = by.get(item.id)
         if holder:
             content = mark(content, holder, headings[holder])
@@ -392,6 +411,73 @@ def deliver(binary: str, root: Path, mutations: list[dict[str, Any]]) -> None:
     raise RuntimeError("Mash rejected the records: connector revision conflict")
 
 
+def words(text: str) -> list[str]:
+    """Lowercase words without punctuation; identifiers keep underscores."""
+    return re.sub(r"[^\w\s]+", " ", text.lower()).split()
+
+
+def statement_of(content: str) -> tuple[str | None, str]:
+    """A stored record's kind and statement, read from its heading."""
+    text = current_heading(content)
+    kind = heading_kind(text)
+    return kind, text.partition(": ")[2] if kind else text
+
+
+def similarity(a: list[str], b: list[str], idf: Callable[[str], float]) -> float:
+    """IDF-weighted cosine of two statements' words."""
+    left, right = set(a), set(b)
+    dot = sum(idf(w) ** 2 for w in left & right)
+    norm = math.sqrt(sum(idf(w) ** 2 for w in left) * sum(idf(w) ** 2 for w in right))
+    return dot / norm if norm else 0.0
+
+
+def duplicates(records: list[Any], existing: list[Stored]) -> list[Any]:
+    """Point each record that restates a stored current record at that record's
+    exact statement, so writing it re-records (confirms) the stored one; return
+    the close rewordings, which are written as new records."""
+    stored = []
+    for item in existing:
+        kind, statement = statement_of(item.content)
+        if kind:
+            stored.append((item, kind, statement, words(statement)))
+    corpus = [found for *_, found in stored] + [
+        words(record["statement"]) for record in records
+    ]
+    frequency: dict[str, int] = {}
+    for found in corpus:
+        for word in set(found):
+            frequency[word] = frequency.get(word, 0) + 1
+
+    def idf(word: str) -> float:
+        return math.log(1 + len(corpus) / (frequency.get(word, 0) + 0.5))
+
+    similar = []
+    for record in records:
+        mine = words(record["statement"])
+        for item, kind, statement, theirs in stored:
+            if kind != record["kind"] or not mine:
+                continue
+            if mine == theirs:
+                record["statement"] = statement
+                break
+            differing = set(mine) ^ set(theirs)
+            if len(set(mine) & set(theirs)) < SIMILAR_WORDS or any(
+                char.isdigit() for word in differing for char in word
+            ):
+                continue
+            score = similarity(mine, theirs, idf)
+            if score >= SIMILAR_COSINE:
+                similar.append(
+                    {
+                        "statement": record["statement"],
+                        "similar_to": common.ENTRY_PREFIX + item.id,
+                        "heading": current_heading(item.content),
+                        "score": round(score, 3),
+                    }
+                )
+    return similar
+
+
 def by_user(message: Any) -> bool:
     """Native user turns, or human-authored connector messages."""
     return message.get("role") == "user" or message.get("author_kind") == "human"
@@ -446,6 +532,20 @@ def run(cwd: str, raw: bytes) -> dict[str, Any]:
             dropped.append({"statement": record["statement"], "reason": reason})
         else:
             kept.append(record)
+    root = common.state_dir()
+    path = root / "projects" / f"{key}.json"
+    state = common.read_state(path)
+    try:
+        rows = common.project_records(
+            binary, state.get("latest_record"), DUPLICATE_WINDOW, 15.0
+        )
+        existing = [
+            Stored(common.short_id(r["id"]), r.get("content") or "", r["created_at"])
+            for r in rows
+        ]
+    except Exception:
+        existing = []  # Duplicate detection is advisory; recording still works.
+    similar = duplicates(kept, existing)
     unique = list({record_id(key, record): record for record in kept}.values())
     accepted, by, stored, refused = supersede(
         key, unique, lambda rid: load(binary, rid)
@@ -461,9 +561,6 @@ def run(cwd: str, raw: bytes) -> dict[str, Any]:
                 "updated_at": message["created_at"],
                 "message_id": message["id"],
             }
-    root = common.state_dir()
-    path = root / "projects" / f"{key}.json"
-    state = common.read_state(path)
     written = [common.ENTRY_PREFIX + item.id for item in accepted]
     current = [
         common.ENTRY_PREFIX + item.id
@@ -501,6 +598,7 @@ def run(cwd: str, raw: bytes) -> dict[str, Any]:
             for tid, rid in by.items()
         ],
         "advanced": advanced,
+        "similar": similar,
     }
 
 

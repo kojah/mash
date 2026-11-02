@@ -20,6 +20,9 @@ const PATTERNS: &[&str] = &[
     r#"(?i)\b(?:[a-z0-9]+[_-])*(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token)\s*=\s*(?P<bare>[^\s'",;()\[\]]+)"#,
     r"(?s)-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----.*?(?:-----END (?:[A-Z0-9]+ )?PRIVATE KEY-----|\z)",
     r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+    // Text a person marks private, closed on the same text. An unclosed tag
+    // (often one being discussed) masks nothing.
+    r"(?is)<private>(?P<secret>.*?)</private>",
 ];
 
 fn patterns() -> Option<&'static [Regex]> {

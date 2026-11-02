@@ -191,6 +191,46 @@ class Recall(unittest.TestCase):
         self.assertLessEqual(len(text), 2000)
         self.assertIn("Mash recall for", text)
 
+    def test_records_rank_by_confirmation(self) -> None:
+        exact = record("Watermarks live in the data dir.", "m1", "keep watermarks in")
+        self.assertEqual(self.submit({"records": [exact]})[0], 0)
+        state_path = next((self.state / "projects").iterdir())
+        state = json.loads(state_path.read_text())
+        now = int(time.time() * 1000)
+
+        def stored(name: str, age_days: int, *days: str) -> dict[str, Any]:
+            lines = [f"Decision: {name}", "Project: repo"]
+            lines += [f"Confirmed: {', '.join(days)}"] if days else []
+            created = now - age_days * 86_400_000
+            content = "\n".join([*lines, "Evidence:", '- message m1: "quoted"'])
+            return {"id": f"{PREFIX}record/x/{name}", "author_kind": "bot"} | {
+                "content": content,
+                "created_at": created,
+            }
+
+        def day(age: int) -> str:
+            return time.strftime("%Y-%m-%d", time.gmtime(now / 1000 - age * 86400))
+
+        records = [
+            stored("newest once", 0),
+            stored("confirmed often", 30, day(30), day(9), day(2), day(1)),
+            stored("old once", 40),
+        ]
+        self.fake(chats=[], messages=MESSAGES + records)
+        state["latest_record"] = records[0]["id"]
+        state_path.write_text(json.dumps(state))
+        text = self.hook()
+        lines = [line for line in text.split("\n") if line.startswith("- Decision")]
+        self.assertEqual(
+            [line.split(" [")[0] for line in lines],
+            [
+                "- Decision: confirmed often (confirmed 4x)",
+                "- Decision: newest once",
+                "- Decision: old once",
+            ],
+        )
+        self.assertIn("Project records (most confirmed first):", text)
+
     def test_paraphrase_dropped_and_watermarks_follow_success(self) -> None:
         exact = record("Watermarks live in the data dir.", "m1", "keep watermarks in")
         paraphrase = record("Lexical lookups.", "m2", "prefers exact lookups")

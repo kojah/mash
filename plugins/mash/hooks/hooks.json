@@ -1,5 +1,5 @@
 {
-  "description": "Mash session recall: project-scoped recent chats, records and pending distillation, plus a nudge to search history when a prompt looks back at earlier work or names an outside thing. Fails open.",
+  "description": "Mash session recall: project-scoped recent chats, records and pending distillation, plus a nudge to search history when a prompt looks back at earlier work or names an outside thing. Before a Read of a project file, shows earlier chats that mention it, once per session. Fails open.",
   "hooks": {
     "SessionStart": [
       {
@@ -19,6 +19,18 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt_recall.py\" 2>/dev/null || true",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/file_context.py\" 2>/dev/null || true",
             "timeout": 3
           }
         ]

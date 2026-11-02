@@ -26,7 +26,10 @@ and `view` output, shared HTTP read responses and outgoing publications, and tex
 sent to remote embedding APIs. Full values use `[REDACTED_SECRET]`; excerpts use
 masking characters to retain their source offsets. Original provider histories
 and local canonical SQLite data remain intact. Detection is best effort, not a
-guarantee that arbitrary or obfuscated secrets are absent.
+guarantee that arbitrary or obfuscated secrets are absent. Text a person wraps in
+`<private>…</private>` (any case, closed in the same message) is masked the same
+way; an unclosed tag masks nothing. Like credentials it stays in local silver,
+exports and local lexical matching.
 
 Masking is on by default and can be turned off per destination in the node
 configuration:
@@ -291,6 +294,16 @@ A prompt that names an outside person, PR, issue or ticket ("aaron's changes",
 not recognize it. Slash commands, pasted content and fenced code are ignored. It
 fails open, and `MASH_PROMPT_RECALL=off` disables it.
 
+On PreToolUse for `Read` it runs `file_context.py`. When the file is inside the
+project and at least 1,500 bytes, it runs one local lexical
+`search --unit chats --intent exact-mention` for the project-relative path,
+scoped to the project's repository (else its path), and adds up to four earlier
+chats that mention it, with a dated excerpt and `view` lookup, within 1,200
+characters. Each file is shown once per session; the shown paths live in
+`<recall state>/sessions/`, and session files older than a week are removed. It
+needs current lexical views, has a 2-second deadline, fails open, and
+`MASH_FILE_RECALL=off` disables it.
+
 Distillation is lazy rather than tied to session end. Up to three project chats
 active in the last seven days with messages newer than their watermark are listed
 as undistilled; the agent is asked to read them, open its first reply with a short
@@ -333,7 +346,18 @@ submission a record may supersede an earlier one. Re-recording is idempotent: a
 superseded record stays superseded and keeps its links. The SessionStart hook
 lists only current records; `view` of either record shows the neighbouring link,
 and `python3 plugins/mash/hooks/record.py --history RECORD_ID` prints the whole
-chain, oldest first, without writing. Search the current records with the
+chain, oldest first, without writing. Each record lists the UTC days it was recorded on a `Confirmed:` line (the
+latest ten), so re-recording a statement that still holds confirms it. The
+SessionStart hook ranks current records by ACT-R base-level activation, the log of
+the sum of each confirmation's age in days to the power -0.5, so a statement
+confirmed repeatedly outranks one recorded once, recently; records written before
+this line count their time as one confirmation. Before writing, the helper
+compares statements with up to 64 current records around the project's latest
+one: a statement equal to a stored one of the same kind apart from case,
+punctuation and spacing re-records the stored statement, and a close rewording
+(at least two shared words, IDF-weighted cosine of 0.8 or more, and no differing
+word with a digit) is still written but listed under `similar` with the record it
+resembles, to supersede or keep deliberately. Search the current records with the
 current kinds, for example
 `mash search oxlint --source mash-recall --kind recall:decision`, and their
 history with `--kind recall:superseded`. Supersession is read and written

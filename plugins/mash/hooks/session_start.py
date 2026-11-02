@@ -30,7 +30,8 @@ DISTILL = (
     "Before your first reply, read it with Mash view (or search with chat/after)."
     " Open your first reply with a 2-3 line recap of what you learned relevant to"
     " this project. Then record durable decisions, preferences, facts and open"
-    " questions with exact quotes:"
+    " questions with exact quotes; re-recording a statement that still holds"
+    " confirms it:"
 )
 CLOSING = (
     "List every chat you read in covered, even with no records;"
@@ -122,23 +123,19 @@ def scan(
 
 
 def stored_records(binary: str, latest: str | None, end: float) -> list[Any]:
-    """This project's newest current records, read from silver around the latest
-    one. Superseded records keep their place and time, so the window is wider
-    than the number shown; `record.py --history` reads their chains."""
-    if not latest:
-        return []
+    """This project's strongest current records: confirmed most often and most
+    recently first (`recall_common.strength`), newest among equals."""
     try:
-        arguments = ["view", latest, "--context", str(WINDOW)]
-        view = common.run_mash(binary, arguments, end - time.monotonic())
+        rows = common.project_records(binary, latest, WINDOW, end - time.monotonic())
     except Exception:
         return []  # Recent chats are still worth showing without records.
-    rows = sorted(view["messages"], key=lambda row: -(row.get("created_at") or 0))
-    return [
-        row
-        for row in rows
-        if row["id"].startswith(common.ENTRY_PREFIX)
-        and common.superseded_by(row.get("content") or "") is None
-    ][:RECORDS]
+    now_ms = int(time.time() * 1000)
+
+    def rank(row: Any) -> float:
+        days = common.confirmations(row.get("content") or "", row["created_at"])
+        return common.strength(days, now_ms)
+
+    return sorted(rows, key=rank, reverse=True)[:RECORDS]
 
 
 def fit(header: list[str], sections: list[list[str]], tail: list[str]) -> str:
@@ -179,10 +176,13 @@ def context(payload: Any, end: float) -> str:
         return ""
     place = f"{repository} ({toplevel})" if repository else toplevel
     header = [f"Mash recall for {place}, from local history; " + EVIDENCE]
-    records_shown = ["Project records (newest first):"]
+    records_shown = ["Project records (most confirmed first):"]
     for record in records:
-        first = (record.get("content") or "").split("\n")[0]
-        records_shown.append(f"- {clean(first, 150)} [view {record['id']}]")
+        content = record.get("content") or ""
+        times = len(common.confirmations(content, record["created_at"]))
+        seen = f" (confirmed {times}x)" if times > 1 else ""
+        first = clean(content.split("\n")[0], 150)
+        records_shown.append(f"- {first}{seen} [view {record['id']}]")
     chats_shown = ["Recent project chats (view = latest message):"]
     for chat in recent:
         view = f" view={lookup(chat.last, 4)}" if chat.last else ""

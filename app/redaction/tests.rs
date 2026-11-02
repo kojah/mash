@@ -184,3 +184,22 @@ fn a_disabled_policy_passes_text_metadata_and_ancestors_through() {
     policy.metadata(&mut metadata);
     assert_eq!(metadata.title.as_deref(), Some("password=\"hunter2\""));
 }
+
+#[test]
+fn private_spans_are_masked_only_when_closed() {
+    let source = "keep <private>home address</private> and <PRIVATE>\nphone\n</Private> too";
+    assert_eq!(
+        text(source),
+        "keep <private>[REDACTED_SECRET]</private> and <PRIVATE>[REDACTED_SECRET]</Private> too"
+    );
+    assert_eq!(text(&text(source)), text(source));
+    let masked = projection(source);
+    assert_eq!(masked.len(), source.len());
+    assert!(!masked.contains("address") && !masked.contains("phone"));
+    for benign in [
+        "wrap it in <private> tags",
+        "an empty <private></private> pair",
+    ] {
+        assert_eq!(text(benign), benign);
+    }
+}
