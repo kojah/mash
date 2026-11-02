@@ -67,6 +67,10 @@ fn batch(source: u8, step: usize, revision: u64, changes: Vec<Change>) -> Batch 
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one generated sequence exercises every transition in order"
+)]
 fn exercise(operations: &[Operation]) {
     let directory = tempfile::tempdir().unwrap();
     let mut path = directory.path().join("silver.sqlite3");
@@ -138,6 +142,11 @@ fn exercise(operations: &[Operation]) {
             Operation::RejectAtomic(source) => {
                 let mut orphan = object(9, "orphan".into());
                 orphan.role = Role::Entry;
+                orphan.author = Some(crate::connectors::Author {
+                    id: id("alice"),
+                    name: None,
+                    kind: crate::connectors::AuthorKind::Human,
+                });
                 orphan.kind = "chat:message".to_owned().try_into().unwrap();
                 orphan.parent = Some(id("missing-parent"));
                 let input = batch(

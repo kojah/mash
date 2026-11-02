@@ -155,10 +155,12 @@ pub(crate) struct ChatMatch {
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) message_id: String,
     pub(crate) node_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub(crate) role: Option<crate::role::Role>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) author: Option<crate::source::Author>,
     pub(crate) created_at: Option<i64>,
     pub(crate) snippet: String,
     /// Primary message's search projection; excludes display ellipses.
@@ -461,8 +463,9 @@ fn collect_inner(
             lexical_match: hit.lexical_match,
             message_id: hit.id,
             node_id: hit.node_id,
-            role: hit.role,
+            role: hit.role.clone(),
             author_kind: hit.author_kind,
+            author: crate::source::author(hit.role, hit.author_kind),
             created_at: hit.created_at,
             snippet,
             projection_span,

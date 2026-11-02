@@ -19,7 +19,8 @@ fn container(id: &str) -> serde_json::Value {
 
 fn entry(id: &str, parent: &str, content: &str) -> serde_json::Value {
     json!({"op":"upsert-object","id":id,"role":"entry","kind":"chat:message",
-        "parent":parent,"content":content})
+        "parent":parent,"content":content,
+        "author":{"id":"alice","kind":"human"}})
 }
 
 fn document(id: &str, content: &str) -> serde_json::Value {
@@ -28,7 +29,6 @@ fn document(id: &str, content: &str) -> serde_json::Value {
 
 fn initial(source: &str) -> Batch {
     let mut message = entry("message", "chat", "A human's message");
-    message["author"] = json!({"id":"alice","kind":"human"});
     message["metadata"] = json!({"reaction":"👍"});
     let mut note = document("note", "Canonical note");
     note["attachments"] = json!([{"id":"file","name":"diagram.png","media_type":"image/png",

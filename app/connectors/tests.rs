@@ -177,7 +177,8 @@ fn parents_and_replies_form_acyclic_graphs_and_documents_contain_nothing() {
     push(
         &mut value,
         json!({"op":"upsert-object","id":"message-2","role":"entry",
-        "kind":"slack:message","parent":"chat-1","content":"Second","reply_to":"message-1"}),
+        "kind":"slack:message","parent":"chat-1","content":"Second","reply_to":"message-1",
+        "author":{"id":"alice","kind":"human"}}),
     );
     assert_eq!(decode(&value), Err(Error::CyclicHierarchy));
     value["changes"][2]["reply_to"] = json!("chat-1");
@@ -205,7 +206,8 @@ fn an_entry_may_own_a_thread_and_segments_structure_containers() {
     push(
         &mut value,
         json!({"op":"upsert-object","id":"comment-1","role":"entry",
-        "kind":"github:review-comment","parent":"review-1","content":"Rename this."}),
+        "kind":"github:review-comment","parent":"review-1","content":"Rename this.",
+        "author":{"id":"reviewer","kind":"human"}}),
     );
     assert!(decode(&value).is_ok());
 }

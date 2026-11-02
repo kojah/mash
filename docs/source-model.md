@@ -299,8 +299,12 @@ sources:
 5. **Connector `Published` does not certify views** (`views_ready` is false).
 6. **Restore/copy semantics are undefined.** A copied silver DB is a new device
    source; `forget` does not fan out.
-7. **Authorship is split.** Native entries use `role`; connectors use `author`.
-   Normalize on `Author { id, kind }` and map native roles into it.
+7. ~~**Authorship is split.**~~ Closed: every search hit and chat match
+   serializes one `author: { id, kind }`; native roles map into the kinds and
+   keep the role string as the source-native id, while `role`/`author_kind`
+   remain internal ranking inputs and are no longer serialized. `Entry`
+   objects now require an author, and all five blueprint suites pass under
+   that rule.
 8. **Ordering is split.** Native uses `ordinal`; connectors have parent/reply
    edges but no generic position. Add `sequence` on entries/segments.
 9. **Overlapping principals.** Two Slack users in the same channel produce two

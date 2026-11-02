@@ -545,6 +545,11 @@ impl Object {
         if self.role == Role::Entry && self.parent.is_none() {
             return Err(Error::InvalidParent);
         }
+        // An entry is "searchable text with an author": the semantic model
+        // every retrieval path relies on. Documents are the authorless role.
+        if self.role == Role::Entry && self.author.is_none() {
+            return Err(Error::InvalidRoleFields);
+        }
         if self.reply_to.as_ref() == Some(&self.id) {
             return Err(Error::SelfReply);
         }

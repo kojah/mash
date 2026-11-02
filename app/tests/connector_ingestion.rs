@@ -177,7 +177,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
     assert_eq!(hit["object"]["role"], "entry");
     assert_eq!(hit["object"]["kind"], "github:review-comment");
     assert_eq!(hit["ancestors"][0]["kind"], "github:pull-request");
-    assert_eq!(hit["author_kind"], "human");
+    assert_eq!(hit["author"]["kind"], "human");
     assert!(hit.get("role").is_none());
     let documents = run(
         &database,

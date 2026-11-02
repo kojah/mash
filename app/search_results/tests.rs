@@ -600,3 +600,72 @@ fn pages_partition_the_ranked_window_and_skip_abstaining_candidates() {
         assert!(Page::new(Page::MAX_LIMIT + 1, 0, unit).is_err());
     }
 }
+
+/// A Slack thread and a Codex thread are the same evidence: one speaker shape,
+/// one ancestry shape, one grouping key, one copy contract.
+#[test]
+fn native_and_connector_threads_share_one_hit_shape() {
+    use crate::connectors::{AuthorKind, Role};
+
+    let mut native = hit("thread", "message");
+    native.role = Some(crate::role::Role::User);
+    native.author = crate::source::author(Some(crate::role::Role::User), None);
+    native.ancestors = crate::source::native_ancestors(Provider::Codex, "thread", Some("Thread"));
+
+    let mut slack = hit("thread", "message");
+    slack.source = crate::source::Source::Connector("slack:T0TEAM:U0ALICE".into());
+    slack.object = crate::source::ObjectType {
+        role: Role::Entry,
+        kind: "slack:message".into(),
+    };
+    slack.role = None;
+    slack.author_kind = Some(AuthorKind::Human);
+    slack.author = crate::source::author(None, Some(AuthorKind::Human));
+    slack.ancestors = vec![crate::source::Ancestor {
+        id: "thread".into(),
+        role: Role::Container,
+        kind: "slack:channel".into(),
+        title: Some("Thread".into()),
+    }];
+
+    let native = serde_json::to_value(&native).unwrap();
+    let slack = serde_json::to_value(&slack).unwrap();
+
+    let keys = |value: &serde_json::Value| {
+        let mut keys: Vec<_> = value
+            .as_object()
+            .expect("hit object")
+            .keys()
+            .cloned()
+            .collect();
+        keys.sort();
+        keys
+    };
+    assert_eq!(keys(&native), keys(&slack), "{native} vs {slack}");
+
+    // Grouping: one anchor key and one ancestry entry with the same fields.
+    assert_eq!(native["chat_id"], slack["chat_id"]);
+    let native_ancestry = native["ancestors"][0].as_object().unwrap();
+    let slack_ancestry = slack["ancestors"][0].as_object().unwrap();
+    assert_eq!(keys(&native["ancestors"][0]), keys(&slack["ancestors"][0]));
+    assert_eq!(native_ancestry["role"], slack_ancestry["role"]);
+    assert_eq!(native_ancestry["role"], "container");
+
+    // Copies are absent for both until another node holds the same evidence.
+    assert!(native.get("copies").is_none(), "{native}");
+    assert!(slack.get("copies").is_none(), "{slack}");
+
+    // One speaker shape; the role/author_kind split is not serialized.
+    assert_eq!(
+        native["author"],
+        serde_json::json!({"id": "user", "kind": "human"})
+    );
+    assert_eq!(
+        slack["author"],
+        serde_json::json!({"id": null, "kind": "human"})
+    );
+    for field in ["role", "author_kind"] {
+        assert!(native.get(field).is_none(), "{field} leaked into {native}");
+        assert!(slack.get(field).is_none(), "{field} leaked into {slack}");
+    }
+}
