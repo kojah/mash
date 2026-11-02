@@ -130,7 +130,6 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
         return next.run(request).await;
     }
     let timeout = match request.uri().path() {
-        "/v1/index" => super::BULK_TIMEOUT,
         _ => Duration::from_secs(600),
     };
     tokio::time::timeout(timeout, next.run(request))
