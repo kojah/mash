@@ -197,14 +197,11 @@ fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         .filter_map(|m| m.created_at)
         .max()
         .or(created_at);
-    let project = unique(root.workspaces.into_iter().filter_map(|uri| {
-        reqwest::Url::parse(&uri)
-            .ok()?
-            .to_file_path()
-            .ok()?
-            .to_str()
-            .map(str::to_owned)
-    }));
+    let project = unique(
+        root.workspaces
+            .into_iter()
+            .filter_map(|uri| crate::platform::file_uri_path(&uri)),
+    );
     let repository = unique(
         root.repositories
             .into_iter()

@@ -68,7 +68,8 @@ pub(super) fn receipt_digest(manifest: &str, revision: i64) -> String {
 pub(super) struct SilverStore {
     root: PathBuf,
     groups: BTreeMap<String, Vec<String>>,
-    _owner: Option<std::sync::Arc<std::fs::File>>,
+    /// None only for `unavailable`, whose every connection fails.
+    owner: Option<std::sync::Arc<std::fs::File>>,
 }
 
 /// Exclusive ownership of a silver directory for this process's lifetime:
@@ -138,7 +139,7 @@ impl SilverStore {
         let mut store = Self {
             root: root.to_path_buf(),
             groups: BTreeMap::new(),
-            _owner: Some(std::sync::Arc::new(own(root)?)),
+            owner: Some(std::sync::Arc::new(own(root)?)),
         };
         for identity in identities {
             store
@@ -161,7 +162,7 @@ impl SilverStore {
         Self {
             root: PathBuf::from("/proc/mash-unavailable/silver"),
             groups: BTreeMap::new(),
-            _owner: None,
+            owner: None,
         }
     }
 
@@ -177,6 +178,13 @@ impl SilverStore {
     }
 
     pub(super) fn connect(&self, identity: &Identity) -> Result<Connection, AppError> {
+        // Explicit rather than an uncreatable root: any path is creatable on
+        // some platform (Windows maps `/proc/...` to the current drive).
+        if self.owner.is_none() {
+            return Err(AppError::io(std::io::Error::other(
+                "shared silver is unavailable",
+            )));
+        }
         let path = self.path(identity);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(AppError::io)?;

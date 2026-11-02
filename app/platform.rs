@@ -106,6 +106,47 @@ pub(crate) fn find_program(
         .find(|candidate| fs::metadata(candidate).is_ok_and(|metadata| is_executable(&metadata)))
 }
 
+/// The local path a `file://` URI names, as editors record workspaces.
+/// Windows converts only drive paths (`file:///c%3A/...`) natively, so a
+/// drive-less URI (a WSL or remote workspace) keeps its decoded POSIX path
+/// there instead of being dropped; elsewhere the standard conversion applies.
+pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
+    let url = reqwest::Url::parse(uri).ok()?;
+    if url.scheme() != "file" {
+        return None;
+    }
+    if let Ok(path) = url.to_file_path() {
+        return path.to_str().map(str::to_owned);
+    }
+    if !cfg!(windows) || url.host_str().is_some_and(|host| !host.is_empty()) {
+        return None;
+    }
+    let path = percent_decode(url.path())?;
+    // An encoded drive (`/c%3A/...`) decodes to `/c:/...`: a native path.
+    let bytes = path.as_bytes();
+    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
+        return Some(path[1..].replace('/', "\\"));
+    }
+    Some(path)
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(index + 1..index + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
 /// Set on a long-lived Windows process started by `run_from_copy`: the
 /// installed executable it stands in for.
 pub(crate) const COPY_OF: &str = "MASH_COPY_OF";
@@ -157,4 +198,30 @@ pub(crate) fn run_from_copy(arguments: &[std::ffi::OsString]) -> Option<i32> {
 #[cfg(not(windows))]
 pub(crate) fn run_from_copy(_arguments: &[std::ffi::OsString]) -> Option<i32> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_uri_path;
+
+    #[test]
+    fn file_uris_name_local_paths() {
+        assert_eq!(file_uri_path("https://example.com/x"), None);
+        assert_eq!(file_uri_path("not a uri"), None);
+        if cfg!(windows) {
+            assert_eq!(
+                file_uri_path("file:///c%3A/Users/Ada/repo").as_deref(),
+                Some("c:\\Users\\Ada\\repo")
+            );
+            assert_eq!(
+                file_uri_path("file:///work/my%20repo").as_deref(),
+                Some("/work/my repo")
+            );
+        } else {
+            assert_eq!(
+                file_uri_path("file:///work/my%20repo").as_deref(),
+                Some("/work/my repo")
+            );
+        }
+    }
 }

@@ -84,10 +84,11 @@ fn runtime_upgrade_stops_idle_and_standby_cli_watchers() {
     let mut standby = Watching::start_binary(root.path(), &[], &executable);
     let deadline = std::time::Instant::now() + HANG_GUARD;
     loop {
+        // Each live runtime holds a readable record and a sibling lock.
         if std::fs::read_dir(root.path().join("index.sqlite3.runtimes"))
             .unwrap()
             .count()
-            == 2
+            == 4
         {
             break;
         }

@@ -803,7 +803,8 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
     // Change identities on the same pooled transport, including which token to read.
     config.group_id = "second-group".into();
     config.node_id = "second-node".into();
-    config.token_env = "USER".into();
+    // Any variable every platform sets (Windows has no USER); tests cannot set one.
+    config.token_env = "PATH".into();
     let second_token = std::env::var(&config.token_env).unwrap();
     assert_eq!(
         get::<serde_json::Value>(&config, Endpoint::Freshness)

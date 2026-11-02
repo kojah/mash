@@ -122,13 +122,17 @@ fn claude_copy_reconciliation_qdrant_snapshot() {
     claude_copy_reconciliation();
 }
 
-fn assert_ready_node(node: &Value, messages: u64) {
+fn assert_ready_node(node: &Value, messages: u64, interpretation_version: &Value) {
     assert_eq!(node["messages"], messages);
     assert_eq!(node["artifacts"]["metadata"], "ready");
     assert_eq!(node["artifacts"]["lexical"], "ready");
     assert_eq!(node["artifacts"]["dense"], "ready");
     assert_eq!(node["source_silver"]["completeness"], "complete");
-    assert_eq!(node["source_silver"]["interpretation_version"], 2);
+    // Shared silver carries the interpretation the local index certified.
+    assert_eq!(
+        &node["source_silver"]["interpretation_version"],
+        interpretation_version
+    );
     assert_eq!(node["source_silver"]["rejected_sources"], 0);
 }
 
@@ -181,7 +185,8 @@ fn claude_copy_reconciliation() {
             .iter()
             .find(|node| node["node_id"] == "split")
             .unwrap();
-        assert_ready_node(node, messages);
+        let local = fixture.json(&["status"], false);
+        assert_ready_node(node, messages, &local["silver"]["interpretation_version"]);
         let connection = rusqlite::Connection::open(&fixture.database).unwrap();
         let rows = connection
             .prepare("SELECT id,content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal")

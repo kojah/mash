@@ -1027,7 +1027,9 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
     .expect("boundary fixture");
     let run_started = UNIX_EPOCH + Duration::from_hours(200 * 24);
     let boundary = run_started - Duration::from_hours(90 * 24);
-    set_modified(&old_path, boundary - Duration::from_nanos(1));
+    // Windows keeps file times in 100 ns units, so a 1 ns step would round
+    // onto the boundary; 1 us is just before it on every platform.
+    set_modified(&old_path, boundary - Duration::from_micros(1));
     set_modified(&recent_path, boundary);
     let database = directory.path().join("mash.sqlite3");
     let bounded = IndexOptions {

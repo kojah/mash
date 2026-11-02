@@ -31,8 +31,7 @@ pub(super) fn timestamp(value: Option<&Timestamp>) -> Result<Option<i64>, AppErr
 pub(super) fn location<'a>(uris: impl Iterator<Item = &'a str>) -> Option<String> {
     let mut paths = BTreeSet::new();
     for uri in uris.filter(|u| !u.is_empty()) {
-        let path = reqwest::Url::parse(uri).ok()?.to_file_path().ok()?;
-        paths.insert(path.to_str()?.to_owned());
+        paths.insert(crate::platform::file_uri_path(uri)?);
     }
     if paths.len() == 1 {
         paths.pop_first()

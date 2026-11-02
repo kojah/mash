@@ -104,9 +104,7 @@ pub(crate) fn write(
     // The completion marker is written last; interrupted exports cannot import.
     let json = serde_json::to_vec_pretty(&manifest)
         .map_err(|_| AppError::internal("serialize export manifest"))?;
-    fs::File::open(&snapshot)
-        .and_then(|file| file.sync_all())
-        .map_err(AppError::io)?;
+    crate::platform::sync_file(&snapshot).map_err(AppError::io)?;
     write_new(&directory.join(MANIFEST), &json)?;
     sync_directory(directory)?;
     output.complete = true;

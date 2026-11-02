@@ -1,8 +1,7 @@
 name: Windows
 
-# Windows is a preview platform: this proves the stable release binary builds,
-# starts and passes the deployment smoke on a native runner. The library tests
-# run for information only until their Unix assumptions are removed.
+# Proves the stable release binary builds, starts, sets up and searches on a
+# native Windows runner, and that the library tests pass there.
 on:
   push:
     branches: [main]
@@ -29,6 +28,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: mash-windows-v1
       - name: Build
         run: cargo +stable build --release --locked --bin mash
       - name: Smoke
@@ -44,6 +46,5 @@ jobs:
           target/release/mash.exe init --no-agents | tee init.json
           target/release/mash.exe search windowsneedle --local | tee search.json
           grep -q '"chat_id":"s1"' search.json
-      - name: Library tests (informational)
-        continue-on-error: true
-        run: cargo +stable test --locked --lib
+      - name: Library tests
+        run: cargo +stable test --locked --lib --no-fail-fast

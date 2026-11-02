@@ -128,10 +128,12 @@ fn runtime_inventory_distinguishes_a_different_unchanged_build_from_replacement(
     lease.record.build_revision = "another-build".into();
     let record_path = std::fs::read_dir(directory(&paths).unwrap())
         .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .unwrap();
     std::fs::write(record_path, serde_json::to_vec(&lease.record).unwrap()).unwrap();
     assert_eq!(inspect(&paths).processes[0].state, State::DifferentBuild);
     lease.ensure_current().unwrap();

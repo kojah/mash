@@ -77,14 +77,7 @@ fn project(root: &Root, state: &proto::Root) -> Option<String> {
         paths.push(uri.path.clone());
     }
     for uri in &state.workspaces {
-        paths.push(
-            reqwest::Url::parse(uri)
-                .ok()?
-                .to_file_path()
-                .ok()?
-                .to_str()?
-                .to_owned(),
-        );
+        paths.push(crate::platform::file_uri_path(uri)?);
     }
     super::unique(paths.into_iter())
 }

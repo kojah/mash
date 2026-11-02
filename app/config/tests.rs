@@ -3,9 +3,25 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use super::document::parse_document;
 use super::loading::{MAX_CONFIG_BYTES, load_from_paths};
 use super::*;
+
+/// Fixtures name Unix-style absolute roots; on Windows a root needs a drive
+/// to be absolute, as Mash requires, so quoted absolute paths gain one there.
+fn portable(text: &str) -> String {
+    if cfg!(windows) {
+        text.replace("\"/", "\"C:/").replace("'/", "'C:/")
+    } else {
+        text.to_owned()
+    }
+}
+
+fn parse_document(bytes: &[u8]) -> Result<super::document::ParsedDocument, crate::AppError> {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => super::document::parse_document(portable(text).as_bytes()),
+        Err(_) => super::document::parse_document(bytes),
+    }
+}
 
 #[test]
 fn removed_providers_are_rejected_in_roots_and_index_allowlists() {
@@ -242,7 +258,7 @@ fn destinations_are_validated_and_retired_provider_filters_are_rejected() {
 
 fn write_config(directory: &TempDir, contents: &str) -> PathBuf {
     let path = directory.path().join("config.toml");
-    fs::write(&path, contents).expect("temporary configuration is writable");
+    fs::write(&path, portable(contents)).expect("temporary configuration is writable");
     path
 }
 
@@ -269,7 +285,10 @@ fn local_and_shared_configuration_is_strict() {
     assert!(parsed.shared.is_none());
     assert_eq!(
         parsed.providers[&Provider::Codex],
-        vec![PathBuf::from("/missing/codex")]
+        vec![PathBuf::from(format!(
+            "{}/missing/codex",
+            if cfg!(windows) { "C:" } else { "" }
+        ))]
     );
     let valid = r#""version" = 1
 "providers" = {}
@@ -388,7 +407,7 @@ fn loading_distinguishes_optional_default_and_required_explicit_paths() {
 #[test]
 fn file_input_is_bounded_before_toml_parsing() {
     let directory = TempDir::new().expect("temporary directory");
-    let mut exactly = VALID.as_bytes().to_vec();
+    let mut exactly = portable(VALID).into_bytes();
     exactly.resize(MAX_CONFIG_BYTES, b' ');
     let path = directory.path().join("exact.toml");
     fs::write(&path, exactly).expect("bounded file is writable");

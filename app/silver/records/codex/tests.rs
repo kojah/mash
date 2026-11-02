@@ -151,10 +151,10 @@ fn real_parser_and_index_preserve_history_across_large_lifecycle_envelopes() {
     index(&mut storage, &options).unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
-    let mut file = std::fs::OpenOptions::new()
-        .append(true)
-        .open(&path)
-        .unwrap();
+    // Windows grants an append handle no right to truncate (set_len), even
+    // with write(true), so open for writing and seek to the end instead.
+    let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    std::io::Seek::seek(&mut file, std::io::SeekFrom::End(0)).unwrap();
     let large = event(
         "FileChange",
         &"x".repeat(super::super::super::MAX_RECORD_BYTES + 1),

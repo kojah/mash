@@ -169,12 +169,13 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     let revision = response["backfill"]["revision"].as_i64().expect("revision");
     assert!(revision >= 1, "{response}");
 
-    // The server recorded a completed baseline covering every member.
+    // The server recorded a completed baseline covering every member. Stored
+    // identities are qualified by destination: `[group][node]id`.
     let catalog = Connection::open(dir.path().join("silver/sync/catalog.sqlite3"))
         .expect("open transfer catalog");
     let (state, total): (String, i64) = catalog
         .query_row(
-            "SELECT state, total_conversations FROM backfills WHERE backfill_id = 'cli-baseline'",
+            "SELECT state, total_conversations FROM backfills WHERE backfill_id LIKE '%]cli-baseline'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -183,7 +184,7 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     assert!(total >= 1);
     let covered: i64 = catalog
         .query_row(
-            "SELECT COUNT(*) FROM backfill_members WHERE backfill_id = 'cli-baseline' AND covered = 1",
+            "SELECT COUNT(*) FROM backfill_members WHERE backfill_id LIKE '%]cli-baseline' AND covered = 1",
             [],
             |row| row.get(0),
         )
@@ -485,7 +486,7 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
         .expect("open transfer catalog");
     let (state, total): (String, i64) = catalog
         .query_row(
-            "SELECT state, total_conversations FROM backfills WHERE backfill_id = 'auto'",
+            "SELECT state, total_conversations FROM backfills WHERE backfill_id LIKE '%]auto'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

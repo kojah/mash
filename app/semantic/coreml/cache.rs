@@ -92,9 +92,7 @@ fn publish(root: &Path, directory: &Path) -> Result<(), AppError> {
     file.as_file().sync_all().map_err(AppError::io)?;
     file.persist(root.join(MARKER))
         .map_err(|error| AppError::io(error.error))?;
-    File::open(root)
-        .and_then(|file| file.sync_all())
-        .map_err(AppError::io)
+    crate::platform::sync_directory(root).map_err(AppError::io)
 }
 
 fn collect(root: &Path, active: &Path) -> Result<(), AppError> {

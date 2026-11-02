@@ -124,9 +124,22 @@ struct Record {
 }
 
 pub(crate) struct Lease {
+    // Dropped first: the record goes before its lock is released.
+    _record: RecordFile,
     // An OS-held lock proves liveness without guessing from a reusable PID.
-    _file: tempfile::NamedTempFile,
+    // It is a sibling of the record because Windows locks block reading a
+    // file: the record itself stays unlocked so any observer can read it.
+    _lock: tempfile::NamedTempFile,
     record: Record,
+}
+
+/// A lease's readable record, removed with the lease.
+struct RecordFile(PathBuf);
+
+impl Drop for RecordFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 impl Lease {
@@ -162,20 +175,26 @@ impl Lease {
         };
         std::fs::create_dir_all(directory)
             .map_err(|_| AppError::configuration("cannot create Mash runtime directory"))?;
-        let mut file = tempfile::Builder::new()
+        let lock = tempfile::Builder::new()
             .prefix("runtime-")
-            .suffix(".json")
+            .suffix(".lock")
             .tempfile_in(directory)
             .map_err(|_| AppError::configuration("cannot register Mash runtime"))?;
-        file.as_file()
+        lock.as_file()
             .try_lock()
             .map_err(|_| AppError::configuration("cannot lock Mash runtime record"))?;
-        serde_json::to_writer(file.as_file_mut(), &record)
+        let path = lock.path().with_extension("json");
+        let bytes = serde_json::to_vec(&record)
             .map_err(|_| AppError::internal("serialize Mash runtime record"))?;
-        file.flush()
+        let mut file = std::fs::File::create_new(&path)
+            .map_err(|_| AppError::configuration("cannot register Mash runtime"))?;
+        let record_file = RecordFile(path);
+        file.write_all(&bytes)
+            .and_then(|()| file.flush())
             .map_err(|_| AppError::configuration("cannot write Mash runtime record"))?;
         Ok(Self {
-            _file: file,
+            _record: record_file,
+            _lock: lock,
             record,
         })
     }
@@ -248,7 +267,18 @@ fn inspect_directory(directory: &Path) -> Inventory {
             report.complete = false;
             break;
         }
-        let record = entry.ok().and_then(|entry| read_live(&entry.path()).ok());
+        let Ok(entry) = entry else {
+            report.complete = false;
+            continue;
+        };
+        let path = entry.path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "lock")
+        {
+            continue; // Read through its record.
+        }
+        let record = read_live(&path).ok();
         let Some(record) = record else {
             report.complete = false;
             continue;
@@ -278,7 +308,17 @@ fn read_live(path: &Path) -> Result<Option<Record>, ()> {
         return Err(());
     }
     let mut file = File::open(path).map_err(|_| ())?;
-    match file.try_lock() {
+    // The lease holds a sibling `.lock`; records from builds before that
+    // split hold the lock on the record itself.
+    let lock = path.with_extension("lock");
+    let lock = match File::open(&lock) {
+        Ok(lock) => lock,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            file.try_clone().map_err(|_| ())?
+        }
+        Err(_) => return Err(()),
+    };
+    match lock.try_lock() {
         Ok(()) => return Ok(None), // Abandoned record, not a live process.
         Err(std::fs::TryLockError::WouldBlock) => (),
         Err(std::fs::TryLockError::Error(_)) => return Err(()),
