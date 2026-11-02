@@ -9,9 +9,9 @@ use crate::shared::silver_store;
 use crate::shared::sync::catalog::{self, Begin, BeginOutcome, Catalog, StoredChunk};
 use crate::shared::sync::wire::{
     self, Accepted, AttachmentStored, BackfillComplete, Cancelled, Checkpoint, Chunk, CommitState,
-    Credit, Failed, FinishBackfill, FinishUpload, Hello, Outcome, OutcomeState, Progress,
-    Published, Resume, ServerFrame, SilverCommitted, TooLateToCancel, Welcome, client_frame,
-    server_frame,
+    ConnectorReceipt, Credit, Failed, FinishBackfill, FinishUpload, Hello, Outcome, OutcomeState,
+    Progress, Published, Resume, ServerFrame, SilverCommitted, TooLateToCancel, Welcome,
+    client_frame, server_frame,
 };
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Extension, State};
@@ -1200,6 +1200,7 @@ async fn handle_finish(
                             revision,
                             views_current: true,
                             coverage_through: expected_revision,
+                            connector: None,
                         }),
                     )
                     .await;
@@ -1272,6 +1273,7 @@ async fn handle_finish(
                     revision: indexed.revision,
                     views_current: true,
                     coverage_through: expected_revision,
+                    connector: None,
                 }),
             )
             .await?;
@@ -1854,6 +1856,12 @@ async fn finish_connector(
             revision,
             views_current: receipt.views_ready,
             coverage_through: Some(revision),
+            connector: Some(ConnectorReceipt {
+                source_id: receipt.source_id.as_str().to_owned(),
+                batch_id: receipt.batch_id.as_str().to_owned(),
+                source_revision: receipt.source_revision,
+                silver_revision: receipt.silver_revision,
+            }),
         }),
     )
     .await

@@ -366,6 +366,22 @@ pub(crate) struct Published {
     pub views_current: bool,
     #[prost(int64, optional, tag = "3")]
     pub coverage_through: Option<i64>,
+    /// Connector batches carry the source-scoped receipt the HTTP route
+    /// returned, so adapters can retire it.
+    #[prost(message, optional, tag = "4")]
+    pub connector: Option<ConnectorReceipt>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct ConnectorReceipt {
+    #[prost(string, tag = "1")]
+    pub source_id: String,
+    #[prost(string, tag = "2")]
+    pub batch_id: String,
+    #[prost(uint64, tag = "3")]
+    pub source_revision: u64,
+    #[prost(uint64, tag = "4")]
+    pub silver_revision: u64,
 }
 
 #[derive(Clone, PartialEq, Message)]

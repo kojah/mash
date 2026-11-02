@@ -1564,6 +1564,7 @@ mod tests {
                     revision: 1,
                     views_current: true,
                     coverage_through: None,
+                    connector: None,
                 })]
             }
             _ => Vec::new(),

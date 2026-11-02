@@ -265,6 +265,7 @@ fn sync_frame_replies(frame: &wire::ClientFrame) -> Vec<wire::server_frame::Body
                 revision: 1,
                 views_current: true,
                 coverage_through: None,
+                connector: None,
             })]
         }
         _ => Vec::new(),

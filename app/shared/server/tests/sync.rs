@@ -632,6 +632,15 @@ async fn websocket_commits_connector_batches_without_the_http_route() {
         }
     };
     assert_eq!(published.revision, committed.revision);
+    // The socket returns the same source-scoped receipt the HTTP route did.
+    let receipt = published.connector.expect("connector receipt");
+    assert_eq!(receipt.source_id, "github:installation");
+    assert_eq!(receipt.batch_id, "first");
+    assert_eq!(receipt.source_revision, 1);
+    assert_eq!(
+        receipt.silver_revision,
+        u64::try_from(published.revision).unwrap()
+    );
 
     // The canonical silver document is readable through the connector store.
     let identity = &service.first;
