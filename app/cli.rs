@@ -185,7 +185,7 @@ enum Command {
     Forget { id: String },
     /// Run one read-only query over local silver.
     ///
-    /// Use --request for the typed contract (target, filter, group_by, order,
+    /// Use --request for the typed contract (target, filter, `group_by`, order,
     /// limit) or --sql for a read-only SQL escape hatch. Stable views are
     /// conversations, messages and documents.
     Query {

@@ -18,7 +18,10 @@ DIRECTORY = pathlib.Path(os.environ["MASH_FAKE_STATE_DIR"])
 
 def state_path(arguments) -> pathlib.Path:
     config = pathlib.Path(arguments[arguments.index("--config") + 1]).read_text()
-    api_url = re.search(r'api_url = "(.*)"', config).group(1)
+    match = re.search(r'api_url = "(.*)"', config)
+    if match is None:
+        raise SystemExit("fake mash: configuration has no api_url")
+    api_url = match.group(1)
     digest = hashlib.sha256(api_url.encode()).hexdigest()[:16]
     return DIRECTORY / f"{digest}.json"
 
@@ -64,6 +67,7 @@ def main() -> int:
     delay = float(os.environ.get("FAKE_MASH_SLEEP", "0") or 0)
     if delay:
         import time
+
         time.sleep(delay)
 
     forced = os.environ.get("FAKE_MASH_EXIT")

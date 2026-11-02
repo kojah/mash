@@ -321,8 +321,11 @@ sources:
    root container absent from a complete snapshot is deleted (children cascade
    in the same transaction), and any other trigger never deletes by absence. A
    snapshot naming no root container is treated as malformed rather than as an
-   empty capture, so a truncated batch cannot wipe a source. Connectors must
-   mark completeness; the Slack blueprint still sends partial snapshots.
+   empty capture, so a truncated batch cannot wipe a source. The Python SDK
+   sends a container `Snapshot` (one channel, issue or chat) with the `snapshot`
+   trigger and deletes what vanished inside that container explicitly, so
+   per-container polling never prunes the source's other containers; only a
+   complete `DocumentSnapshot` is sent as `CompleteSnapshot`.
 5. **Connector `Published` does not certify views** (`views_ready` is false).
 6. **Restore/copy semantics are undefined.** A copied silver DB is a new device
    source; `forget` does not fan out.

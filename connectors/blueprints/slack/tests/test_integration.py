@@ -1,6 +1,7 @@
 """Fake Slack messages delivered into a disposable Mash database and found by search."""
 
 import os
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -31,6 +32,16 @@ class IntegrationTests(unittest.TestCase):
             "representations='lexical-only'\n[views.query]\nintent='exact-mention'\n"
         )
 
+    def source_id(self, prefix: str) -> str:
+        """The one connector source this test delivered; keys may append a
+        principal or node to the configured account."""
+        with sqlite3.connect(self.database) as connection:
+            [(source,)] = connection.execute(
+                "SELECT DISTINCT source FROM objects WHERE origin='connector'"
+            ).fetchall()
+        self.assertTrue(source.startswith(prefix + ":") or source == prefix, source)
+        return source
+
     def mash(self, *arguments: str) -> dict:
         output = subprocess.run(
             [
@@ -54,7 +65,7 @@ class IntegrationTests(unittest.TestCase):
             text,
             "--local",
             "--source",
-            f"slack:{TEAM}",
+            self.source_id(f"slack:{TEAM}"),
             "--intent",
             "exact-mention",
             "--unit",

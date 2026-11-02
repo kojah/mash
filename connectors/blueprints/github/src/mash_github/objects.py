@@ -43,9 +43,9 @@ def chat_id(issue: Issue) -> str:
     return f"issue:{issue.id}"
 
 
-def author(user: SimpleUser | None) -> Author | None:
-    if user is None:  # A deleted account.
-        return None
+def author(user: SimpleUser | None) -> Author:
+    if user is None:  # A deleted account; GitHub shows it as "ghost".
+        return Author(id="github:ghost", kind=AuthorKind.unknown, name="ghost")
     kind = AuthorKind.bot if user.type == "Bot" else AuthorKind.human
     return Author(id=f"github:{user.id}", kind=kind, name=user.login)
 

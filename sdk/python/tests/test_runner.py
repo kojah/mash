@@ -388,7 +388,7 @@ class ModeTests(Harness):
         both = ["live", "snapshot"]
         self.assertEqual(
             self.triggers(),
-            [("snapshot", both), ("complete-snapshot", both), ("change", both)],
+            [("snapshot", both), ("snapshot", both), ("change", both)],
         )
 
     async def test_live_refreshes_are_marked_live(self) -> None:
@@ -484,9 +484,7 @@ class FanOutTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(temporary.cleanup)
         self.state_path = Path(temporary.name) / "sdk.sqlite"
         urls = ("http://127.0.0.1:8787", "http://127.0.0.1:8788")
-        self.servers = tuple(
-            FileBehaviour(Path(temporary.name), url) for url in urls
-        )
+        self.servers = tuple(FileBehaviour(Path(temporary.name), url) for url in urls)
         os.environ[STATE_DIR_ENV] = temporary.name
         self.addCleanup(os.environ.pop, STATE_DIR_ENV, None)
         os.environ["MASH_EXECUTABLE"] = str(install_executable(Path(temporary.name)))

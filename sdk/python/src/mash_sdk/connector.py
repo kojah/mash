@@ -5,7 +5,6 @@ import fcntl
 import hashlib
 import os
 import socket
-import hashlib
 import sqlite3
 import time
 from collections.abc import (
@@ -549,8 +548,13 @@ class Connector:
 
 
 def snapshot_trigger(snapshot: Snapshot | DocumentSnapshot) -> Trigger:
-    """Only a complete snapshot deletes what it no longer contains."""
-    return Trigger.complete_snapshot if snapshot.complete else Trigger.snapshot
+    """Mash prunes every stored root container a complete-snapshot batch omits,
+    so only a document snapshot, which covers its whole scope, is sent as one.
+    A container snapshot covers one container: the plan already deletes what
+    it no longer contains, and other containers must survive it."""
+    if isinstance(snapshot, DocumentSnapshot) and snapshot.complete:
+        return Trigger.complete_snapshot
+    return Trigger.snapshot
 
 
 @contextmanager

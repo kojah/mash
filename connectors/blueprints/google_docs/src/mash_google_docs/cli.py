@@ -20,7 +20,6 @@ from .drive import Drive
 from .prerequisites import check
 
 
-
 class WrongPrincipal(Exception):
     """The token belongs to a different Google account than `account_id`."""
 
@@ -112,7 +111,8 @@ def sync(settings: Settings, watch: bool) -> None:
         info = orjson.loads(fetch(urlopen, __import__("time").sleep, request))
         if info.get("sub") != settings.account_id:
             raise WrongPrincipal(
-                f"the token belongs to {info.get('sub')}; account_id is {settings.account_id}"
+                f"the token belongs to {info.get('sub')}; "
+                f"account_id is {settings.account_id}"
             )
         asyncio.run(
             run(settings, Drive(credentials, send=urlopen), watch=watch, report=report)

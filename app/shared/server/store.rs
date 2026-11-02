@@ -199,7 +199,7 @@ impl Store {
     }
 
     /// Run a typed, read-only query over this node's shared silver. The
-    /// connection gets the same views, query_only, authorizer and budgets as a
+    /// connection gets the same views, `query_only`, authorizer and budgets as a
     /// local query; it is opened per call and discarded.
     pub(in crate::shared) async fn query(
         &self,

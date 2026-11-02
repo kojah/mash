@@ -66,10 +66,16 @@ class SourceLockTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_device_sources_reject_disagreeing_nodes(self) -> None:
         first = Destination.shared(
-            api_url="http://127.0.0.1:8787", group_id="g", node_id="laptop", token_env="T"
+            api_url="http://127.0.0.1:8787",
+            group_id="g",
+            node_id="laptop",
+            token_env="T",
         )
         second = Destination.shared(
-            api_url="http://127.0.0.1:8788", group_id="g", node_id="server", token_env="T"
+            api_url="http://127.0.0.1:8788",
+            group_id="g",
+            node_id="server",
+            token_env="T",
         )
         device = Connector(
             source_id="imessage:account",

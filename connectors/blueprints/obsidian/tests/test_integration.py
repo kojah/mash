@@ -65,6 +65,16 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                 "AND kind='obsidian:note' ORDER BY id"
             ).fetchall()
 
+    def source_id(self, prefix: str) -> str:
+        """The one connector source this test delivered; keys may append a
+        principal or node to the configured account."""
+        with sqlite3.connect(self.database) as connection:
+            [(source,)] = connection.execute(
+                "SELECT DISTINCT source FROM objects WHERE origin='connector'"
+            ).fetchall()
+        self.assertTrue(source.startswith(prefix + ":") or source == prefix, source)
+        return source
+
     def mash(self, *arguments: str) -> dict:
         output = subprocess.run(
             [
@@ -98,7 +108,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
             "zephyrlighthouse",
             "--local",
             "--source",
-            "obsidian:test",
+            self.source_id("obsidian:test"),
             "--intent",
             "exact-mention",
             "--unit",

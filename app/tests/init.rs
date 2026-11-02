@@ -12,7 +12,7 @@ fn fixture(registered: bool) -> (tempfile::TempDir, Vec<(&'static str, String)>)
     std::fs::create_dir(&bin).unwrap();
     for agent in ["claude", "codex"] {
         let script = bin.join(agent);
-        let get = if registered { 0 } else { 1 };
+        let get = i32::from(!registered);
         std::fs::write(
             &script,
             format!(

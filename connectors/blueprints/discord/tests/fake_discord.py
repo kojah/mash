@@ -127,7 +127,7 @@ def attachment(id: str, name: str) -> dict:
     }
 
 
-def user(id: str) -> dict:
+def bot_user(id: str) -> dict:
     return {
         "id": id,
         "username": "mash",
@@ -187,7 +187,7 @@ class FakeDiscord:
         if parts == ["oauth2", "applications", "@me"]:
             return 200, application(self.flags)
         if parts == ["users", "@me"]:
-            return 200, user(self.bot_id)
+            return 200, bot_user(self.bot_id)
         if parts[0] != "channels" or parts[1] not in self.channels:
             return 404, {"message": "Unknown Channel", "code": 10003}
         if len(parts) == 2:

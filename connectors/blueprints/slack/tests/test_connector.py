@@ -60,7 +60,6 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         self.slack.user("U1", "Ada")
         self.slack.user("U2", "Grace")
 
-
     async def test_token_must_act_as_the_configured_principal(self) -> None:
         from mash_slack.connector import WrongPrincipal, workspace
 

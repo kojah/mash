@@ -15,6 +15,7 @@ BOTH = (Mode.snapshot, Mode.live)
 TOKEN = "test-node-token-32-bytes-long-abc"
 TOKEN_ENV = "MASH_TEST_NODE_TOKEN"
 
+
 # Emulates `mash index --connector-batch <file> --shared`: reads the batch,
 # prints the receipt the SDK validates, and fails on demand.
 def edit(content: str) -> Changes:

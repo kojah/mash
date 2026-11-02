@@ -138,7 +138,7 @@ def render(text: str, people: People) -> str:
     return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 
 
-def author(item: Message, people: People) -> Author | None:
+def author(item: Message, people: People) -> Author:
     if item.user is not None:
         person = people.get(item.user)
         if person is None:
@@ -148,7 +148,8 @@ def author(item: Message, people: People) -> Author | None:
     if item.bot_id is not None:
         label = item.bot_profile.name if item.bot_profile else item.username
         return Author(id=f"slack:{item.bot_id}", kind=AuthorKind.bot, name=label)
-    return None
+    # Mash requires an author on every entry.
+    return Author(id="slack:unknown", kind=AuthorKind.unknown)
 
 
 def chat(workspace: Workspace, channel: Channel, people: People) -> Object:

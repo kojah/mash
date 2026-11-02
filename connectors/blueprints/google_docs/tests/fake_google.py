@@ -90,7 +90,11 @@ class FakeGoogle:
         if pending:
             return pending.pop(0), {"retry-after": "1"}, b'{"error":{"code":429}}'
         if url.hostname == "oauth2.googleapis.com" and url.path == "/tokeninfo":
-            return 200, {}, orjson.dumps({"sub": self.principal, "email": "mash@example.com"})
+            return (
+                200,
+                {},
+                orjson.dumps({"sub": self.principal, "email": "mash@example.com"}),
+            )
         if url.hostname == "oauth2.googleapis.com":
             assert isinstance(request.data, bytes)
             form = urllib.parse.parse_qs(request.data.decode())

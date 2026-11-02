@@ -229,7 +229,7 @@ fn authorize(context: AuthContext<'_>) -> Authorization {
     }
 }
 
-fn sql_error(error: rusqlite::Error) -> AppError {
+fn sql_error(error: &rusqlite::Error) -> AppError {
     if matches!(
         error,
         rusqlite::Error::SqliteFailure(failure, _)
@@ -399,7 +399,7 @@ fn execute(
     limit: usize,
     byte_budget: usize,
 ) -> Result<Value, AppError> {
-    let mut statement = connection.prepare(sql).map_err(sql_error)?;
+    let mut statement = connection.prepare(sql).map_err(|error| sql_error(&error))?;
     let columns: Vec<String> = statement
         .column_names()
         .into_iter()

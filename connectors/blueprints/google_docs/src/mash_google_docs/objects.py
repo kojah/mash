@@ -49,9 +49,11 @@ def person(user: User) -> dict[str, str]:
     }
 
 
-def author(user: User | None) -> Author | None:
+def author(user: User | None) -> Author:
+    # Mash requires an author on every entry; Drive can omit or hide it.
+    unknown = Author(id="google:unknown", kind=AuthorKind.unknown)
     if user is None:
-        return None
+        return unknown
     if user.permission_id is not None:
         id = f"google:{user.permission_id}"
     elif user.email_address is not None:
@@ -60,7 +62,7 @@ def author(user: User | None) -> Author | None:
         # Drive may hide everything but the name; keep that author stable.
         id = f"name:{hashlib.sha256(user.display_name.encode()).hexdigest()[:32]}"
     else:
-        return None
+        return unknown
     return Author(id=id, kind=AuthorKind.human, name=user.display_name)
 
 

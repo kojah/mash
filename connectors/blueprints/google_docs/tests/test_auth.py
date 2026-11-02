@@ -132,7 +132,6 @@ class AuthTests(unittest.TestCase):
         for secret in SECRETS:
             self.assertNotIn(secret, output)
 
-
     def test_a_token_for_another_account_is_rejected(self) -> None:
         self.google.add(item("a", parent="top"))
         self.google.principal = "someone-else"
