@@ -242,8 +242,6 @@ async fn dispatch(
             request,
             timeout_seconds,
         } => {
-            let request: crate::silver_query::Request = serde_json::from_str(&request)
-                .map_err(|error| AppError::usage(format!("invalid query request: {error}")))?;
             let database = database.to_path_buf();
             crate::blocking(move || {
                 crate::silver_query::run_request(

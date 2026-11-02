@@ -104,7 +104,7 @@ pub(crate) enum Operation {
     },
     /// A typed, declarative query over the stable views.
     QueryStructured {
-        request: String,
+        request: crate::silver_query::Request,
         timeout_seconds: u64,
     },
     ModelsInstall,

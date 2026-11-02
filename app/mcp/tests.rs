@@ -412,6 +412,16 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "view"
         ]
     );
+    let query = tools
+        .iter()
+        .find(|tool| tool.name == "query_silver")
+        .expect("query_silver");
+    let properties = &query.input_schema["properties"];
+    assert!(
+        properties.get("request").is_some(),
+        "typed requests are discoverable"
+    );
+    assert!(properties.get("sql").is_some());
     let write_guard = write_gate.lock().await;
     let model_permit = model_work.acquire().await.expect("model permit");
     let status = tokio::time::timeout(

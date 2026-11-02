@@ -459,7 +459,9 @@ impl Cli {
                 timeout_seconds,
             } => match request {
                 Some(request) => Operation::QueryStructured {
-                    request,
+                    request: serde_json::from_str(&request).map_err(|error| {
+                        AppError::usage(format!("invalid query request: {error}"))
+                    })?,
                     timeout_seconds,
                 },
                 None => Operation::QuerySilver {

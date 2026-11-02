@@ -25,7 +25,7 @@ const ROW_OVERHEAD_BYTES: usize = 8;
 /// parameter and every identifier comes from an enum, so callers cannot name a
 /// table, column or SQL fragment. This is the shape a remote shared-silver
 /// query can accept without parsing arbitrary SQL.
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Request {
     pub target: Target,
@@ -45,7 +45,7 @@ fn default_request_limit() -> usize {
     200
 }
 
-#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Target {
     Messages,
@@ -53,7 +53,7 @@ pub(crate) enum Target {
     Documents,
 }
 
-#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum GroupBy {
     Source,
@@ -61,7 +61,7 @@ pub(crate) enum GroupBy {
     Conversation,
 }
 
-#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Order {
     CreatedAt,
@@ -69,7 +69,7 @@ pub(crate) enum Order {
     Id,
 }
 
-#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Default, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct Filter {
     pub source: Option<String>,

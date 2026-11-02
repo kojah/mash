@@ -142,9 +142,12 @@ struct GetAttachment {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct QuerySilver {
-    /// One read-only SQL statement over local silver.
-    sql: String,
-    /// Maximum rows returned; defaults to 200 and never exceeds 10000.
+    /// Typed, declarative query. Preferred over sql: it cannot name tables,
+    /// columns or SQL fragments and works the same way for shared silver.
+    request: Option<crate::silver_query::Request>,
+    /// One read-only SQL statement over local silver. Local diagnostics only.
+    sql: Option<String>,
+    /// Maximum rows in sql mode; request carries its own limit.
     limit: Option<usize>,
 }
 
@@ -544,15 +547,29 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Run one read-only SQL statement over this machine's silver database. The connection is opened read-only and pinned with query_only, so writes, ATTACH and pragma changes fail. Rows are capped (default 200, max 10000) and a wall-clock budget aborts runaway scans. Returns columns, rows and whether the result was truncated; blobs are hex. Stable views conversations, messages and documents are defined over the raw objects table; the raw schema itself is not a stable API."
+        description = "Query this machine's silver with a typed, declarative request (preferred): target messages/conversations/documents, filter by source, conversation, role, time or substring, group by source/role/conversation, order and limit. Identifiers come from an allowlist and values are bound, so a request cannot name a table, column or SQL fragment. The local-only sql escape hatch runs one read-only statement on a connection pinned to query_only with an authorizer that permits only reads, plus row and payload caps and a wall-clock budget. Provide exactly one of request or sql. Stable views for sql are conversations, messages and documents; the raw schema is not a stable API."
     )]
     async fn query_silver(&self, Parameters(input): Parameters<QuerySilver>) -> CallToolResult {
-        self.execute(Operation::QuerySilver {
-            sql: input.sql,
-            limit: input.limit.unwrap_or(200),
-            timeout_seconds: 10,
-        })
-        .await
+        match (input.request, input.sql) {
+            (Some(request), None) => {
+                self.execute(Operation::QueryStructured {
+                    request,
+                    timeout_seconds: 10,
+                })
+                .await
+            }
+            (None, Some(sql)) => {
+                self.execute(Operation::QuerySilver {
+                    sql,
+                    limit: input.limit.unwrap_or(200),
+                    timeout_seconds: 10,
+                })
+                .await
+            }
+            _ => CallToolResult::error(vec![ContentBlock::text(
+                "provide exactly one of request or sql",
+            )]),
+        }
     }
 
     #[tool(
