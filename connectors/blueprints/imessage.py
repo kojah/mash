@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Protocol
 
 from mash_sdk import (
+    Author,
+    AuthorKind,
     Changes,
     Connector,
     Debounce,
@@ -100,7 +102,13 @@ def message(post: Post) -> Object:
         id=f"{post.chat_id}:{post.id}",
         parent=post.chat_id,
         content=post.content,
-        author=post.sender.to_author() if post.sender else None,
+        # An entry always carries an author: a message with no sender (system
+        # notices, sender-less rows) is still evidence, attributed to nobody.
+        author=(
+            post.sender.to_author()
+            if post.sender
+            else Author(id="unknown", kind=AuthorKind.unknown)
+        ),
         reply_to=f"{post.chat_id}:{post.reply_to}" if post.reply_to else None,
         created_at=milliseconds(post.created_at),
         updated_at=milliseconds(post.updated_at),
