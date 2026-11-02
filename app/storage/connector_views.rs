@@ -564,6 +564,69 @@ pub(crate) fn unit_digest_input(unit: &Unit) -> String {
 }
 
 /// One connector object as a search hit with its ancestry.
+/// Every entry under a container, in the same order `view` reads them.
+fn ordered_entries(
+    connection: &Connection,
+    source_id: &str,
+    container_id: &str,
+) -> Result<Vec<Object>, AppError> {
+    let mut entries = Vec::new();
+    let mut pending = vec![container_id.to_owned()];
+    // Breadth-first over the container's subtree; silver has no cycles.
+    while let Some(parent) = pending.pop() {
+        for row in sql::ConnectorChildren::builder()
+            .source_id(source_id)
+            .parent_id(Some(parent.as_str()))
+            .build()
+            .query_many(connection)
+            .map_err(AppError::database)?
+        {
+            let object = decode(row.record.as_deref())?;
+            if object.role != Role::Container {
+                pending.push(row.id);
+            }
+            if object.role == Role::Entry {
+                entries.push(object);
+            }
+        }
+    }
+    entries.sort_by(|left, right| {
+        (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
+            right.created_at.is_none(),
+            right.created_at,
+            right.id.as_str(),
+        ))
+    });
+    Ok(entries)
+}
+
+/// The entry's position among its container's entries.
+fn entry_sequence(
+    connection: &Connection,
+    source_id: &str,
+    id: &str,
+) -> Result<Option<i64>, AppError> {
+    let Some(evidence) = evidence(connection, source_id, id)? else {
+        return Ok(None);
+    };
+    if evidence.object.role != Role::Entry {
+        return Ok(None);
+    }
+    let Some((_, container)) = evidence
+        .ancestors
+        .iter()
+        .find(|(role, _)| *role == Role::Container)
+    else {
+        return Ok(None);
+    };
+    Ok(
+        ordered_entries(connection, source_id, container.id.as_str())?
+            .iter()
+            .position(|entry| entry.id.as_str() == id)
+            .map(|position| i64::try_from(position).unwrap_or(i64::MAX)),
+    )
+}
+
 pub(crate) fn connector_hit(
     connection: &Connection,
     source_id: &str,
@@ -596,7 +659,7 @@ pub(crate) fn connector_hit(
         role: None,
         author_kind: evidence.author(),
         author: crate::source::author(None, evidence.author()),
-        sequence: None,
+        sequence: entry_sequence(connection, source_id, id)?,
         content: evidence.content().to_owned(),
         created_at: evidence.object.created_at,
         metadata: crate::search_results::ChatMetadata {

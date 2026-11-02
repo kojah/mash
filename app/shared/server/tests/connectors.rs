@@ -219,6 +219,8 @@ fn exact(text: &str) -> crate::shared::protocol::Search {
 }
 
 async fn found(service: &Service, input: &crate::shared::protocol::Search) -> Vec<SearchHit> {
+    let mut query_vector = vec![0.0; 384];
+    query_vector[0] = 1.0;
     let response = service
         .request("search", FIRST)
         .json(input)
@@ -443,4 +445,91 @@ async fn account_source_claim_rejects_a_second_writer_until_transferred() {
         error.error.message.contains("source_owned_elsewhere"),
         "{error:?}"
     );
+}
+
+/// A Slack batch and a native publication are the same evidence: one hit shape
+/// with one speaker and one sequence, through the real server.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn slack_and_native_hits_carry_the_same_sequence_and_shape() {
+    let service = Service::qdrant(384).await;
+    assert_eq!(
+        service.upload(FIRST, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+
+    let slack = json!({
+        "schema_version": 2,
+        "source_id": "slack:T0TEAM:U0ALICE",
+        "batch_id": "slack-1",
+        "expected_revision": 0,
+        "changes": [
+            {"op":"upsert-object","id":"channel","role":"container",
+             "kind":"slack:channel","title":"Channel"},
+            {"op":"upsert-object","id":"m1","role":"entry","kind":"slack:message",
+             "parent":"channel","content":"hello shared history","created_at":100,
+             "author":{"id":"U1","kind":"human"}},
+            {"op":"upsert-object","id":"m2","role":"entry","kind":"slack:message",
+             "parent":"channel","content":"hello shared history two","created_at":200,
+             "author":{"id":"U2","kind":"human"}},
+            {"op":"upsert-object","id":"m3","role":"entry","kind":"slack:message",
+             "parent":"channel","content":"hello shared history three","created_at":300,
+             "author":{"id":"U3","kind":"bot"}}
+        ]
+    });
+    let posted = service
+        .request("connector-batches", FIRST)
+        .json(&slack)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(posted.status(), StatusCode::OK, "{:?}", posted.text().await);
+
+    let mut query_vector = vec![0.0; 384];
+    query_vector[0] = 1.0;
+    let response = service
+        .request("search", FIRST)
+        .json(&json!({
+            "query": "hello shared history",
+            "vector": query_vector,
+            "provider": null,
+            "days": null,
+            "filter": null
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert!(status.is_success(), "{status}: {body}");
+    let found: Value = serde_json::from_str(&body).unwrap();
+    let hits = found["lexical"].as_array().cloned().unwrap_or_default();
+    let native = hits
+        .iter()
+        .find(|hit| hit["source"].get("provider").is_some())
+        .cloned()
+        .expect("native hit");
+    let connector = hits
+        .iter()
+        .find(|hit| hit["source"].get("connector").is_some())
+        .cloned()
+        .expect("connector hit");
+
+    let keys = |value: &Value| {
+        let mut keys: Vec<_> = value
+            .as_object()
+            .expect("hit object")
+            .keys()
+            .cloned()
+            .collect();
+        keys.sort();
+        keys
+    };
+    assert_eq!(keys(&native), keys(&connector), "{native} vs {connector}");
+    assert_eq!(native["sequence"], connector["sequence"]);
+    assert_eq!(native["sequence"], 0);
+    assert!(native["author"].is_object());
+    assert!(connector["author"].is_object());
+    assert_eq!(connector["author"]["kind"], "human");
+    service.cleanup().await;
 }

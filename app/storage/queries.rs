@@ -437,6 +437,16 @@ pub(super) fn search_hit(
 ) -> Result<SearchHit, AppError> {
     let provider: crate::provider::Provider = row.provider.parse()?;
     let role: crate::role::Role = super::required(row.role, "role")?.into();
+    // Native messages store their ordinal on the object row.
+    let sequence: Option<i64> = connection
+        .query_row(
+            "SELECT ordinal FROM objects WHERE id = ?1 AND origin = 'provider'",
+            [row.id.as_str()],
+            |record| record.get(0),
+        )
+        .optional()
+        .map_err(AppError::database)?
+        .flatten();
     Ok(SearchHit {
         ancestors: super::objects::ancestors(connection, row.parent_storage_id)?,
         id: row.id,
@@ -449,7 +459,7 @@ pub(super) fn search_hit(
         role: Some(role.clone()),
         author_kind: None,
         author: crate::source::author(Some(role), None),
-        sequence: None,
+        sequence,
         content: super::required(row.content, "content")?,
         copies: Vec::new(),
         created_at: row.created_at,
