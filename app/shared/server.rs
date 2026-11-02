@@ -195,6 +195,25 @@ async fn freshness(
     ));
     freshness.unpublished_nodes =
         Some(unpublished_nodes(&app.identities, &id.group_id, &freshness));
+    let root = app.transfer_dir.clone();
+    let group = id.group_id.clone();
+    let node = id.node_id.clone();
+    freshness.baseline = crate::blocking(
+        move || -> Result<Option<crate::shared::BaselineCoverage>, AppError> {
+            let catalog = sync::open_catalog(&root)?;
+            Ok(catalog.latest_backfill(&group, &node)?.map(|backfill| {
+                crate::shared::BaselineCoverage {
+                    id: backfill.backfill_id,
+                    state: backfill.state,
+                    covered: backfill.covered,
+                    total: backfill.total_conversations,
+                }
+            }))
+        },
+    )
+    .await
+    .ok()
+    .flatten();
     Ok(Json(freshness))
 }
 

@@ -424,3 +424,73 @@ fn a_server_crash_after_silver_commit_converges_after_restart() {
     let _ = second.wait();
     shared_server::cleanup_group(&group);
 }
+
+/// A large first publication picks the baseline strategy without a flag.
+#[test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
+    let dir = tempfile::tempdir().expect("temp");
+    let database = dir.path().join("local.sqlite3");
+    seed_readiness_database(&database, Some(""));
+    let models = dir.path().join("models");
+    create_valid_model_marker(&models);
+    let config = dir.path().join("config.toml");
+    let group = format!(
+        "auto-{}",
+        dir.path().file_name().expect("name").to_string_lossy()
+    );
+    let server = shared_server::Server::new(dir.path(), &group, &["cli-node"]);
+    std::fs::write(
+        &config,
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {}
+            shared = {
+            group_id = (group.as_str()),node_id = "cli-node",api_url = (server.url.as_str()),token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
+            }
+        })
+        .expect("TOML"),
+    )
+    .expect("config");
+
+    let output = Command::cargo_bin("mash")
+        .expect("binary")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "index",
+        ])
+        // One conversation is "large" for this test; debug builds honour it.
+        .env("MASH_TEST_AUTO_BACKFILL_MIN", "1")
+        .env(
+            "MASH_TEST_SHARED_CLIENT_TOKEN",
+            shared_server::token("cli-node"),
+        )
+        .output()
+        .expect("run");
+    let response: Value = serde_json::from_slice(&output.stdout).expect("JSON response");
+    assert!(
+        matches!(output.status.code(), Some(0 | 9)),
+        "status={:?} response={response}",
+        output.status.code()
+    );
+    assert_eq!(response["shared"]["state"], "published", "{response}");
+
+    // The server recorded a completed baseline without being asked.
+    let catalog = Connection::open(dir.path().join("silver/sync/catalog.sqlite3"))
+        .expect("open transfer catalog");
+    let (state, total): (String, i64) = catalog
+        .query_row(
+            "SELECT state, total_conversations FROM backfills WHERE backfill_id = 'auto'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("auto baseline row");
+    assert_eq!(state, "complete");
+    assert!(total >= 1);
+    shared_server::cleanup_group(&group);
+}

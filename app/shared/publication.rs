@@ -180,12 +180,59 @@ const PUBLISH_LOCK_POLL: Duration = Duration::from_millis(50);
 const SHARED_PENDING: &str =
     "another process is publishing this database and destination; retry when it finishes";
 
+/// Histories at least this large publish as a baseline when the node has
+/// nothing on the server yet: the first batches become searchable while the
+/// rest uploads.
+const AUTO_BACKFILL_MIN_CONVERSATIONS: u64 = 200;
+
+fn auto_backfill_threshold() -> u64 {
+    #[cfg(debug_assertions)]
+    if let Ok(value) = std::env::var("MASH_TEST_AUTO_BACKFILL_MIN")
+        && let Ok(value) = value.parse()
+    {
+        return value;
+    }
+    AUTO_BACKFILL_MIN_CONVERSATIONS
+}
+
+/// Whether this publication should be a progressive baseline: a large local
+/// history with nothing published for this node yet. Establishised nodes keep
+/// replace/delta semantics so deletions still propagate.
+async fn should_auto_backfill(path: &Path, config: &SharedConfig) -> Result<bool, AppError> {
+    let db = path.to_path_buf();
+    let counts = crate::blocking(move || Storage::open_existing(&db)?.counts()).await?;
+    if counts.conversations < auto_backfill_threshold() {
+        return Ok(false);
+    }
+    let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
+    Ok(!freshness
+        .nodes
+        .iter()
+        .any(|node| node.node_id == config.node_id && node.revision > 0))
+}
+
 pub(crate) async fn publish(
     path: &Path,
     config: &SharedConfig,
     inference: Option<Inference<'_>>,
 ) -> Publication {
+    // A failed probe must not block publication; fall back to the normal
+    // strategy and let it report the actionable error.
+    if let Ok(true) = should_auto_backfill(path, config).await {
+        return publish_baseline_now(path, config, "auto").await;
+    }
     publish_with_wait(path, config, inference, PUBLISH_LOCK_WAIT).await
+}
+
+async fn publish_baseline_now(path: &Path, config: &SharedConfig, id: &str) -> Publication {
+    match publish_backfill(path, config, id).await {
+        Ok(_) => Publication::published(),
+        Err(error) => {
+            let mut pending = Publication::pending();
+            pending.attachment_failure(error);
+            pending
+        }
+    }
 }
 
 /// Publisher with an explicit ownership wait, used by tests.

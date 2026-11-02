@@ -871,6 +871,29 @@ impl Catalog {
         Ok(rows)
     }
 
+    /// Most recently created baseline session for a node.
+    pub(crate) fn latest_backfill(
+        &self,
+        group_id: &str,
+        node_id: &str,
+    ) -> Result<Option<Backfill>, AppError> {
+        let id = self
+            .connection
+            .query_row(
+                "SELECT backfill_id FROM backfills
+                 WHERE group_id = ?1 AND node_id = ?2
+                 ORDER BY created_at DESC, backfill_id DESC LIMIT 1",
+                params![group_id, node_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(database)?;
+        match id {
+            Some(id) => Ok(Some(self.backfill(&id, group_id, node_id)?)),
+            None => Ok(None),
+        }
+    }
+
     pub(crate) fn cancel(&self, operation_id: &str) -> Result<(), AppError> {
         self.set_state(operation_id, State::Cancelled, None, None)?;
         self.remove_pieces(operation_id)

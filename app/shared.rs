@@ -79,10 +79,22 @@ impl Publication {
     }
 }
 
+/// Baseline coverage for one node, read from the transfer catalog.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct BaselineCoverage {
+    pub(crate) id: String,
+    pub(crate) state: String,
+    pub(crate) covered: u64,
+    pub(crate) total: u64,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Freshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     activity: Option<activity::Report>,
+    /// Most recent progressive baseline for the node, if one was started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) baseline: Option<BaselineCoverage>,
     group_id: String,
     /// Configured group members with no retained publication. None means the
     /// responding service did not supply its configured membership scope.

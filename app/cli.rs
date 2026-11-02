@@ -76,6 +76,7 @@ enum Command {
         /// deleted. Plain `index` or `forget` removes chats from the server.
         #[arg(
             long,
+            hide = true,
             value_name = "BACKFILL_ID",
             num_args = 0..=1,
             default_missing_value = "baseline",

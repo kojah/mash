@@ -61,7 +61,7 @@ CI checks regeneration against committed output. Dynamic predicates and FTS rank
 reuse the generated projection and decoder; migrations and writes remain explicit.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history] [--backfill[=ID]]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-views [--full]
 mash search <query> [--unit chats|messages] [--local | --shared] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
 mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
@@ -1230,7 +1230,9 @@ The API exposes `/v1/sync` (authenticated WebSocket mutation transport),
 attachment read routes. Nodes plan publication from their `/v1/freshness` entry
 and forget through delta uploads. Requests use bearer credentials. `/v1/sync`
 carries typed Protobuf envelopes with zstd publication data, durable piece
-checkpoints and resume; publication, connector-batch, attachment-upload and
+checkpoints and resume; a first publication of a large history is planned into
+independently committed batches, so recent conversations become searchable
+while the rest uploads; publication, connector-batch, attachment-upload and
 progressive-backfill operations share one transfer protocol. It is the only
 mutation route: the former `POST /v1/index` (NDJSON), `/v1/connector-batches`
 and `/v1/attachment-upload` routes were removed in the protocol-matched

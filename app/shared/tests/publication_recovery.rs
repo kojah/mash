@@ -59,6 +59,7 @@ fn configuration(address: std::net::SocketAddr) -> SharedConfig {
 
 fn current_freshness(target: &reuse::Target, node: NodeFreshness) -> Freshness {
     Freshness {
+        baseline: None,
         activity: None,
         group_id: "test".into(),
         unpublished_nodes: None,

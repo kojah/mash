@@ -2026,6 +2026,13 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
                         assert_eq!(counts.conversations, 1, "first batch committed alone");
                         assert_eq!(counts.messages, 1);
                         assert_eq!(service.state().await.revision, event.revision);
+                        // Coverage is visible while the baseline is incomplete.
+                        let freshness: crate::shared::Freshness =
+                            serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+                        let baseline = freshness.baseline.expect("baseline coverage");
+                        assert_eq!(baseline.id, "progressive");
+                        assert_eq!(baseline.state, "ready");
+                        assert_eq!((baseline.covered, baseline.total), (1, 2));
                     }
                     let _ = event.acknowledge.send(());
                 }
@@ -2047,5 +2054,10 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
         .unwrap();
     assert_eq!(backfill.state, "complete");
     assert_eq!(backfill.covered, backfill.total_conversations);
+    let freshness: crate::shared::Freshness =
+        serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+    let baseline = freshness.baseline.expect("baseline coverage");
+    assert_eq!((baseline.covered, baseline.total), (2, 2));
+    assert_eq!(baseline.state, "complete");
     service.cleanup().await;
 }

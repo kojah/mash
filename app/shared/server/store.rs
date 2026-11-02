@@ -341,6 +341,7 @@ impl Store {
             });
         }
         Ok(Freshness {
+            baseline: None,
             activity: None,
             group_id: identity.group_id.clone(),
             unpublished_nodes: None,

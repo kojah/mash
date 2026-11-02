@@ -509,10 +509,21 @@ Known implementation/model gaps, recorded in Beads:
    the first batch is searchable while later batches are still uploading.
    Per-batch receipts persist beside the database
    (`<database>.backfill.json`), and a retry with the same identity skips
-   completed batch digests before finishing. Remaining gaps: no priority
-   scheduling beyond recency, no multi-session or restored-baseline ordering,
-   and the journal gate is only exercised by the incremental path in
-   production.
+   completed batch digests before finishing.
+
+   `mash index` chooses the strategy itself: a database with at least 200
+   conversations and **no publication for that node on the server yet** is
+   published as a baseline, so the newest batches become searchable while the
+   rest upload. Established nodes keep replace/delta semantics, because absence
+   must still mean deletion there. `--backfill` remains as a hidden override for
+   diagnostics and tests. `Freshness` reports the latest baseline as
+   `baseline: {id, state, covered, total}`, so `mash status --shared` shows
+   progress while it runs and its completion afterwards. Debug builds honour
+   `MASH_TEST_AUTO_BACKFILL_MIN` to exercise the threshold.
+
+   Remaining gaps: no priority scheduling beyond recency, no multi-session or
+   restored-baseline ordering, and the journal gate is only exercised by the
+   incremental path in production.
 6. Connector batches and attachments now use the same transfer path
    (`BeginConnectorBatch`, `BeginAttachment`, then `Chunk`/`FinishUpload`).
    Connector batches commit through the existing `Store::ingest_connector`
@@ -621,8 +632,10 @@ publication, then drives `FinishBackfill` and waits for `BackfillComplete`.
 against the real handler and asserts the catalog reports `complete`,
 coverage equals the manifest, and views are certified.
 
-The operator surface is `mash index --backfill[=ID]` — one command for one
-intent, with the baseline as a delivery modifier. It indexes local sources, then
+The normal operator surface is `mash index`; the baseline is chosen
+automatically for a large first publication. `mash index --backfill[=ID]` is a
+hidden override that forces the baseline path for tests and diagnostics. Either
+way it indexes local sources, then
 freezes the next local revision, plans the history into batches (128
 conversations or 1 MiB each), installs the member manifest, and publishes those
 batches in order under the publisher lock. Each batch commits independently and
