@@ -29,6 +29,9 @@ pub(in crate::shared) struct Store {
     embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
+    /// Serializes the short read-check-write that stamps node views. Distinct
+    /// from `nodes`: certification may not run under the publication lock.
+    views_writes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
     /// Group-wide ownership of account-scoped connector sources.
     claims: Option<std::sync::Arc<std::sync::Mutex<crate::shared::sync::catalog::Catalog>>>,
     /// Whether HTTP read responses mask recognizable credentials.
@@ -132,6 +135,7 @@ impl Store {
             embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
+            views_writes: Arc::default(),
             claims: None,
             responses: crate::redaction::Policy::ON,
             #[cfg(test)]
@@ -176,6 +180,22 @@ impl Store {
 
     pub(in crate::shared) fn max_node_bytes(&self) -> u64 {
         self.max_upload_bytes
+    }
+
+    /// Serializes the views stamp check with its write, so a slow
+    /// certification cannot overwrite a newer one after the guard has passed.
+    pub(in crate::shared) async fn views_write_guard(
+        &self,
+        identity: &Identity,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, AppError> {
+        let lock = self
+            .views_writes
+            .lock()
+            .map_err(|_| AppError::internal("shared views write locks are poisoned"))?
+            .entry((identity.group_id.clone(), identity.node_id.clone()))
+            .or_default()
+            .clone();
+        Ok(lock.lock_owned().await)
     }
 
     /// One publication per node at a time within this process.
