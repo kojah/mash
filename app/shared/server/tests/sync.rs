@@ -1657,6 +1657,7 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
             last_revision: 0,
         },
         None,
+        1,
         |_, _| Ok(()),
     )
     .await
@@ -2046,6 +2047,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
             last_revision: 0,
         },
         Some(progress),
+        1,
         |_, _| Ok(()),
     );
     tokio::pin!(upload);

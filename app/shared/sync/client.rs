@@ -1022,6 +1022,7 @@ pub(crate) async fn upload_backfill_plan_with_config(
         backfill_id,
         resume,
         None,
+        backfill_lanes(),
         on_batch,
     )
     .await
@@ -1033,7 +1034,7 @@ pub(crate) async fn upload_backfill_plan_with_config(
 const DEFAULT_BACKFILL_LANES: usize = 4;
 const MAX_BACKFILL_LANES: usize = 8;
 
-fn backfill_lanes() -> usize {
+pub(crate) fn backfill_lanes() -> usize {
     std::env::var("MASH_BACKFILL_LANES")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
@@ -1057,6 +1058,7 @@ pub(crate) async fn upload_backfill_plan(
     backfill_id: &str,
     resume: BackfillResume<'_>,
     progress: Option<tokio::sync::mpsc::UnboundedSender<BackfillProgress>>,
+    lanes: usize,
     mut on_batch: impl FnMut(&str, i64) -> Result<(), AppError>,
 ) -> Result<protocol::Indexed, AppError> {
     let BackfillResume {
@@ -1067,7 +1069,9 @@ pub(crate) async fn upload_backfill_plan(
     // A connection carries exactly one active operation, so batches pipeline
     // across sessions instead of waiting for each commit before sending the
     // next one. Baseline batches are independent by construction.
-    let lanes = backfill_lanes().min(plan.batches.len().max(1));
+    let lanes = lanes
+        .clamp(1, MAX_BACKFILL_LANES)
+        .min(plan.batches.len().max(1));
     let mut workers = Vec::with_capacity(lanes);
     for lane in 0..lanes {
         let lane_key = if lane == 0 {

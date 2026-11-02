@@ -509,6 +509,10 @@ pub(crate) async fn publish_backfill(
     if backfill_id.is_empty() || backfill_id.len() > 4096 {
         return Err(AppError::usage("backfill identity is required"));
     }
+    // The transfer catalog is service-wide but backfills are looked up per
+    // (group, node). An unscoped identity such as the automatic "auto" would
+    // collide with another group's baseline and be rejected as unknown.
+    let backfill_id = &destination_scoped(config, backfill_id);
     let target_key = target(config);
     let _lock = acquire_publish_lock(path, &target_key, PUBLISH_LOCK_WAIT)
         .await?
@@ -554,6 +558,11 @@ pub(crate) async fn publish_backfill(
     )
     .await?;
     Ok(indexed.revision)
+}
+
+/// Backfill identity qualified by the destination it belongs to.
+fn destination_scoped(config: &SharedConfig, id: &str) -> String {
+    format!("[{}][{}]{id}", config.group_id, config.node_id)
 }
 
 /// Spool the node's complete history as a non-snapshot batch frozen at the next
