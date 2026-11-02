@@ -24,7 +24,13 @@ from mash_sdk import (
     Object,
     Snapshot,
 )
-from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
+from tests.fake_mash import (
+    STATE_DIR_ENV,
+    TOKEN,
+    TOKEN_ENV,
+    FileBehaviour,
+    install_executable,
+)
 from tests.objects import channel, message, note
 
 # Tests exercise every operation, so their connector declares both modes.
@@ -123,11 +129,16 @@ class Harness(unittest.IsolatedAsyncioTestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.state_path = Path(temporary.name) / "sdk.sqlite"
-        self.server = Behaviour()
-        url, stop = serve(self.server)
-        self.addCleanup(stop)
+        self.server = FileBehaviour(Path(temporary.name), "http://127.0.0.1:8787")
+        os.environ[STATE_DIR_ENV] = temporary.name
+        self.addCleanup(os.environ.pop, STATE_DIR_ENV, None)
+        os.environ["MASH_EXECUTABLE"] = str(install_executable(Path(temporary.name)))
+        self.addCleanup(os.environ.pop, "MASH_EXECUTABLE", None)
         self.destination = Destination.shared(
-            api_url=url, group_id="group", node_id="laptop", token_env=TOKEN_ENV
+            api_url="http://127.0.0.1:8787",
+            group_id="group",
+            node_id="laptop",
+            token_env=TOKEN_ENV,
         )
         os.environ[TOKEN_ENV] = TOKEN
         self.addCleanup(os.environ.pop, TOKEN_ENV, None)
@@ -472,21 +483,24 @@ class FanOutTests(unittest.IsolatedAsyncioTestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.state_path = Path(temporary.name) / "sdk.sqlite"
-        self.servers = (Behaviour(), Behaviour())
-        self.destinations = []
-        # Two independent services; the fake authorizes the same node on each.
-        for server in self.servers:
-            url, stop = serve(server)
-            self.addCleanup(stop)
-            self.destinations.append(
-                Destination.shared(
-                    api_url=url,
-                    group_id="group",
-                    node_id="laptop",
-                    token_env=TOKEN_ENV,
-                    timeout=5,
-                )
+        urls = ("http://127.0.0.1:8787", "http://127.0.0.1:8788")
+        self.servers = tuple(
+            FileBehaviour(Path(temporary.name), url) for url in urls
+        )
+        os.environ[STATE_DIR_ENV] = temporary.name
+        self.addCleanup(os.environ.pop, STATE_DIR_ENV, None)
+        os.environ["MASH_EXECUTABLE"] = str(install_executable(Path(temporary.name)))
+        self.addCleanup(os.environ.pop, "MASH_EXECUTABLE", None)
+        self.destinations = [
+            Destination.shared(
+                api_url=url,
+                group_id="group",
+                node_id="laptop",
+                token_env=TOKEN_ENV,
+                timeout=5,
             )
+            for url in urls
+        ]
         os.environ[TOKEN_ENV] = TOKEN
         self.addCleanup(os.environ.pop, TOKEN_ENV, None)
 

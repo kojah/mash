@@ -1,62 +1,80 @@
-"""Private HTTP delivery to shared silver with no canonical text or token in errors."""
+"""Private socket delivery through the mash executable; no token in argv."""
 
-import http.client
 import os
-import urllib.error
-import urllib.request
+import subprocess
+import tempfile
+from pathlib import Path
 
 from ._delivery import DeliveryError
 from ._receipts import MAX_RECEIPT_BYTES
 from .destination import Shared
 
-# Rate limiting, request timeouts and server-side failures may succeed later.
-# Other statuses (input, authorization, conflicts, limits) need intervention.
-RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+# Permanent input/schema/conflict failures need caller intervention; anything
+# else (capacity, network, timeout) may succeed on a later run.
+PERMANENT_EXIT_CODES = frozenset({2, 7, 9, 12})
 
 
-class NoRedirects(urllib.request.HTTPRedirectHandler):
-    # Following a redirect would resend the bearer token and canonical payload
-    # to a location the configuration never named; Mash's own client refuses.
-    def redirect_request(self, *args: object, **kwargs: object) -> None:
-        return None
+def executable() -> str:
+    return os.environ.get("MASH_EXECUTABLE", "mash")
 
 
-OPENER = urllib.request.build_opener(NoRedirects)
+def config_document(shared: Shared) -> str:
+    """A minimal node configuration naming only the shared destination."""
+    return (
+        "version = 1\n"
+        "[providers]\n"
+        "[shared]\n"
+        f'group_id = "{shared.group_id}"\n'
+        f'node_id = "{shared.node_id}"\n'
+        f'api_url = "{shared.api_url}"\n'
+        f'token_env = "{shared.token_env}"\n'
+    )
 
 
 def deliver_shared(shared: Shared, timeout: float, payload: bytes) -> bytes:
-    token = os.environ.get(shared.token_env)
-    if not token:
+    if not os.environ.get(shared.token_env):
         raise DeliveryError(
             f"set {shared.token_env} to this node's API token", retryable=False
         )
-    if not token.isascii() or not token.isprintable() or " " in token:
-        raise DeliveryError("invalid API token", retryable=False)
-    request = urllib.request.Request(
-        f"{shared.api_url}/v1/connector-batches",
-        data=payload,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            # The server rejects a token issued for another node instead of
-            # committing under it, so ledgers for different nodes never mix.
-            "x-mash-group": shared.group_id,
-            "x-mash-node": shared.node_id,
-        },
-    )
-    try:
-        with OPENER.open(request, timeout=timeout) as response:
-            return response.read(MAX_RECEIPT_BYTES + 1)
-    except urllib.error.HTTPError as error:
-        # The body may describe the request; never surface it.
-        error.close()
-        raise DeliveryError(
-            f"shared Mash rejected the delivery (HTTP {error.code})",
-            retryable=error.code in RETRYABLE_STATUSES,
-        ) from None
-    except (urllib.error.URLError, http.client.HTTPException, OSError):
-        # Includes timeouts and dropped connections after the server may have
-        # committed; retrying the saved batch replays the original receipt.
-        raise DeliveryError("shared Mash is unreachable", retryable=True) from None
+    # Private files keep canonical data out of argv and bound memory if a faulty
+    # executable prints more than a receipt. The token stays in the environment.
+    with tempfile.TemporaryDirectory(prefix=".mash-delivery-") as directory:
+        root = Path(directory)
+        config = root / "mash.toml"
+        config.write_text(config_document(shared))
+        batch = root / "batch.json"
+        batch.write_bytes(payload)
+        command = [
+            executable(),
+            "--config",
+            str(config),
+            "index",
+            "--connector-batch",
+            str(batch),
+            "--shared",
+        ]
+        with (root / "receipt.json").open("w+b") as output:
+            try:
+                result = subprocess.run(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.DEVNULL,
+                    timeout=timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise DeliveryError(
+                    "shared Mash delivery timed out", retryable=True
+                ) from None
+            except OSError:
+                raise DeliveryError(
+                    "shared Mash executable is unavailable", retryable=True
+                ) from None
+            if result.returncode != 0:
+                raise DeliveryError(
+                    "shared Mash rejected the delivery",
+                    retryable=result.returncode not in PERMANENT_EXIT_CODES,
+                )
+            output.seek(0)
+            return output.read(MAX_RECEIPT_BYTES + 1)
