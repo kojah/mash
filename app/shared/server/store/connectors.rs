@@ -123,6 +123,10 @@ impl Store {
         let fingerprints = self
             .read(identity, crate::shared::silver_store::fingerprints)
             .await?;
+        // Re-certification re-reads silver under the node lock, so the chats it
+        // keeps are checked against the head it records here.
+        let mut views = views;
+        views.input = Some(self.head_revision(identity).await?);
         self.certify(
             identity,
             views,

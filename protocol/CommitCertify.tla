@@ -3,12 +3,14 @@
 \* so a slow certification for an older revision can finish after a newer one.
 \*
 \* Guard = TRUE drops a certification whose input is older than the last one
-\* written, which is what Store::certify does with NodeViews.input. Guard =
-\* FALSE stamps the current head over older content, so views claim to be
-\* current while serving a stale chat set.
+\* written, which is what Store::certify does with NodeViews.input.
+\* StampFromInput = TRUE stamps only the revision the views were built from; the
+\* shipped code does this. FALSE is the historical shape that stamped whatever
+\* head certification happened to read, so a slow certification claimed a newer
+\* revision while serving older content.
 EXTENDS Naturals, FiniteSets, TLC
 
-CONSTANTS Revisions, Guard, StampFromInput, StampFromInput
+CONSTANTS Revisions, Guard, StampFromInput
 
 VARIABLES silver, pending, content, input, stamp
 

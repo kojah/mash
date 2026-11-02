@@ -214,6 +214,17 @@ impl Store {
         self.read(identity, silver_store::head).await
     }
 
+    /// Stage views without certifying them. Used by tests that reconstruct a
+    /// certification which lost the race with a newer commit.
+    #[cfg(test)]
+    pub(in crate::shared) async fn put_views(
+        &self,
+        identity: &Identity,
+        views: &NodeViews,
+    ) -> Result<(), AppError> {
+        self.views.put_node_views(identity, views).await
+    }
+
     pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
         let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
@@ -226,7 +237,10 @@ impl Store {
     }
 
     /// View usable for this node: built with the group recipe and model space.
-    async fn compatible_views(&self, identity: &Identity) -> Result<Option<NodeViews>, AppError> {
+    pub(in crate::shared) async fn compatible_views(
+        &self,
+        identity: &Identity,
+    ) -> Result<Option<NodeViews>, AppError> {
         Ok(self
             .views
             .node_views(identity)

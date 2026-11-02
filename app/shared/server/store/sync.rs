@@ -312,6 +312,11 @@ impl Store {
         self.sync_connectors(identity, &mut views).await?;
         views.chats.retain(|id, _| fingerprints.contains_key(id));
         let head = self.head(identity).await?;
+        let head_revision = head.as_ref().map(|head| head.revision);
+        // A rebuild under the node lock rebuilds current state and may omit the
+        // revision; an upload sets it. The lock-held paths therefore fall back
+        // to the head they just read.
+        let input = views.input.or(head_revision);
         let synced = views.chats.len() == fingerprints.len()
             && fingerprints.iter().all(|(id, fingerprint)| {
                 views
@@ -319,9 +324,14 @@ impl Store {
                     .get(id)
                     .is_some_and(|t| &t.fingerprint == fingerprint)
             });
-        views.certified = synced && views.chats.values().all(|chat| chat.complete);
-        views.silver = synced
-            .then(|| head.and_then(|h| h.silver_revision))
+        // A certification that finishes after a newer commit wrote every chat
+        // of its own revision, but not of the head. Stamping the head would make
+        // searches serve older chats as current, so it only claims the revision
+        // it was built from.
+        let current = input.is_some() && input == head_revision;
+        views.certified = synced && current && views.chats.values().all(|chat| chat.complete);
+        views.silver = current
+            .then(|| head.and_then(|head| head.silver_revision))
             .flatten();
         self.views.put_node_views(identity, &views).await?;
         self.views.settle(identity, progress).await

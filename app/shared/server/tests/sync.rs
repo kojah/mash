@@ -2482,3 +2482,73 @@ async fn account_source_claim_rejects_a_second_writer_until_transferred() {
         "{error:?}"
     );
 }
+
+/// CommitCertify: a certification built from revision 1 that finishes after
+/// revision 2 must not claim the newer head. Stamping the head a slow
+/// certification happens to read makes searches serve older chats as current.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
+    let service = Service::qdrant(384).await;
+    assert_eq!(
+        service.upload(FIRST, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    // Identical content reuses the operation id and would not move the head.
+    let mut second = snapshot(2);
+    second[2]["records"][0]["content"] = json!("shared history, revised");
+    second[2]["records"][0]["projection"] = json!("shared history, revised");
+    assert_eq!(
+        service.upload(FIRST, &second).await.status(),
+        StatusCode::OK
+    );
+
+    let identity = service.first.clone();
+    let head = service.store.head_revision(&identity).await.unwrap();
+    assert_eq!(head, 2, "setup expected revision 2");
+    let mut views = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .expect("views");
+    let fingerprints: std::collections::BTreeMap<String, String> = views
+        .chats
+        .iter()
+        .map(|(id, chat)| (id.clone(), chat.fingerprint.clone()))
+        .collect();
+    // The certification was built from revision 1. The stored marker predates
+    // the field, so the newer-write guard does not short-circuit it.
+    views.input = Some(1);
+    let mut stored = views.clone();
+    stored.input = None;
+    service.store.put_views(&identity, &stored).await.unwrap();
+
+    service
+        .store
+        .certify(
+            &identity,
+            views,
+            &fingerprints,
+            &crate::shared::activity::Progress::default(),
+        )
+        .await
+        .unwrap();
+
+    let after = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .expect("views");
+    assert_eq!(after.silver, None, "stale views claimed the newer head");
+    assert!(!after.certified, "stale views were certified");
+
+    let freshness: crate::shared::Freshness =
+        serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+    assert!(
+        freshness.nodes.iter().all(|node| !node.views_current),
+        "{freshness:?}"
+    );
+    service.cleanup().await;
+}

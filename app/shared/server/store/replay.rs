@@ -156,6 +156,9 @@ impl Store {
             replayed.embeddings += stored;
         }
         documents.finish(&self.views).await?;
+        // Every chat was rebuilt from the silver read above, so these views
+        // reflect the head the lock protects.
+        node.input = Some(self.head_revision(identity).await?);
         self.certify(
             identity,
             node,

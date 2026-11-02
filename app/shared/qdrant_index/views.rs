@@ -23,9 +23,9 @@ pub(in crate::shared) struct NodeViews {
     /// documents. Searches keep serving it while a later synchronization runs.
     #[serde(default)]
     pub(in crate::shared) certified: bool,
-    /// Silver revision these views were built from. Older than the head stamp, which
-    /// is the head reached when certification finished; used to refuse writing
-    /// stale content over a newer certification.
+    /// Silver revision these chats were built from. Certification only claims a
+    /// head equal to it, so views never report the current head while serving a
+    /// different revision's content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(in crate::shared) input: Option<i64>,
     pub(in crate::shared) chats: BTreeMap<String, ViewChat>,
