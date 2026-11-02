@@ -70,6 +70,7 @@ def cursor_path(settings: Settings) -> Path:
     # the SDK still skips what each destination already acknowledged.
     key = orjson.dumps(
         [
+            settings.source_id,
             [item.model_dump(mode="json") for item in settings.destinations],
             settings.item_kinds,
             settings.history_days,
