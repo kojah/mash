@@ -2193,3 +2193,49 @@ async fn qdrant_partial_views_are_repaired_by_resending_finish() {
     drop(client);
     service.cleanup().await;
 }
+
+/// Two members of one group publish at the same time. Revisions, catalogs and
+/// view certification stay per-node; the duplicate report still sees both.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn two_nodes_publish_concurrently_without_interference() {
+    let service = Service::qdrant(384).await;
+    let first_events = snapshot(11);
+    let second_events = snapshot(22);
+    let (first, second) = tokio::join!(
+        service.upload(FIRST, &first_events),
+        service.upload(SECOND, &second_events),
+    );
+    assert_eq!(first.status(), StatusCode::OK, "{:?}", first.body);
+    assert_eq!(second.status(), StatusCode::OK, "{:?}", second.body);
+
+    let freshness: crate::shared::Freshness =
+        serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
+    let nodes: std::collections::BTreeMap<&str, i64> = freshness
+        .nodes
+        .iter()
+        .map(|node| (node.node_id.as_str(), node.revision))
+        .collect();
+    assert_eq!(nodes.len(), 2, "{freshness:?}");
+    assert!(
+        nodes.values().all(|revision| *revision > 0),
+        "{freshness:?}"
+    );
+    assert!(
+        freshness.nodes.iter().all(|node| node.views_current),
+        "{freshness:?}"
+    );
+    assert_eq!(
+        freshness.unpublished_nodes.as_deref().unwrap_or_default(),
+        [] as [&str; 0],
+        "{freshness:?}"
+    );
+
+    // The fixture publishes identical content from both nodes, so concurrent
+    // writers must still be folded into one duplicate conversation.
+    let report: crate::shared::FingerprintReport =
+        serde_json::from_value(service.get("fingerprints", FIRST).await).unwrap();
+    assert_eq!(report.duplicated_conversations, 1, "{report:?}");
+    assert_eq!(report.nodes.len(), 2, "{report:?}");
+    service.cleanup().await;
+}
