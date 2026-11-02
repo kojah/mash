@@ -82,6 +82,7 @@ async def run(
                     modes=[Mode.snapshot],
                     destinations=settings.targets(),
                     state_path=settings.state_dir / "delivery.sqlite3",
+                    device_scope=True,
                 ) as client:
                     while True:
                         report(await synchronize(settings, registry, client))

@@ -170,6 +170,7 @@ async def run(
         modes=[Mode.live],
         destinations=destinations,
         state_path=state_path,
+        device_scope=True,
     ) as connector:
         await connector.run(
             backfill=backfill(source, settings.scope),
