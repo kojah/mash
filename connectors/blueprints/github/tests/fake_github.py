@@ -168,9 +168,11 @@ class FakeGitHub:
         assert request.method == "GET"
         assert request.headers["authorization"] == f"token {TOKEN}"
         path = request.url.path
-        self.calls.append(str(request.url).removeprefix(API))
+        # Identity probes are not part of the listing call sequence the tests
+        # assert on.
         if path == "/user":
             return httpx.Response(200, json={"id": 1, "login": self.principal})
+        self.calls.append(str(request.url).removeprefix(API))
         pending = self.failures.get(path)
         if pending:
             return pending.pop(0)

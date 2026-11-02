@@ -173,6 +173,10 @@ def failure(error: Exception) -> str:
     return "network error"
 
 
+class WrongPrincipal(Exception):
+    """The token acts as a different GitHub account than `account_id`."""
+
+
 async def synchronize(
     settings: Settings,
     github: GitHub[TokenAuthStrategy],
@@ -185,6 +189,16 @@ async def synchronize(
     issue updated mid-listing moves behind the cursor instead of shifting an
     unseen one onto an already-read page.
     """
+    # Bind the credential to the source key before reading anything: the key is
+    # github:<login>, so a token for another account must not write here.
+    me = await github.rest.users.async_get_authenticated()
+    # The REST layer returns a parsed model in production and the raw response
+    # under the test transport; both carry the login.
+    login = getattr(me, "login", None) or me.json()["login"]
+    if login != settings.account_id:
+        raise WrongPrincipal(
+            f"the token acts as {login}; account_id is {settings.account_id}"
+        )
     cutoff = settings.cutoff(now or datetime.now(UTC))
     path = cursor_path(settings)
     cursors = load_cursors(path)
