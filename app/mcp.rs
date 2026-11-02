@@ -141,6 +141,15 @@ struct GetAttachment {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct QuerySilver {
+    /// One read-only SQL statement over local silver.
+    sql: String,
+    /// Maximum rows returned; defaults to 200 and never exceeds 10000.
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ExportSilver {
     /// New local directory; must not already exist. Contains sensitive silver history.
     directory: String,
@@ -529,6 +538,19 @@ impl Mash {
     async fn export_silver(&self, Parameters(request): Parameters<ExportSilver>) -> CallToolResult {
         self.execute(Operation::ExportSilver {
             directory: request.directory.into(),
+        })
+        .await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Run one read-only SQL statement over this machine's silver database. The connection is opened read-only and pinned with query_only, so writes, ATTACH and pragma changes fail. Rows are capped (default 200, max 10000) and a wall-clock budget aborts runaway scans. Returns columns, rows and whether the result was truncated; blobs are hex. For diagnostics only: the silver schema is not a stable API."
+    )]
+    async fn query_silver(&self, Parameters(input): Parameters<QuerySilver>) -> CallToolResult {
+        self.execute(Operation::QuerySilver {
+            sql: input.sql,
+            limit: input.limit.unwrap_or(200),
+            timeout_seconds: 10,
         })
         .await
     }

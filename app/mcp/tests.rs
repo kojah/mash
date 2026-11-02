@@ -406,6 +406,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "list_attachments",
             "list_chats",
             "models_install",
+            "query_silver",
             "search",
             "status",
             "view"
