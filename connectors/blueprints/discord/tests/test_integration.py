@@ -89,7 +89,7 @@ class IntegrationTests(unittest.TestCase):
         )
         config = self.root / "discord.toml"
         config.write_text(
-            f"account_id='test'\nstate_dir='state'\nchannels=['{GENERAL}','{THREAD}']\n"
+            f"account_id='1'\nstate_dir='state'\nchannels=['{GENERAL}','{THREAD}']\n"
             "[[destinations]]\ntype='local'\ndatabase='silver.sqlite3'\n"
             f"executable='{self.binary}'\nconfig='mash.toml'\n"
         )

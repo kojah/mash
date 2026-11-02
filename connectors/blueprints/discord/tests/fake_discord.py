@@ -127,6 +127,27 @@ def attachment(id: str, name: str) -> dict:
     }
 
 
+def user(id: str) -> dict:
+    return {
+        "id": id,
+        "username": "mash",
+        "global_name": None,
+        "discriminator": "0001",
+        "avatar": None,
+        "bot": True,
+        "system": False,
+        "mfa_enabled": False,
+        "banner": None,
+        "accent_color": None,
+        "locale": "en-US",
+        "verified": True,
+        "email": None,
+        "flags": 0,
+        "premium_type": 0,
+        "public_flags": 0,
+    }
+
+
 def application(flags: int) -> dict:
     return {
         "id": "9",
@@ -151,6 +172,8 @@ class FakeDiscord:
     failures: dict[str, list[tuple[int, dict]]] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list)
     authorizations: set[str] = field(default_factory=set)
+    # The identity GET /users/@me reports; configs must name this bot.
+    bot_id: str = "1"
 
     def add(self, info: dict, *items: dict) -> None:
         self.channels[info["id"]] = info
@@ -163,6 +186,8 @@ class FakeDiscord:
         parts = path.removeprefix("/api/v10/").split("/")
         if parts == ["oauth2", "applications", "@me"]:
             return 200, application(self.flags)
+        if parts == ["users", "@me"]:
+            return 200, user(self.bot_id)
         if parts[0] != "channels" or parts[1] not in self.channels:
             return 404, {"message": "Unknown Channel", "code": 10003}
         if len(parts) == 2:

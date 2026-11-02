@@ -21,7 +21,7 @@ class TokenTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.config = self.root / "discord.toml"
         self.config.write_text(
-            "account_id='test'\ntoken_env='DISCORD_TEST_TOKEN'\nstate_dir='state'\n"
+            "account_id='1'\ntoken_env='DISCORD_TEST_TOKEN'\nstate_dir='state'\n"
             "channels=['200000000000000000']\n"
             "[[destinations]]\ntype='local'\ndatabase='mash.sqlite3'\n"
         )

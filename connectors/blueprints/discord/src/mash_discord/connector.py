@@ -35,6 +35,10 @@ CONTENT = (
 CURSORS = TypeAdapter(dict[str, int])
 
 
+class WrongPrincipal(Exception):
+    """The token acts as a different bot user than `account_id`."""
+
+
 @dataclass
 class Result:
     source_id: str
@@ -87,6 +91,13 @@ async def synchronize(
     now: datetime | None = None,
 ) -> Result:
     """Advance each channel's cursor page by page, after each delivery."""
+    # Bind the credential to the source key before reading anything: the key is
+    # discord:<bot_user_id>, so a token for another bot must not write here.
+    me = await rest.fetch_my_user()
+    if str(me.id) != settings.account_id:
+        raise WrongPrincipal(
+            f"the token acts as {me.id}; account_id is {settings.account_id}"
+        )
     cutoff = settings.cutoff(now or datetime.now(UTC))
     floor = 0 if cutoff is None else int(hikari.Snowflake.from_datetime(cutoff))
     path = cursor_path(settings)

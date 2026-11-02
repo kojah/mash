@@ -68,7 +68,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
     def settings(self, **values: object) -> Settings:
         return Settings.model_validate(
             {
-                "account_id": "test",
+                "account_id": "1",
                 "state_dir": self.state,
                 "channels": [GENERAL],
                 "destinations": [
@@ -226,7 +226,8 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             result.issues, ["application: the Message Content intent is disabled"]
         )
-        self.assertEqual((recorder.snapshots, len(self.discord.calls)), ([], 1))
+        # /users/@me validates the principal before the application check.
+        self.assertEqual((recorder.snapshots, len(self.discord.calls)), ([], 2))
 
 
 if __name__ == "__main__":
