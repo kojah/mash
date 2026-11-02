@@ -1027,9 +1027,19 @@ pub(crate) async fn upload_backfill_plan_with_config(
     .await
 }
 
-/// Baseline batches in flight at once. The server admits this many commits
-/// and queues the rest, so more lanes only add waiters.
-const BACKFILL_LANES: usize = 2;
+/// Baseline batches in flight at once. The server's mutation capacity is the
+/// real ceiling; additional lanes only add waiters, so the default tracks a
+/// four-permit deployment. `MASH_BACKFILL_LANES` overrides it for measurement.
+const DEFAULT_BACKFILL_LANES: usize = 4;
+const MAX_BACKFILL_LANES: usize = 8;
+
+fn backfill_lanes() -> usize {
+    std::env::var("MASH_BACKFILL_LANES")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(DEFAULT_BACKFILL_LANES)
+        .clamp(1, MAX_BACKFILL_LANES)
+}
 
 /// Send a planned baseline: manifest, then every batch that is not already
 /// recorded as complete, then completion.
@@ -1057,7 +1067,7 @@ pub(crate) async fn upload_backfill_plan(
     // A connection carries exactly one active operation, so batches pipeline
     // across sessions instead of waiting for each commit before sending the
     // next one. Baseline batches are independent by construction.
-    let lanes = BACKFILL_LANES.min(plan.batches.len().max(1));
+    let lanes = backfill_lanes().min(plan.batches.len().max(1));
     let mut workers = Vec::with_capacity(lanes);
     for lane in 0..lanes {
         let lane_key = if lane == 0 {
