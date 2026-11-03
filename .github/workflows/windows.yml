@@ -80,3 +80,6 @@ jobs:
           grep -q '"chat_id":"s1"' search.json
       - name: MCP, upgrade while running, and hooks
         run: python .github/scripts/windows-smoke.py target/debug/mash.exe
+      # Windows file sharing and SQLite locking differ most from Unix here.
+      - name: Index histories while their application writes them
+        run: python .github/scripts/live-writer-smoke.py target/debug/mash.exe
