@@ -143,6 +143,8 @@ jobs:
           uv tool run --from ty==0.0.38 ty check .
           MASH_RECALL_TEST_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             python3 -m unittest discover -s tests
+      - name: Walk a new user's first run on a fresh home
+        run: python3 .github/scripts/first-run-smoke.py target/debug/mash
       - name: Index histories while their application writes them
         run: python3 .github/scripts/live-writer-smoke.py target/debug/mash
       - name: Verify deployment gate
