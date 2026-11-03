@@ -155,6 +155,17 @@ impl Plan {
         mode: Mode,
         vocabulary: &[String],
     ) -> Result<Self, crate::AppError> {
+        Self::scoped(query, mode, vocabulary, |_| Ok(true))
+    }
+
+    /// Like `new`, keeping only alternatives that `occurs` reports in scope.
+    /// Candidates are checked in rank order until each word has its quota.
+    pub(crate) fn scoped(
+        query: &str,
+        mode: Mode,
+        vocabulary: &[String],
+        mut occurs: impl FnMut(&str) -> Result<bool, crate::AppError>,
+    ) -> Result<Self, crate::AppError> {
         let quoted = query.trim().starts_with('"') && query.trim().ends_with('"');
         let mode = if quoted { Mode::Strict } else { mode };
         let words = tokens(query);
@@ -177,15 +188,17 @@ impl Plan {
                 alternatives.sort_unstable();
                 alternatives.dedup();
                 let mut group = vec![word];
-                group.extend(
-                    alternatives
-                        .into_iter()
-                        .take(ALTERNATIVES)
-                        .map(|(_, term)| term.clone()),
-                );
-                group
+                for (_, term) in alternatives {
+                    if group.len() > ALTERNATIVES {
+                        break;
+                    }
+                    if occurs(term)? {
+                        group.push(term.clone());
+                    }
+                }
+                Ok(group)
             })
-            .collect();
+            .collect::<Result<_, crate::AppError>>()?;
         Ok(Self { groups })
     }
 

@@ -14,33 +14,14 @@ impl Storage {
         if mode == Mode::Strict || (query.trim().starts_with('"') && query.trim().ends_with('"')) {
             return Plan::new(query, Mode::Strict, &[]);
         }
-        self.connection.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary USING fts5vocab(views,message_fts,row);
-            CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary_instances USING fts5vocab(views,message_fts,instance);").map_err(AppError::database)?;
-        let unfiltered = scope.is_none_or(
-            |s| matches!(&s.filter,crate::search_filter::Filter::All(parts) if parts.is_empty()),
-        );
-        let sql = if unfiltered {
-            "SELECT term FROM temp.mash_vocabulary LIMIT ?1".to_owned()
-        } else {
-            let scope = scope.expect("filtered scope");
-            // Resolve metadata once per indexed message, not once per token
-            // occurrence. Keep the FTS scan outside the indexed object lookups:
-            // metadata-first joins can rescan the virtual table for each message.
-            // The stored chat prefilter skips those lookups for other chats;
-            // on a cold page cache each lookup is a random silver read.
-            format!(
-                "SELECT DISTINCT v.term FROM temp.mash_vocabulary_instances v WHERE v.doc IN (
-                SELECT f.rowid FROM message_fts f
-                CROSS JOIN objects m INDEXED BY objects_id ON m.origin='provider' AND m.object_role='entry' AND m.id=f.message_id
-                CROSS JOIN objects c INDEXED BY objects_native_container ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
-                WHERE {} AND ({})) LIMIT ?1",
-                scope.filter.fts_chat_sql("f.conversation_id"),
-                scope.filter.sql(Some(&scope.node))
+        self.connection
+            .execute_batch(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary USING fts5vocab(views,message_fts,row);",
             )
-        };
+            .map_err(AppError::database)?;
         let vocabulary = self
             .connection
-            .prepare(&sql)
+            .prepare("SELECT term FROM temp.mash_vocabulary LIMIT ?1")
             .map_err(AppError::database)?
             .query_map(
                 [i64::try_from(VOCABULARY_LIMIT + 1).expect("bounded vocabulary")],
@@ -51,10 +32,33 @@ impl Storage {
             .map_err(AppError::database)?;
         if vocabulary.len() > VOCABULARY_LIMIT {
             return Err(AppError::usage(
-                "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict",
+                "lexical matching vocabulary budget exceeded; use match_mode=strict",
             ));
         }
-        Plan::new(query, mode, &vocabulary)
+        let Some(scope) = scope.filter(
+            |s| !matches!(&s.filter, crate::search_filter::Filter::All(parts) if parts.is_empty()),
+        ) else {
+            return Plan::new(query, mode, &vocabulary);
+        };
+        // Candidates come from the whole vocabulary; each one is kept only if
+        // an indexed message in scope contains it. One posting-list lookup per
+        // candidate replaces enumerating every token occurrence in the index.
+        let mut occurs = self
+            .connection
+            .prepare(&format!(
+                "SELECT 1 FROM message_fts f
+                CROSS JOIN objects m INDEXED BY objects_id ON m.origin='provider' AND m.object_role='entry' AND m.id=f.message_id
+                CROSS JOIN objects c INDEXED BY objects_native_container ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
+                WHERE message_fts MATCH ?1 AND {} AND ({}) LIMIT 1",
+                scope.filter.fts_chat_sql("f.conversation_id"),
+                scope.filter.sql(Some(&scope.node))
+            ))
+            .map_err(AppError::database)?;
+        Plan::scoped(query, mode, &vocabulary, |term| {
+            occurs
+                .exists([format!("\"{}\"", term.replace('"', "\"\""))])
+                .map_err(AppError::database)
+        })
     }
     pub(crate) fn open_lexical(path: &std::path::Path) -> Result<Self, AppError> {
         let storage = Self::open_catalog(path)?;
