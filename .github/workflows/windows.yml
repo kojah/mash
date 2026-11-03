@@ -83,3 +83,35 @@ jobs:
       # Windows file sharing and SQLite locking differ most from Unix here.
       - name: Index histories while their application writes them
         run: python .github/scripts/live-writer-smoke.py target/debug/mash.exe
+      - name: Export a Windows-recorded history
+        run: python .github/scripts/portability-smoke.py export target/debug/mash.exe "$RUNNER_TEMP/portable"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: windows-export
+          path: ${{ runner.temp }}/portable
+          retention-days: 3
+
+  # What Windows exported must import, search and display unchanged on Linux.
+  linux-import:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: mash-windows-import-v1
+          cache-on-failure: true
+      - name: Build
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: cargo +stable build --locked --bin mash
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: windows-export
+          path: ${{ runner.temp }}/portable
+      - name: Import, search and view the Windows history
+        run: python3 .github/scripts/portability-smoke.py import target/debug/mash "$RUNNER_TEMP/portable"
