@@ -88,12 +88,12 @@ fn repository(root: &Root, state: &proto::Root) -> Option<String> {
         .map(|r| &r.path)
         .chain(state.repositories.iter().map(|r| &r.path))
         .collect::<Vec<_>>();
-    // Native paths, or `/`-rooted ones (WSL and remote repositories, which
-    // Windows does not call absolute).
-    if paths
-        .iter()
-        .any(|p| !(Path::new(p).is_absolute() || p.starts_with('/')))
-    {
+    // Native paths, `/`-rooted ones (WSL and remote repositories, which
+    // Windows does not call absolute), or Windows drive paths read elsewhere
+    // (Windows-mounted histories under WSL, imported indexes).
+    if paths.iter().any(|p| {
+        !(Path::new(p).is_absolute() || p.starts_with('/') || crate::platform::is_drive_path(p))
+    }) {
         return None;
     }
     super::unique(paths.into_iter().cloned())

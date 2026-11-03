@@ -177,3 +177,22 @@ fn unambiguous_local_metadata_is_required_and_inline_hex_state_is_supported() {
     write(&connection, &bubble_key("request-1"), &bubble);
     assert!(parsed_error(&path).contains("ISO timestamp"));
 }
+
+#[test]
+fn windows_repository_paths_are_kept_when_read_on_any_platform() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = path(dir.path());
+    let connection = fixture(&path);
+    let mut root: Root = read(&connection, root_key());
+    let mut state = super::super::state(&root).unwrap();
+    state.repositories.clear();
+    root.conversation_state = Some(hex::encode(state.encode_to_vec()));
+    root.tracked_git_repos = vec![models::Repository {
+        path: "C:\\Users\\Ada\\repository".into(),
+    }];
+    write(&connection, root_key(), &root);
+    assert_eq!(
+        parsed(&path).repository.as_deref(),
+        Some("C:\\Users\\Ada\\repository")
+    );
+}

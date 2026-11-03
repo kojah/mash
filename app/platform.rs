@@ -116,7 +116,7 @@ pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
         return None;
     }
     if let Ok(path) = url.to_file_path() {
-        return path.to_str().map(str::to_owned);
+        return path.to_str().map(upper_drive);
     }
     if !cfg!(windows) || url.host_str().is_some_and(|host| !host.is_empty()) {
         return None;
@@ -126,16 +126,37 @@ pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
 
 /// The local path for a decoded URI path, as structured editor URIs carry
 /// it: always `/`-rooted. On Windows a drive path (`/c:/...`) becomes native
-/// (`c:\...`); any other rooted path keeps its POSIX form.
+/// (`C:\...`); any other rooted path keeps its POSIX form.
 pub(crate) fn uri_path(path: &str) -> Option<String> {
     if !path.starts_with('/') {
         return None;
     }
-    let bytes = path.as_bytes();
-    if cfg!(windows) && bytes.len() >= 3 && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
-        return Some(path[1..].replace('/', "\\"));
+    if cfg!(windows) && is_drive_path(&path[1..]) {
+        return Some(upper_drive(&path[1..].replace('/', "\\")));
     }
     Some(path.to_owned())
+}
+
+/// Whether `path` starts with a Windows drive (`C:\` or `c:/`), whichever
+/// platform reads it: histories written on Windows can be read elsewhere.
+pub(crate) fn is_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/')
+}
+
+/// Editors record workspace URIs with a lowercase drive (`file:///c%3A/...`)
+/// while agents record the process's working directory (`C:\...`). Drive
+/// letters are case-insensitive, so one spelling keeps a folder one project.
+fn upper_drive(path: &str) -> String {
+    if is_drive_path(path) {
+        let mut path = path.to_owned();
+        path[..1].make_ascii_uppercase();
+        return path;
+    }
+    path.to_owned()
 }
 
 fn percent_decode(text: &str) -> Option<String> {
@@ -216,7 +237,7 @@ mod tests {
         if cfg!(windows) {
             assert_eq!(
                 file_uri_path("file:///c%3A/Users/Ada/repo").as_deref(),
-                Some("c:\\Users\\Ada\\repo")
+                Some("C:\\Users\\Ada\\repo")
             );
             assert_eq!(
                 file_uri_path("file:///work/my%20repo").as_deref(),
@@ -228,5 +249,26 @@ mod tests {
                 Some("/work/my repo")
             );
         }
+    }
+
+    #[test]
+    fn drive_paths_are_recognized_and_spelled_one_way_on_every_platform() {
+        use super::{is_drive_path, upper_drive};
+        for path in ["C:\\Users\\Ada", "c:/Users/Ada", "d:\\"] {
+            assert!(is_drive_path(path), "{path}");
+        }
+        for path in [
+            "/home/ada",
+            "C:",
+            "C:relative",
+            "\\\\server\\share",
+            "1:\\x",
+            "",
+        ] {
+            assert!(!is_drive_path(path), "{path}");
+        }
+        assert_eq!(upper_drive("c:\\Users\\Ada"), "C:\\Users\\Ada");
+        assert_eq!(upper_drive("/c:/Users"), "/c:/Users");
+        assert_eq!(upper_drive("/home/ada"), "/home/ada");
     }
 }
