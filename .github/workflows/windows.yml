@@ -31,6 +31,8 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           prefix-key: mash-windows-v1
+          # A cold Windows build takes ~15 minutes; keep what a failing run built.
+          cache-on-failure: true
       - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: nextest
