@@ -88,9 +88,7 @@ pub(crate) fn build(
             crate::progress::during(crate::progress::Phase::ModelLoading, || {
                 models.load_indexer()
             })?
-            .ok_or_else(|| {
-                AppError::model("semantic models are not installed; run `mash models install`")
-            })?;
+            .ok_or_else(AppError::models_missing)?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
         let progress = |event| crate::progress::emit(&crate::progress::Event::embedding(&event));
         if build == &crate::views::config::Build::default() {
@@ -158,9 +156,9 @@ fn embed_connectors(
         return Ok(());
     }
     storage.commit_and_continue_writer()?;
-    let mut pool = models.load_indexer()?.ok_or_else(|| {
-        AppError::model("semantic models are not installed; run `mash models install`")
-    })?;
+    let mut pool = models
+        .load_indexer()?
+        .ok_or_else(AppError::models_missing)?;
     let stored = semantic::embed_connector_units(storage, &mut pool, generation)?;
     summary.stored_vectors = summary.stored_vectors.saturating_add(stored);
     summary.model_inferences = summary.model_inferences.saturating_add(stored);

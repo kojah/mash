@@ -129,9 +129,7 @@ impl Models {
 
     pub(crate) fn require_installed(&self) -> Result<(), AppError> {
         if !self.root.join(MARKER_NAME).is_file() {
-            return Err(AppError::model(
-                "semantic models are not installed; run `mash models install`",
-            ));
+            return Err(AppError::models_missing());
         }
         self.read_valid_marker().map(|_| ())
     }

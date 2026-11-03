@@ -393,7 +393,7 @@ fn required_shared(configuration: &ResolvedConfig) -> Result<&config::SharedConf
     configuration
         .shared
         .as_ref()
-        .ok_or_else(|| AppError::configuration("shared destination requires shared configuration"))
+        .ok_or_else(|| AppError::configuration("the shared index is not configured; add a `[shared]` table with `group_id`, `node_id`, `api_url` and `token_env` to the Mash configuration, or search with `--local`"))
 }
 
 /// Both mode publishes exactly the local index.

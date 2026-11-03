@@ -199,7 +199,10 @@ impl AppError {
         Self::with_action(
             3,
             ErrorKind::DatabaseMissing,
-            format!("database does not exist: {}", path.display()),
+            format!(
+                "database does not exist: {}; run `mash init` to set up Mash, or `mash index` if it is already configured",
+                path.display()
+            ),
             true,
             Action::Index,
         )
@@ -229,6 +232,14 @@ impl AppError {
 
     fn model(message: impl Into<String>) -> Self {
         Self::with_action(4, ErrorKind::Model, message, true, Action::ModelsInstall)
+    }
+
+    /// Semantic search was requested without models. A new user usually got
+    /// here by indexing before `mash init`, which sets up search without them.
+    fn models_missing() -> Self {
+        Self::model(
+            "semantic models are not installed; run `mash models install`, or on a new machine `mash init` to set up word-exact search without them",
+        )
     }
 
     fn model_busy() -> Self {

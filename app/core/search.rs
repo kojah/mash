@@ -423,9 +423,9 @@ fn local_search(
     let storage = Storage::open_search(database_path, &generation)?
         .with_output_redaction(options.output_redaction);
     storage.require_views_build(build, &models.generation())?;
-    let mut backend = models.load_search(options.ranking)?.ok_or_else(|| {
-        AppError::model("semantic models are not installed; run `mash models install`")
-    })?;
+    let mut backend = models
+        .load_search(options.ranking)?
+        .ok_or_else(AppError::models_missing)?;
     let results = semantic::hybrid_search_filtered(
         &generation,
         &storage,

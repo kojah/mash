@@ -42,9 +42,7 @@ pub(crate) async fn embed_texts(
             None => crate::progress::during(crate::progress::Phase::ModelLoading, || {
                 Models::new(root).with_remote(remote).load_indexer()
             })?
-            .ok_or_else(|| {
-                AppError::model("semantic models are not installed; run `mash models install`")
-            })?,
+            .ok_or_else(AppError::models_missing)?,
         };
         let load_ms = if loading { elapsed(load_started) } else { 0 };
         let references = input.iter().map(String::as_str).collect::<Vec<_>>();
