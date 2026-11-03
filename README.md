@@ -2044,11 +2044,13 @@ split independent cases so each failure names the behavior that broke.
 
 ## Development
 
-Agent work is tracked with [Beads](https://github.com/steveyegge/beads). With `bd`
-and Dolt installed, run `bd bootstrap` after cloning, then `bd prime` and `bd ready`.
-Issue history lives on a separate Dolt Git remote in this GitHub repository;
-`bd dolt commit` and `bd dolt push` persist tracking updates. The entire `.beads/` directory, including configuration, stays local and is ignored
-by Git. `bd bootstrap` discovers the Dolt history from the Git origin.
+Agent work is tracked with [Beads](https://github.com/steveyegge/beads). Issue
+history lives in a separate, private Dolt remote (`kojah/mash-beads`), not in this
+repository. With `bd` and Dolt installed and access to that remote, run
+`bd config set sync.remote git+https://github.com/kojah/mash-beads.git` and
+`bd bootstrap` after cloning, then `bd prime` and `bd ready`. `bd dolt commit` and
+`bd dolt push` persist tracking updates. The entire `.beads/` directory, including
+configuration, stays local and is ignored by Git.
 
 ## Verification
 

@@ -286,8 +286,10 @@ deploy and refresh separate and raw command logs private. See deployment/README.
 ## Agent work tracking
 
 
-Use Beads (`bd`) for substantive work and discovered follow-ups. On a fresh clone,
-run `bd bootstrap`; then run `bd prime` for the workflow and `bd ready` for available
+Use Beads (`bd`) for substantive work and discovered follow-ups. Its Dolt history
+lives in the private `kojah/mash-beads` repository, never in this one. On a fresh
+clone, run `bd config set sync.remote git+https://github.com/kojah/mash-beads.git`
+and `bd bootstrap`; then run `bd prime` for the workflow and `bd ready` for available
 tasks. Create focused issues, claim work with `bd update ID --status in_progress`,
 record dependencies with `bd dep add`, and close issues only after validation.
 Preserve existing issues. Beads uses a separate Dolt database; do not commit its
