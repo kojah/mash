@@ -31,20 +31,26 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           prefix-key: mash-windows-v1
+      - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        with:
+          tool: nextest
       - name: Build
         run: cargo +stable build --release --locked --bin mash
       # The test suites run first, on a clean profile: the steps after them
       # write configuration and an index into the runner's real profile, which
       # Mash's default paths would pick up. Test processes start Mash
       # constantly, so they keep the executable in place (no relocation).
+      # nextest runs each test in its own process, as on Linux: tracing caches
+      # callsite interest process-wide, so tests sharing one process can drop
+      # each other's captured events.
       - name: Library tests
         env:
           MASH_KEEP_EXECUTABLE: "1"
-        run: cargo +stable test --locked --lib --no-fail-fast
+        run: cargo +stable nextest run --profile ci --locked --lib
       - name: CLI contract tests
         env:
           MASH_KEEP_EXECUTABLE: "1"
-        run: cargo +stable test --locked --test cli_contract --no-fail-fast
+        run: cargo +stable nextest run --profile ci --locked --test cli_contract
       - name: Smoke
         run: .github/scripts/deploy-smoke target/release/mash.exe "$GITHUB_SHA"
       # The runner is disposable, so its real profile stands in for a user's:
