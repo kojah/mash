@@ -131,9 +131,8 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
     };
     if agents.is_empty() && request.agents {
         next.push("No Claude Code or Codex CLI was found on PATH; see the README to connect another agent.".to_owned());
-    } else if !agents.is_empty() {
-        next.push("Restart your agents so they load Mash.".to_owned());
     }
+    next.extend(agent_next_steps(&agents));
     if !request.index {
         next.push("Index your history: mash index".to_owned());
     }
@@ -143,6 +142,31 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         index: None,
         next,
     })
+}
+
+/// What each agent still needs after registration, and whether to restart.
+fn agent_next_steps(agents: &[AgentOutcome]) -> Vec<String> {
+    let mut steps = Vec::new();
+    for agent in agents {
+        if let Step::Failed { command, .. } = &agent.mcp {
+            steps.push(format!(
+            "{}: the Mash MCP server was not registered, so this agent cannot search history yet; fix the error above, then rerun `mash init` or run `{command}`.",
+            agent.agent
+        ));
+        } else if let Step::Failed { command, .. } = &agent.plugin {
+            steps.push(format!(
+            "{}: Mash MCP search works, but the mash@mash plugin (history skill and session hooks) was not installed; when online, rerun `mash init` or run `{command}`.",
+            agent.agent
+        ));
+        }
+    }
+    if agents
+        .iter()
+        .any(|agent| !matches!(agent.mcp, Step::Failed { .. }))
+    {
+        steps.push("Restart your agents so they load Mash.".to_owned());
+    }
+    steps
 }
 
 /// The first index: `mash index` with the configured defaults.

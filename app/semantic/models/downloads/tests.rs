@@ -179,3 +179,17 @@ fn serve_truncated_download(listener: &TcpListener) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn unreachable_hosts_are_told_apart_from_transient_failures() {
+    assert!(unreachable(
+        "request error: io: failed to lookup address information: Temporary failure in name resolution"
+    ));
+    assert!(unreachable(
+        "request error: io: Connection refused (os error 111)"
+    ));
+    assert!(!unreachable("request error: http status: 503"));
+    assert!(!unreachable(
+        "Too many retries: I/O error unexpected end of file"
+    ));
+}

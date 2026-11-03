@@ -118,6 +118,12 @@ async fn execute_inner(
     let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
     let database = request.paths.db.unwrap_or_else(default_database_path);
     let models = request.paths.models_dir.unwrap_or_else(default_models_path);
+    if !configuration.loaded
+        && matches!(request.operation, Operation::Search { .. })
+        && !database.exists()
+    {
+        return Err(AppError::not_set_up(&database));
+    }
     search::preflight(&configuration, &request.operation).await?;
     let uses_models = match &request.operation {
         Operation::Search { intent, .. } => {

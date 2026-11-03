@@ -286,6 +286,38 @@ fn installation_names_the_repair_and_fails_for_a_required_agent_that_is_not_conn
         remediation.contains("codex mcp add mash -- "),
         "{remediation}"
     );
+    assert_eq!(
+        required["summary"]["clients"][0]["missing"],
+        serde_json::json!(["plugin", "mcp"])
+    );
+}
+
+#[test]
+fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".codex")).unwrap();
+    let executable = assert_cmd::cargo::cargo_bin!("mash").to_str().unwrap();
+    std::fs::write(
+        root.path().join(".codex/config.toml"),
+        format!(
+            "[mcp_servers.mash]\ncommand = {}\nargs = ['mcp']\n",
+            toml::Value::String(executable.into())
+        ),
+    )
+    .unwrap();
+    let (code, report) =
+        report(isolated(root.path()).args(["status", "--installation", "--agent", "codex"]));
+    assert_eq!(code, 1, "{report}");
+    assert_eq!(
+        report["summary"]["clients"][0]["missing"],
+        serde_json::json!(["plugin"])
+    );
+    let next = report["summary"]["next_action"].as_str().unwrap();
+    assert!(
+        next.starts_with("codex plugin marketplace add kojah/mash && codex plugin add mash@mash"),
+        "{next}"
+    );
+    assert!(next.contains("MCP search already works"), "{next}");
 }
 
 #[test]

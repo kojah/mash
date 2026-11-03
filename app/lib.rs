@@ -220,6 +220,20 @@ impl AppError {
         Self::new(2, ErrorKind::Usage, message, false)
     }
 
+    /// Nothing is configured or indexed yet: setup, not models, comes first.
+    fn not_set_up(path: &std::path::Path) -> Self {
+        Self::with_action(
+            3,
+            ErrorKind::DatabaseMissing,
+            format!(
+                "Mash is not set up on this machine (no configuration, and no index at {}); run `mash init`",
+                path.display()
+            ),
+            false,
+            Action::Init,
+        )
+    }
+
     fn missing_database(path: &std::path::Path) -> Self {
         Self::with_action(
             3,
@@ -257,6 +271,11 @@ impl AppError {
 
     fn model(message: impl Into<String>) -> Self {
         Self::with_action(4, ErrorKind::Model, message, true, Action::ModelsInstall)
+    }
+
+    /// Models could not be fetched because their host is unreachable.
+    fn model_unreachable(message: impl Into<String>) -> Self {
+        Self::new(4, ErrorKind::Model, message, false)
     }
 
     /// Semantic search was requested without models. A new user usually got

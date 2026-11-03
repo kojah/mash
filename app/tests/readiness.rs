@@ -179,6 +179,23 @@ fn status_recommends_init_before_setup_and_models_install_after_without_download
     let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(body["ready"], false);
     assert_eq!(body["recommended_action"], "init");
+    // Searching first points at setup too, not at a model download.
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .env("HOME", directory.path())
+        .env("XDG_CONFIG_HOME", directory.path().join("xdg"))
+        .args([base.as_slice(), &["search", "anything", "--local"]].concat())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["recommended_action"], "init", "{error}");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("mash init")
+    );
     let config = directory.path().join("config.toml");
     std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
     let body = run_json(

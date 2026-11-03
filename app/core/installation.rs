@@ -38,7 +38,7 @@ impl State {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum Component {
     Configuration,
@@ -109,7 +109,7 @@ pub(crate) struct Summary {
     unconfigured: usize,
     clients: Vec<ClientSummary>,
     /// The command that would make progress, or null when nothing is left.
-    next_action: Option<&'static str>,
+    next_action: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -118,6 +118,8 @@ struct ClientSummary {
     expected: bool,
     /// Configured for Mash with nothing needing attention.
     connected: bool,
+    /// Parts of an expected integration that are not installed.
+    missing: Vec<Component>,
     #[serde(skip)]
     required: bool,
     attention: usize,
@@ -143,10 +145,19 @@ impl Report {
                             && finding.state.needs_attention()
                     })
                     .count();
+                let mut missing: Vec<_> = client
+                    .findings
+                    .iter()
+                    .filter(|finding| client.expected && finding.state == State::Missing)
+                    .map(|finding| finding.component)
+                    .filter(|component| matches!(component, Component::Mcp | Component::Plugin))
+                    .collect();
+                missing.dedup();
                 ClientSummary {
                     agent: client.agent,
                     expected: client.expected,
                     connected: client.expected && attention == 0,
+                    missing,
                     required: client.required,
                     attention,
                     unverified: client
@@ -173,16 +184,6 @@ impl Report {
             .iter()
             .map(|client| client.unverified)
             .sum();
-        // Unconfigured agents are valid CLI-only use; missing parts of an
-        // integration the user set up are what `init` repairs.
-        let setup = self.clients.iter().any(|client| {
-            client.expected
-                && client.findings.iter().any(|finding| {
-                    matches!(finding.component, Component::Mcp | Component::Plugin)
-                        && finding.state == State::Missing
-                })
-        });
-        self.summary.next_action = None;
         if let Some(resources) = &self.resources {
             self.summary.attention += resources
                 .findings
@@ -195,15 +196,47 @@ impl Report {
                 .filter(|f| f.state == State::Unverified)
                 .count();
         }
-        self.summary.next_action = if setup {
-            Some("mash init")
+        self.summary.next_action = self.next_action();
+    }
+
+    fn next_action(&self) -> Option<String> {
+        // Unconfigured agents are valid CLI-only use. A missing MCP server is
+        // what `init` repairs; a missing plugin alone needs the agent's own
+        // plugin commands and network access, since rerunning `init` offline
+        // would only fail the same way.
+        let mcp = self
+            .summary
+            .clients
+            .iter()
+            .any(|client| client.missing.contains(&Component::Mcp));
+        let plugins: Vec<_> = self
+            .summary
+            .clients
+            .iter()
+            .filter(|client| client.missing == [Component::Plugin])
+            .map(|client| match client.agent {
+                Agent::ClaudeCode => {
+                    "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
+                }
+                Agent::Codex => {
+                    "codex plugin marketplace add kojah/mash && codex plugin add mash@mash"
+                }
+            })
+            .collect();
+        if mcp {
+            Some("mash init".to_owned())
+        } else if !plugins.is_empty() {
+            Some(format!(
+                "{} (needs network access; Mash MCP search already works without the plugin, which adds the history skill and session hooks)",
+                plugins.join("; ")
+            ))
         } else if self.summary.attention > 0 {
-            Some("mash status --installation")
+            Some("mash status --installation".to_owned())
         } else if self.summary.unverified > 0 {
-            Some("mash status --installation --probe")
+            Some("mash status --installation --probe".to_owned())
         } else {
             None
-        };
+        }
     }
 
     /// An agent named with `--agent` needs attention.

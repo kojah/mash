@@ -67,12 +67,33 @@ fn download(
         .chain(TOKENIZER_FILES)
     {
         repo.get(file).map_err(|error| {
-            AppError::model(format!(
+            let message = format!(
                 "failed to download model asset {file} from {endpoint}: {error}; semantic models (about 170 MB) need network access to {endpoint} or a Hugging Face mirror named by HF_ENDPOINT, and word-exact search works without them"
-            ))
+            );
+            if unreachable(&error.to_string()) {
+                AppError::model_unreachable(message)
+            } else {
+                AppError::model(message)
+            }
         })?;
     }
     Ok(())
+}
+
+/// The download host could not be reached at all, so repeating the same
+/// command will not help until the network or `HF_ENDPOINT` changes.
+fn unreachable(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    [
+        "lookup address",
+        "name resolution",
+        "host not found",
+        "connection refused",
+        "network is unreachable",
+        "no route to host",
+    ]
+    .iter()
+    .any(|sign| error.contains(sign))
 }
 
 #[cfg(test)]

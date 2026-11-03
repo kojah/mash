@@ -592,8 +592,11 @@ fn empty_word_exact_search_explains_phrase_matching() {
     let notice = apart["notice"].as_str().unwrap();
     assert!(notice.contains("one phrase"), "{notice}");
     assert!(notice.contains("mash models install"), "{notice}");
-    // Found, quoted, or a single word: nothing to explain.
-    for query in ["deploy fails", "\"deploy 401\"", "nowhere"] {
-        assert!(search(query).get("notice").is_none(), "{query}");
+    assert!(search("deploy fails").get("notice").is_none());
+    // A missing single word or quoted phrase says what was searched.
+    for query in ["nowhere", "\"deploy 401\""] {
+        let notice = search(query)["notice"].as_str().unwrap().to_owned();
+        assert!(notice.contains("message text"), "{query}: {notice}");
+        assert!(!notice.contains("one phrase"), "{query}: {notice}");
     }
 }

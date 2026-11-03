@@ -174,6 +174,15 @@ fn init_reports_why_a_plugin_could_not_be_installed() {
         assert!(message.contains("plugin not found"), "{message}");
         assert!(message.contains("ENOTFOUND github.com"), "{message}");
     }
+    // The next steps say what still works and how to finish, per agent.
+    let next = value["next"].to_string();
+    for agent in ["claude-code", "codex"] {
+        assert!(
+            next.contains(&format!("{agent}: Mash MCP search works")),
+            "{next}"
+        );
+    }
+    assert!(next.contains("Restart your agents"), "{next}");
 }
 
 #[test]

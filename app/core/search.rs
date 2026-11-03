@@ -500,14 +500,16 @@ pub(super) fn empty_notice(
     };
     let query = search.query.trim();
     let quoted = query.len() > 1 && query.starts_with('"') && query.ends_with('"');
-    if !empty
-        || search.intent != crate::views::exact::Intent::ExactMention
-        || quoted
-        || crate::views::matching::tokens(query).len() < 2
-    {
+    if !empty || search.intent != crate::views::exact::Intent::ExactMention {
         return None;
     }
-    let mut notice = "No chat contains these words together in this order: word-exact search matches the whole query as one phrase. Try fewer words or the most distinctive one".to_owned();
+    // The query itself stays out of the notice: it is redacted separately.
+    let mut notice = if !quoted && crate::views::matching::tokens(query).len() > 1 {
+        "No chat contains these words together in this order: word-exact search matches the whole query as one phrase. Try fewer words or the most distinctive one"
+    } else {
+        "No indexed message contains this text. Word-exact search reads message text, not project paths or chat IDs (use --project or `mash list-chats` for those)"
+    }
+    .to_owned();
     if !configuration.views.build.dense_enabled() {
         notice.push_str(
             "; to search by meaning, run `mash models install` and then `mash init --force`",
