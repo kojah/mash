@@ -163,7 +163,11 @@ fn local_status(
             query_models,
             semantic_support: dense_enabled,
             realized_mode: SearchMode::Unavailable,
-            recommended_action: Some(if query_models_available {
+            // A new machine needs setup first; init writes a configuration
+            // that works without models.
+            recommended_action: Some(if !configuration.loaded {
+                crate::Action::Init
+            } else if query_models_available {
                 crate::Action::Index
             } else {
                 crate::Action::ModelsInstall

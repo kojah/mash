@@ -112,7 +112,8 @@ enum Command {
         #[arg(long, requires = "shared_vector_search")]
         shared_hnsw_ef: Option<usize>,
         query: String,
-        /// Retrieval intent; defaults to views.query.intent (related-discussion).
+        /// Retrieval intent; defaults to views.query.intent, which `mash init` sets to
+        /// related-discussion with semantic models installed and exact-mention without.
         #[arg(long, value_enum)]
         intent: Option<crate::views::exact::Intent>,
         /// Results per page (1–200); defaults to views.query.limit (20).

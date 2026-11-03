@@ -182,6 +182,8 @@ struct Search<'a> {
     shared_context_error: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostics: Option<&'a crate::views::diagnostics::Diagnostics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notice: Option<&'a str>,
 }
 
 impl<'a> From<&'a SearchResponse> for Search<'a> {
@@ -229,6 +231,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
             shared_error: value.shared_error.as_deref(),
             shared_context_error: value.shared_context_error.as_deref(),
             diagnostics: value.diagnostics.as_ref(),
+            notice: value.notice.as_deref(),
         }
     }
 }

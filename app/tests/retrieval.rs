@@ -557,3 +557,43 @@ fn view_returns_context_only_canonical_content_without_models() {
     ]);
     assert_eq!(viewed["messages"][0]["content"], "canonical tool output");
 }
+
+#[test]
+fn empty_word_exact_search_explains_phrase_matching() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("claude");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(
+        root.join("thread.jsonl"),
+        serde_json::to_vec(&serde_json::json!({
+            "type":"user", "sessionId":"thread", "uuid":"message",
+            "message":{"role":"user","content":"deploy fails with 401 after the token rotation"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let models = directory.path().join("missing-models");
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    run_json(&[base.as_slice(), &["index"]].concat());
+    let search = |query: &str| run_json(&[base.as_slice(), &["search", query, "--local"]].concat());
+    // Both words occur, but not together in this order.
+    let apart = search("deploy 401");
+    assert_eq!(apart["results"], serde_json::json!([]), "{apart}");
+    let notice = apart["notice"].as_str().unwrap();
+    assert!(notice.contains("one phrase"), "{notice}");
+    assert!(notice.contains("mash models install"), "{notice}");
+    // Found, quoted, or a single word: nothing to explain.
+    for query in ["deploy fails", "\"deploy 401\"", "nowhere"] {
+        assert!(search(query).get("notice").is_none(), "{query}");
+    }
+}

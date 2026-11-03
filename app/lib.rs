@@ -90,14 +90,20 @@ where
         Ok(cli::Response::McpStopped) => 0,
         Ok(response) => write_json(stdout, &response).map_or_else(
             |error| {
+                // A reader that stopped early (`mash ... | head`) is not a failure.
+                if error.code == BROKEN_PIPE {
+                    return 0;
+                }
                 let _ = write_json(stderr, &error);
                 error.code
             },
             |()| match response {
                 cli::Response::Operation(value) if value.needs_retry() => 9,
+                cli::Response::Operation(value) if value.required_agent_needs_attention() => 1,
                 _ => 0,
             },
         ),
+        Err(error) if error.code == BROKEN_PIPE => 0,
         Err(error) => {
             let _ = write_json(stderr, &error);
             error.code
@@ -105,11 +111,28 @@ where
     }
 }
 
+/// Internal code for a closed output stream; never reported as an exit status.
+const BROKEN_PIPE: i32 = -1;
+
 fn write_json<T: Serialize>(writer: &mut dyn Write, value: &T) -> Result<(), AppError> {
-    serde_json::to_writer(&mut *writer, value)
-        .map_err(|error| AppError::internal(format!("failed to serialize response: {error}")))?;
-    writeln!(writer)
-        .map_err(|error| AppError::internal(format!("failed to write response: {error}")))
+    let closed = |mut error: AppError, kind: Option<io::ErrorKind>| {
+        if kind == Some(io::ErrorKind::BrokenPipe) {
+            error.code = BROKEN_PIPE;
+        }
+        error
+    };
+    serde_json::to_writer(&mut *writer, value).map_err(|error| {
+        closed(
+            AppError::internal(format!("failed to serialize response: {error}")),
+            error.io_error_kind(),
+        )
+    })?;
+    writeln!(writer).map_err(|error| {
+        closed(
+            AppError::internal(format!("failed to write response: {error}")),
+            Some(error.kind()),
+        )
+    })
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -166,6 +189,8 @@ impl ErrorKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum Action {
+    #[serde(rename = "init")]
+    Init,
     #[serde(rename = "index")]
     Index,
     #[serde(rename = "models install")]
@@ -283,5 +308,30 @@ impl AppError {
         let mut error = Self::new(code, kind, message, retryable);
         error.error.recommended_action = Some(recommended_action);
         error
+    }
+}
+
+#[cfg(test)]
+mod output_tests {
+    use std::io::{self, Write};
+
+    /// A reader that has gone away, as with `mash ... | head`.
+    struct Closed;
+
+    impl Write for Closed {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::ErrorKind::BrokenPipe.into())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_closed_output_pipe_exits_quietly() {
+        let mut stderr = Vec::new();
+        let code = super::execute(["mash", "--version"], &mut Closed, &mut stderr);
+        assert_eq!(code, 0);
+        assert!(stderr.is_empty(), "{}", String::from_utf8_lossy(&stderr));
     }
 }

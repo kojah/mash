@@ -148,6 +148,7 @@ async fn execute_inner(
         .boxed()
         .await?;
     if let Response::Search(search) = &mut response {
+        search.notice = search::empty_notice(search, &configuration);
         search.query = configuration.redaction.output().text(&search.query);
     }
     if let Some(mut initialized) = initialized {

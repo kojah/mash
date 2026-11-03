@@ -7,6 +7,14 @@ use super::*;
 
 /// A home with Claude Code history and stand-in agent CLIs that log calls.
 fn fixture(registered: bool) -> (tempfile::TempDir, Vec<(&'static str, String)>) {
+    fixture_with(registered, "exit 0")
+}
+
+/// `plugin` runs as the stand-in's last line for plugin commands.
+fn fixture_with(
+    registered: bool,
+    plugin: &str,
+) -> (tempfile::TempDir, Vec<(&'static str, String)>) {
     let root = tempfile::tempdir().unwrap();
     let home = root.path();
     let project = home.join(".claude/projects/p");
@@ -21,7 +29,7 @@ fn fixture(registered: bool) -> (tempfile::TempDir, Vec<(&'static str, String)>)
         std::fs::write(
             &script,
             format!(
-                "#!/bin/sh\necho \"{agent} $*\" >> '{}'\n[ \"$1 $2\" = \"mcp get\" ] && exit {get}\nexit 0\n",
+                "#!/bin/sh\necho \"{agent} $*\" >> '{}'\n[ \"$1 $2\" = \"mcp get\" ] && exit {get}\n[ \"$1\" = plugin ] && {{ {plugin}; }}\nexit 0\n",
                 home.join("calls.log").display()
             ),
         )
@@ -81,6 +89,14 @@ fn init_configures_registers_and_indexes_detected_history() {
     for agent in &value["agents"].as_array().unwrap()[..] {
         assert_eq!(agent["mcp"]["state"], "done", "{value}");
         assert_eq!(agent["plugin"]["state"], "done", "{value}");
+        // Each step names the command it ran, so users can see what changed.
+        assert!(
+            agent["mcp"]["command"]
+                .as_str()
+                .unwrap()
+                .contains(" mcp add "),
+            "{value}"
+        );
     }
     let calls = std::fs::read_to_string(home.join("calls.log")).unwrap();
     assert!(
@@ -135,6 +151,29 @@ fn init_configures_registers_and_indexes_detected_history() {
     assert_eq!(forced["config"]["written"], true);
     assert_eq!(forced["agents"], serde_json::json!([]));
     assert!(home.join(".config/mash/config.toml.previous").exists());
+    assert_eq!(
+        forced["config"]["previous"],
+        home.join(".config/mash/config.toml.previous")
+            .display()
+            .to_string()
+    );
+}
+
+#[test]
+fn init_reports_why_a_plugin_could_not_be_installed() {
+    // Offline, adding the marketplace fails and installing then cannot find
+    // the plugin; the second error alone would not say why.
+    let (_root, env) = fixture_with(
+        false,
+        r#"if [ "$2" = marketplace ]; then echo 'getaddrinfo ENOTFOUND github.com' >&2; else echo 'plugin not found' >&2; fi; exit 1"#,
+    );
+    let value = init(&env, &["--no-index"]);
+    for agent in &value["agents"].as_array().unwrap()[..] {
+        assert_eq!(agent["plugin"]["state"], "failed", "{value}");
+        let message = agent["plugin"]["message"].as_str().unwrap();
+        assert!(message.contains("plugin not found"), "{message}");
+        assert!(message.contains("ENOTFOUND github.com"), "{message}");
+    }
 }
 
 #[test]

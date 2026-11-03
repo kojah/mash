@@ -34,7 +34,8 @@ struct Search {
     shared_vector: Option<crate::views::vector::Search>,
     /// Words, a semantic question, or an exact-mention phrase/identifier; search never ingests.
     query: String,
-    /// related-discussion (default) or model-free exact-mention.
+    /// related-discussion or model-free exact-mention; omitted uses views.query.intent,
+    /// which is exact-mention when semantic models were not installed at setup.
     intent: Option<crate::views::exact::Intent>,
     /// Results per page, from 1 to 200; omitted uses views.query.limit (20 by default).
     /// Use `next_offset` to fetch another page.

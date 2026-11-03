@@ -69,6 +69,9 @@ struct Client {
     findings: Vec<Finding>,
     #[serde(skip)]
     launch: Option<clients::Launch>,
+    /// Named with `--agent`; a problem with it fails the command.
+    #[serde(skip)]
+    required: bool,
 }
 
 impl Client {
@@ -105,13 +108,18 @@ pub(crate) struct Summary {
     unverified: usize,
     unconfigured: usize,
     clients: Vec<ClientSummary>,
-    next_action: &'static str,
+    /// The command that would make progress, or null when nothing is left.
+    next_action: Option<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
 struct ClientSummary {
     agent: Agent,
     expected: bool,
+    /// Configured for Mash with nothing needing attention.
+    connected: bool,
+    #[serde(skip)]
+    required: bool,
     attention: usize,
     unverified: usize,
 }
@@ -126,25 +134,31 @@ impl Report {
         self.summary.clients = self
             .clients
             .iter()
-            .map(|client| ClientSummary {
-                agent: client.agent,
-                expected: client.expected,
-                attention: client
+            .map(|client| {
+                let attention = client
                     .findings
                     .iter()
                     .filter(|finding| {
                         (client.expected || matches!(finding.component, Component::Configuration))
                             && finding.state.needs_attention()
                     })
-                    .count(),
-                unverified: client
-                    .findings
-                    .iter()
-                    .filter(|finding| {
-                        (client.expected || matches!(finding.component, Component::Configuration))
-                            && finding.state == State::Unverified
-                    })
-                    .count(),
+                    .count();
+                ClientSummary {
+                    agent: client.agent,
+                    expected: client.expected,
+                    connected: client.expected && attention == 0,
+                    required: client.required,
+                    attention,
+                    unverified: client
+                        .findings
+                        .iter()
+                        .filter(|finding| {
+                            (client.expected
+                                || matches!(finding.component, Component::Configuration))
+                                && finding.state == State::Unverified
+                        })
+                        .count(),
+                }
             })
             .collect();
         self.summary.attention = self
@@ -159,6 +173,16 @@ impl Report {
             .iter()
             .map(|client| client.unverified)
             .sum();
+        // Unconfigured agents are valid CLI-only use; missing parts of an
+        // integration the user set up are what `init` repairs.
+        let setup = self.clients.iter().any(|client| {
+            client.expected
+                && client.findings.iter().any(|finding| {
+                    matches!(finding.component, Component::Mcp | Component::Plugin)
+                        && finding.state == State::Missing
+                })
+        });
+        self.summary.next_action = None;
         if let Some(resources) = &self.resources {
             self.summary.attention += resources
                 .findings
@@ -171,6 +195,23 @@ impl Report {
                 .filter(|f| f.state == State::Unverified)
                 .count();
         }
+        self.summary.next_action = if setup {
+            Some("mash init")
+        } else if self.summary.attention > 0 {
+            Some("mash status --installation")
+        } else if self.summary.unverified > 0 {
+            Some("mash status --installation --probe")
+        } else {
+            None
+        };
+    }
+
+    /// An agent named with `--agent` needs attention.
+    pub(crate) fn required_attention(&self) -> bool {
+        self.summary
+            .clients
+            .iter()
+            .any(|client| client.required && client.attention > 0)
     }
 }
 
@@ -205,7 +246,7 @@ fn collect(environment: Option<&Environment>, agents: &[Agent]) -> Report {
             unverified: 0,
             unconfigured: 0,
             clients: vec![],
-            next_action: "mash status --installation",
+            next_action: None,
         },
         clients: vec![],
         resources: None,
@@ -229,6 +270,22 @@ fn collect(environment: Option<&Environment>, agents: &[Agent]) -> Report {
             "Cannot determine the home or working directory; installation is unverified.";
     }
     report
+}
+
+/// The Mash plugin is installed, current and enabled for `agent`, as
+/// `mash status --installation` would report it.
+pub(super) fn plugin_current(agent: Agent) -> bool {
+    Environment::discover().is_some_and(|environment| {
+        clients::inspect(&environment, agent, true)
+            .findings
+            .iter()
+            .all(|finding| {
+                !matches!(
+                    finding.component,
+                    Component::Plugin | Component::Skill | Component::Hooks
+                ) || !(finding.state.needs_attention() || finding.state == State::Unverified)
+            })
+    })
 }
 
 pub(super) fn summary() -> Summary {

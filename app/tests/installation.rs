@@ -14,10 +14,20 @@ fn isolated(root: &Path) -> Command {
 }
 
 fn json(command: &mut Command) -> Value {
+    let (code, value) = report(command);
+    assert_eq!(code, 0, "{value}");
+    value
+}
+
+/// The report and exit status; an agent named with `--agent` that needs
+/// attention exits 1 with the full report.
+fn report(command: &mut Command) -> (i32, Value) {
     let output = command.output().unwrap();
-    assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
-    serde_json::from_slice(&output.stdout).unwrap()
+    (
+        output.status.code().unwrap(),
+        serde_json::from_slice(&output.stdout).unwrap(),
+    )
 }
 
 #[test]
@@ -70,7 +80,7 @@ fn installation_inspection_bypasses_broken_mash_resources_and_is_read_only() {
     std::fs::write(&config, "not a valid configuration").unwrap();
     let db = root.path().join("missing-db");
     let models = root.path().join("missing-models");
-    let report = json(
+    let (code, report) = report(
         isolated(root.path())
             .arg("--config")
             .arg(&config)
@@ -80,6 +90,7 @@ fn installation_inspection_bypasses_broken_mash_resources_and_is_read_only() {
             .arg(&models)
             .args(["status", "--installation", "--agent", "codex"]),
     );
+    assert_eq!(code, 1, "{report}");
     assert_eq!(report["clients"].as_array().unwrap().len(), 1);
     assert_eq!(report["summary"]["attention"], 3);
     assert!(report["resources"]["findings"].as_array().unwrap().iter().any(|finding| finding["component"] == "configuration" && finding["state"] == "invalid"));
@@ -246,9 +257,34 @@ fn installation_status_includes_summary_without_changing_search_readiness() {
     );
     assert_eq!(status["ready"], false);
     assert_eq!(status["installation"]["attention"], 0);
-    assert_eq!(
-        status["installation"]["next_action"],
-        "mash status --installation"
+    assert_eq!(status["installation"]["next_action"], Value::Null);
+}
+
+#[test]
+fn installation_names_the_repair_and_fails_for_a_required_agent_that_is_not_connected() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".codex")).unwrap();
+    // Unconfigured agents are valid CLI-only use: nothing to do, exit 0.
+    let unused = json(isolated(root.path()).args(["status", "--installation"]));
+    assert_eq!(unused["summary"]["clients"][0]["connected"], false);
+    assert_eq!(unused["summary"]["next_action"], Value::Null);
+    // Requiring the agent makes its missing integration a failure that names
+    // `mash init` and the agent's own registration command.
+    let (code, required) =
+        report(isolated(root.path()).args(["status", "--installation", "--agent", "codex"]));
+    assert_eq!(code, 1, "{required}");
+    assert_eq!(required["summary"]["next_action"], "mash init");
+    assert_eq!(required["summary"]["clients"][0]["connected"], false);
+    let findings = required["clients"][0]["findings"].as_array().unwrap();
+    let mcp = findings
+        .iter()
+        .find(|finding| finding["component"] == "mcp")
+        .unwrap();
+    let remediation = mcp["remediation"].as_str().unwrap();
+    assert!(remediation.contains("mash init"), "{remediation}");
+    assert!(
+        remediation.contains("codex mcp add mash -- "),
+        "{remediation}"
     );
 }
 
@@ -262,7 +298,8 @@ fn installation_probe_verifies_real_mash_without_index_or_models() {
         toml::Value::String(executable.into())
     );
     std::fs::write(root.path().join(".codex/config.toml"), config).unwrap();
-    let report = json(isolated(root.path()).args([
+    // The plugin is not installed, so the required agent still needs attention.
+    let (_, report) = report(isolated(root.path()).args([
         "status",
         "--installation",
         "--agent",
@@ -318,7 +355,7 @@ fn installation_probe_timeout_terminates_child_and_keeps_help_passive() {
     json(isolated(root.path()).args(["status", "--installation"]));
     assert!(!root.path().join("probe.pid").exists());
     let started = std::time::Instant::now();
-    let report = json(isolated(root.path()).args([
+    let (_, report) = report(isolated(root.path()).args([
         "status",
         "--installation",
         "--agent",

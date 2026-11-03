@@ -76,7 +76,8 @@ mash init
 Antigravity histories in their default locations, writes `config.toml`,
 registers the Mash MCP server and history plugin with the Claude Code and Codex
 CLIs it finds on `PATH`, and indexes the last 90 days. Restart your agents and
-ask them about past work. Without models search matches exact words; for
+ask them about past work. Without models search matches exact words (several
+words must appear together, as one phrase); for
 semantic search run `mash models install` (about 170 MB), then
 `mash init --force`. `--no-agents` leaves agent settings alone, `--no-index`
 skips indexing, and an existing configuration is kept unless `--force` is given
@@ -278,6 +279,11 @@ unverified history. A completed provider scan can coexist with older source
 checkpoints; matching the binary's database schema alone does not certify them.
 `--agent` explicitly requires an integration; without it, an enabled plugin or
 an MCP registration establishes that expectation. A CLI-only installation is valid.
+When an agent named with `--agent` needs attention, the command still prints the
+report and exits with status 1, so scripts can check wiring. `summary.clients[].connected`
+says whether each agent is configured with nothing left to fix, and
+`summary.next_action` names the command that would make progress (`mash init`
+when part of an integration is missing), or is null when there is nothing to do.
 Ordinary `status` includes a compact installation summary, and `--help` (also
 `help` and subcommand help) adds a short warning when local checks find an
 incomplete integration or an incompatible/unreadable local index. Help respects

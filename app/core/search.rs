@@ -321,6 +321,7 @@ async fn shared_hybrid(
     let collected =
         crate::search_results::collect(results, unit, page, &query, options.output_redaction);
     Ok(SearchResponse {
+        notice: None,
         diagnostics: None,
         intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: search_mode(shared_error.is_some(), shared_only),
@@ -358,6 +359,7 @@ async fn shared_exact(
     .await?;
     let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
     Ok(SearchResponse {
+        notice: None,
         diagnostics: None,
         intent: crate::views::exact::Intent::ExactMention,
         realized_mode: exact_mode(shared_error.is_some(), database.is_none()),
@@ -394,6 +396,7 @@ fn local_exact(
     let hits = crate::views::exact::rank(hits, unit);
     let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
     Ok(SearchResponse {
+        notice: None,
         diagnostics: None,
         intent: crate::views::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
@@ -443,6 +446,7 @@ fn local_search(
         options.output_redaction,
     );
     Ok(SearchResponse {
+        notice: None,
         diagnostics: None,
         intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
@@ -482,4 +486,33 @@ fn search_mode(failed: bool, shared_only: bool) -> SearchMode {
     } else {
         SearchMode::MergedHybrid
     }
+}
+
+/// Word-exact search matches the whole query as one phrase, so an empty result
+/// for several words often means "not in this order", not "never discussed".
+pub(super) fn empty_notice(
+    search: &SearchResponse,
+    configuration: &crate::config::ResolvedConfig,
+) -> Option<String> {
+    let empty = match &search.results {
+        crate::search_results::Results::Chats(chats) => chats.is_empty(),
+        crate::search_results::Results::Messages(messages) => messages.is_empty(),
+    };
+    let query = search.query.trim();
+    let quoted = query.len() > 1 && query.starts_with('"') && query.ends_with('"');
+    if !empty
+        || search.intent != crate::views::exact::Intent::ExactMention
+        || quoted
+        || crate::views::matching::tokens(query).len() < 2
+    {
+        return None;
+    }
+    let mut notice = "No chat contains these words together in this order: word-exact search matches the whole query as one phrase. Try fewer words or the most distinctive one".to_owned();
+    if !configuration.views.build.dense_enabled() {
+        notice.push_str(
+            "; to search by meaning, run `mash models install` and then `mash init --force`",
+        );
+    }
+    notice.push('.');
+    Some(notice)
 }

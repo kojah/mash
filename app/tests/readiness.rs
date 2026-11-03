@@ -157,17 +157,37 @@ fn status_reports_the_exact_resolved_local_configuration() {
 }
 
 #[test]
-fn status_without_models_recommends_install_without_downloading() {
+fn status_recommends_init_before_setup_and_models_install_after_without_downloading() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");
-    let body = run_json(&[
+    let database = directory.path().join("missing.sqlite3");
+    let base = [
         "--db",
-        directory.path().join("missing.sqlite3").to_str().unwrap(),
+        database.to_str().unwrap(),
         "--models-dir",
         models.to_str().unwrap(),
-        "status",
-    ]);
+    ];
+    // A fresh home has no configuration, so setup comes first.
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .env("HOME", directory.path())
+        .env("XDG_CONFIG_HOME", directory.path().join("xdg"))
+        .args([base.as_slice(), &["status"]].concat())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(body["ready"], false);
+    assert_eq!(body["recommended_action"], "init");
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let body = run_json(
+        &[
+            base.as_slice(),
+            &["--config", config.to_str().unwrap(), "status"],
+        ]
+        .concat(),
+    );
     assert_eq!(body["recommended_action"], "models install");
     assert!(!models.exists());
 }

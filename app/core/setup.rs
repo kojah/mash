@@ -40,6 +40,9 @@ struct ConfigOutcome {
     providers: Option<crate::provider::ProviderRoots>,
     #[serde(skip_serializing_if = "Option::is_none")]
     search: Option<&'static str>,
+    /// Where `--force` kept the configuration it replaced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,7 +55,7 @@ struct AgentOutcome {
 #[derive(Debug, Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
 enum Step {
-    Done,
+    Done { command: String },
     AlreadyPresent,
     Failed { command: String, message: String },
 }
@@ -73,11 +76,12 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             written: false,
             providers: None,
             search: None,
+            previous: None,
         }
     } else {
         let semantic = crate::semantic::Models::new(models).is_installed();
         let path = config_path.clone();
-        let providers = crate::blocking(move || {
+        let (providers, previous) = crate::blocking(move || {
             let providers = crate::config::init::detect()?;
             if providers.is_empty() {
                 return Err(AppError::configuration(format!(
@@ -85,8 +89,11 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
                     path.display()
                 )));
             }
-            crate::config::init::write(&path, &crate::config::init::render(&providers, semantic)?)?;
-            Ok(providers)
+            let previous = crate::config::init::write(
+                &path,
+                &crate::config::init::render(&providers, semantic)?,
+            )?;
+            Ok((providers, previous))
         })
         .await?;
         if !semantic {
@@ -101,6 +108,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             } else {
                 "exact-mention"
             }),
+            previous,
         }
     };
     let agents = if request.agents {
@@ -154,9 +162,14 @@ pub(super) fn first_index() -> Operation {
 /// failure is reported per step; it never stops the others.
 async fn register(command: &[OsString], marketplace: &str) -> Vec<AgentOutcome> {
     let mut outcomes = Vec::new();
-    for (agent, name, install) in [
-        ("claude-code", "claude", "install"),
-        ("codex", "codex", "add"),
+    for (agent, kind, name, install) in [
+        (
+            "claude-code",
+            super::installation::Agent::ClaudeCode,
+            "claude",
+            "install",
+        ),
+        ("codex", super::installation::Agent::Codex, "codex", "add"),
     ] {
         let Some(program) = which(name) else {
             continue;
@@ -173,28 +186,47 @@ async fn register(command: &[OsString], marketplace: &str) -> Vec<AgentOutcome> 
             arguments.extend(command.iter().cloned());
             step(program, &arguments).await
         };
-        // An existing marketplace makes `add` fail; installing then still works.
-        let _ = run(program, &["plugin", "marketplace", "add", marketplace]).await;
-        let plugin = step(
-            program,
-            &["plugin", install, "mash@mash"].map(OsString::from),
-        )
-        .await;
+        let plugin = if crate::blocking(move || Ok(super::installation::plugin_current(kind)))
+            .await
+            .unwrap_or(false)
+        {
+            Step::AlreadyPresent
+        } else {
+            // An existing marketplace makes `add` fail; installing then still
+            // works. When installing fails too, the marketplace error is
+            // usually the cause (no network, for example), so report both.
+            let added = run(program, &["plugin", "marketplace", "add", marketplace]).await;
+            match step(
+                program,
+                &["plugin", install, "mash@mash"].map(OsString::from),
+            )
+            .await
+            {
+                Step::Failed { command, message } => Step::Failed {
+                    command,
+                    message: match added {
+                        Err(cause) => format!(
+                            "{message} (adding the {marketplace} marketplace failed first: {cause})"
+                        ),
+                        Ok(()) => message,
+                    },
+                },
+                done => done,
+            }
+        };
         outcomes.push(AgentOutcome { agent, mcp, plugin });
     }
     outcomes
 }
 
 async fn step(program: &Path, arguments: &[OsString]) -> Step {
+    let command = std::iter::once(program.display().to_string())
+        .chain(arguments.iter().map(|a| a.to_string_lossy().into_owned()))
+        .collect::<Vec<_>>()
+        .join(" ");
     match run(program, arguments).await {
-        Ok(()) => Step::Done,
-        Err(message) => Step::Failed {
-            command: std::iter::once(program.display().to_string())
-                .chain(arguments.iter().map(|a| a.to_string_lossy().into_owned()))
-                .collect::<Vec<_>>()
-                .join(" "),
-            message,
-        },
+        Ok(()) => Step::Done { command },
+        Err(message) => Step::Failed { command, message },
     }
 }
 

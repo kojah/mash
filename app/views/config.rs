@@ -158,7 +158,7 @@ impl Build {
     pub(crate) fn require_intent(&self, intent: super::exact::Intent) -> Result<(), AppError> {
         if intent == super::exact::Intent::RelatedDiscussion && !self.dense_enabled() {
             return Err(AppError::usage(
-                "related-discussion requires dense views; use exact-mention or explicitly rebuild lexical-and-dense views",
+                "related-discussion needs semantic search, which this configuration turns off (word-exact search only); search with --intent exact-mention, or run `mash models install` and then `mash init --force` to turn it on",
             ));
         }
         Ok(())

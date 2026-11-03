@@ -118,6 +118,7 @@ pub(super) fn inspect(
         expected: explicitly_expected,
         findings: vec![],
         launch: None,
+        required: explicitly_expected,
     };
     match agent {
         Agent::Codex => codex(&mut client, environment),
@@ -314,7 +315,21 @@ fn inspect_server(
     environment: &Environment,
 ) {
     let Some(server) = server else {
-        client.add(Component::Mcp, State::Missing, Some(path), "No user-level Mash MCP registration found.", Some("Register the Mash stdio server in this agent client with the installed executable and mcp arguments (or your private Mash launcher)."));
+        let executable = std::env::current_exe()
+            .map_or_else(|_| "mash".to_owned(), |path| path.display().to_string());
+        let register = match client.agent {
+            Agent::ClaudeCode => format!("claude mcp add --scope user mash -- {executable} mcp"),
+            Agent::Codex => format!("codex mcp add mash -- {executable} mcp"),
+        };
+        client.add(
+            Component::Mcp,
+            State::Missing,
+            Some(path),
+            "No user-level Mash MCP registration found.",
+            Some(&format!(
+                "Run `mash init`, or register it yourself: `{register}`. Then restart the agent."
+            )),
+        );
         return;
     };
     if server.enabled == Some(false) || server.disabled == Some(true) {

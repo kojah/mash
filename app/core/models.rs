@@ -200,6 +200,11 @@ pub(crate) struct BackfillSummary {
 }
 
 impl Response {
+    /// An installation report where an agent named with `--agent` needs attention.
+    pub(crate) fn required_agent_needs_attention(&self) -> bool {
+        matches!(self, Self::Installation(report) if report.required_attention())
+    }
+
     pub(crate) fn needs_retry(&self) -> bool {
         match self {
             Self::Index(result) => result.needs_retry(),
@@ -253,6 +258,9 @@ pub(crate) struct SearchResponse {
     pub(crate) shared_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) shared_context_error: Option<String>,
+    /// Why an empty result may not mean the history lacks the subject.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) notice: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

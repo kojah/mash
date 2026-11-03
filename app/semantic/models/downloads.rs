@@ -55,7 +55,7 @@ fn download(
         std::env::var("HF_ENDPOINT").unwrap_or_else(|_| "https://huggingface.co".to_owned());
     let api = ApiBuilder::new()
         .with_cache_dir(root.to_path_buf())
-        .with_endpoint(endpoint)
+        .with_endpoint(endpoint.clone())
         .with_progress(false)
         .build()
         .map_err(|error| {
@@ -67,7 +67,9 @@ fn download(
         .chain(TOKENIZER_FILES)
     {
         repo.get(file).map_err(|error| {
-            AppError::model(format!("failed to download model asset {file}: {error}"))
+            AppError::model(format!(
+                "failed to download model asset {file} from {endpoint}: {error}; semantic models (about 170 MB) need network access to {endpoint} or a Hugging Face mirror named by HF_ENDPOINT, and word-exact search works without them"
+            ))
         })?;
     }
     Ok(())

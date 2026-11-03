@@ -141,8 +141,9 @@ pub(crate) fn render(providers: &ProviderRoots, semantic: bool) -> Result<String
     Ok(text)
 }
 
-/// Write `text` to `path`, keeping an existing file as `<name>.previous`.
-pub(crate) fn write(path: &Path, text: &str) -> Result<(), AppError> {
+/// Write `text` to `path`, keeping an existing file as `<name>.previous` and
+/// returning where it went.
+pub(crate) fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, AppError> {
     let failed = |operation: &str, error: &std::io::Error| {
         AppError::configuration(format!(
             "failed to {operation} configuration {}: {error}",
@@ -152,13 +153,18 @@ pub(crate) fn write(path: &Path, text: &str) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| failed("create the directory of", &error))?;
     }
-    if path.exists() {
+    let previous = if path.exists() {
         let mut previous = path.as_os_str().to_owned();
         previous.push(".previous");
-        fs::rename(path, previous).map_err(|error| failed("keep the previous", &error))?;
-    }
+        let previous = PathBuf::from(previous);
+        fs::rename(path, &previous).map_err(|error| failed("keep the previous", &error))?;
+        Some(previous)
+    } else {
+        None
+    };
     let mut staged = path.as_os_str().to_owned();
     staged.push(".partial");
     fs::write(&staged, text).map_err(|error| failed("write", &error))?;
-    fs::rename(&staged, path).map_err(|error| failed("install", &error))
+    fs::rename(&staged, path).map_err(|error| failed("install", &error))?;
+    Ok(previous)
 }
