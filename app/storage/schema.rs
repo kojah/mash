@@ -71,10 +71,17 @@ pub(super) fn initialize(connection: &Connection, views: &Path) -> Result<(), Ap
     attach_views(connection, views, true)
 }
 
-/// The typed error for any silver schema this release does not write.
+/// The typed error for any silver schema this release does not write. A newer
+/// schema usually means this process predates an upgrade that already moved
+/// the index forward, such as an MCP server started before it.
 pub(super) fn unsupported(version: i64) -> AppError {
+    if version > SCHEMA_VERSION {
+        return AppError::schema(format!(
+            "local index schema {version} is newer than this mash's schema {SCHEMA_VERSION}; a newer mash release wrote it. Reconnect Mash MCP or restart `mash index --watch` if mash was already upgraded; otherwise upgrade mash"
+        ));
+    }
     AppError::schema(format!(
-        "local index schema {version} is not this release's schema {SCHEMA_VERSION}; export it with the mash release that wrote it, then `mash import --keep-identity` it with this one"
+        "local index schema {version} is older than this mash's schema {SCHEMA_VERSION}; export it with the mash release that wrote it, then `mash import --keep-identity` it with this one"
     ))
 }
 

@@ -87,7 +87,7 @@ impl Storage {
             .is_some_and(|m| m.matches(build, model, &silver))
         {
             return Err(AppError::search_not_ready(
-                "views build configuration or silver revision is stale; run `mash index --rebuild-local-views`",
+                "search views are behind the indexed history or configuration; run `mash index` (`--rebuild-local-views` rebuilds them from stored history without reading providers)",
             ));
         }
         Ok(())

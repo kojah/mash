@@ -19,6 +19,11 @@ fn newer_schema_is_rejected_without_rewriting_version() {
 
     let error = Storage::open(&path).err().expect("newer schema rejected");
     assert_eq!(error.error.kind, crate::ErrorKind::SchemaIncompatible);
+    // Usually a process that predates an upgrade: reconnecting is the fix,
+    // not exporting with an older release.
+    assert!(error.error.message.contains("newer than this mash"));
+    assert!(error.error.message.contains("Reconnect Mash MCP"));
+    assert!(!error.error.message.contains("mash import"));
     assert_eq!(user_version(&path), SCHEMA_VERSION + 1);
 }
 
