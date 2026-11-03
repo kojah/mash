@@ -56,6 +56,10 @@ jobs:
       - name: Library tests
         env:
           MASH_KEEP_EXECUTABLE: "1"
+          # Linux CI runs proptest's full 256 cases. Here each SQLite-backed
+          # case is several times slower on NTFS, so a smaller sample checks
+          # the platform without exceeding nextest's timeout.
+          PROPTEST_CASES: "32"
         run: cargo +stable nextest run --profile ci --locked --lib
       - name: CLI contract tests
         env:
