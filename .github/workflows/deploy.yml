@@ -15,6 +15,10 @@ on:
         required: true
       DEPLOY_SSH_KNOWN_HOSTS:
         required: true
+      # JSON list of {"ssh": "user@host", "platform": ...}; kept out of the
+      # repository so the fleet's addresses and users stay private.
+      DEPLOY_TARGETS:
+        required: true
 
 permissions:
   contents: read
@@ -28,8 +32,6 @@ concurrency:
 env:
   BINARY: mash
   SMOKE_SCRIPT: .github/scripts/deploy-smoke
-  DEPLOY_TARGETS: >-
-    [{"ssh":"deploy@linux-node","platform":"linux-amd64"},{"ssh":"deploy@mac-node-1","platform":"darwin-arm64"},{"ssh":"deploy@mac-node-2","platform":"darwin-arm64"}]
 
 jobs:
   gate:
@@ -53,6 +55,7 @@ jobs:
           TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_TARGETS: ${{ secrets.DEPLOY_TARGETS }}
 
   build-linux:
     needs: gate
@@ -127,6 +130,7 @@ jobs:
     env:
       DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      DEPLOY_TARGETS: ${{ secrets.DEPLOY_TARGETS }}
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0

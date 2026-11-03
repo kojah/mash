@@ -8,7 +8,7 @@ import unittest
 
 class DeploymentCredentialTests(unittest.TestCase):
     names = ("TS_OAUTH_CLIENT_ID", "TS_OAUTH_SECRET",
-             "DEPLOY_SSH_PRIVATE_KEY", "DEPLOY_SSH_KNOWN_HOSTS")
+             "DEPLOY_SSH_PRIVATE_KEY", "DEPLOY_SSH_KNOWN_HOSTS", "DEPLOY_TARGETS")
     script = Path(__file__).with_name("deploy-credentials")
     sensitive = "private-credential-sentinel"
 
@@ -53,7 +53,9 @@ class DeploymentCredentialTests(unittest.TestCase):
         result = self.preflight({"TS_OAUTH_SECRET": self.sensitive})
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("Missing deployment repository secret: TS_OAUTH_SECRET", result.stderr)
-        self.assertEqual(result.stderr.count("Missing deployment repository secret:"), 3)
+        self.assertEqual(
+            result.stderr.count("Missing deployment repository secret:"), len(self.names) - 1
+        )
 
 
 if __name__ == "__main__":
