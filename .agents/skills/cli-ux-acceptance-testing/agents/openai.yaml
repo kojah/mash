@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLI UX Acceptance Testing"
+  short_description: "Run independent isolated CLI UX journeys"
+  default_prompt: "Use $cli-ux-acceptance-testing to run two independent isolated testers on one clean-room CLI journey, preserve both raw journals, then publish only filtered findings."
