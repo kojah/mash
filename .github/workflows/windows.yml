@@ -1,6 +1,6 @@
 name: Windows
 
-# Proves the stable release binary builds, starts, sets up and searches on a
+# Proves the stable binary builds, starts, sets up and searches on a
 # native Windows runner, and that the library and CLI tests pass there.
 on:
   push:
@@ -36,8 +36,11 @@ jobs:
       - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: nextest
+      # A debug build shares its dependencies with the test builds below, which
+      # nearly halves a cold run; release.yml builds the release binary on
+      # Windows before publishing.
       - name: Build
-        run: cargo +stable build --release --locked --bin mash
+        run: cargo +stable build --locked --bin mash
       # The test suites run first, on a clean profile: the steps after them
       # write configuration and an index into the runner's real profile, which
       # Mash's default paths would pick up. Test processes start Mash
@@ -54,7 +57,7 @@ jobs:
           MASH_KEEP_EXECUTABLE: "1"
         run: cargo +stable nextest run --profile ci --locked --test cli_contract
       - name: Smoke
-        run: .github/scripts/deploy-smoke target/release/mash.exe "$GITHUB_SHA"
+        run: .github/scripts/deploy-smoke target/debug/mash.exe "$GITHUB_SHA"
       # The runner is disposable, so its real profile stands in for a user's:
       # Windows resolves profile folders through the shell, not environment.
       - name: Init and search
@@ -63,8 +66,8 @@ jobs:
           mkdir -p "$projects"
           printf '%s\n' '{"type":"user","sessionId":"s1","uuid":"m1","cwd":"C:/work","timestamp":"2026-10-28T09:00:00Z","message":{"role":"user","content":"windowsneedle schema"}}' \
             > "$projects/s1.jsonl"
-          target/release/mash.exe init --no-agents | tee init.json
-          target/release/mash.exe search windowsneedle --local | tee search.json
+          target/debug/mash.exe init --no-agents | tee init.json
+          target/debug/mash.exe search windowsneedle --local | tee search.json
           grep -q '"chat_id":"s1"' search.json
       - name: MCP, upgrade while running, and hooks
-        run: python .github/scripts/windows-smoke.py target/release/mash.exe
+        run: python .github/scripts/windows-smoke.py target/debug/mash.exe
