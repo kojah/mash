@@ -111,10 +111,19 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
 
 #[test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "verify baseline receipts through CLI and shared status"
+)]
 fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     let dir = tempfile::tempdir().expect("temp");
     let database = dir.path().join("local.sqlite3");
     seed_readiness_database(&database, Some(""));
+    // Local journal revisions can be much larger than the server's newly
+    // assigned baseline revisions. Never report the former as a receipt.
+    open_index(&database)
+        .execute("UPDATE shared_publication SET revision=5000000", [])
+        .expect("advance local journal");
     let models = dir.path().join("models");
     create_valid_model_marker(&models);
     let config = dir.path().join("config.toml");
@@ -215,6 +224,17 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     assert_eq!(
         status["shared_index"]["nodes"][0]["revision"].as_i64(),
         Some(revision)
+    );
+    let mapping: Value = serde_json::from_slice(
+        &std::fs::read(database.with_extension("sqlite3.publication-base.json"))
+            .expect("publication mapping"),
+    )
+    .expect("mapping JSON");
+    assert_eq!(mapping["server"].as_i64(), Some(revision));
+    assert!(mapping["local"].as_i64().unwrap() >= 5_000_000);
+    assert!(
+        revision < 5_000_000,
+        "server assigns its own baseline revisions"
     );
     shared_server::cleanup_group(&group);
 }

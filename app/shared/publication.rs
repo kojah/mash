@@ -497,8 +497,17 @@ async fn acknowledge_with(
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct BackfillReceipts {
     backfill_id: String,
-    revision: i64,
+    source_revision: i64,
+    server_revision: i64,
     completed: std::collections::BTreeSet<String>,
+}
+
+impl BackfillReceipts {
+    fn record(&mut self, digest: &str, server_revision: i64) {
+        self.completed.insert(digest.to_owned());
+        // Concurrent lanes can report committed revisions out of order.
+        self.server_revision = self.server_revision.max(server_revision);
+    }
 }
 
 /// Which server revision the last acknowledged local revision became. Ordinary
@@ -552,10 +561,13 @@ fn load_backfill_receipts(path: &Path, backfill_id: &str, revision: i64) -> Back
     std::fs::read(path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<BackfillReceipts>(&bytes).ok())
-        .filter(|receipts| receipts.backfill_id == backfill_id && receipts.revision == revision)
+        .filter(|receipts| {
+            receipts.backfill_id == backfill_id && receipts.source_revision == revision
+        })
         .unwrap_or_else(|| BackfillReceipts {
             backfill_id: backfill_id.to_owned(),
-            revision,
+            source_revision: revision,
+            server_revision: 0,
             completed: std::collections::BTreeSet::new(),
         })
 }
@@ -611,7 +623,7 @@ pub(crate) async fn publish_backfill(
     let completed = receipts.completed.clone();
     let resume = super::sync::client::BackfillResume {
         completed: &completed,
-        last_revision: receipts.revision,
+        last_revision: receipts.server_revision,
     };
     let indexed = super::sync::client::upload_backfill_plan_with_config(
         config,
@@ -619,8 +631,7 @@ pub(crate) async fn publish_backfill(
         backfill_id,
         resume,
         |digest, revision| {
-            receipts.completed.insert(digest.to_owned());
-            receipts.revision = revision;
+            receipts.record(digest, revision);
             store_backfill_receipts(&receipts_path, &receipts)
         },
     )
@@ -788,7 +799,35 @@ fn published_artifacts_current(
 
 #[cfg(test)]
 mod server_base_tests {
-    use super::{local_base, record_server_base};
+    use super::{load_backfill_receipts, local_base, record_server_base, store_backfill_receipts};
+
+    #[test]
+    fn backfill_receipts_keep_source_identity_and_server_progress_separate() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("backfill.json");
+        let mut receipts = load_backfill_receipts(&path, "baseline", 5_140_005);
+        assert_eq!(receipts.server_revision, 0);
+        receipts.record("first", 3_528_522);
+        store_backfill_receipts(&path, &receipts).unwrap();
+
+        // Reopen after interruption: a server receipt must not change the
+        // source revision used to recognize the frozen baseline.
+        let mut resumed = load_backfill_receipts(&path, "baseline", 5_140_005);
+        assert!(resumed.completed.contains("first"));
+        assert_eq!(resumed.server_revision, 3_528_522);
+        resumed.record("later", 3_528_524);
+        resumed.record("earlier", 3_528_523);
+        store_backfill_receipts(&path, &resumed).unwrap();
+        let resumed = load_backfill_receipts(&path, "baseline", 5_140_005);
+        assert_eq!(resumed.source_revision, 5_140_005);
+        assert_eq!(resumed.server_revision, 3_528_524);
+        assert_eq!(resumed.completed.len(), 3);
+        for (id, revision) in [("other", 5_140_005), ("baseline", 5_140_006)] {
+            let fresh = load_backfill_receipts(&path, id, revision);
+            assert!(fresh.completed.is_empty());
+            assert_eq!(fresh.server_revision, 0);
+        }
+    }
 
     #[test]
     fn a_backfilled_server_revision_maps_back_to_the_local_one() {

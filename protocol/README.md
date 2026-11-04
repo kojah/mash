@@ -621,6 +621,26 @@ latency.
 
 ### Progressive backfill: coverage, live edits and deletions
 
+[BackfillReceipts.tla](BackfillReceipts.tla) checks the client's receipt file
+separately from server coverage. The frozen source revision is 10 while three
+server commits receive revisions 1..3. `Commit`, `Receive`, `Save` and `Restart`
+represent separate remote commits, returned receipts, atomic file replacement
+and reopening the client. Responses may arrive out of order or be lost before
+saving. `BackfillReceipts::record`, `load_backfill_receipts` and
+`store_backfill_receipts` in `app/shared/publication.rs` implement these local
+boundaries; the sender's atomic maximum aggregates concurrent lane responses.
+Source identity stays fixed, and server progress is the maximum received server
+revision, initially zero. The mixed-domain and last-response-wins configurations
+must violate `ServerProgressIsReceipt`. The Rust regression
+`backfill_receipts_keep_source_identity_and_server_progress_separate` reopens
+the actual receipt file and checks out-of-order receipts and baseline changes.
+This bounded model assumes one client owns the receipt file, fixed destination
+and baseline, and atomic replacement; it does not claim power-loss durability,
+server certification, or correct mapping after another publisher changes the head.
+The production gap tracked in `mash-e3f4` initialized server progress from the
+source revision and overwrote source identity on each receipt; the mixed-domain
+configuration reproduces the first invalid state.
+
 [ProgressiveBackfill.tla](ProgressiveBackfill.tla) is a **partially implemented
 design contract**. The manifest transfer, durable membership table, coverage
 evidence, completion check, per-conversation ordering and tombstone dominance

@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication BackfillOrdering Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify)
+models=(Publication BackfillOrdering BackfillReceipts Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|BackfillOrdering|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify) ;;
+            Publication|BackfillOrdering|BackfillReceipts|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -93,7 +93,7 @@ check() {
         grep -E '^[0-9]+ states generated|depth of the complete state graph' "$work/output.log"
     else
         # A parse error, timeout, deadlock or unrelated invariant is NOT success.
-        if [[ $status != 12 ]] || ! grep -Fq "Invariant $expected is violated." "$work/output.log"; then
+        if [[ $status != 12 ]] || ! grep -Eq "Invariant $expected is violated(\\.| by the initial state:)" "$work/output.log"; then
             cat "$work/output.log" >&2
             echo "FAIL $config: expected invariant $expected (exit $status)" >&2
             return 1
@@ -127,6 +127,8 @@ if $self_test; then
     check BackfillOrdering BackfillOrderingSequential
     check BackfillOrdering BackfillOrderingRebaseBug OrderedRevisions
     check BackfillOrdering BackfillOrderingScopeBug UniqueBackfillIdentity
+    check BackfillReceipts BackfillReceiptsMixedBug ServerProgressIsReceipt
+    check BackfillReceipts BackfillReceiptsOrderBug ServerProgressIsReceipt
     # Connector coherence rules Slack onboarding depends on (source-model D1/D2).
     check Coherence CoherenceDeviceScope NoDoubleIngest
     check Coherence CoherenceOverwrite NoDoubleIngest
