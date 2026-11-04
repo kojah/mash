@@ -415,6 +415,9 @@ fn assert_views_query_defaults(config: &Path, database: &Path, models: &str) {
                 let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
                 assert_eq!(stage["calls"], stage["completed_calls"]);
                 assert!(stage["items_out"].is_u64());
+                if name == "local-dense" {
+                    assert_eq!(stage["items_in"], 2, "count vectors, not storage chunks");
+                }
             }
         } else {
             assert!(found.get("diagnostics").is_none());

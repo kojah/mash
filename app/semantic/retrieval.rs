@@ -154,7 +154,7 @@ pub(crate) fn local_candidates(
 }
 
 /// Native and connector vectors scored against one query, best first.
-/// Returns the hits and the number of vector chunks scanned.
+/// Returns the hits and the number of vectors admitted by the filters.
 fn dense_candidates(
     storage: &Storage,
     generation: &str,
@@ -170,7 +170,7 @@ fn dense_candidates(
         .in_scope(|| storage.semantic_chunks_filtered(generation, provider, days, filters))?;
     let native = tracing::info_span!("score_vectors")
         .in_scope(|| rank_quantized(query, &native_chunks, limit));
-    let mut scanned = native_chunks.chunks.len();
+    let mut scanned = eligible_vectors(&native_chunks);
     // A provider selection names native history only.
     let connector = if provider.is_none() {
         let chunks = tracing::info_span!("load_connector_vectors").in_scope(|| {
@@ -183,7 +183,7 @@ fn dense_candidates(
                 query.values.len(),
             ))
         })?;
-        scanned += chunks.chunks.len();
+        scanned += eligible_vectors(&chunks);
         rank_quantized(query, &chunks, limit)
     } else {
         Vec::new()
@@ -222,6 +222,14 @@ fn dense_candidates(
         hits.push(hit);
     }
     Ok((hits, scanned))
+}
+
+fn eligible_vectors(chunks: &SemanticChunks) -> usize {
+    chunks
+        .chunks
+        .iter()
+        .map(|chunk| chunk.eligible.iter().filter(|eligible| **eligible).count())
+        .sum()
 }
 
 /// One chunk of connector vectors, shaped like native chunks for shared scoring.
