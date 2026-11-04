@@ -19,7 +19,12 @@ pub(crate) const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;
 pub(crate) const NORMAL_BATCH_TARGET: usize = 1024 * 1024;
 pub(crate) const MAX_BATCH_CONVERSATIONS: usize = 128;
 pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
-pub(crate) const DEFAULT_MAX_DECODED_BYTES: usize = 64 * 1024 * 1024;
+/// The largest decoded publication batch a client builds and asks a server to
+/// accept; servers cap it at their own `max_upload_mib`. Batches group many
+/// chats up to the normal target, so only one very long chat can exceed it:
+/// real agent sessions reach hundreds of megabytes of text, and a chat that
+/// cannot fit would keep its node's shared publication stale forever.
+pub(crate) const DEFAULT_MAX_DECODED_BYTES: usize = 1024 * 1024 * 1024;
 
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct ClientFrame {
@@ -1779,6 +1784,27 @@ mod tests {
                 .iter()
                 .all(|piece| piece.decoded_length <= OVERSIZED_PIECE_TARGET as u64)
         );
+        assert!(decode_publication(&encoded.pieces, DEFAULT_MAX_DECODED_BYTES).is_ok());
+    }
+
+    #[test]
+    fn one_chat_longer_than_the_old_limit_still_publishes() {
+        // Real agent sessions hold well over 64 MiB of text in one chat.
+        let mut event = events();
+        let Event::Batch(protocol::Batch::Messages { records }) = event.remove(1) else {
+            panic!()
+        };
+        let mut message = records.into_iter().next().unwrap();
+        message.content = "y".repeat(40 * 1024 * 1024);
+        message.projection = message.content.clone();
+        let encoded = encode_publication(
+            &[Event::Batch(protocol::Batch::Messages {
+                records: vec![message],
+            })],
+            DEFAULT_MAX_DECODED_BYTES,
+        )
+        .unwrap();
+        assert!(encoded.decoded_bytes > 64 * 1024 * 1024);
         assert!(decode_publication(&encoded.pieces, DEFAULT_MAX_DECODED_BYTES).is_ok());
     }
 
