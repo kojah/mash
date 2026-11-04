@@ -77,6 +77,36 @@ concurrent tests, as the focused runner does. SQLite-heavy tests otherwise
 compete for disk access at host CPU-count concurrency and can exceed their
 existing deadlines even inside the per-job memory budget.
 
+## Local vector retrieval measurements
+
+The ignored `benchmark_local_filtered_vectors` benchmark reads an explicitly
+prepared local index and installed models. It records real quantized query
+vectors, SQL-admitted vector IDs and exact top-20 scores for native and connector
+history. It measures scoring with preloaded vectors separately from the existing
+dense retrieval path, which loads vectors and hydrates the selected hits.
+
+Run it on a frozen corpus copy, with an unused report filename outside Git:
+
+```bash
+agent-test env TMPDIR=/home/james/scratch/achi-tmp \
+  CARGO_TARGET_DIR=/home/james/scratch/achi-targets/integrated \
+  CARGO_INCREMENTAL=0 RUSTC_WRAPPER= \
+  MASH_TEST_MODELS_DIR=/path/to/explicitly-installed/models \
+  MASH_TEST_SEARCH_DB=/path/to/frozen/index.sqlite3 \
+  MASH_TEST_VECTOR_REPORT=/home/james/scratch/mash-artifacts/vector-reference.json \
+  cargo nextest run --release --locked --jobs 4 --lib --run-ignored only \
+  -E 'test(benchmark_local_filtered_vectors)' --no-tests fail --nocapture
+```
+
+The benchmark never installs models or writes the index. The report contains
+private identities and query embeddings; keep it private. Scopes exercise kind,
+date, union, negation and empty filters. Three repetitions per query/scope expose
+warm variation; they do not establish cold-cache latency or confidence intervals.
+All scope buffers stay resident during measurement, so peak benchmark memory is
+not the memory footprint of a normal search. Captured scope-load times include
+both filtering and vector loading. These measurements exclude lexical search,
+fusion, reranking and CLI startup, and do not certify end-to-end performance.
+
 ## Mutation audits
 
 [cargo-mutants](https://mutants.rs/) changes expressions or function bodies in

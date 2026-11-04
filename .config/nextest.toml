@@ -29,6 +29,12 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = 'test(=semantic::models::benchmarks::embedding::benchmark_embedding_worker_budget)'
 slow-timeout = { period = "60s", terminate-after = 3 }
 
+[[profile.default.overrides]]
+# Explicit corpus measurements load several filtered vector sets and repeat real
+# retrieval. They are ignored during normal test runs and remain bounded here.
+filter = 'test(=semantic::retrieval::benchmarks::benchmark_local_filtered_vectors)'
+slow-timeout = { period = "60s", terminate-after = 5 }
+
 [profile.ci]
 fail-fast = false
 test-threads = "num-cpus"

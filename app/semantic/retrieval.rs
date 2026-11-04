@@ -9,6 +9,9 @@ use crate::storage::{SearchHit, SemanticChunks, Storage};
 use crate::views::config::{Fusion, Options};
 use std::collections::HashMap;
 
+#[cfg(test)]
+mod benchmarks;
+
 pub(super) struct QuantizedVector {
     pub(super) values: Vec<u8>,
     pub(super) norm: f32,
