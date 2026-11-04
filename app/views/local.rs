@@ -15,11 +15,14 @@ pub(crate) struct Build {
 }
 
 #[tracing::instrument(name = "views_build", skip_all)]
+/// `connector_only` vouches that only connector silver changed since views
+/// were last certified, so native derived state needs no rebuild.
 pub(crate) fn build(
     storage: &mut Storage,
     models: &Models,
     summary: &crate::silver::IndexSummary,
     build: &crate::views::config::Build,
+    connector_only: bool,
 ) -> Result<Build, AppError> {
     let silver = storage.silver_certificate()?;
     let views_allowed = silver.permits_views();
@@ -31,9 +34,10 @@ pub(crate) fn build(
         .is_some_and(|m| m.build.representations != build.representations);
     // The published views were certified for this recipe, model and silver
     // revision; silver revisions change with every canonical write.
-    let certified_unchanged = previous
-        .as_ref()
-        .is_some_and(|m| m.matches(build, &model, &manifest.silver));
+    let certified_unchanged = connector_only
+        || previous
+            .as_ref()
+            .is_some_and(|m| m.matches(build, &model, &manifest.silver));
     if representations_changed
         || (build != &crate::views::config::Build::default() && !certified_unchanged)
     {

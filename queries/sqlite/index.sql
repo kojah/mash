@@ -273,6 +273,25 @@ SELECT anchor, id, digest FROM connector_units;
 SELECT source AS source_id, id, object_role AS role, parent_id, record FROM objects
 WHERE origin = 'connector' ORDER BY source, id;
 
+-- name: ConnectorConversationObjects :many
+-- Everything grouped under one conversation root (a container or document).
+SELECT id, object_role AS role, parent_id, record FROM objects INDEXED BY objects_conversation
+WHERE conversation_id = sqlc.arg(conversation_id) AND origin = 'connector' AND source = sqlc.arg(source_id);
+
+-- name: ConnectorUnitGroups :many
+SELECT anchor, id, digest, source_id, record_id, group_anchor FROM connector_units;
+
+-- name: ConnectorConversation :one
+SELECT conversation_id FROM objects
+WHERE origin = 'connector' AND source = sqlc.arg(source_id) AND id = sqlc.arg(id);
+
+-- name: ConnectorRoots :many
+-- Containers and documents with a parent: the conversation roots that an
+-- ancestor's rename or move can change.
+SELECT id, parent_id FROM objects
+WHERE origin = 'connector' AND source = sqlc.arg(source_id)
+  AND object_role IN ('container', 'document') AND parent_id IS NOT NULL;
+
 -- name: ConnectorInsertUnit :one
 INSERT INTO connector_units(anchor, role, label, source_id, record_id, group_anchor, created_at, digest)
 VALUES (sqlc.arg(anchor), sqlc.arg(role), sqlc.arg(label), sqlc.arg(source_id), sqlc.arg(record_id),

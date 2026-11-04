@@ -14,6 +14,7 @@ pub(crate) fn pending_snapshot(path: &Path) -> Storage {
         connection,
         writer_active: false,
         search_updates: SearchUpdates::Immediate,
+        connector_scope: None,
     }
 }
 

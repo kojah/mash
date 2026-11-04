@@ -7041,6 +7041,320 @@ impl<'a> ConnectorSilverObjectsBuilder<'a, ()> {
         ConnectorSilverObjects {}
     }
 }
+pub struct ConnectorConversationObjectsRow {
+    pub id: String,
+    pub role: String,
+    pub parent_id: Option<String>,
+    pub record: Option<String>,
+}
+impl ConnectorConversationObjectsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            role: row.get(1)?,
+            parent_id: row.get(2)?,
+            record: row.get(3)?,
+        })
+    }
+}
+pub struct ConnectorConversationObjects<'a> {
+    conversation_id: &'a str,
+    source_id: &'a str,
+}
+impl<'a> ConnectorConversationObjects<'a> {
+    pub const QUERY: &'static str = r"SELECT id, object_role AS role, parent_id, record FROM objects INDEXED BY objects_conversation
+WHERE conversation_id = ?1 AND origin = 'connector' AND source = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorConversationObjects<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorConversationObjectsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorConversationObjectsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id, self.source_id)
+    }
+}
+impl<'a> ConnectorConversationObjects<'a> {
+    pub const fn builder() -> ConnectorConversationObjectsBuilder<'a, ((), ())> {
+        ConnectorConversationObjectsBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorConversationObjectsBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, SourceId> ConnectorConversationObjectsBuilder<'a, ((), SourceId)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ConnectorConversationObjectsBuilder<'a, (&'a str, SourceId)> {
+        let ((), source_id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorConversationObjectsBuilder {
+            fields: (conversation_id, source_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ConversationId> ConnectorConversationObjectsBuilder<'a, (ConversationId, ())> {
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorConversationObjectsBuilder<'a, (ConversationId, &'a str)> {
+        let (conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorConversationObjectsBuilder {
+            fields: (conversation_id, source_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorConversationObjectsBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorConversationObjects<'a> {
+        let (conversation_id, source_id) = self.fields;
+        ConnectorConversationObjects {
+            conversation_id,
+            source_id,
+        }
+    }
+}
+pub struct ConnectorUnitGroupsRow {
+    pub anchor: String,
+    pub id: i64,
+    pub digest: Vec<u8>,
+    pub source_id: String,
+    pub record_id: String,
+    pub group_anchor: String,
+}
+impl ConnectorUnitGroupsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            anchor: row.get(0)?,
+            id: row.get(1)?,
+            digest: row.get(2)?,
+            source_id: row.get(3)?,
+            record_id: row.get(4)?,
+            group_anchor: row.get(5)?,
+        })
+    }
+}
+pub struct ConnectorUnitGroups;
+impl ConnectorUnitGroups {
+    pub const QUERY: &'static str =
+        r"SELECT anchor, id, digest, source_id, record_id, group_anchor FROM connector_units";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorUnitGroups {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorUnitGroupsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorUnitGroupsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorUnitGroups {
+    pub const fn builder() -> ConnectorUnitGroupsBuilder<'static, ()> {
+        ConnectorUnitGroupsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorUnitGroupsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorUnitGroupsBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorUnitGroups {
+        let () = self.fields;
+        ConnectorUnitGroups {}
+    }
+}
+pub struct ConnectorConversationRow {
+    pub conversation_id: String,
+}
+impl ConnectorConversationRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            conversation_id: row.get(0)?,
+        })
+    }
+}
+pub struct ConnectorConversation<'a> {
+    source_id: &'a str,
+    id: &'a str,
+}
+impl<'a> ConnectorConversation<'a> {
+    pub const QUERY: &'static str = r"SELECT conversation_id FROM objects
+WHERE origin = 'connector' AND source = ?1 AND id = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorConversation<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ConnectorConversationRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorConversationRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorConversationRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorConversationRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id, self.id)
+    }
+}
+impl<'a> ConnectorConversation<'a> {
+    pub const fn builder() -> ConnectorConversationBuilder<'a, ((), ())> {
+        ConnectorConversationBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorConversationBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Id> ConnectorConversationBuilder<'a, ((), Id)> {
+    pub fn source_id(self, source_id: &'a str) -> ConnectorConversationBuilder<'a, (&'a str, Id)> {
+        let ((), id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorConversationBuilder {
+            fields: (source_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId> ConnectorConversationBuilder<'a, (SourceId, ())> {
+    pub fn id(self, id: &'a str) -> ConnectorConversationBuilder<'a, (SourceId, &'a str)> {
+        let (source_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorConversationBuilder {
+            fields: (source_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorConversationBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorConversation<'a> {
+        let (source_id, id) = self.fields;
+        ConnectorConversation { source_id, id }
+    }
+}
+pub struct ConnectorRootsRow {
+    pub id: String,
+    pub parent_id: Option<String>,
+}
+impl ConnectorRootsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            parent_id: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorRoots<'a> {
+    source_id: &'a str,
+}
+impl<'a> ConnectorRoots<'a> {
+    pub const QUERY: &'static str = r"SELECT id, parent_id FROM objects
+WHERE origin = 'connector' AND source = ?1
+  AND object_role IN ('container', 'document') AND parent_id IS NOT NULL";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorRoots<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorRootsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorRootsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id,)
+    }
+}
+impl<'a> ConnectorRoots<'a> {
+    pub const fn builder() -> ConnectorRootsBuilder<'a, ((),)> {
+        ConnectorRootsBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorRootsBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorRootsBuilder<'a, ((),)> {
+    pub fn source_id(self, source_id: &'a str) -> ConnectorRootsBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRootsBuilder {
+            fields: (source_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorRootsBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ConnectorRoots<'a> {
+        let (source_id,) = self.fields;
+        ConnectorRoots { source_id }
+    }
+}
 pub struct ConnectorInsertUnitRow {
     pub id: i64,
 }

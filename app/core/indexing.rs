@@ -230,7 +230,7 @@ fn index(
             0,
         ),
     };
-    let views = views::build(&mut storage, &models, &summary, build)?;
+    let views = views::build(&mut storage, &models, &summary, build, false)?;
     let counts = views.counts;
     let embeddings = views.embeddings;
     storage.commit_writer()?;

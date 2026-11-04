@@ -44,6 +44,7 @@ impl Storage {
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
+            connector_scope: None,
         })
     }
 
@@ -85,6 +86,7 @@ impl Storage {
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
+            connector_scope: None,
         };
         Ok(StatusSnapshot {
             lexical: storage.lexical_manifest()?,

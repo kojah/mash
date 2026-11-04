@@ -95,6 +95,7 @@ fn failed_dense_build_preserves_silver_and_publishes_completed_lexical_artifact(
         &models,
         &fixture.source.summary,
         &crate::views::config::Build::default(),
+        false,
     )
     .err()
     .unwrap();
@@ -141,7 +142,14 @@ fn lexical_only_build_is_model_free_and_replaces_dense_storage() {
     };
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
     let silver = storage.silver_certificate().unwrap();
-    let result = build(&mut storage, &models, &fixture.source.summary, &recipe).unwrap();
+    let result = build(
+        &mut storage,
+        &models,
+        &fixture.source.summary,
+        &recipe,
+        false,
+    )
+    .unwrap();
     assert!(result.ready);
     assert_eq!(result.model_load_milliseconds, 0);
     assert_eq!(result.embeddings.model_inferences, 0);
@@ -164,7 +172,14 @@ fn enabling_dense_after_deferred_refresh_queues_unchanged_history() {
         ..Default::default()
     };
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
-    build(&mut storage, &models, &fixture.source.summary, &lexical).unwrap();
+    build(
+        &mut storage,
+        &models,
+        &fixture.source.summary,
+        &lexical,
+        false,
+    )
+    .unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
@@ -174,6 +189,7 @@ fn enabling_dense_after_deferred_refresh_queues_unchanged_history() {
         &models,
         &fixture.source.summary,
         &crate::views::config::Build::default(),
+        false,
     )
     .err()
     .unwrap();
@@ -203,7 +219,14 @@ fn artifact_switch_replaces_dense_views_over_unchanged_silver() {
         let silver = storage.silver_certificate().unwrap();
         // Provider refreshes defer deltas even when no canonical text changed.
         storage.defer_derived_updates().unwrap();
-        let result = build(&mut storage, &models, &fixture.source.summary, &recipe).unwrap();
+        let result = build(
+            &mut storage,
+            &models,
+            &fixture.source.summary,
+            &recipe,
+            false,
+        )
+        .unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.embeddings, recipe.expected_embeddings(1));
         assert_eq!(
@@ -221,6 +244,10 @@ fn artifact_switch_replaces_dense_views_over_unchanged_silver() {
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one recipe switch is checked end to end across every view"
+)]
 fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
     use crate::views::config::{Build as Recipe, EmbeddingText};
     let fixture = fixture(false);
@@ -255,7 +282,14 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
                     .is_err()
             );
         }
-        let result = build(&mut storage, &models, &fixture.source.summary, recipe).unwrap();
+        let result = build(
+            &mut storage,
+            &models,
+            &fixture.source.summary,
+            recipe,
+            false,
+        )
+        .unwrap();
         assert!(result.ready);
         assert_eq!(result.embeddings.model_inferences, 1);
         storage.commit_writer().unwrap();
@@ -337,7 +371,8 @@ fn incremental_views_preserves_vectors_and_reopened_views_recovers_without_sourc
                 &mut storage,
                 &models,
                 &fixture.source.summary,
-                &crate::views::config::Build::default()
+                &crate::views::config::Build::default(),
+                false
             )
             .unwrap()
             .ready
@@ -374,6 +409,7 @@ fn incremental_views_preserves_vectors_and_reopened_views_recovers_without_sourc
             &models,
             &source.summary,
             &crate::views::config::Build::default(),
+            false,
         )
         .unwrap();
         assert!(result.ready);
@@ -419,6 +455,7 @@ fn views_rebuild_from_stored_history_survives_source_removal_and_is_idempotent()
             &models,
             &fixture.source.summary,
             &crate::views::config::Build::default(),
+            false,
         )
         .unwrap();
         assert!(result.ready);
@@ -461,6 +498,7 @@ fn rejected_source_allows_views_over_complete_stored_vectors() {
         &models,
         &fixture.source.summary,
         &crate::views::config::Build::default(),
+        false,
     )
     .unwrap();
     assert_eq!(result.counts.embeddings, result.counts.searchable_messages);
@@ -496,7 +534,8 @@ fn rejected_sources_do_not_block_retained_history_or_valid_incremental_changes()
                 &mut storage,
                 &models,
                 summary.as_ref().unwrap_or(&fixture.source.summary),
-                &recipe
+                &recipe,
+                false
             )
             .unwrap()
             .ready
@@ -528,9 +567,10 @@ fn traced_build(
     recipe: &crate::views::config::Build,
 ) -> (bool, std::collections::BTreeSet<String>) {
     let (bytes, dispatcher) = crate::observability::test_support::capture();
-    let result =
-        tracing::dispatcher::with_default(&dispatcher, || build(storage, models, summary, recipe))
-            .unwrap();
+    let result = tracing::dispatcher::with_default(&dispatcher, || {
+        build(storage, models, summary, recipe, false)
+    })
+    .unwrap();
     let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
     let spans = output
         .lines()

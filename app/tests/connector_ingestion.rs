@@ -278,3 +278,105 @@ fn later_deliveries_are_searchable_at_once_and_never_take_search_down() {
     );
     assert!(!models.exists());
 }
+
+/// Each connector unit's anchor and digest, as views hold them.
+fn connector_units(root: &Path) -> Vec<(String, Vec<u8>)> {
+    let views = Connection::open(root.join("silver.views.sqlite3")).unwrap();
+    let mut statement = views
+        .prepare("SELECT anchor, digest FROM connector_units ORDER BY anchor")
+        .unwrap();
+    statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+#[test]
+fn scoped_refreshes_match_a_full_rebuild_through_renames_moves_and_nesting() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let config = root.join("config.toml");
+    std::fs::write(
+        &config,
+        "version=1\n[providers]\n[index]\ndestination='local'\n\
+         [views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
+    )
+    .unwrap();
+    let database = root.join("silver.sqlite3");
+    let models = root.join("models");
+    let input = root.join("batch.json");
+    let source = "chat:team";
+    let deliver = |name: &str, revision: u64, changes: Value| {
+        let batch = serde_json::json!({
+            "schema_version": 2, "source_id": source, "batch_id": name,
+            "expected_revision": revision, "changes": changes
+        });
+        std::fs::write(&input, serde_json::to_vec(&batch).unwrap()).unwrap();
+        let output = ingest(&database, &config, &input, &models);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let receipt: mash::connectors::Receipt = serde_json::from_slice(&output.stdout).unwrap();
+        receipt.views_ready
+    };
+    let container = |id: &str, title: &str, parent: Option<&str>| {
+        let mut object = serde_json::json!({"op":"upsert-object","id":id,"role":"container",
+            "kind":"chat:channel","title":title});
+        if let Some(parent) = parent {
+            object["parent"] = parent.into();
+        }
+        object
+    };
+    let entry = |id: &str, parent: &str, text: &str, at: i64| {
+        serde_json::json!({"op":"upsert-object","id":id,"role":"entry","kind":"chat:message",
+            "parent":parent,"content":text,"created_at":at,"author":{"id":"a","kind":"human"}})
+    };
+    deliver(
+        "1",
+        0,
+        serde_json::json!([
+            container("general", "General", None),
+            container("random", "Random", None),
+            entry("m1", "general", "first message", 10),
+            entry("m2", "general", "second message", 30)
+        ]),
+    );
+    run(&database, &config, &models, &["index"]);
+    let steps = [
+        // A new, older message shifts the positions of later ones.
+        serde_json::json!([
+            container("general", "General", None),
+            entry("m0", "general", "earlier message", 5)
+        ]),
+        // Renaming a channel changes every message's ancestry in it.
+        serde_json::json!([container("general", "General chat", None)]),
+        // A thread moves to another channel with its reply.
+        serde_json::json!([
+            entry("m3", "m1", "a reply", 40),
+            entry("m1", "random", "first message", 10)
+        ]),
+        // A nested channel under one that is then renamed.
+        serde_json::json!([
+            container("nested", "Nested", Some("random")),
+            entry("n1", "nested", "nested message", 50)
+        ]),
+        serde_json::json!([container("random", "Random things", None)]),
+        // Re-sending an unchanged channel changes nothing.
+        serde_json::json!([container("general", "General chat", None)]),
+    ];
+    for (revision, changes) in steps.into_iter().enumerate() {
+        let revision = u64::try_from(revision).unwrap() + 1;
+        assert!(deliver(&format!("step-{revision}"), revision, changes));
+        let scoped = connector_units(root);
+        run(
+            &database,
+            &config,
+            &models,
+            &["index", "--rebuild-local-views", "--full"],
+        );
+        assert_eq!(scoped, connector_units(root), "after step {revision}");
+    }
+}

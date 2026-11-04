@@ -70,7 +70,7 @@ fn parent_units_replace_only_views_and_recover_after_missing_model_build() {
         let mut storage = Storage::open_writer(&database).unwrap();
         if recipe == &parent {
             let missing = Models::new(directory.path().join("absent"));
-            assert!(build(&mut storage, &missing, &source.summary, recipe).is_err());
+            assert!(build(&mut storage, &missing, &source.summary, recipe, false).is_err());
             assert!(
                 storage
                     .require_views_build(recipe, &models.generation())
@@ -78,7 +78,7 @@ fn parent_units_replace_only_views_and_recover_after_missing_model_build() {
             );
             assert_eq!(storage.silver_certificate().unwrap(), silver);
         }
-        let result = build(&mut storage, &models, &source.summary, recipe).unwrap();
+        let result = build(&mut storage, &models, &source.summary, recipe, false).unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.embeddings, 2);
         assert_eq!(storage.silver_certificate().unwrap(), silver);
@@ -146,7 +146,7 @@ fn parent_edits_reembed_unchanged_child_anchors() {
         std::fs::remove_dir_all(&root).unwrap();
         let mut storage = Storage::open_writer(&database).unwrap();
         revisions.push(storage.silver_certificate().unwrap().revision);
-        let result = build(&mut storage, &models, &source.summary, &recipe).unwrap();
+        let result = build(&mut storage, &models, &source.summary, &recipe, false).unwrap();
         assert!(result.ready);
         assert_eq!(result.embeddings.model_inferences, 2);
         storage.commit_writer().unwrap();
@@ -182,7 +182,7 @@ fn users_only_empty_eligibility_builds_offline_without_inference() {
         retrieval_unit: crate::views::config::RetrievalUnit::ParentAndMessage,
         ..Default::default()
     };
-    let result = build(&mut storage, &models, &source.summary, &recipe).unwrap();
+    let result = build(&mut storage, &models, &source.summary, &recipe, false).unwrap();
     assert!(result.ready);
     assert_eq!(result.embeddings.model_inferences, 0);
     assert_eq!(result.counts.embeddings, 0);
@@ -228,7 +228,7 @@ fn dense_content_switches_edits_and_forget_preserve_canonical_silver_and_lexical
             ..Default::default()
         };
         let mut storage = Storage::open_writer(&database).unwrap();
-        let result = build(&mut storage, &models, &source.summary, &recipe).unwrap();
+        let result = build(&mut storage, &models, &source.summary, &recipe, false).unwrap();
         assert!(result.ready);
         assert_eq!(
             result.counts.embeddings,
@@ -266,6 +266,7 @@ fn dense_content_switches_edits_and_forget_preserve_canonical_silver_and_lexical
         &Models::new(directory.path().join("absent-models")),
         &edited.summary,
         &recipe,
+        false,
     )
     .unwrap();
     assert!(result.ready);

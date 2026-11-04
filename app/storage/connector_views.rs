@@ -178,31 +178,99 @@ pub(crate) fn evidence(
     Ok(Some(Evidence { object, ancestors }))
 }
 
+/// Conversation roots, by source and object ID, a scoped refresh covers.
+pub(crate) type Conversations = std::collections::BTreeSet<(String, String)>;
+
+struct Row {
+    role: Role,
+    parent: Option<String>,
+    object: Object,
+}
+
+impl Row {
+    fn new(role: &str, parent: Option<String>, record: Option<&str>) -> Result<Self, AppError> {
+        Ok(Self {
+            role: parse_role(role)
+                .ok_or_else(|| AppError::database_data("stored connector role is invalid"))?,
+            parent,
+            object: decode(record)?,
+        })
+    }
+}
+
 /// Every searchable unit that connector silver currently holds.
 pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppError> {
-    struct Row {
-        role: Role,
-        parent: Option<String>,
-        object: Object,
-    }
     let mut objects = HashMap::new();
     for row in sql::ConnectorSilverObjects
         .query_many(connection)
         .map_err(AppError::database)?
     {
-        let role = parse_role(&row.role)
-            .ok_or_else(|| AppError::database_data("stored connector role is invalid"))?;
         objects.insert(
             (row.source_id, row.id),
-            Row {
-                role,
-                parent: row.parent_id,
-                object: decode(row.record.as_deref())?,
-            },
+            Row::new(&row.role, row.parent_id, row.record.as_deref())?,
         );
     }
+    units(&objects, None)
+}
+
+/// The units of the given conversations only, identical to the units
+/// `silver_units` gives them: entries are ordered within their conversation,
+/// and a root's ancestors are loaded for ancestry but yield no units.
+pub(crate) fn conversation_units(
+    connection: &Connection,
+    conversations: &Conversations,
+) -> Result<Vec<Unit>, AppError> {
+    let mut objects = HashMap::new();
+    let mut emit = std::collections::HashSet::new();
+    for (source_id, root) in conversations {
+        for row in sql::ConnectorConversationObjects::builder()
+            .conversation_id(root)
+            .source_id(source_id)
+            .build()
+            .query_many(connection)
+            .map_err(AppError::database)?
+        {
+            emit.insert((source_id.clone(), row.id.clone()));
+            objects.insert(
+                (source_id.clone(), row.id),
+                Row::new(&row.role, row.parent_id, row.record.as_deref())?,
+            );
+        }
+        let mut current = objects
+            .get(&(source_id.clone(), root.clone()))
+            .and_then(|row| row.parent.clone());
+        while let Some(parent) = current.take() {
+            let key = (source_id.clone(), parent.clone());
+            if let Some(row) = objects.get(&key) {
+                current.clone_from(&row.parent);
+                continue;
+            }
+            let Some(row) = sql::ConnectorObject::builder()
+                .source_id(source_id)
+                .id(&parent)
+                .build()
+                .query_opt(connection)
+                .map_err(AppError::database)?
+            else {
+                break;
+            };
+            let row = Row::new(&row.role, row.parent_id, row.record.as_deref())?;
+            current.clone_from(&row.parent);
+            objects.insert(key, row);
+        }
+    }
+    units(&objects, Some(&emit))
+}
+
+fn units(
+    objects: &HashMap<(String, String), Row>,
+    emit: Option<&std::collections::HashSet<(String, String)>>,
+) -> Result<Vec<Unit>, AppError> {
     let mut units = Vec::new();
-    for ((source_id, id), row) in &objects {
+    for ((source_id, id), row) in objects {
+        if emit.is_some_and(|emit| !emit.contains(&(source_id.clone(), id.clone()))) {
+            continue;
+        }
         let content = match (row.role, row.object.content.as_deref()) {
             (Role::Entry | Role::Document, Some(content)) if !content.trim().is_empty() => content,
             _ => continue,
@@ -300,17 +368,114 @@ fn order_entries(units: &mut [Unit]) {
 }
 
 impl Storage {
+    /// The conversations a just-committed batch can have changed units in:
+    /// where its objects sit now and sat before (by their existing units), and
+    /// every container or document nested under one of them. `None` when only
+    /// a full comparison is safe: deletions and complete snapshots can remove
+    /// whole subtrees, including nested conversations.
+    pub(crate) fn connector_conversations_touched(
+        &self,
+        batch: &crate::connectors::Batch,
+    ) -> Result<Option<Conversations>, AppError> {
+        use crate::connectors::{Change, Trigger};
+        if matches!(batch.trigger, Some(Trigger::CompleteSnapshot))
+            || batch
+                .changes
+                .iter()
+                .any(|change| matches!(change, Change::DeleteObject { .. }))
+        {
+            return Ok(None);
+        }
+        let source = batch.source_id.as_str();
+        let ids: std::collections::HashSet<&str> = batch
+            .changes
+            .iter()
+            .filter_map(|change| match change {
+                Change::UpsertObject(object) => Some(object.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let mut touched = Conversations::new();
+        for id in &ids {
+            if let Some(row) = sql::ConnectorConversation::builder()
+                .source_id(source)
+                .id(id)
+                .build()
+                .query_opt(&self.connection)
+                .map_err(AppError::database)?
+            {
+                touched.insert((source.to_owned(), row.conversation_id));
+            }
+        }
+        // A moved object's units still sit in its previous conversation.
+        for row in sql::ConnectorUnitGroups
+            .query_many(&self.connection)
+            .map_err(AppError::database)?
+        {
+            if row.source_id == source
+                && ids.contains(row.record_id.as_str())
+                && let Some((_, unit_source, root)) = parse_anchor(&row.group_anchor)
+            {
+                touched.insert((unit_source.to_owned(), root.to_owned()));
+            }
+        }
+        // Renaming or moving an ancestor changes nested conversations' ancestry.
+        for root in sql::ConnectorRoots::builder()
+            .source_id(source)
+            .build()
+            .query_many(&self.connection)
+            .map_err(AppError::database)?
+        {
+            let mut current = root.parent_id;
+            while let Some(parent) = current.take() {
+                if ids.contains(parent.as_str()) {
+                    touched.insert((source.to_owned(), root.id.clone()));
+                    break;
+                }
+                current = sql::ConnectorObject::builder()
+                    .source_id(source)
+                    .id(&parent)
+                    .build()
+                    .query_opt(&self.connection)
+                    .map_err(AppError::database)?
+                    .and_then(|row| row.parent_id);
+            }
+        }
+        Ok(Some(touched))
+    }
+
+    /// Limit the next connector unit refresh to these conversations. The
+    /// caller vouches that nothing outside them changed since views were last
+    /// certified; without a scope every connector unit is compared.
+    pub(crate) fn scope_connector_refresh(&mut self, conversations: Conversations) {
+        self.connector_scope = Some(conversations);
+    }
+
     /// Bring connector units, their FTS rows and vector invalidation in line
     /// with connector silver. Runs inside the views build's writer.
     pub(crate) fn sync_connector_units(&mut self) -> Result<(), AppError> {
         self.require_writer()?;
-        let mut known = sql::ConnectorUnitDigests
+        let scope = self.connector_scope.take();
+        let mut known = HashMap::new();
+        for row in sql::ConnectorUnitGroups
             .query_many(&self.connection)
             .map_err(AppError::database)?
-            .into_iter()
-            .map(|row| (row.anchor, (row.id, row.digest)))
-            .collect::<HashMap<_, _>>();
-        for unit in silver_units(&self.connection)? {
+        {
+            // A scoped refresh owns only the units of its conversations.
+            let owned = scope.as_ref().is_none_or(|scope| {
+                parse_anchor(&row.group_anchor).is_some_and(|(_, source, root)| {
+                    scope.contains(&(source.to_owned(), root.to_owned()))
+                })
+            });
+            if owned {
+                known.insert(row.anchor, (row.id, row.digest));
+            }
+        }
+        let units = match &scope {
+            Some(scope) => conversation_units(&self.connection, scope)?,
+            None => silver_units(&self.connection)?,
+        };
+        for unit in units {
             let digest = blake3::hash(unit_digest_input(&unit).as_bytes())
                 .as_bytes()
                 .to_vec();

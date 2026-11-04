@@ -578,6 +578,8 @@ impl Storage {
     }
 
     pub(crate) fn rebuild_derived_search_state(&mut self) -> Result<(), AppError> {
+        // Every connector unit is rebuilt below, so a scope no longer applies.
+        self.connector_scope = None;
         self.rebuild_fts(true)?;
         self.connection
             .execute_batch(

@@ -53,6 +53,8 @@ pub(crate) struct Storage {
     connection: Connection,
     writer_active: bool,
     search_updates: SearchUpdates,
+    /// A one-shot scope for the next connector unit refresh.
+    connector_scope: Option<connector_views::Conversations>,
 }
 
 /// Native entries inserted and deleted since the writer transaction began,
@@ -288,6 +290,7 @@ impl Storage {
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
+            connector_scope: None,
         })
     }
 

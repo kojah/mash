@@ -101,6 +101,18 @@ impl Store {
         Ok(receipt)
     }
 
+    /// The silver revision, which every canonical write advances.
+    ///
+    /// # Errors
+    /// Returns an error for storage failures.
+    pub fn silver_revision(&self) -> Result<u64, Error> {
+        let revision = sql::ConnectorSilverRevision
+            .query_one(&self.connection)
+            .map_err(database)?
+            .revision;
+        u64::try_from(revision).map_err(|_| Error::CorruptRecord)
+    }
+
     /// Fetch one canonical object by source and identity; this is not search.
     ///
     /// # Errors
