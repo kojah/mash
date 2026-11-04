@@ -28,14 +28,7 @@ pub(crate) fn hybrid_search_filtered(
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<Vec<SearchHit>, AppError> {
     let (provider, days) = legacy;
-    let Options {
-        unit,
-        fusion,
-        ranking,
-        shared_vector_search: _,
-        output_redaction: _,
-    } = options;
-    let candidate_limit = unit.candidate_limit();
+    let candidate_limit = options.unit.candidate_limit();
     let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {
         tracing::info_span!("lexical_candidates")
             .in_scope(|| storage.search_filtered(query, candidate_limit, provider, days, filters))
@@ -55,6 +48,23 @@ pub(crate) fn hybrid_search_filtered(
     )?;
     dense_stage.complete(Some(scanned), Some(semantic_hits.len()));
     drop(dense_stage);
+    finish_hybrid(storage, backend, query, options, lexical, semantic_hits)
+}
+
+fn finish_hybrid(
+    storage: &Storage,
+    backend: &mut Backend,
+    query: &str,
+    options: Options,
+    lexical: Vec<SearchHit>,
+    semantic_hits: Vec<SearchHit>,
+) -> Result<Vec<SearchHit>, AppError> {
+    let Options {
+        unit,
+        fusion,
+        ranking,
+        ..
+    } = options;
     if semantic_hits.is_empty() {
         let mut lexical = lexical;
         crate::search_ranking::favour_recent(&mut lexical, fusion);
@@ -203,6 +213,13 @@ fn dense_candidates(
             .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
     });
     ranked.truncate(limit);
+    Ok((hydrate_ranked(storage, ranked)?, scanned))
+}
+
+fn hydrate_ranked(
+    storage: &Storage,
+    ranked: Vec<(bool, i64, f32)>,
+) -> Result<Vec<SearchHit>, AppError> {
     // Hydrate connector hits together: they share per-container positions.
     let connector_ids = ranked
         .iter()
@@ -224,7 +241,7 @@ fn dense_candidates(
         hit.semantic_score = Some(score);
         hits.push(hit);
     }
-    Ok((hits, scanned))
+    Ok(hits)
 }
 
 fn eligible_vectors(chunks: &SemanticChunks) -> usize {

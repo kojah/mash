@@ -35,6 +35,12 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = 'test(=semantic::retrieval::benchmarks::benchmark_local_filtered_vectors)'
 slow-timeout = { period = "60s", terminate-after = 5 }
 
+[[profile.default.overrides]]
+# Manual corpus replay compares exact and ANN candidates through contextual
+# reranking in both orders; it remains ignored in ordinary runs.
+filter = 'test(=semantic::retrieval::benchmarks::pipeline::benchmark_local_ann_pipeline)'
+slow-timeout = { period = "60s", terminate-after = 10 }
+
 [profile.ci]
 fail-fast = false
 test-threads = "num-cpus"

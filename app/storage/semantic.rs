@@ -455,7 +455,7 @@ impl Storage {
         Ok(result)
     }
 
-    fn filtered_semantic_rowids(
+    pub(crate) fn filtered_semantic_rowids(
         &self,
         scope: &crate::search_filter::Scope,
     ) -> Result<std::collections::HashSet<i64>, AppError> {

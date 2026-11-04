@@ -8,6 +8,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
+mod pipeline;
+
 const QUERIES: [&str; 7] = [
     "deploy plan",
     "SQLite indexing performance",

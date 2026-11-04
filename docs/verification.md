@@ -107,6 +107,26 @@ not the memory footprint of a normal search. Captured scope-load times include
 both filtering and vector loading. These measurements exclude lexical search,
 fusion, reranking and CLI startup, and do not certify end-to-end performance.
 
+`benchmark_local_ann_pipeline` replays private ANN candidate files through the
+same local hydration, fusion, diversification, contextual reranking and result
+collection functions. It uses the message/chat candidate limits (50/200),
+flexible lexical matching and a first page of 20 results. Supply the candidate
+JSON files as an OS path-separated `MASH_TEST_ANN_INPUTS` list, plus a new private
+`MASH_TEST_PIPELINE_REPORT` path and the same model/corpus variables above. Select
+`test(benchmark_local_ann_pipeline)` in the optimized nextest command. This
+ignored manual benchmark has a ten-minute bound.
+
+The replay records actual warm-process SQLite pipeline time and estimates ANN
+pipeline time by adding captured ANN retrieval, canonical vector rescoring and
+scope preparation to the measured shared pipeline work. The USearch estimate
+also includes measured SQLite ID prefiltering; the Edge payload path uses its
+indexed predicate. Index opening, process startup and publication/freshness
+machinery are outside this estimate. Keep candidate-generation source hashes and
+the frozen corpus with reports. Compare ordered result IDs and supporting IDs
+alongside timing; overlap measures agreement with the existing search, rather
+than human relevance. The small-set exhaustive adapter is a control and must
+preserve the exact pipeline's result identities and supporting evidence.
+
 ## Mutation audits
 
 [cargo-mutants](https://mutants.rs/) changes expressions or function bodies in
