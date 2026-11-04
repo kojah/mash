@@ -2,8 +2,9 @@
 
 The reader implements the `IMessage` protocol against Apple's schema: `chat`,
 `handle` and `message`, with Apple's 2001-01-01 epoch. Bodies come from `text`
-or, when Apple stores them only as attributed body, are left empty rather than
-guessed: a missing body is not a deletion and must not invent text. Callers copy
+or, as on current macOS where most messages leave `text` empty, from the plain
+string inside the `attributedBody` NSAttributedString archive. A body neither
+holds stays empty rather than guessed: a missing body is not a deletion. Callers copy
 the database (plus -wal/-shm) before opening it; nothing here writes.
 """
 
@@ -68,7 +69,7 @@ class SqliteIMessage:
         return Post(
             id=row["guid"],
             chat_id=chat_id,
-            content=row["text"] or "",
+            content=row["text"] or attributed_text(row["attributedBody"]) or "",
             sender=sender,
             created_at=created,
             updated_at=created,
@@ -78,7 +79,7 @@ class SqliteIMessage:
 
     def history(self, chat: Conversation, *, since: datetime | None) -> AsyncIterator[Post]:
         rows = self.connection.execute(
-            "SELECT m.guid, m.text, m.date, m.is_from_me, m.associated_message_guid,"
+            "SELECT m.guid, m.text, m.attributedBody, m.date, m.is_from_me, m.associated_message_guid,"
             " h.id AS handle FROM message m"
             " JOIN chat_message_join j ON j.message_id = m.ROWID"
             " LEFT JOIN handle h ON h.ROWID = m.handle_id"
@@ -93,7 +94,7 @@ class SqliteIMessage:
 
     async def message(self, chat_id: str, id: str) -> Post:
         row = self.connection.execute(
-            "SELECT m.guid, m.text, m.date, m.is_from_me, m.associated_message_guid,"
+            "SELECT m.guid, m.text, m.attributedBody, m.date, m.is_from_me, m.associated_message_guid,"
             " h.id AS handle FROM message m"
             " LEFT JOIN handle h ON h.ROWID = m.handle_id WHERE m.guid = ?",
             (id,),
@@ -109,6 +110,36 @@ class SqliteIMessage:
 async def _iterator(items):
     for item in items:
         yield item
+
+
+def attributed_text(blob: bytes | None) -> str | None:
+    """The string of an NSAttributedString typedstream, or None if not found.
+
+    The archive names the class `NSString`, then after a `+` type marker holds
+    the UTF-8 bytes with a length: one byte, or 0x81 and two little-endian
+    bytes, or 0x82 and four.
+    """
+    if not blob:
+        return None
+    start = blob.find(b"NSString")
+    if start < 0:
+        return None
+    marker = blob.find(b"+", start + len(b"NSString"))
+    if marker < 0 or marker + 1 >= len(blob):
+        return None
+    offset = marker + 1
+    length = blob[offset]
+    offset += 1
+    if length == 0x81:
+        length = int.from_bytes(blob[offset : offset + 2], "little")
+        offset += 2
+    elif length == 0x82:
+        length = int.from_bytes(blob[offset : offset + 4], "little")
+        offset += 4
+    text = blob[offset : offset + length]
+    if len(text) != length:
+        return None
+    return text.decode("utf-8", "replace")
 
 
 def _moment(value: int | None) -> datetime | None:

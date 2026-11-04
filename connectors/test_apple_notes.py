@@ -31,7 +31,8 @@ def string_field(number: int, text: str | bytes) -> bytes:
 
 def note_blob(text: str) -> bytes:
     note = string_field(2, text)
-    document = string_field(2, note)
+    # Real documents carry a version (1) and the note at 3, not 2.
+    document = b"\x08\x00\x10\x00" + string_field(3, note)
     return gzip.compress(string_field(2, document))
 
 
@@ -68,6 +69,26 @@ class AppleNotesTests(unittest.TestCase):
         self.assertEqual(note.kind, "apple-notes:note")
         self.assertEqual(note.title, "Shopping")
         self.assertEqual(note.metadata["folder"], "Notes")
+
+    def test_current_macos_column_names_supply_dates_and_folders(self) -> None:
+        path = self.settings.database.with_name("Modern.sqlite")
+        con = sqlite3.connect(path)
+        con.executescript(
+            "CREATE TABLE ZICCLOUDSYNCINGOBJECT (Z_PK INTEGER PRIMARY KEY,"
+            " ZIDENTIFIER TEXT, ZTITLE1 TEXT, ZTITLE2 TEXT, ZCREATIONDATE1 REAL,"
+            " ZCREATIONDATE3 REAL, ZMODIFICATIONDATE1 REAL, ZFOLDER INTEGER);"
+            "CREATE TABLE ZICNOTEDATA (Z_PK INTEGER PRIMARY KEY, ZNOTE INTEGER, ZDATA BLOB);"
+            "INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (1,'folder',NULL,'Work',NULL,NULL,NULL,NULL);"
+            "INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (2,'note-b','Plan',NULL,NULL,10,20,1);"
+        )
+        con.execute("INSERT INTO ZICNOTEDATA VALUES (1,2,?)", (note_blob("ship it"),))
+        con.commit()
+        con.close()
+        (note,) = notes(Settings(database=path, account="james"))
+        self.assertEqual(note.content, "ship it")
+        self.assertEqual(note.metadata["folder"], "Work")
+        self.assertEqual(note.created_at, 978307210000)
+        self.assertEqual(note.updated_at, 978307220000)
 
     def test_dates_use_the_apple_epoch_in_milliseconds(self) -> None:
         (note,) = notes(self.settings)

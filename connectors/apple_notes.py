@@ -2,12 +2,12 @@
 
 A note is a Document (authorless, standalone text). Apple stores the body in
 `ZICNOTEDATA.ZDATA` as gzip of a protobuf whose text sits at
-document(2).note(2).note_text(2); the walk below follows that path and returns
+document(2).note(3).note_text(2); the walk below follows that path and returns
 empty text rather than guessing when a blob does not match. Callers copy the
 database (plus -wal/-shm) before opening it; nothing here writes.
 
-Real note blobs live behind macOS Full Disk Access, so the reader is verified
-against synthetic blobs with the same shape until fixtures can be captured.
+The path was checked against a real macOS 26 NoteStore (805 notes); the tests
+use synthetic blobs of that shape, since real ones hold private notes.
 """
 
 import gzip
@@ -72,7 +72,7 @@ def field(data: bytes, number: int) -> bytes | None:
 
 
 def note_text(blob: bytes) -> str:
-    """Decode document(2) -> note(2) -> note_text(2)."""
+    """Decode document(2) -> note(3) -> note_text(2)."""
     try:
         raw = gzip.decompress(blob)
     except OSError:
@@ -80,7 +80,7 @@ def note_text(blob: bytes) -> str:
     document = field(raw, 2)
     if document is None:
         return ""
-    note = field(document, 2)
+    note = field(document, 3)
     if note is None:
         return ""
     text = field(note, 2)
@@ -93,14 +93,34 @@ def _moment(value: float | None) -> int | None:
     return int((APPLE_EPOCH + timedelta(seconds=value)).timestamp() * 1000)
 
 
+def _newest(columns: set[str], table: str, *names: str) -> str:
+    """The first of `names` this database has, as SQL; NULL if none."""
+    present = [f"{table}.{name}" for name in names if name in columns]
+    return (
+        f"COALESCE({', '.join(present)})"
+        if len(present) > 1
+        else (present or ["NULL"])[0]
+    )
+
+
 def notes(settings: Settings) -> list[Object]:
     connection = sqlite3.connect(f"file:{settings.database}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
+        # macOS renames these columns between releases; use the newest present.
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(ZICCLOUDSYNCINGOBJECT)")
+        }
+        created = _newest(
+            columns, "n", "ZCREATIONDATE3", "ZCREATIONDATE1", "ZCREATIONDATE"
+        )
+        modified = _newest(columns, "n", "ZMODIFICATIONDATE1", "ZMODIFICATIONDATE")
+        folder = _newest(columns, "f", "ZTITLE2", "ZTITLE1")
         rows = connection.execute(
             "SELECT n.Z_PK, n.ZIDENTIFIER, n.ZTITLE1,"
-            " n.ZCREATIONDATE, n.ZMODIFICATIONDATE,"
-            " f.ZTITLE1 AS FOLDER, d.ZDATA FROM ZICCLOUDSYNCINGOBJECT n"
+            f" {created} AS ZCREATIONDATE, {modified} AS ZMODIFICATIONDATE,"
+            f" {folder} AS FOLDER, d.ZDATA FROM ZICCLOUDSYNCINGOBJECT n"
             " LEFT JOIN ZICNOTEDATA d ON d.ZNOTE = n.Z_PK"
             " LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON f.Z_PK = n.ZFOLDER"
             " WHERE d.Z_PK IS NOT NULL"
