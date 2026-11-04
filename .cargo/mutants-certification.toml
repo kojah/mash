@@ -1,0 +1,8 @@
+# Real-backend audit of native chat coverage merging against canonical silver.
+examine_globs = ["app/shared/server/store/sync.rs"]
+examine_re = ["in Store::certify", "replace Store::certify"]
+test_package = ["mash"]
+test_tool = "nextest"
+cap_lints = true
+additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
+additional_cargo_test_args = ["--run-ignored", "only", "-E", "test(qdrant_certification_) | test(qdrant_stale_certification_does_not_claim_the_newer_head) | test(qdrant_backfill_lanes_assign_ordered_revisions)", "--no-tests", "fail", "--test-threads", "1"]

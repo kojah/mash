@@ -2635,3 +2635,65 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
     }
     service.cleanup().await;
 }
+
+/// A delayed partial marker for unchanged content must not downgrade a later
+/// complete marker, even though both fingerprints match canonical silver.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alternate() {
+    let service = Service::qdrant(384).await;
+    let identity = service.first.clone();
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let mut partial = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    let chat = partial.chats.get_mut("conversation").unwrap();
+    chat.complete = false;
+    chat.embeddings = 0;
+    service
+        .upload(FIRST, &snapshot(2))
+        .await
+        .error_for_status()
+        .unwrap();
+    let complete = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(complete.input > partial.input);
+    assert!(complete.chats["conversation"].complete);
+    assert_eq!(
+        complete.chats["conversation"].fingerprint,
+        partial.chats["conversation"].fingerprint
+    );
+    for (stored, incoming) in [(&complete, &partial), (&partial, &complete)] {
+        service.store.put_views(&identity, stored).await.unwrap();
+        service
+            .store
+            .certify(
+                &identity,
+                incoming.clone(),
+                &crate::shared::activity::Progress::default(),
+            )
+            .await
+            .unwrap();
+        let merged = service
+            .store
+            .compatible_views(&identity)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(merged.chats["conversation"], complete.chats["conversation"]);
+        assert_eq!(merged.input, complete.input);
+        assert!(service.store.views_current(&identity).await.unwrap());
+    }
+    service.cleanup().await;
+}

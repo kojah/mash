@@ -152,6 +152,15 @@ generated recovery, node-isolation and HTTP publication tests. Review the list
 when changing either source file: field-deletion candidates can include adjacent
 cleanup helpers. Results describe that selected scope, not a coverage percentage.
 
+For native chat certification, set the disposable `MASH_TEST_QDRANT_URL`, review
+`bash tools/mutation-check.sh --list-certification`, and run
+`make mutation-certification`. Its separate scope covers `Store::certify` with
+real-backend coverage-merge, stale-head and parallel-baseline regressions. Set
+`MASH_MUTATION_DIFF` to an existing unified diff to bound any audit to changed
+hunks; the same filter applies to its list mode. Retain that diff with the
+results and check that the selected list is nonempty. This does not disable
+the baseline, source isolation, job limits or timeouts.
+
 The installer pins cargo-mutants 27.1.0 and verifies its release archive SHA-256.
 Requires Bash, curl, tar, sha256sum, flock, the repository nightly with Cranelift,
 and cargo-nextest. On Xenia `make` runs the audit through `agent-test`. Audits use

@@ -34,21 +34,32 @@ fi
 }
 # No arbitrary arguments: keep baseline, source isolation and bounds mandatory.
 config=.cargo/mutants.toml
+diff_args=()
+if [[ -n ${MASH_MUTATION_DIFF:-} ]]; then
+    [[ -f $MASH_MUTATION_DIFF ]] || { echo 'MASH_MUTATION_DIFF must name an existing unified diff' >&2; exit 2; }
+    diff_args=(--in-diff "$MASH_MUTATION_DIFF")
+fi
 case "${1:-}" in
     '') [[ $# == 0 ]] || exit 2 ;;
-    --list) [[ $# == 1 ]] || exit 2; exec "$tool" mutants --list ;;
+    --list) [[ $# == 1 ]] || exit 2; exec "$tool" mutants --config "$config" "${diff_args[@]}" --list ;;
     --runtime|--list-runtime)
         [[ $# == 1 ]] || exit 2
         config=.cargo/mutants-runtime.toml
-        if [[ $1 == --list-runtime ]]; then exec "$tool" mutants --config "$config" --list; fi
+        if [[ $1 == --list-runtime ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
         ;;
     --connectors|--list-connectors)
         [[ $# == 1 ]] || exit 2
         config=.cargo/mutants-connectors.toml
-        if [[ $1 == --list-connectors ]]; then exec "$tool" mutants --config "$config" --list; fi
+        if [[ $1 == --list-connectors ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
         [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
         ;;
-    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--connectors|--list-connectors]' >&2; exit 2 ;;
+    --certification|--list-certification)
+        [[ $# == 1 ]] || exit 2
+        config=.cargo/mutants-certification.toml
+        if [[ $1 == --list-certification ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
+        [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
+        ;;
+    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--connectors|--list-connectors|--certification|--list-certification]' >&2; exit 2 ;;
 esac
 mkdir -p "$artifacts/runs" "$artifacts/tmp"
 run=$(mktemp -d "$artifacts/runs/audit.XXXXXX")
@@ -58,5 +69,5 @@ export CARGO_INCREMENTAL=1 RUSTC_WRAPPER=
 # Serialize use of the persistent target even across separate agent sessions.
 exec 9>"$artifacts/audit.lock"
 flock 9
-exec "$tool" mutants --config "$config" --jobs 1 --jobserver-tasks 4 --timeout 120 \
+exec "$tool" mutants --config "$config" "${diff_args[@]}" --jobs 1 --jobserver-tasks 4 --timeout 120 \
     --build-timeout 600 --output "$run"
