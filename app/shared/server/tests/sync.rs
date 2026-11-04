@@ -2549,3 +2549,89 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
     );
     service.cleanup().await;
 }
+
+/// A later batch can capture an old chat marker before an earlier batch
+/// certifies that chat. Both completion orders must keep the valid marker.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders() {
+    let service = Service::qdrant(384).await;
+    let identity = service.first.clone();
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let old = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut changed = snapshot(2);
+    changed[2]["records"][0]["content"] = json!("revised chat content");
+    changed[2]["records"][0]["projection"] = json!("revised chat content");
+    service
+        .upload(FIRST, &changed)
+        .await
+        .error_for_status()
+        .unwrap();
+    let valid = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut later = changed;
+    later[0]["revision"] = json!(3);
+    let mut added = later[1]["records"][0].clone();
+    added["id"] = json!("later-chat");
+    later[1]["records"].as_array_mut().unwrap().push(added);
+    service
+        .upload(FIRST, &later)
+        .await
+        .error_for_status()
+        .unwrap();
+    let mut stale = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    stale
+        .chats
+        .insert("conversation".into(), old.chats["conversation"].clone());
+    assert_ne!(
+        stale.chats["conversation"].fingerprint,
+        valid.chats["conversation"].fingerprint
+    );
+
+    for (stored, incoming) in [(&stale, &valid), (&valid, &stale)] {
+        service.store.put_views(&identity, stored).await.unwrap();
+        service
+            .store
+            .certify(
+                &identity,
+                incoming.clone(),
+                &crate::shared::activity::Progress::default(),
+            )
+            .await
+            .unwrap();
+        let merged = service
+            .store
+            .compatible_views(&identity)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            merged.chats.len(),
+            2,
+            "a stale marker must not suppress valid coverage"
+        );
+        assert_eq!(merged.chats["conversation"], valid.chats["conversation"]);
+        assert_eq!(merged.input, Some(3));
+        assert!(service.store.views_current(&identity).await.unwrap());
+    }
+    service.cleanup().await;
+}

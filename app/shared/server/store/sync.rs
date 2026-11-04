@@ -384,8 +384,9 @@ impl Store {
             Some(mut latest) if latest.input > views.input => {
                 if compatible(&latest) && compatible(&views) {
                     for (id, chat) in views.chats {
-                        if !latest.chats.contains_key(&id)
-                            && fingerprints.get(&id) == Some(&chat.fingerprint)
+                        if latest.chats.get(&id).is_none_or(|existing| {
+                            fingerprints.get(&id) != Some(&existing.fingerprint)
+                        }) && fingerprints.get(&id) == Some(&chat.fingerprint)
                         {
                             latest.chats.insert(id, chat);
                         }
@@ -399,8 +400,9 @@ impl Store {
             Some(latest) => {
                 if compatible(&latest) {
                     for (id, chat) in latest.chats {
-                        if !views.chats.contains_key(&id)
-                            && fingerprints.get(&id) == Some(&chat.fingerprint)
+                        if views.chats.get(&id).is_none_or(|existing| {
+                            fingerprints.get(&id) != Some(&existing.fingerprint)
+                        }) && fingerprints.get(&id) == Some(&chat.fingerprint)
                         {
                             views.chats.insert(id, chat);
                         }

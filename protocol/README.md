@@ -621,6 +621,22 @@ latency.
 
 ### Progressive backfill: coverage, live edits and deletions
 
+[CoverageMerge.tla](CoverageMerge.tla) checks per-chat certification merging
+under the views write lock in `Store::certify` (`server/store/sync.rs`). Two
+pending certifications capture overlapping chat markers: revision 2 has the
+current marker for chat `a`, while revision 3 has the older marker for `a` and
+the new marker for `b`. Silver fingerprints are fixed during the bounded merge;
+either certification may finish first. After both, every supplied current
+marker must remain covered. The stale-marker configuration reproduces
+`mash-e3f4`: checking only whether a preferred map contains the chat suppresses
+the valid marker, then final fingerprint validation drops the stale one. The
+fix tests the preferred marker's fingerprint before allowing it to block the
+other candidate. `qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders`
+reproduces both merge branches through real Qdrant metadata and certification;
+it failed with one missing chat before the fix. This model covers metadata
+merging only; document writes, later silver edits, crashes and certification
+safety remain covered separately by the other models and boundary tests.
+
 [BackfillReceipts.tla](BackfillReceipts.tla) checks the client's receipt file
 separately from server coverage. The frozen source revision is 10 while three
 server commits receive revisions 1..3. `Commit`, `Receive`, `Save` and `Restart`
