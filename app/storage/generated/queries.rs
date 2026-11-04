@@ -1716,12 +1716,13 @@ pub struct UpsertClaudeSourceMessage<'a> {
     metadata: Option<&'a str>,
 }
 impl<'a> UpsertClaudeSourceMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments,metadata)
-VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
+    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at,attachments,metadata)
+VALUES(?1,?2,?3,?4,silver_pack(CAST(?5 AS TEXT)),?6,?7,?8,?9)
 ON CONFLICT(source_key,message_id) DO UPDATE SET parent_id=excluded.parent_id,role=excluded.role,
-content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments,
+content_packed=excluded.content_packed,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments,
 metadata=excluded.metadata
-WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role OR content IS NOT excluded.content
+WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role
+OR (content_packed IS NOT excluded.content_packed AND content IS NOT excluded.content)
 OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments
 OR metadata IS NOT excluded.metadata";
     pub fn query_str(&self) -> &str {
@@ -4319,14 +4320,14 @@ pub struct ConnectorPutObject<'a> {
 }
 impl<'a> ConnectorPutObject<'a> {
     pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,parent_id,reply_to,conversation_id,
-    author,title,content,created_at,updated_at,url,metadata,attachments,record)
+    author,title,content_packed,created_at,updated_at,url,metadata,attachments,record)
 VALUES('connector',?1,?2,?3,?4,
     ?5,?6,?2,?7,?8,
-    ?9,?10,?11,?12,
+    silver_pack(CAST(?9 AS TEXT)),?10,?11,?12,
     ?13,?14,?15)
 ON CONFLICT(source,id) WHERE origin='connector' DO UPDATE SET object_role=excluded.object_role,kind=excluded.kind,
 parent_id=excluded.parent_id,reply_to=excluded.reply_to,author=excluded.author,
-title=excluded.title,content=excluded.content,created_at=excluded.created_at,
+title=excluded.title,content_packed=excluded.content_packed,created_at=excluded.created_at,
 updated_at=excluded.updated_at,url=excluded.url,metadata=excluded.metadata,
 attachments=excluded.attachments,record=excluded.record
 WHERE objects.record<>excluded.record";
@@ -9558,7 +9559,7 @@ pub struct UpsertNativeMessage<'a> {
     id: &'a str,
     ordinal: Option<i64>,
     role: Option<&'a str>,
-    content: Option<&'a str>,
+    content: &'a str,
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
     context_parent: Option<i64>,
@@ -9568,16 +9569,16 @@ pub struct UpsertNativeMessage<'a> {
 }
 impl<'a> UpsertNativeMessage<'a> {
     pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    ordinal,role,content,search_projection,created_at,context_parent,attachments,metadata)
+    ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
 SELECT 'provider',c.source,?1,'entry',c.source||':message',c.id,c.storage_id,c.id,
-    ?2,?3,?4,?5,
+    ?2,?3,silver_pack(CAST(?4 AS TEXT)),?5,
     ?6,?7,?8,?9
 FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?10
 ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
 source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
 parent_storage_id=excluded.parent_storage_id,
 conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
-content=excluded.content,search_projection=excluded.search_projection,created_at=excluded.created_at,
+content_packed=excluded.content_packed,search_projection=excluded.search_projection,created_at=excluded.created_at,
 context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -9879,14 +9880,14 @@ impl<
 {
     pub fn content(
         self,
-        content: Option<&'a str>,
+        content: &'a str,
     ) -> UpsertNativeMessageBuilder<
         'a,
         (
             Id,
             Ordinal,
             Role,
-            Option<&'a str>,
+            &'a str,
             SearchProjection,
             CreatedAt,
             ContextParent,
@@ -10388,7 +10389,7 @@ impl<'a>
             &'a str,
             Option<i64>,
             Option<&'a str>,
-            Option<&'a str>,
+            &'a str,
             Option<&'a str>,
             Option<i64>,
             Option<i64>,

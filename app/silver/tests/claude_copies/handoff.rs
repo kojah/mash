@@ -56,7 +56,7 @@ fn handoff(
 }
 
 fn canonical(path: &Path) -> Vec<(String, i64, String)> {
-    let connection = rusqlite::Connection::open(path).unwrap();
+    let connection = crate::storage::test_support::connect(path);
     connection
         .prepare("SELECT id, ordinal, content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal")
         .unwrap()

@@ -114,10 +114,10 @@ FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' ORDER BY 
 -- A native message takes its provider from its chat, and sits under it.
 INSERT INTO objects(
     origin, source, id, object_role, kind, parent_id, parent_storage_id, conversation_id,
-    attachments, ordinal, role, content, search_projection, created_at, context_parent, metadata
+    attachments, ordinal, role, content_packed, search_projection, created_at, context_parent, metadata
 )
 SELECT 'provider', c.source, sqlc.arg(id), 'entry', c.source || ':message', c.id, c.storage_id, c.id,
-    sqlc.arg(attachments), sqlc.arg(ordinal), sqlc.arg(role), sqlc.arg(content),
+    sqlc.arg(attachments), sqlc.arg(ordinal), sqlc.arg(role), silver_pack(CAST(sqlc.arg(content) AS TEXT)),
     sqlc.arg(search_projection), sqlc.narg(created_at), sqlc.narg(context_parent), sqlc.narg(metadata)
 FROM objects c
 WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = sqlc.arg(conversation_id);

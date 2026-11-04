@@ -58,7 +58,7 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
         .execute(
             "INSERT INTO objects(
                 origin, source, object_role, kind, parent_id, parent_storage_id,
-                id, conversation_id, ordinal, role, content, search_projection
+                id, conversation_id, ordinal, role, content_packed, search_projection
              ) SELECT 'provider', 'codex', 'entry', 'codex:message', 'session', storage_id,
                 'message', 'session', 0, 'tool', 'canonical tool output', ?1
                  FROM objects WHERE object_role = 'container' AND id = 'session'",
@@ -197,8 +197,15 @@ pub(super) fn views_path(silver: &Path) -> std::path::PathBuf {
 }
 
 /// Local silver with its paired views attached, as mash writers see it.
-pub(super) fn open_index(path: &Path) -> Connection {
+/// A raw silver connection that can read packed `content`.
+pub(super) fn open_silver(path: impl AsRef<Path>) -> Connection {
     let connection = Connection::open(path).expect("local silver");
+    mash::register_silver_codec(&connection).expect("silver codec");
+    connection
+}
+
+pub(super) fn open_index(path: &Path) -> Connection {
+    let connection = open_silver(path);
     connection
         .execute(
             "ATTACH DATABASE ?1 AS views",

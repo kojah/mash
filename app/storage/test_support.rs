@@ -4,6 +4,7 @@ use super::*;
 pub(crate) fn pending_snapshot(path: &Path) -> Storage {
     let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .expect("explicit pending snapshot");
+    super::packed::register(&connection).expect("register silver codec");
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .expect("snapshot schema");
@@ -41,6 +42,7 @@ pub(crate) fn assert_quantized_embedding(storage: &Storage, id: &str, vector: &[
 /// Raw access to local silver with its paired views attached.
 pub(crate) fn connect(path: &Path) -> Connection {
     let connection = Connection::open(path).expect("open local silver");
+    crate::storage::packed::register(&connection).expect("register silver codec");
     attach_views(&connection, path);
     connection
 }

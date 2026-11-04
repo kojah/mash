@@ -9,7 +9,7 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("uninstalled-models");
     seed_readiness_database(&database, None);
-    let connection = Connection::open(&database).unwrap();
+    let connection = super::support::open_silver(&database);
     connection.execute("UPDATE objects SET title='cBioPortal migration',created_at=1000,updated_at=3000 WHERE origin='provider' AND id='session'", []).unwrap();
     let arguments = [
         "--config",

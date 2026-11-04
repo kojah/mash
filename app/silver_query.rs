@@ -348,6 +348,7 @@ fn run_params(
 /// budget. Shared-silver reads call this on a server connection as well, so a
 /// typed query gets exactly the same guardrails as a local one.
 fn prepare_read_only(connection: &Connection, timeout: Duration) -> Result<(), AppError> {
+    crate::storage::packed::register(connection).map_err(AppError::database)?;
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(AppError::database)?;

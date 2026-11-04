@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS objects (
     role TEXT,
     author TEXT,
     title TEXT,
-    content TEXT,
+    -- Large text is stored zstd-packed (see app/storage/packed.rs); `content`
+    -- decodes it, so readers, predicates and indexes see plain text.
+    content_packed,
+    content TEXT GENERATED ALWAYS AS (silver_text(content_packed)) VIRTUAL,
     -- Silver's interpreted visible dialogue; the Rust model calls this dialogue_text.
     search_projection TEXT,
     created_at INTEGER,
@@ -181,7 +184,8 @@ CREATE TABLE IF NOT EXISTS claude_source_messages (
     message_id TEXT NOT NULL,
     parent_id TEXT,
     role TEXT NOT NULL,
-    content TEXT NOT NULL,
+    content_packed NOT NULL,
+    content TEXT NOT NULL GENERATED ALWAYS AS (silver_text(content_packed)) VIRTUAL,
     projection TEXT,
     created_at INTEGER,
     PRIMARY KEY(source_key, message_id)

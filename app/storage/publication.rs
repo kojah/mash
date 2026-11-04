@@ -361,6 +361,7 @@ impl Storage {
     ) -> Result<bool, AppError> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(AppError::database)?;
+        super::packed::register(&connection).map_err(AppError::database)?;
         let exists: bool = connection
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'shared_publication')",

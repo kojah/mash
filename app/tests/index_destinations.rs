@@ -187,7 +187,7 @@ fn claude_copy_reconciliation() {
             .unwrap();
         let local = fixture.json(&["status"], false);
         assert_ready_node(node, messages, &local["silver"]["interpretation_version"]);
-        let connection = rusqlite::Connection::open(&fixture.database).unwrap();
+        let connection = super::support::open_silver(&fixture.database);
         let rows = connection
             .prepare("SELECT id,content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal")
             .unwrap()

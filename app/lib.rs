@@ -32,6 +32,9 @@ mod export;
 mod mcp;
 /// Build-time generation of the bundled history skill from the live MCP contract.
 pub use mcp::guidance::{generate_history_skill, validate_history_release};
+/// Registers the silver text codec on a raw connection, as tests need to read silver directly.
+#[doc(hidden)]
+pub use storage::packed::register as register_silver_codec;
 mod observability;
 mod platform;
 mod progress;

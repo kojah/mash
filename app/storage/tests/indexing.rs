@@ -705,7 +705,7 @@ fn benchmark_fts_refresh_crossover() {
                 writer
                     .connection
                     .execute(
-                        "UPDATE objects SET content = content || ' changed'
+                        "UPDATE objects SET content_packed = content || ' changed'
                           WHERE id IN (SELECT message_id FROM pending_fts_messages)",
                         [],
                     )

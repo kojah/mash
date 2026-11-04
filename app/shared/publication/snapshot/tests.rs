@@ -64,8 +64,8 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
 fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     let root = tempfile::tempdir().unwrap();
     let database = seed(root.path());
-    let connection = rusqlite::Connection::open(&database).unwrap();
-    connection.execute("UPDATE objects SET content='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE origin='provider' AND id='a-100'",[]).unwrap();
+    let connection = crate::storage::test_support::connect(&database);
+    connection.execute("UPDATE objects SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE origin='provider' AND id='a-100'",[]).unwrap();
     connection
         .execute(
             "UPDATE objects SET title='password=\"rosebud\"' WHERE origin='provider' AND id='a'",

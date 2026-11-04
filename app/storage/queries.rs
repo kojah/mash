@@ -26,6 +26,7 @@ impl Storage {
         }
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(AppError::database_at(Operation::OpenCatalog))?;
+        super::packed::register(&connection).map_err(AppError::database)?;
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(AppError::database_at(Operation::InspectCatalog))?;
@@ -61,6 +62,7 @@ impl Storage {
     ) -> Result<StatusSnapshot, AppError> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(AppError::database_at(Operation::OpenCatalog))?;
+        super::packed::register(&connection).map_err(AppError::database)?;
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(AppError::database_at(Operation::InspectStatus))?;

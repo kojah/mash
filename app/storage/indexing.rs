@@ -501,7 +501,7 @@ impl Storage {
                 .conversation_id(&conversation.id)
                 .ordinal(Some(message.ordinal))
                 .role(Some(message.role.as_str()))
-                .content(Some(&message.content))
+                .content(&message.content)
                 .search_projection(message.dialogue_text.as_deref())
                 .created_at(message.created_at)
                 .context_parent(message.context.parent())

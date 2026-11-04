@@ -28,6 +28,7 @@ mod enrichment;
 pub(crate) mod export;
 mod indexing;
 pub(crate) mod objects;
+pub(crate) mod packed;
 pub(crate) mod publication;
 mod silver_state;
 pub(crate) mod turns;

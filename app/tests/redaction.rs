@@ -30,7 +30,7 @@ fn private_spans_never_reach_silver_or_its_views() {
     for _ in 0..2 {
         run_json(&[prefix.as_slice(), &["index"]].concat());
     }
-    let connection = Connection::open(&db).unwrap();
+    let connection = super::support::open_silver(&db);
     for query in [
         "SELECT group_concat(COALESCE(title,'') || content || COALESCE(search_projection,''), ' ') FROM objects",
         "SELECT group_concat(content || COALESCE(projection,''), ' ') FROM claude_source_messages",
@@ -82,7 +82,7 @@ fn cli_output_redaction(masked: bool) {
         db.to_str().unwrap(),
     ];
     run_json(&[prefix.as_slice(), &["index"]].concat());
-    let connection = Connection::open(&db).unwrap();
+    let connection = super::support::open_silver(&db);
     let message_id: String = connection
         .query_row(
             "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",

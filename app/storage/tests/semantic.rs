@@ -504,7 +504,7 @@ fn semantic_chunks_bound_incremental_rewrites_to_affected_rowid_ranges() {
         .execute(
             "INSERT INTO objects(
                 storage_id, origin, source, object_role, kind, parent_id, parent_storage_id,
-                id, conversation_id, ordinal, role, content, search_projection, created_at
+                id, conversation_id, ordinal, role, content_packed, search_projection, created_at
              ) SELECT 4097, 'provider', source, 'entry', source || ':message', id, storage_id,
                        'message-4097', 'session-1', 4097, 'assistant',
                        'second chunk', NULL, 123
@@ -646,7 +646,7 @@ fn explicit_semantic_storage_identifiers_survive_vacuum() {
         .expect("publish semantic chunk");
     writer.commit_writer().expect("commit semantic chunk");
     drop(writer);
-    let maintenance = Connection::open(&path).expect("maintenance connection");
+    let maintenance = crate::storage::test_support::connect(&path);
     maintenance
         .execute_batch("VACUUM")
         .expect("vacuum database");

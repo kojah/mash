@@ -122,14 +122,14 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          VALUES('provider','codex','thread','container','codex:chat','thread','Useful thread','/project','https://example.test/repo',10,20);
          INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_key,source_session,source_fingerprint)
          SELECT storage_id,id,source,'/missing/session','file:/missing/session',NULL,'source-hash' FROM objects WHERE id='thread';
-         INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,metadata)
+         INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata)
          SELECT 'provider','codex','message','entry','codex:message','thread',storage_id,'thread',0,'user','Canonical evidence','visible evidence',-1,11,
            '{\"tool_calls\":[{\"name\":\"exec\",\"call_id\":\"c1\",\"input\":{\"cmd\":[\"ls\"]}}],\"tool_results\":[{\"call_id\":\"c0\",\"is_error\":true}]}' FROM objects WHERE id='thread';
          INSERT INTO native_messages(storage_id,id,fingerprint) SELECT storage_id,id,'message-hash' FROM objects WHERE id='message';
          INSERT INTO conversation_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');
          INSERT INTO tombstones VALUES('codex','forgotten-thread',30);
          INSERT INTO claude_sources VALUES('branch','/missing/branch','thread','Branch title','/other-project',NULL);
-         INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,metadata)
+         INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at,metadata)
          VALUES('branch','branch-message',NULL,'assistant','branch evidence','visible branch',15,'{\"tool_results\":[{\"call_id\":\"toolu_1\"}]}');
          INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',3);
          INSERT INTO silver_scans VALUES('codex',3,1);
@@ -197,7 +197,7 @@ fn export_keeps_retained_files_from_nonvisible_claude_branches() {
     assert_eq!(result.counts.attachment_files, 1);
     let imported = root.path().join("imported.sqlite3");
     load(&exported, &imported, false).unwrap();
-    let restored = Connection::open(&imported).unwrap();
+    let restored = crate::storage::test_support::connect(&imported);
     assert_eq!(
         rows(&restored, "claude_source_messages"),
         rows(&writer, "claude_source_messages")
@@ -244,6 +244,10 @@ fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {
             source_key,source_session,thread_fingerprint FROM native_chats ORDER BY 1"
             .to_owned(),
         "native_messages" => "SELECT id,fingerprint FROM native_messages ORDER BY 1".to_owned(),
+        // Packing is a storage detail; the decoded text is what must survive.
+        "claude_source_messages" => "SELECT attachments,metadata,source_key,message_id,parent_id,
+            role,content,projection,created_at FROM claude_source_messages ORDER BY 3,4"
+            .to_owned(),
         _ => format!("SELECT * FROM {table} ORDER BY 1"),
     };
     let mut statement = connection.prepare(&sql).unwrap();
@@ -282,7 +286,7 @@ fn upgrade_import_keeps_the_node_identity_and_refuses_stale_views() {
     assert!(!destination.exists());
     std::fs::remove_file(&views).unwrap();
     load(&export, &destination, true).unwrap();
-    let imported = Connection::open(&destination).unwrap();
+    let imported = crate::storage::test_support::connect(&destination);
     assert_eq!(identity(&imported), (instance, revision, 0, String::new()));
     let floor: i64 = imported
         .query_row("SELECT floor FROM shared_change_state", [], |row| {
@@ -316,7 +320,7 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
         result.recommended_action,
         NextStep::RebuildLocalViews
     ));
-    let imported = Connection::open(&destination).unwrap();
+    let imported = crate::storage::test_support::connect(&destination);
     for table in [
         "objects",
         "native_chats",
@@ -509,7 +513,7 @@ fn empty_history_preserves_unverified_state_without_storage_engine_sequences() {
     let result = load(&export, &target, false).unwrap();
     assert!(matches!(result.recommended_action, NextStep::RepairSilver));
     assert_eq!(result.counts.messages, 0);
-    let imported = Connection::open(target).unwrap();
+    let imported = crate::storage::test_support::connect(&target);
     assert_eq!(rows(&imported, "objects").len(), 0);
     let text = fs::read_to_string(export.join(DATABASE)).unwrap();
     assert!(!text.contains("sqlite_sequence"));

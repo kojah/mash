@@ -83,12 +83,13 @@ DELETE FROM claude_source_messages WHERE source_key=sqlc.arg(source_key) AND mes
 
 -- name: UpsertClaudeSourceMessage :exec
 -- An unchanged row is not rewritten, so appending to a transcript writes only its new rows.
-INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments,metadata)
-VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments),sqlc.narg(metadata))
+INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at,attachments,metadata)
+VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),silver_pack(CAST(sqlc.arg(content) AS TEXT)),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments),sqlc.narg(metadata))
 ON CONFLICT(source_key,message_id) DO UPDATE SET parent_id=excluded.parent_id,role=excluded.role,
-content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments,
+content_packed=excluded.content_packed,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments,
 metadata=excluded.metadata
-WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role OR content IS NOT excluded.content
+WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role
+OR (content_packed IS NOT excluded.content_packed AND content IS NOT excluded.content)
 OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments
 OR metadata IS NOT excluded.metadata;
 
@@ -195,14 +196,14 @@ WHERE origin='connector' AND source=sqlc.arg(source_id) AND id=sqlc.arg(id);
 -- conversation_id starts as the object's own ID and the parent edge unlinked;
 -- the link queries and ConnectorSetConversation fix both.
 INSERT INTO objects(origin,source,id,object_role,kind,parent_id,reply_to,conversation_id,
-    author,title,content,created_at,updated_at,url,metadata,attachments,record)
+    author,title,content_packed,created_at,updated_at,url,metadata,attachments,record)
 VALUES('connector',sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(role),sqlc.arg(kind),
     sqlc.narg(parent_id),sqlc.narg(reply_to),sqlc.arg(id),sqlc.narg(author),sqlc.narg(title),
-    sqlc.narg(content),sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.narg(url),
+    silver_pack(CAST(sqlc.narg(content) AS TEXT)),sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.narg(url),
     sqlc.narg(metadata),sqlc.arg(attachments),sqlc.arg(record))
 ON CONFLICT(source,id) WHERE origin='connector' DO UPDATE SET object_role=excluded.object_role,kind=excluded.kind,
 parent_id=excluded.parent_id,reply_to=excluded.reply_to,author=excluded.author,
-title=excluded.title,content=excluded.content,created_at=excluded.created_at,
+title=excluded.title,content_packed=excluded.content_packed,created_at=excluded.created_at,
 updated_at=excluded.updated_at,url=excluded.url,metadata=excluded.metadata,
 attachments=excluded.attachments,record=excluded.record
 WHERE objects.record<>excluded.record;
@@ -384,16 +385,16 @@ WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key) AND n.
 -- name: UpsertNativeMessage :exec
 -- A native message takes its provider from its chat, and sits under it.
 INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    ordinal,role,content,search_projection,created_at,context_parent,attachments,metadata)
+    ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
 SELECT 'provider',c.source,sqlc.arg(id),'entry',c.source||':message',c.id,c.storage_id,c.id,
-    sqlc.arg(ordinal),sqlc.arg(role),sqlc.arg(content),sqlc.narg(search_projection),
+    sqlc.arg(ordinal),sqlc.arg(role),silver_pack(CAST(sqlc.arg(content) AS TEXT)),sqlc.narg(search_projection),
     sqlc.narg(created_at),sqlc.narg(context_parent),sqlc.arg(attachments),sqlc.narg(metadata)
 FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=sqlc.arg(conversation_id)
 ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
 source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
 parent_storage_id=excluded.parent_storage_id,
 conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
-content=excluded.content,search_projection=excluded.search_projection,created_at=excluded.created_at,
+content_packed=excluded.content_packed,search_projection=excluded.search_projection,created_at=excluded.created_at,
 context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata;
 
 

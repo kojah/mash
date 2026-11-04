@@ -175,9 +175,18 @@ silver) and then its chat. Chat-level results group under an
 entry's nearest container, or a document on its own. Native messages keep
 `role`; connector entries carry `author_kind` (`human`, `bot` or `unknown`)
 instead, and documents carry neither. The local views schema is now version 4 and
-silver version 53: existing local views are rebuilt from silver by the next
+silver version 55: existing local views are rebuilt from silver by the next
 `mash index`, and silver from an earlier release crosses over through export and
 `import --keep-identity`.
+
+Silver compresses canonical text of at least 1 KiB with zstd when it saves space.
+This applies to native providers and connectors in `objects`, and to retained
+Claude source messages. Reads expose the original text through a generated
+`content` column; raw SQLite connections need Mash's silver codec functions.
+CLI, MCP and portable exports continue to return decoded canonical text.
+Compression does not remove sensitive history from an export. Upgrading an
+older silver schema requires export/import and a views rebuild; shared silver
+must be republished with the new release.
 
 One-shot data commands emit one JSON value; watch mode emits newline-delimited
 results, and `mash mcp` serves the stdio protocol. `mash serve` runs the shared

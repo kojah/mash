@@ -120,7 +120,7 @@ fn runtime_upgrade_stops_idle_and_standby_cli_watchers() {
             .count(),
         0
     );
-    let connection = Connection::open(root.path().join("index.sqlite3")).unwrap();
+    let connection = super::support::open_silver(root.path().join("index.sqlite3"));
     let content: String = connection
         .query_row(
             "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
@@ -192,7 +192,7 @@ fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
             .success()
     );
     assert_eq!(watcher.next()["changed_messages"], 1);
-    let connection = Connection::open(root.join("index.sqlite3")).unwrap();
+    let connection = super::support::open_silver(root.join("index.sqlite3"));
     let content: String = connection
         .query_row(
             "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
@@ -238,7 +238,7 @@ fn watcher_recovers_missing_roots_and_reloads_configuration() {
     history(&next.join("session.jsonl"), "new root");
     configure(root, &next);
     watcher.next();
-    let connection = Connection::open(root.join("index.sqlite3")).unwrap();
+    let connection = super::support::open_silver(root.join("index.sqlite3"));
     let content: String = connection
         .query_row(
             "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
@@ -442,8 +442,7 @@ fn killed_leader_fails_over_to_a_standby_that_indexes_changes_from_the_gap() {
 
     assert_eq!(standby.role(), "leader");
     assert_eq!(standby.watching.next()["changed_messages"], 1);
-    let content: String = Connection::open(root.join("index.sqlite3"))
-        .unwrap()
+    let content: String = super::support::open_silver(root.join("index.sqlite3"))
         .query_row(
             "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
             [],

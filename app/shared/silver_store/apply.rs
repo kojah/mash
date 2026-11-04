@@ -315,7 +315,7 @@ impl Upload<'_> {
             .conversation_id(&record.conversation_id)
             .ordinal(Some(record.ordinal))
             .role(Some(record.role.as_str()))
-            .content(Some(&record.content))
+            .content(&record.content)
             .search_projection(Some(&record.projection))
             .created_at(record.created_at)
             .context_parent(record.context.parent())

@@ -7,7 +7,7 @@ use crate::AppError;
 use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 54;
+pub(crate) const SCHEMA_VERSION: i64 = 55;
 pub(crate) const VIEWS_VERSION: i64 = 4;
 
 /// The one silver schema, shared by local nodes and the shared server.
@@ -23,6 +23,7 @@ const WRITER_PRAGMAS: &str =
 
 /// Create or validate a silver database without any local views.
 pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError> {
+    super::packed::register(connection).map_err(AppError::database)?;
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;
@@ -56,6 +57,7 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
 /// are no in-place migrations: another silver version is exported with the
 /// release that wrote it and imported into a fresh database by this one.
 pub(super) fn initialize(connection: &Connection, views: &Path) -> Result<(), AppError> {
+    super::packed::register(connection).map_err(AppError::database)?;
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;

@@ -1829,7 +1829,7 @@ pub struct InsertMessage<'a> {
     attachments: &'a str,
     ordinal: Option<i64>,
     role: Option<&'a str>,
-    content: Option<&'a str>,
+    content: &'a str,
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
     context_parent: Option<i64>,
@@ -1839,10 +1839,10 @@ pub struct InsertMessage<'a> {
 impl<'a> InsertMessage<'a> {
     pub const QUERY: &'static str = r"INSERT INTO objects(
     origin, source, id, object_role, kind, parent_id, parent_storage_id, conversation_id,
-    attachments, ordinal, role, content, search_projection, created_at, context_parent, metadata
+    attachments, ordinal, role, content_packed, search_projection, created_at, context_parent, metadata
 )
 SELECT 'provider', c.source, ?1, 'entry', c.source || ':message', c.id, c.storage_id, c.id,
-    ?2, ?3, ?4, ?5,
+    ?2, ?3, ?4, silver_pack(CAST(?5 AS TEXT)),
     ?6, ?7, ?8, ?9
 FROM objects c
 WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = ?10";
@@ -2221,7 +2221,7 @@ impl<
 {
     pub fn content(
         self,
-        content: Option<&'a str>,
+        content: &'a str,
     ) -> InsertMessageBuilder<
         'a,
         (
@@ -2229,7 +2229,7 @@ impl<
             Attachments,
             Ordinal,
             Role,
-            Option<&'a str>,
+            &'a str,
             SearchProjection,
             CreatedAt,
             ContextParent,
@@ -2655,7 +2655,7 @@ impl<'a>
             &'a str,
             Option<i64>,
             Option<&'a str>,
-            Option<&'a str>,
+            &'a str,
             Option<&'a str>,
             Option<i64>,
             Option<i64>,

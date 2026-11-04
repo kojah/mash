@@ -2,6 +2,7 @@ use super::*;
 
 fn fixture() -> rusqlite::Connection {
     let connection = rusqlite::Connection::open_in_memory().unwrap();
+    crate::storage::packed::register(&connection).unwrap();
     connection
         .execute_batch(
             "CREATE TABLE claude_sources (
@@ -9,12 +10,13 @@ fn fixture() -> rusqlite::Connection {
                 title TEXT, project TEXT, repository TEXT);
              CREATE TABLE claude_source_messages (
                 source_key TEXT, message_id TEXT, parent_id TEXT, role TEXT,
-                content TEXT, projection TEXT, created_at INTEGER, attachments TEXT NOT NULL DEFAULT '[]',
+                content_packed, content TEXT GENERATED ALWAYS AS (silver_text(content_packed)) VIRTUAL,
+                projection TEXT, created_at INTEGER, attachments TEXT NOT NULL DEFAULT '[]',
                 metadata TEXT);
              INSERT INTO claude_sources VALUES
                 ('a','/a','thread','title a','project a','repository a'),
                 ('b','/b','thread','title b','project b','repository b');
-             INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at) VALUES
+             INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at) VALUES
                 ('a','root',NULL,'user','root text',NULL,10),
                 ('a','left','root','assistant','left text','left projection',20),
                 ('b','root',NULL,'user','root text',NULL,10),
@@ -70,7 +72,7 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
 #[test]
 fn streamed_contributions_reject_conflicts_and_late_decode_failures() {
     let connection = fixture();
-    connection.execute("UPDATE claude_source_messages SET content='conflict' WHERE source_key='b' AND message_id='root'", []).unwrap();
+    connection.execute("UPDATE claude_source_messages SET content_packed='conflict' WHERE source_key='b' AND message_id='root'", []).unwrap();
     assert!(claude_thread(&connection, "thread", None).is_err());
     // A conflicting copy outside the routed subset is not a canonical conflict.
     let selected = BTreeSet::from(["a".to_owned()]);
@@ -82,10 +84,16 @@ fn streamed_contributions_reject_conflicts_and_late_decode_failures() {
             .len(),
         2
     );
-    connection.execute("UPDATE claude_source_messages SET content='root text' WHERE source_key='b' AND message_id='root'", []).unwrap();
+    connection.execute("UPDATE claude_source_messages SET content_packed='root text' WHERE source_key='b' AND message_id='root'", []).unwrap();
     connection
         .execute(
-            "INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at) VALUES ('b','z-late',NULL,'user',x'ff',NULL,40)",
+            "INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at) VALUES ('b','z-late',NULL,'user',x'ff',NULL,40)",
+            [],
+        )
+        .expect_err("a corrupt packed frame never reaches silver");
+    connection
+        .execute(
+            "INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at) VALUES ('b','z-late',NULL,'user','late text',x'ff',40)",
             [],
         )
         .unwrap();
@@ -136,7 +144,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
     storage
         .connection
         .execute(
-            "UPDATE claude_source_messages SET content=x'ff' WHERE message_id='z-late'",
+            "UPDATE claude_source_messages SET projection=x'ff' WHERE message_id='z-late'",
             [],
         )
         .unwrap();
@@ -165,7 +173,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
     storage
         .connection
         .execute(
-            "UPDATE claude_source_messages SET content='z-late text' WHERE message_id='z-late'",
+            "UPDATE claude_source_messages SET projection=NULL WHERE message_id='z-late'",
             [],
         )
         .unwrap();

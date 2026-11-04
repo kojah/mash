@@ -4,7 +4,7 @@ use super::*;
 fn locked_status_reports_sqlite_details_and_recovers_after_unlock() {
     let fixture = NodeFixture::new();
     fixture.seed(Some(""));
-    let connection = Connection::open(&fixture.database).unwrap();
+    let connection = super::support::open_silver(&fixture.database);
     // An exclusive rollback-journal lock deliberately blocks readers. A normal
     // WAL writer does not, so this fixture does not claim indexing blocks reads.
     connection

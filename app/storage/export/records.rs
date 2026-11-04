@@ -352,9 +352,9 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             // The chat precedes its messages in every archive; a message
             // without one would otherwise vanish rather than fail.
             let inserted = execute!(
-                "INSERT INTO objects(attachments,id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,
+                "INSERT INTO objects(attachments,id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,
                     metadata,origin,source,object_role,kind,parent_id,parent_storage_id)
-                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'provider',c.source,'entry',c.source||':message',c.id,c.storage_id
+                 SELECT ?1,?2,?3,?4,?5,silver_pack(?6),?7,?8,?9,?10,'provider',c.source,'entry',c.source||':message',c.id,c.storage_id
                    FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?3",
                 encode(&attachments)?,
                 id,
@@ -435,7 +435,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 .map(|metadata| crate::attachments::Source::Retained { metadata })
                 .collect::<Vec<_>>();
             execute!(
-                "INSERT INTO claude_source_messages(attachments,source_key,message_id,parent_id,role,content,projection,created_at,metadata) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                "INSERT INTO claude_source_messages(attachments,source_key,message_id,parent_id,role,content_packed,projection,created_at,metadata) VALUES(?1,?2,?3,?4,?5,silver_pack(?6),?7,?8,?9)",
                 encode(&sources)?,
                 source_key,
                 message_id,
