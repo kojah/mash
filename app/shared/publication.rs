@@ -177,6 +177,8 @@ pub(crate) fn status(
 /// may observe the owner within this budget, then reports shared-pending.
 const PUBLISH_LOCK_WAIT: Duration = Duration::from_secs(30);
 const PUBLISH_LOCK_POLL: Duration = Duration::from_millis(50);
+/// The backfill identity publishers choose for themselves; see `publish_backfill`.
+const AUTO_BACKFILL: &str = "auto";
 const SHARED_PENDING: &str =
     "another process is publishing this database and destination; retry when it finishes";
 
@@ -232,14 +234,14 @@ pub(crate) async fn publish(
     // A failed probe must not block publication; fall back to the normal
     // strategy and let it report the actionable error.
     if let Ok(true) = should_auto_backfill(path, config).await {
-        return publish_baseline_now(path, config, "auto").await;
+        return publish_baseline_now(path, config, AUTO_BACKFILL).await;
     }
     let publication = publish_with_wait(path, config, inference, PUBLISH_LOCK_WAIT).await;
     // One atomic publication cannot exceed the decoded-size limit; a node that
     // fell far behind or holds very long chats catches up through the
     // resumable, size-bounded backfill instead of staying stale.
     if publication.error.as_deref() == Some(super::sync::wire::BATCH_TOO_LARGE) {
-        return publish_baseline_now(path, config, "auto").await;
+        return publish_baseline_now(path, config, AUTO_BACKFILL).await;
     }
     publication
 }
@@ -516,10 +518,7 @@ pub(crate) async fn publish_backfill(
     if backfill_id.is_empty() || backfill_id.len() > 4096 {
         return Err(AppError::usage("backfill identity is required"));
     }
-    // The transfer catalog is service-wide but backfills are looked up per
-    // (group, node). An unscoped identity such as the automatic "auto" would
-    // collide with another group's baseline and be rejected as unknown.
-    let backfill_id = &destination_scoped(config, backfill_id);
+    let requested = backfill_id;
     let target_key = target(config);
     let _lock = acquire_publish_lock(path, &target_key, PUBLISH_LOCK_WAIT)
         .await?
@@ -532,6 +531,17 @@ pub(crate) async fn publish_backfill(
         ));
     }
     let (file, revision) = prepare_backfill(path, &target).await?;
+    // An identity names one baseline: automatic catch-ups take the revision
+    // they freeze, so a later one is new while a retry of this one resumes.
+    let requested = if requested == AUTO_BACKFILL {
+        format!("{AUTO_BACKFILL}-{revision}")
+    } else {
+        requested.to_owned()
+    };
+    // The transfer catalog is service-wide but backfills are looked up per
+    // (group, node). An unscoped identity would collide with another group's
+    // baseline and be rejected as unknown.
+    let backfill_id = &destination_scoped(config, &requested);
     let plan = super::sync::client::plan_backfill_file(
         &file,
         super::sync::client::BackfillLimits::default(),
