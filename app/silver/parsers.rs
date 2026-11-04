@@ -92,6 +92,10 @@ pub(super) fn parse_captured(
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass decodes, interrupts replays at damage, and normalizes records"
+)]
 fn parse_jsonl(
     path: &Path,
     provider: Provider,
@@ -110,17 +114,20 @@ fn parse_jsonl(
             continue;
         }
         let Some(raw) = rejected.decode(path, provider, number, &line) else {
+            // An unreadable record interrupts a Claude replay: a replay that
+            // spans it cannot be proven and later raises conflicting ancestry.
+            claude_identity.interrupt();
+            rejected.readable_after = false;
             continue;
         };
-        // Once any record is corrupt, this source cannot establish a snapshot.
-        // Continue decoding for diagnostics, but do not normalize fragments:
-        // their ancestry/identity may depend on the rejected record.
-        if rejected.count != 0 {
-            continue;
-        }
+        // A readable record after a corrupt one shows the file moved past it:
+        // the damage is permanent, not a write still in progress.
+        rejected.readable_after = rejected.count != 0;
         capture_metadata(&raw, &mut project, &mut repository);
-        if provider == Provider::ClaudeCode {
-            claude_identity.observe(&raw)?;
+        if provider == Provider::ClaudeCode
+            && let Err(error) = claude_identity.observe(&raw)
+        {
+            return rejected.unprovable(error);
         }
         if provider == Provider::Codex && session_id.is_none() && raw.kind == Kind::SessionMeta {
             session_id = raw
@@ -137,14 +144,18 @@ fn parse_jsonl(
         }
         clean_projection(&mut extracted);
         if provider == Provider::ClaudeCode {
-            claude_identity.capture_session(extracted.session_id.take())?;
+            if let Err(error) = claude_identity.capture_session(extracted.session_id.take()) {
+                return rejected.unprovable(error);
+            }
         } else if session_id.is_none() {
             session_id = extracted.session_id.take();
         }
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("conversation contains too many messages"))?;
-        if provider == Provider::ClaudeCode {
-            claude_identity.push_key(extracted.source_id.clone())?;
+        if provider == Provider::ClaudeCode
+            && let Err(error) = claude_identity.push_key(extracted.source_id.clone())
+        {
+            return rejected.unprovable(error);
         }
         let message_key = extracted
             .source_id
@@ -156,7 +167,10 @@ fn parse_jsonl(
         );
         messages.push(extracted.normalized(id, ordinal))?;
     }
-    if rejected.count != 0 || messages.len() == 0 {
+    // A corrupt final record may be a write in progress: keep the previous
+    // contribution until a clean read. Interior damage never heals, so the
+    // readable records are applied and the skipped ones still reported.
+    if (rejected.count != 0 && !rejected.readable_after) || messages.len() == 0 {
         return Ok(ParsedFile {
             conversation: None,
             malformed_records: rejected.count,
@@ -171,7 +185,10 @@ fn parse_jsonl(
         return Err(AppError::internal("parser lost normalized messages"));
     }
     let claude_lineage = if provider == Provider::ClaudeCode {
-        let (normalized, lineage) = claude_identity.normalize(&id, messages)?;
+        let (normalized, lineage) = match claude_identity.normalize(&id, messages) {
+            Ok(normalized) => normalized,
+            Err(error) => return rejected.unprovable(error),
+        };
         messages = normalized;
         Some(lineage)
     } else {
@@ -202,9 +219,24 @@ fn parse_jsonl(
 struct RejectedRecords {
     count: u64,
     first: Option<super::diagnostics::RecordIssue>,
+    /// A record decoded after the last corrupt one.
+    readable_after: bool,
 }
 
 impl RejectedRecords {
+    /// Ancestry that skipped records leave unprovable rejects the snapshot,
+    /// keeping the previous contribution; without skips the error stands.
+    fn unprovable(self, error: AppError) -> Result<ParsedFile, AppError> {
+        if self.count == 0 {
+            return Err(error);
+        }
+        Ok(ParsedFile {
+            conversation: None,
+            malformed_records: self.count,
+            first_record_issue: self.first,
+        })
+    }
+
     fn decode(
         &mut self,
         path: &Path,

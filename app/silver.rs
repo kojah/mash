@@ -635,10 +635,22 @@ fn apply_parsed_source(
         )?;
     }
     summary.malformed_records += parsed.malformed_records;
-    // Readable fragments cannot establish a complete source snapshot. Applying
-    // them would replace prior messages and vectors while retaining an old
-    // checkpoint, so leave the entire contribution untouched until a clean retry.
-    if parsed.malformed_records != 0 {
+    if parsed.conversation.is_some()
+        && let Some(issue) = &parsed.first_record_issue
+    {
+        // Permanent interior damage: the readable records are applied and the
+        // unreadable ones skipped, never invented.
+        tracing::warn!(target: "mash", provider = issue.provider.as_str(),
+            source_fingerprint = %blake3::hash(issue.source.as_os_str().as_encoded_bytes()).to_hex(),
+            line = issue.line, column = issue.column, category = %issue.category,
+            skipped = parsed.malformed_records,
+            "unreadable records skipped; the rest of the source was applied");
+    }
+    // A snapshot that ends in an unreadable record, or whose skipped records
+    // leave ancestry unprovable, cannot establish a complete source snapshot.
+    // Applying its fragments would replace prior messages and vectors while
+    // retaining an old checkpoint, so leave the contribution untouched.
+    if parsed.malformed_records != 0 && parsed.conversation.is_none() {
         storage.reject_silver_source(
             provider,
             &result.source.history.identity,

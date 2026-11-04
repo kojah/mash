@@ -219,16 +219,27 @@ fn claude_workflow_events_require_agent_consistency_only_when_dialogue_exists() 
 }
 
 #[test]
-fn claude_parser_reports_malformed_lines_without_normalized_fragments() {
+fn claude_parser_skips_interior_damage_but_rejects_a_damaged_tail() {
+    let user = r#"{"type":"user","sessionId":"s1","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hello"}}"#;
+    let assistant = r#"{"type":"assistant","sessionId":"s1","uuid":"a1","parentUuid":"u1","message":{"role":"assistant","content":[{"type":"text","text":"world"}]}}"#;
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
-    writeln!(file, "not-json").expect("malformed line");
-    writeln!(file, r#"{{"type":"user","sessionId":"s1","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{{"role":"user","content":"hello"}}}}"#).expect("user line");
-    writeln!(file, r#"{{"type":"assistant","sessionId":"s1","uuid":"a1","message":{{"role":"assistant","content":[{{"type":"text","text":"world"}}]}}}}"#).expect("assistant line");
+    // Readable records after the damage: it is permanent, not a write in
+    // progress, so the rest of the transcript is applied and the line reported.
+    writeln!(file, "not-json\n{user}\n{assistant}").expect("transcript");
+    let parsed = parse_claude(file.path()).expect("parse Claude history");
+    let conversation = parsed.conversation.expect("readable records are kept");
+    assert_eq!(conversation.messages.inline().len(), 2);
+    assert_eq!(parsed.malformed_records, 1);
+    assert_eq!(parsed.first_record_issue.unwrap().line, 1);
 
+    // A damaged last record may still be being written: keep the previous
+    // contribution until a clean read.
+    let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
+    writeln!(file, "{user}\n{assistant}\n{{\"type\":\"user\",\"session").expect("transcript");
     let parsed = parse_claude(file.path()).expect("parse Claude history");
     assert!(parsed.conversation.is_none());
     assert_eq!(parsed.malformed_records, 1);
-    assert_eq!(parsed.first_record_issue.unwrap().line, 1);
+    assert_eq!(parsed.first_record_issue.unwrap().line, 3);
 }
 
 #[test]

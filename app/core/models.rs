@@ -218,9 +218,11 @@ impl Response {
 }
 
 impl IndexResponse {
+    /// A retry can help only incomplete silver (a rejected or unfinished
+    /// source) or a pending publication. Records skipped from a source whose
+    /// rest was applied are permanent damage, reported but never retried.
     pub(super) fn needs_retry(&self) -> bool {
         !self.silver.is_complete()
-            || self.malformed_records > 0
             || self
                 .shared
                 .as_ref()

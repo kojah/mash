@@ -43,6 +43,11 @@ impl Identity {
         self.keys.push(key)
     }
 
+    /// An unreadable record breaks any replay in progress.
+    pub(super) fn interrupt(&mut self) {
+        self.replay.clear();
+    }
+
     pub(super) fn observe(&mut self, record: &super::Record) -> Result<(), AppError> {
         if let Some(agent) = record.agent_id.as_ref().filter(|agent| !agent.is_empty()) {
             if self
