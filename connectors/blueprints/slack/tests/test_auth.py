@@ -13,6 +13,7 @@ from fake_slack import TOKEN
 
 from mash_slack.cli import main
 from mash_slack.client import TokenMissing, token
+from mash_slack.config import load
 
 CONFIG = (
     "team_id='T0TEAM'\nprincipal='U0ALICE'\nstate_dir='state'\nchannels=['C01']\n"
@@ -22,6 +23,12 @@ CONFIG = (
 
 def mash_version(arguments: list[str], **_: object) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(arguments, 0, b'{"silver_schema":54}', b"")
+
+
+class ExampleTests(unittest.TestCase):
+    def test_the_shipped_example_is_a_valid_configuration(self) -> None:
+        settings = load(Path(__file__).parents[1] / "example.toml")
+        self.assertEqual(settings.source_id, "slack:T0123456789:U0123456789")
 
 
 class TokenTests(unittest.TestCase):

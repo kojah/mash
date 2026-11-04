@@ -1,8 +1,11 @@
 # All paths are relative to this configuration file; ~ expands to your home.
-team_id = "T0123456789" # The workspace; the Mash source is slack:T0123456789.
+team_id = "T0123456789" # The workspace.
+# The Slack user the token acts as (auth.test's user_id); the Mash source is
+# slack:T0123456789:U0123456789. A second token in one workspace is a second source.
+principal = "U0123456789"
 # A user (xoxp-) or bot (xoxb-) token of your own Slack app.
 token_env = "SLACK_TOKEN"
-state_dir = "~/.local/share/mash/connectors/slack/T0123456789"
+state_dir = "~/.local/share/mash/connectors/slack/T0123456789-U0123456789"
 channels = ["C0123456789", "C9876543210"] # Explicit channel ID allowlist.
 # history_days = 90 # By message creation time; omit for all history.
 thread_days = 7 # Each poll rechecks threads and edits this far back.

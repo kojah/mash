@@ -43,9 +43,12 @@ uv sync --project connectors/blueprints/slack --locked
 ```
 
 Copy [example.toml](example.toml) outside Git, e.g. to
-`~/.config/mash/slack.toml`, and set the team ID, channel IDs and destination.
-A channel's ID is at the bottom of its **View channel details** dialog; the team
-ID is in `auth.test` output or the workspace's URL in Slack's web app. Paths are
+`~/.config/mash/slack.toml`, and set the team ID, your user ID (`principal`),
+channel IDs and destination. A channel's ID is at the bottom of its **View
+channel details** dialog; the team ID is in `auth.test` output or the
+workspace's URL in Slack's web app. `principal` is the user the token acts as:
+`auth.test`'s `user_id`, or **Copy member ID** in your Slack profile. `sync`
+rejects a token for another user. Paths are
 relative to the configuration file, with `~` expansion.
 
 ```sh
@@ -56,7 +59,7 @@ slack-mash sync         # One poll and delivery.
 slack-mash sync --watch # Keep polling in this process; Ctrl-C stops it.
 
 mash index --rebuild-local-views
-mash search 'your message text' --source slack:T0123456789 --local
+mash search 'your message text' --source slack:T0123456789:U0123456789 --local
 ```
 
 Each poll prints JSON counts and content-free issues, never text or tokens.
