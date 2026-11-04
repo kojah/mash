@@ -79,6 +79,15 @@ portable import in a private staging directory before moving any active files,
 keeps originals under `retired/`, and installs attachments before the new database.
 Publication identity is preserved only when the export contains it.
 
+Select an exporter for the node's actual current schema, rather than retaining
+an override from an earlier migration. Verify the installed binary's version
+and read-only status against the intended database. When the API and local CLI
+share an installed binary path, preserve and verify an immutable exporter copy
+before the API-first replacement, then pass that copy as `OLD_BINARY` to the
+local upgrader. The Macs' installed binaries live on separate hosts and remain
+available until their own local upgrade step. A successful executable-access
+check alone does not establish exporter compatibility.
+
 An interrupted cutover leaves `DATABASE.upgrade-in-progress/backup`, pointing to
 the private recovery directory. Subsequent deployment refuses to proceed even if
 the active database is absent. Inspect the stopped upgrade and all retained files,
