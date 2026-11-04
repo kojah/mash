@@ -60,7 +60,8 @@ impl Server {
         let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
         command
             .args(["serve", "--server-config", path.to_str().unwrap()])
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
+            .env("MASH_TEST_EXIT_WITH_STDIN", "1")
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
         if activate {
@@ -423,4 +424,25 @@ pub fn cleanup_group(group: &str) {
                 .unwrap();
         }
     });
+}
+
+#[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+fn a_test_server_exits_when_its_test_goes_away() {
+    let root = tempfile::tempdir().unwrap();
+    let group = format!(
+        "parent-exit-{}",
+        root.path().file_name().unwrap().to_string_lossy()
+    );
+    let mut server = Server::new(root.path(), &group, &["node"]);
+    // Closing stdin is what the kernel does when the test process dies.
+    drop(server.child.stdin.take());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while server.child.try_wait().unwrap().is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "server outlived its test"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }

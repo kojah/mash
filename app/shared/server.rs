@@ -485,13 +485,36 @@ pub(crate) async fn run(
     let apply_retry = sync::spawn_apply_recovery(app.clone());
     let served = axum::serve(listener, router(app))
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                () = test_parent_exit() => {}
+            }
         })
         .await
         .map_err(|_| AppError::internal("HTTP server failed"));
     expiry.abort();
     apply_retry.abort();
     served
+}
+
+/// Test servers exit once the test that spawned them does: the test holds the
+/// write end of stdin, which the kernel closes however the test ends.
+#[cfg(debug_assertions)]
+async fn test_parent_exit() {
+    if std::env::var_os("MASH_TEST_EXIT_WITH_STDIN").is_none() {
+        return std::future::pending().await;
+    }
+    let mut stdin = tokio::io::stdin();
+    let mut buffer = [0; 64];
+    while tokio::io::AsyncReadExt::read(&mut stdin, &mut buffer)
+        .await
+        .is_ok_and(|read| read > 0)
+    {}
+}
+
+#[cfg(not(debug_assertions))]
+async fn test_parent_exit() {
+    std::future::pending().await
 }
 
 #[cfg(test)]

@@ -283,7 +283,8 @@ fn spawn_crash_server(
     let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
     command
         .args(["serve", "--server-config", path.to_str().unwrap()])
-        .stdin(std::process::Stdio::null())
+        .stdin(std::process::Stdio::piped())
+        .env("MASH_TEST_EXIT_WITH_STDIN", "1")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .env("MASH_TEST_TOKEN_0", shared_server::token("cli-node"));
