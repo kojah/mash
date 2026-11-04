@@ -114,6 +114,43 @@ cat > "$scratch/broken-release" <<'RELEASE'
 echo 'not a schema report'
 RELEASE
 chmod 755 "$scratch/release" "$scratch/broken-release"
+# A same-root installer must discover incompatible silver during read-only
+# preflight, before stopping the service or changing any database files.
+printf 'pub(crate) const SCHEMA_VERSION: i64 = 51;\n' > "$scratch/schema.rs"
+sha256sum "$silver/group/old.sqlite3" "$silver/group/current.sqlite3" > "$scratch/silver-before.sha256"
+previous_pid=$(jq -r .pid "$TEST_API_POINTER")
+if bash "$repository/tools/check-shared-silver.sh" "$scratch/schema.rs" "$silver" \
+    > "$scratch/schema-output" 2> "$scratch/schema-error"; then
+    echo 'Incompatible shared silver passed preflight.' >&2; exit 1
+fi
+grep -Fq 'preserving node history and transfer receipts' "$scratch/schema-error"
+sha256sum --check "$scratch/silver-before.sha256" >/dev/null
+[[ $(jq -r .pid "$TEST_API_POINTER") == "$previous_pid" ]]
+kill -0 "$previous_pid"
+mkdir -p "$scratch/compatible-silver/group"
+cp "$silver/group/current.sqlite3" "$scratch/compatible-silver/group/current.sqlite3"
+bash "$repository/tools/check-shared-silver.sh" "$scratch/schema.rs" "$scratch/compatible-silver" >/dev/null
+printf 'not a schema declaration\n' > "$scratch/invalid-schema.rs"
+if bash "$repository/tools/check-shared-silver.sh" "$scratch/invalid-schema.rs" "$silver" 2>/dev/null; then
+    echo 'Unverified target schema passed preflight.' >&2; exit 1
+fi
+printf 'not a database\n' > "$scratch/compatible-silver/group/broken.sqlite3"
+if bash "$repository/tools/check-shared-silver.sh" "$scratch/schema.rs" "$scratch/compatible-silver" 2>/dev/null; then
+    echo 'Unreadable shared schema passed preflight.' >&2; exit 1
+fi
+rm "$scratch/compatible-silver/group/broken.sqlite3"
+chmod 000 "$scratch/compatible-silver/group"
+# Root can still inspect mode-000 directories; exercise rejection only when the
+# current test identity actually lacks the required access.
+if [[ ! -r "$scratch/compatible-silver/group" || ! -x "$scratch/compatible-silver/group" ]]; then
+    if bash "$repository/tools/check-shared-silver.sh" "$scratch/schema.rs" "$scratch/compatible-silver" \
+        > "$scratch/schema-output" 2> "$scratch/schema-error"; then
+        chmod 700 "$scratch/compatible-silver/group"
+        echo 'Uninspectable shared directory passed preflight.' >&2; exit 1
+    fi
+    grep -Fq 'Cannot inspect the shared silver directory' "$scratch/schema-error"
+fi
+chmod 700 "$scratch/compatible-silver/group"
 # A candidate that cannot report its schema fails after the old API stopped:
 # the old API restarts and every silver file stays where it was.
 previous_pid=$(jq -r .pid "$TEST_API_POINTER")

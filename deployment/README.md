@@ -48,6 +48,19 @@ Unknown targets and missing API dependencies fail; offline targets are skipped.
 Default rollout selects shared-api and xenia. Include Macs only when requested
 or known available. Builds run once per selected platform.
 
+An API installer that preserves the existing shared silver root must include
+`bash tools/check-shared-silver.sh app/storage/schema.rs /absolute/shared-silver`
+in its read-only deployment preflight. This checks every immediate group/node
+SQLite file against the source release's schema before compilation; unknown or
+unreadable schemas fail. A successful lifecycle/authentication check alone does
+not establish schema compatibility. This check performs no retirement or
+upgrade: crossing schemas requires a separate plan preserving node histories,
+transfer receipts and accepted writes. Keep ordinary installed-service health
+checks separate so the current release remains checkable during preparation.
+Repeat the compatibility check at the install boundary before stopping the
+service; preflight is an observation, not a fence against later source/state
+changes. A planned cross-schema procedure must supply its own tested cutover.
+
 Ordinary deployment performs no ingestion or model downloads. An actual silver
 upgrade preserves a private export and runs one explicit sync to re-ingest stale
 source interpretation, rebuild views and publish. Missing models require explicit installation. The API helper
