@@ -3,9 +3,28 @@
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 
 from . import destination
+
+
+def problems(error: Exception) -> list[dict[str, str]]:
+    """What is wrong with a configuration file, by field, without its values.
+
+    Configuration holds no credentials, but entered values are still left out:
+    a field name and the rule it broke are enough to fix it.
+    """
+    if isinstance(error, ValidationError):
+        return [
+            {
+                "field": ".".join(str(part) for part in item["loc"]) or "(file)",
+                "problem": item["msg"],
+            }
+            for item in error.errors(include_input=False, include_url=False)
+        ]
+    if isinstance(error, OSError):
+        return [{"field": "(file)", "problem": error.strerror or type(error).__name__}]
+    return [{"field": "(file)", "problem": str(error)}]
 
 
 def absolute(value: Path, base: Path) -> Path:

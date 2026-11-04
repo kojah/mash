@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 import orjson
 from mash_sdk import DeliveryError
+from mash_sdk.config import problems
 from mash_sdk.prerequisites import emit
 
 from .client import TokenMissing, connect, token
@@ -36,8 +37,10 @@ def main(context: click.Context, path: Path, preflight: bool) -> None:
     """Ingest selected Slack channels, threads included, into Mash, read-only."""
     try:
         context.obj = load(path)
-    except (OSError, ValueError):
-        raise fail("configuration", 2, retryable=False) from None
+    except (OSError, ValueError) as error:
+        raise fail(
+            "configuration", 2, retryable=False, problems=problems(error)
+        ) from None
     if preflight:
         if context.invoked_subcommand is not None:
             raise click.UsageError("--check runs alone, without a command")
