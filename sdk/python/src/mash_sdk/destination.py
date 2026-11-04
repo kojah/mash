@@ -48,9 +48,13 @@ class Destination:
         database: Path,
         executable: str = "mash",
         config: Path | None = None,
-        timeout: float = 30,
+        timeout: float = 600,
     ) -> Self:
-        """Select local silver; timeout is seconds, not an indexing deadline."""
+        """Select local silver; timeout is seconds, not an indexing deadline.
+
+        A batch into a large local index can take tens of seconds; a timeout
+        stops Mash mid-write and the batch is retried, so err long.
+        """
         return cls(Local(database.resolve(), executable, config), checked(timeout))
 
     @classmethod

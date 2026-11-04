@@ -51,7 +51,15 @@ def main(path: Path, watch: bool, preflight: bool) -> None:
         return
     except DeliveryError as error:
         sys.stderr.buffer.write(
-            orjson.dumps({"error": {"kind": "delivery", "retryable": error.retryable}})
+            orjson.dumps(
+                {
+                    "error": {
+                        "kind": "delivery",
+                        "retryable": error.retryable,
+                        "message": str(error),
+                    }
+                }
+            )
             + b"\n"
         )
         raise click.exceptions.Exit(1) from None

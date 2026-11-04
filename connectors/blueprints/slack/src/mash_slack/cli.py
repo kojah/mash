@@ -78,7 +78,9 @@ def sync(settings: Settings, watch: bool) -> None:
     except WrongWorkspace as error:
         raise fail("wrong-workspace", 2, message=str(error)) from None
     except DeliveryError as error:
-        raise fail("delivery", 1, retryable=error.retryable) from None
+        raise fail(
+            "delivery", 1, retryable=error.retryable, message=str(error)
+        ) from None
     except (OSError, ValueError, sqlite3.Error):
         raise fail("configuration-or-state", 2, retryable=False) from None
     if incomplete:

@@ -55,7 +55,8 @@ def deliver_local(
                 # Mash's permanent input/schema/conflict failures need caller
                 # intervention. None of these failures discard the saved batch.
                 raise DeliveryError(
-                    "local Mash rejected the delivery",
+                    f"local Mash rejected the delivery (exit {result.returncode}); "
+                    "run the same mash index --connector-batch by hand to see why",
                     retryable=result.returncode not in {2, 7, 9, 12},
                 )
             output.seek(0)
