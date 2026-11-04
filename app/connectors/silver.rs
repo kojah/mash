@@ -151,6 +151,7 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         return Err(Error::RevisionConflict);
     }
     let next_revision = revision.checked_add(1).ok_or(Error::RevisionExhausted)?;
+    let declared_before = stored_schema(transaction, batch.source_id.as_str())?;
     sql::ConnectorSource::builder()
         .id(batch.source_id.as_str())
         .revision(&next_revision.to_string())
@@ -175,7 +176,9 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
     let source = batch.source_id.as_str();
     let schema = stored_schema(transaction, source)?;
     let mut checked = BTreeSet::new();
-    let ids = objects_to_check(transaction, batch, schema.is_some())?;
+    // Redeclaring the stored schema changes nothing already checked against it.
+    let schema_changed = schema != declared_before;
+    let ids = objects_to_check(transaction, batch, schema.is_some(), schema_changed)?;
     for id in &ids {
         check_object(transaction, source, id, schema.as_ref(), &mut checked)?;
     }
@@ -247,14 +250,11 @@ fn objects_to_check(
     transaction: &Transaction<'_>,
     batch: &Batch,
     schema: bool,
+    schema_changed: bool,
 ) -> Result<Vec<String>, Error> {
     let source = batch.source_id.as_str();
     // A new schema must hold for everything the source already stored.
-    let ids = if batch
-        .changes
-        .iter()
-        .any(|change| matches!(change, Change::DeclareSchema(_)))
-    {
+    let ids = if schema_changed {
         sql::ConnectorSourceObjects::builder()
             .source_id(source)
             .build()

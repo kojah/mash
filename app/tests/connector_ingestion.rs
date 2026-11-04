@@ -217,3 +217,64 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
     );
     assert!(!models.exists());
 }
+
+#[test]
+fn later_deliveries_are_searchable_at_once_and_never_take_search_down() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let config = root.join("config.toml");
+    std::fs::write(
+        &config,
+        "version=1\n[providers]\n[index]\ndestination='local'\n\
+         [views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
+    )
+    .unwrap();
+    let database = root.join("silver.sqlite3");
+    let models = root.join("models");
+    let input = root.join("batch.json");
+    std::fs::write(&input, serde_json::to_vec(&payload("first", 0)).unwrap()).unwrap();
+    assert!(ingest(&database, &config, &input, &models).status.success());
+    run(&database, &config, &models, &["index"]);
+
+    // A later batch, as a connector delivers while it keeps syncing.
+    let later = serde_json::json!({
+        "schema_version": 2, "source_id": "github:installation",
+        "batch_id": "second", "expected_revision": 1,
+        "changes": [
+            {"op":"upsert-object", "id":"review:2", "role":"entry", "kind":"github:review-comment",
+             "parent":"repo:pr:42", "content":"Freshly delivered quokka", "author":{"id":"bob","kind":"human"}}
+        ]
+    });
+    std::fs::write(&input, serde_json::to_vec(&later).unwrap()).unwrap();
+    let delivered = ingest(&database, &config, &input, &models);
+    assert!(
+        delivered.status.success(),
+        "{}",
+        String::from_utf8_lossy(&delivered.stderr)
+    );
+    let receipt: mash::connectors::Receipt = serde_json::from_slice(&delivered.stdout).unwrap();
+    assert!(receipt.views_ready);
+
+    // No `mash index` in between: the new record and the earlier ones are found.
+    let fresh = run(
+        &database,
+        &config,
+        &models,
+        &["search", "quokka", "--unit", "messages", "--local"],
+    );
+    assert_eq!(
+        fresh["results"][0]["id"],
+        "connector#entry#github:installation#review:2"
+    );
+    let earlier = run(
+        &database,
+        &config,
+        &models,
+        &["search", "participants", "--unit", "messages", "--local"],
+    );
+    assert_eq!(
+        earlier["results"][0]["id"],
+        "connector#entry#github:installation#review:1"
+    );
+    assert!(!models.exists());
+}

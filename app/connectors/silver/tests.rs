@@ -410,3 +410,30 @@ fn complete_snapshot_deletes_containers_it_no_longer_captures() {
     assert!(content(&store, "source", "dropped-message").is_none());
     assert!(content(&store, "source", "kept-message").is_some());
 }
+
+#[test]
+fn child_lookups_use_the_parent_index_instead_of_walking_the_source() {
+    // Grouping and schema checks run this once per object; walking every
+    // object of the source each time made large deliveries quadratic.
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("silver.sqlite3")).unwrap();
+    let children = sql::ConnectorChildren::builder()
+        .source_id("slack:T1:U1")
+        .parent_id(Some("C1"))
+        .build();
+    let plan: Vec<String> = store
+        .connection
+        .prepare(&format!(
+            "EXPLAIN QUERY PLAN {}",
+            sql::ConnectorChildren::QUERY
+        ))
+        .unwrap()
+        .query_map(children.as_params(), |row| row.get(3))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert!(
+        plan.iter().any(|step| step.contains("objects_parent")),
+        "{plan:?}"
+    );
+}

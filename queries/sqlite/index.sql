@@ -248,7 +248,9 @@ SELECT id FROM objects WHERE origin='connector' AND source=sqlc.arg(source_id) O
 SELECT source_id,schema FROM connector_schemas ORDER BY source_id;
 
 -- name: ConnectorChildren :many
-SELECT id,object_role AS role,record FROM objects
+-- Without the hint, ORDER BY id makes SQLite walk every object of the source
+-- through objects_connector_id; callers run this once per object.
+SELECT id,object_role AS role,record FROM objects INDEXED BY objects_parent
 WHERE origin='connector' AND source=sqlc.arg(source_id) AND parent_id=sqlc.arg(parent_id) ORDER BY id;
 
 -- name: ConnectorSilverRevision :one

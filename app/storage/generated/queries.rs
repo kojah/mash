@@ -6548,7 +6548,7 @@ pub struct ConnectorChildren<'a> {
     parent_id: Option<&'a str>,
 }
 impl<'a> ConnectorChildren<'a> {
-    pub const QUERY: &'static str = r"SELECT id,object_role AS role,record FROM objects
+    pub const QUERY: &'static str = r"SELECT id,object_role AS role,record FROM objects INDEXED BY objects_parent
 WHERE origin='connector' AND source=?1 AND parent_id=?2 ORDER BY id";
     pub fn query_str(&self) -> &str {
         Self::QUERY

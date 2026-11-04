@@ -238,9 +238,11 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
-        Operation::IngestConnector { batch_file } => connector_ingestion::run(database, batch_file)
-            .await
-            .map(Response::IngestConnector),
+        Operation::IngestConnector { batch_file } => {
+            connector_ingestion::run(configuration, database, models, batch_file)
+                .await
+                .map(Response::IngestConnector)
+        }
         Operation::DeliverConnector { batch_file } => {
             let shared = configuration.shared.as_ref().ok_or_else(|| {
                 AppError::configuration("configure [shared] to deliver connector batches")
