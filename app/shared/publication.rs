@@ -234,7 +234,14 @@ pub(crate) async fn publish(
     if let Ok(true) = should_auto_backfill(path, config).await {
         return publish_baseline_now(path, config, "auto").await;
     }
-    publish_with_wait(path, config, inference, PUBLISH_LOCK_WAIT).await
+    let publication = publish_with_wait(path, config, inference, PUBLISH_LOCK_WAIT).await;
+    // One atomic publication cannot exceed the decoded-size limit; a node that
+    // fell far behind or holds very long chats catches up through the
+    // resumable, size-bounded backfill instead of staying stale.
+    if publication.error.as_deref() == Some(super::sync::wire::BATCH_TOO_LARGE) {
+        return publish_baseline_now(path, config, "auto").await;
+    }
+    publication
 }
 
 async fn publish_baseline_now(path: &Path, config: &SharedConfig, id: &str) -> Publication {

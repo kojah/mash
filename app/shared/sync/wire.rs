@@ -25,6 +25,8 @@ pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
 /// real agent sessions reach hundreds of megabytes of text, and a chat that
 /// cannot fit would keep its node's shared publication stale forever.
 pub(crate) const DEFAULT_MAX_DECODED_BYTES: usize = 1024 * 1024 * 1024;
+/// Why one atomic publication cannot be sent; publishers then use a backfill.
+pub(crate) const BATCH_TOO_LARGE: &str = "publication batch exceeds decoded-size limit";
 
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct ClientFrame {
@@ -911,7 +913,7 @@ pub(crate) fn encode_publication(
             .checked_add(event_len(event))
             .ok_or_else(|| invalid("too many publication records"))?;
         if decoded.len() > max_decoded {
-            return Err(invalid("publication batch exceeds decoded-size limit"));
+            return Err(invalid(BATCH_TOO_LARGE));
         }
     }
     let piece_target = if decoded.len() > NORMAL_BATCH_TARGET {
