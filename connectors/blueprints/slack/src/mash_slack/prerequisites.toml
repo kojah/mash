@@ -11,14 +11,14 @@ remedy = "Run uv sync --project connectors/blueprints/slack --locked."
 [[requirements]]
 id = "token"
 when = "always"
-description = "A Slack user (xoxp-) or bot (xoxb-) token in the configured environment variable"
-remedy = "Export the token of a Slack app installed in the workspace in token_env (default SLACK_TOKEN)."
+description = "A Slack user token saved by mash-slack login in token_file"
+remedy = "Run mash-slack login with this configuration."
 
 [[requirements]]
 id = "slack_access"
 when = "always"
 description = "Slack accepts the token for team_id and it can read every selected channel and its members' names"
-remedy = "Add the read scopes in connectors/blueprints/slack/README.md and reinstall the app; invite a bot to each channel. sync reports Slack's error per channel."
+remedy = "Run mash-slack login again if the token was revoked; you can read only channels you are a member of. sync reports Slack's error per channel."
 
 [[requirements]]
 id = "state"

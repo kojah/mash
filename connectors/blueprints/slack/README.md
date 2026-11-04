@@ -10,50 +10,59 @@ uses the [Python SDK](../../../sdk/python/README.md) and Slack's official
 client, which retries rate-limited calls after `Retry-After`. This package
 supersedes the [`slack.py` blueprint](../slack.py).
 
-## Slack app and token (once)
-
-Create an app **from scratch** in your workspace at
-<https://api.slack.com/apps>. Apps made in and for your own workspace keep
-Slack's normal Web API rate limits; unlisted apps distributed to other
-workspaces get a much lower `conversations.history` limit. Under **OAuth &
-Permissions**, add read scopes, install the app and copy a token:
-
-- **User token** (`xoxp-`, User Token Scopes): reads what you can read,
-  including private channels you are in. No invitations needed.
-- **Bot token** (`xoxb-`, Bot Token Scopes): reads only channels the bot was
-  invited to (`/invite @your-app` in each channel).
-
-Scopes, for either token type:
-
-- `channels:read`, `channels:history`: public channels.
-- `groups:read`, `groups:history`: private channels.
-- `users:read`: author and mention names.
-- `im:read`, `im:history`, `mpim:read`, `mpim:history`: only if you list
-  direct-message (`D…`) or group DM IDs.
-
-`auth.test` needs no scope; it supplies the workspace name and address used
-for message links (no `chat.getPermalink` calls) and must match `team_id`.
-Export the token in the variable named by `token_env` (default `SLACK_TOKEN`).
-Tokens are never written to state or output.
-
-## Configure and run
+## Sign in
 
 ```sh
 uv sync --project connectors/blueprints/slack --locked
-```
-
-Copy [example.toml](example.toml) outside Git, e.g. to
-`~/.config/mash/slack.toml`, and set the team ID, your user ID (`principal`),
-channel IDs and destination. A channel's ID is at the bottom of its **View
-channel details** dialog; the team ID is in `auth.test` output or the
-workspace's URL in Slack's web app. `principal` is the user the token acts as:
-`auth.test`'s `user_id`, or **Copy member ID** in your Slack profile. `sync`
-rejects a token for another user. Paths are
-relative to the configuration file, with `~` expansion.
-
-```sh
 alias slack-mash='uv run --project connectors/blueprints/slack --locked mash-slack --config ~/.config/mash/slack.toml'
 
+slack-mash login
+```
+
+`login` does the whole setup in the browser:
+
+1. **Create Mash's Slack app (once per workspace).** It opens Slack's app
+   creation page with Mash's settings already filled in: read-only user
+   permissions, browser sign-in for desktop tools (PKCE) and a return address on
+   this machine (`http://localhost:47643/slack/callback`). Pick the workspace and
+   click **Create**, then paste the app's **Client ID** from **Basic
+   Information**. Pass `--client-id` next time to skip this step.
+2. **Approve Mash.** It opens Slack's usual permission page and waits for the
+   reply on this machine. No client secret is involved.
+3. **Save.** It asks Slack which workspace and user you signed in as, saves the
+   token to a file only you can read, and, if `--config` does not exist yet,
+   writes a configuration with `team_id`, `principal` and `token_file` filled in.
+   An existing configuration must be for the same workspace and user; the new
+   token replaces its old one.
+
+Then add the channel IDs to index to `channels` in the configuration (an empty
+list indexes nothing). A channel's ID is at the bottom of its **View channel
+details** dialog. See [example.toml](example.toml) for every setting; paths are
+relative to the configuration file, with `~` expansion.
+
+Why your own app: Slack gives apps made for one workspace its normal Web API
+limits, while apps distributed to other workspaces get a much lower
+`conversations.history` limit unless Slack approves them for its directory. The
+app is yours, used only by you.
+
+What the sign-in allows and keeps:
+
+- **You read as yourself.** Browser sign-in for desktop tools cannot request bot
+  permissions, so Mash sees exactly the channels and DMs you can, and only those
+  you list. Permissions: `channels:read`/`history` (public channels),
+  `groups:read`/`history` (private channels), `im:` and `mpim:` `read`/`history`
+  (DMs you list), and `users:read` (names).
+- **The token lasts until revoked.** Token rotation stays off, so the token does
+  not expire; remove the app or its authorization in Slack to revoke it, and run
+  `login` again to replace it. Turning on browser sign-in marks the app as a
+  public client in Slack, which only Slack support can undo; that is fine for an
+  app only you use.
+- **The token stays in its file.** It is never printed, logged or copied into
+  connector state.
+
+## Run
+
+```sh
 slack-mash --check      # Offline setup report; no ingestion, state or network.
 slack-mash sync         # One poll and delivery.
 slack-mash sync --watch # Keep polling in this process; Ctrl-C stops it.
@@ -64,9 +73,9 @@ mash search 'your message text' --source slack:T0123456789:U0123456789 --local
 
 Each poll prints JSON counts and content-free issues, never text or tokens.
 Exit codes: 1 delivery failure, 2 configuration or state (including a failed
-`--check` and a token for another workspace), 3 no token, 9 partial poll (a
-channel or `auth.test` failed; that channel's cursor stays put and the next poll
-resumes). `--check` follows the
+`--check`, a failed `login` and a token for another workspace or user), 3 no
+saved token, 9 partial poll (a channel or `auth.test` failed; that channel's
+cursor stays put and the next poll resumes). `--check` follows the
 [prerequisite declaration](src/mash_slack/prerequisites.toml). It makes no
 network requests, so Slack's acceptance of the token stays `unverified` until
 `sync` calls `auth.test` and reads the channels.
@@ -117,6 +126,7 @@ MASH_CONNECTOR_MASH_BINARY=/absolute/path/to/mash \
   -s connectors/blueprints/slack/tests
 ```
 
-Tests serve an in-memory Slack Web API over local HTTP to the real client; the
+Tests serve an in-memory Slack Web API over local HTTP to the real client,
+including the secret-free sign-in exchange; the
 integration test delivers into a disposable Mash database and finds a message
 and a thread reply with `mash search`/`view`.

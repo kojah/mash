@@ -1,10 +1,10 @@
-"""The Slack Web API client and its token; the token is never logged or stored.
+"""The Slack Web API client and its token; the token is never logged or copied.
 
 slack_sdk sends the token as a header (redacted from its debug logs), retries
 connection errors once and HTTP 429 up to three times after `Retry-After`.
 """
 
-import os
+from pathlib import Path
 
 from slack_sdk.http_retry.builtin_async_handlers import (
     AsyncConnectionErrorRetryHandler,
@@ -16,13 +16,16 @@ API = "https://slack.com/api/"
 
 
 class TokenMissing(Exception):
-    """The configured environment variable holds no token."""
+    """No token has been saved in the configured token file."""
 
 
-def token(env: str) -> str:
-    value = os.environ.get(env, "").strip()
+def token(path: Path) -> str:
+    try:
+        value = path.read_text().strip()
+    except FileNotFoundError:
+        value = ""
     if not value:
-        raise TokenMissing(f"set {env} to a Slack user (xoxp-) or bot (xoxb-) token")
+        raise TokenMissing(f"no Slack token in {path}; run mash-slack login")
     return value
 
 

@@ -1,4 +1,4 @@
-"""Strict TOML configuration; Slack and Mash tokens stay in the environment."""
+"""Strict TOML configuration; the Slack token lives in a private file `login` writes."""
 
 import tomllib
 from datetime import datetime, timedelta
@@ -21,9 +21,8 @@ class Settings(BaseModel):
     # The Slack user the token acts as. Two credentials in one workspace are two
     # sources, not one: cursors, rate limits and visibility follow the principal.
     principal: StrictStr = Field(pattern=r"^[UW][A-Z0-9]{2,}$")
-    token_env: StrictStr = Field(
-        default="SLACK_TOKEN", pattern=r"^[A-Za-z_][A-Za-z0-9_]*$"
-    )
+    # The user token `mash-slack login` saved, readable only by this user.
+    token_file: Path
     state_dir: Path
     channels: tuple[ChannelId, ...]
     history_days: StrictInt | None = Field(default=None, gt=0, le=365000)
@@ -52,6 +51,7 @@ def load(path: Path) -> Settings:
     settings = settings.model_copy(
         update={
             "state_dir": absolute(settings.state_dir, base),
+            "token_file": absolute(settings.token_file, base),
             "destinations": tuple(
                 item.relative_to(base) for item in settings.destinations
             ),

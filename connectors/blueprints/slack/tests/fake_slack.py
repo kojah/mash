@@ -9,8 +9,9 @@ from aiohttp import web
 from slack_sdk.web.async_client import AsyncWebClient
 
 from mash_slack.client import connect
+from mash_slack.login import challenge
 
-TOKEN = "xoxb-secret-do-not-log"
+TOKEN = "xoxp-secret-do-not-log"
 TEAM = "T0TEAM"
 URL = "https://acme.slack.com/"
 
@@ -37,6 +38,8 @@ class FakeSlack:
     # Responses to return, in order, before serving a method normally.
     failures: dict[str, list[web.Response]] = field(default_factory=dict)
     calls: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+    # Authorization codes Slack issued, each with its PKCE challenge.
+    codes: dict[str, str] = field(default_factory=dict)
     page: int = 2
     loop: asyncio.AbstractEventLoop = field(init=False)
     thread: threading.Thread = field(init=False)
@@ -84,11 +87,13 @@ class FakeSlack:
         return connect(TOKEN, self.base_url)
 
     async def handle(self, request: web.Request) -> web.Response:
-        assert request.headers["authorization"] == f"Bearer {TOKEN}"
         method = request.match_info["method"]
         query = dict(request.query) | {
             k: str(v) for k, v in (await request.post()).items()
         }
+        if method == "oauth.v2.access":
+            return self.exchange(request, query)
+        assert request.headers["authorization"] == f"Bearer {TOKEN}"
         self.calls.append((method, query))
         pending = self.failures.get(method)
         if pending:
@@ -125,6 +130,18 @@ class FakeSlack:
                 found.sort(key=lambda m: Decimal(m["ts"]))
                 return self.paged(found, query)
         return ok_false("unknown_method")
+
+    def exchange(self, request: web.Request, query: dict[str, str]) -> web.Response:
+        """A public client: no secret and no token, only the PKCE verifier."""
+        assert "authorization" not in request.headers
+        assert "client_secret" not in query
+        expected = self.codes.pop(query["code"], None)
+        if expected is None or challenge(query["code_verifier"]) != expected:
+            return ok_false("invalid_code")
+        return ok(
+            authed_user={"id": "U0ALICE", "access_token": TOKEN, "token_type": "user"},
+            team={"id": TEAM, "name": "Acme"},
+        )
 
     def summary(self, channel: str, message: dict) -> dict:
         """Thread parents carry reply_count and latest_reply, as Slack's do."""

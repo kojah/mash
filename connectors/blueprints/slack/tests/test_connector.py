@@ -72,6 +72,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
             {
                 "team_id": TEAM,
                 "principal": "U0ALICE",
+                "token_file": self.state / "slack.token",
                 "state_dir": self.state,
                 "channels": ["C01"],
                 "destinations": [

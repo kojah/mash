@@ -95,15 +95,14 @@ class IntegrationTests(unittest.TestCase):
             ]
             slack.failures["auth.test"] = [limited()]
             config = self.root / "slack.toml"
+            (self.root / "slack.token").write_text(TOKEN)
             config.write_text(
-                f"team_id='{TEAM}'\nprincipal='U0ALICE'\nstate_dir='state'\nchannels=['C01']\n"
+                f"team_id='{TEAM}'\nprincipal='U0ALICE'\ntoken_file='slack.token'\n"
+                "state_dir='state'\nchannels=['C01']\n"
                 "[[destinations]]\ntype='local'\ndatabase='silver.sqlite3'\n"
                 f"executable='{self.binary}'\nconfig='mash.toml'\n"
             )
-            with (
-                patch.dict(os.environ, {"SLACK_TOKEN": TOKEN}),
-                patch("mash_slack.cli.connect", lambda _: slack.client()),
-            ):
+            with patch("mash_slack.cli.connect", lambda _: slack.client()):
                 first = CliRunner().invoke(main, ["--config", str(config), "sync"])
                 second = CliRunner().invoke(main, ["--config", str(config), "sync"])
         self.assertEqual(first.exit_code, 0, first.output)
