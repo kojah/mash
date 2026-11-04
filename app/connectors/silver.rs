@@ -5,7 +5,11 @@ use super::{Batch, Change, Id, Object, Receipt, Role, Schema, Version};
 use crate::storage::generated as sql;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{collections::BTreeSet, path::Path, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    path::Path,
+    time::Duration,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -161,6 +165,23 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
     // Parents may arrive later in the batch; the edge constraint is deferred
     // and the stored graph is checked once every change is applied. Silver
     // revision triggers record whether anything actually changed.
+    // Where each upserted object sat before this batch: descendants need
+    // regrouping only below objects that are new or changed role or parent.
+    let mut before = HashMap::new();
+    for change in &batch.changes {
+        if let Change::UpsertObject(object) = change {
+            let row = sql::ConnectorObject::builder()
+                .source_id(batch.source_id.as_str())
+                .id(object.id.as_str())
+                .build()
+                .query_opt(transaction)
+                .map_err(database)?;
+            before.insert(
+                object.id.as_str().to_owned(),
+                row.map(|row| (row.role, row.parent_id)),
+            );
+        }
+    }
     for change in &batch.changes {
         mutate(transaction, &batch.source_id, change)?;
     }
@@ -183,7 +204,7 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         check_object(transaction, source, id, schema.as_ref(), &mut checked)?;
     }
     for id in &ids {
-        group(transaction, source, id)?;
+        group(transaction, source, id, before.get(id))?;
     }
     let silver_revision = sql::ConnectorSilverRevision
         .query_one(transaction)
@@ -430,7 +451,14 @@ pub(crate) fn put_object(
 
 /// Record an object's nearest container, and its non-container descendants'.
 /// Moving a segment or entry regroups everything below it.
-fn group(connection: &Connection, source: &str, id: &str) -> Result<(), Error> {
+/// `before` is where an object upserted by this batch sat beforehand (`None`
+/// when it is new); objects the batch did not upsert keep their descendants.
+fn group(
+    connection: &Connection,
+    source: &str,
+    id: &str,
+    before: Option<&Option<(String, Option<String>)>>,
+) -> Result<(), Error> {
     let load = |id: &str| {
         sql::ConnectorObject::builder()
             .source_id(source)
@@ -442,6 +470,11 @@ fn group(connection: &Connection, source: &str, id: &str) -> Result<(), Error> {
     let Some(row) = load(id)? else {
         return Ok(()); // Deleted later in the same batch.
     };
+    let moved = before.is_some_and(|before| {
+        before
+            .as_ref()
+            .is_none_or(|(role, parent)| *role != row.role || *parent != row.parent_id)
+    });
     let role = parse_role(&row.role)?;
     let mut nearest = id.to_owned();
     if matches!(role, Role::Segment | Role::Entry) {
@@ -456,6 +489,7 @@ fn group(connection: &Connection, source: &str, id: &str) -> Result<(), Error> {
         }
     }
     let mut pending = vec![(id.to_owned(), role, nearest)];
+    let mut first = true;
     while let Some((id, role, nearest)) = pending.pop() {
         sql::ConnectorSetConversation::builder()
             .conversation_id(&nearest)
@@ -464,6 +498,11 @@ fn group(connection: &Connection, source: &str, id: &str) -> Result<(), Error> {
             .build()
             .execute(connection)
             .map_err(database)?;
+        // Unmoved objects keep their descendants' grouping: re-sending an
+        // unchanged channel must not walk every message in it.
+        if std::mem::take(&mut first) && !moved {
+            continue;
+        }
         // A container's own descendants group under it.
         let inherited = if role == Role::Container {
             id.clone()
@@ -616,7 +655,7 @@ pub(crate) fn validate_archive(connection: &Connection) -> Result<(), Error> {
         check_object(connection, &row.source_id, &row.id, schema, &mut checked)?;
         // Each container regroups its subtree; parentless objects group alone.
         if row.role == "container" || row.parent_id.is_none() {
-            group(connection, &row.source_id, &row.id)?;
+            group(connection, &row.source_id, &row.id, Some(&None))?;
         }
     }
     Ok(())

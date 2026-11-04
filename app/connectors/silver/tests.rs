@@ -437,3 +437,51 @@ fn child_lookups_use_the_parent_index_instead_of_walking_the_source() {
         "{plan:?}"
     );
 }
+
+#[test]
+fn moved_entries_take_their_replies_and_resent_containers_keep_theirs() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&directory.path().join("silver.sqlite3")).unwrap();
+    let source = "chat:team";
+    let grouped = |store: &Store, id: &str| -> String {
+        store
+            .connection
+            .query_row(
+                "SELECT conversation_id FROM objects WHERE origin='connector' AND source=?1 AND id=?2",
+                [source, id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+    store
+        .apply(&batch(
+            source,
+            "first",
+            0,
+            json!([
+                container("a"),
+                container("b"),
+                entry("thread", "a", "a thread"),
+                entry("reply", "thread", "a reply")
+            ]),
+        ))
+        .unwrap();
+    assert_eq!(grouped(&store, "reply"), "a");
+    // Re-sending a container unchanged regroups nothing below it.
+    store
+        .apply(&batch(source, "again", 1, json!([container("a")])))
+        .unwrap();
+    assert_eq!(grouped(&store, "thread"), "a");
+    assert_eq!(grouped(&store, "reply"), "a");
+    // Moving the thread to another container takes its reply along.
+    store
+        .apply(&batch(
+            source,
+            "move",
+            2,
+            json!([entry("thread", "b", "a thread")]),
+        ))
+        .unwrap();
+    assert_eq!(grouped(&store, "thread"), "b");
+    assert_eq!(grouped(&store, "reply"), "b");
+}

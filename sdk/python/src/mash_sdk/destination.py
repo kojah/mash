@@ -94,10 +94,14 @@ class Destination:
         target = Shared(api_url.rstrip("/"), group_id, node_id, token_env)
         return cls(target, checked(timeout))
 
-    def _identity(self) -> str:
-        # Ordering and checkpoints belong to the receiving silver database, so
-        # binary, config, or token changes keep the identity while separate
-        # databases or nodes must never share it.
+    def identity(self) -> str:
+        """Where delivered records land: the local database or the shared node.
+
+        Ordering and checkpoints belong to the receiving silver database, so
+        binary, config, timeout or token changes keep the identity while
+        separate databases or nodes never share it. Connectors key their own
+        source cursors on it for the same reason.
+        """
         match self.target:
             case Local(database=database):
                 digest = hashlib.sha256(str(database).encode()).hexdigest()

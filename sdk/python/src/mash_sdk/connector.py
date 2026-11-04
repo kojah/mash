@@ -99,7 +99,7 @@ class Connector:
         if not self.modes:
             raise ValueError("a connector declares at least one mode")
         self.destinations = tuple(destinations)
-        identities = [destination._identity() for destination in self.destinations]
+        identities = [destination.identity() for destination in self.destinations]
         if not identities:
             raise ValueError("a connector needs at least one destination")
         if len(set(identities)) != len(identities):
@@ -385,7 +385,7 @@ class Connector:
         trigger: Trigger,
     ) -> int:
         """Finish saved work, then plan against the ledger and send each part."""
-        destination_id = destination._identity()
+        destination_id = destination.identity()
         with translated(), StateStore(self.state_path) as store:
             pending = store.pending(
                 source_id=self.source_id, destination_id=destination_id
@@ -492,7 +492,7 @@ class Connector:
     def _send(
         self, destination: Destination, changes: Changes | None
     ) -> Receipt | None:
-        destination_id = destination._identity()
+        destination_id = destination.identity()
         with translated(), StateStore(self.state_path) as store:
             pending = store.pending(
                 source_id=self.source_id, destination_id=destination_id
@@ -543,7 +543,7 @@ class Connector:
         return store.acknowledge(
             payload,
             source_id=self.source_id,
-            destination_id=destination._identity(),
+            destination_id=destination.identity(),
         )
 
 

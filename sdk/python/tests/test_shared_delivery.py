@@ -61,7 +61,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
         with StateStore(self.state_path) as store:
             return (
                 store.pending(
-                    source_id="external", destination_id=destination._identity()
+                    source_id="external", destination_id=destination.identity()
                 )
                 is not None
             )

@@ -59,7 +59,9 @@ def cursor_path(settings: Settings) -> Path:
             # The source key is part of the cursor identity: two instances of
             # this connector sharing a state_dir must not share cursors.
             settings.source_id,
-            [item.model_dump(mode="json") for item in settings.destinations],
+            # Where records land, not how: a new binary path or timeout
+            # must not restart the source from scratch.
+            sorted(target.identity() for target in settings.targets()),
             settings.history_days,
         ]
     )

@@ -71,7 +71,9 @@ def cursor_path(settings: Settings) -> Path:
     key = orjson.dumps(
         [
             settings.source_id,
-            [item.model_dump(mode="json") for item in settings.destinations],
+            # Where records land, not how: a new binary path or timeout
+            # must not restart the source from scratch.
+            sorted(target.identity() for target in settings.targets()),
             settings.item_kinds,
             settings.history_days,
         ]

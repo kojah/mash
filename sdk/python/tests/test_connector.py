@@ -120,7 +120,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                 await connector.send(changes)
             with StateStore(self.state) as store:
                 pending = store.pending(
-                    source_id="external", destination_id=destination._identity()
+                    source_id="external", destination_id=destination.identity()
                 )
                 self.assertIsNotNone(pending)
             (receipt,) = await connector.send(changes)
@@ -144,12 +144,12 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
             pass
         with StateStore(self.state) as store:
             checkpoint = store.checkpoint(
-                source_id="external", destination_id=destination._identity()
+                source_id="external", destination_id=destination.identity()
             )
             self.assertEqual(checkpoint.revision, 1)
             self.assertIsNone(
                 store.pending(
-                    source_id="external", destination_id=destination._identity()
+                    source_id="external", destination_id=destination.identity()
                 )
             )
 
@@ -171,7 +171,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         with StateStore(self.state) as store:
             self.assertIsNotNone(
                 store.pending(
-                    source_id="external", destination_id=destination._identity()
+                    source_id="external", destination_id=destination.identity()
                 )
             )
         self.assertEqual(list(self.root.glob(".mash-delivery-*")), [])

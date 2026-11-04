@@ -83,7 +83,9 @@ def cursor_path(settings: Settings) -> Path:
         [
             # Two Slack connectors sharing a state_dir must not share cursors.
             settings.source_id,
-            [item.model_dump(mode="json") for item in settings.destinations],
+            # Where records land, not how: a new binary path or timeout
+            # must not restart the source from scratch.
+            sorted(target.identity() for target in settings.targets()),
             settings.history_days,
         ]
     )
