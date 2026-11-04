@@ -756,6 +756,47 @@ pub(crate) fn unit_digest_input(unit: &Unit) -> String {
 #[derive(Default)]
 pub(crate) struct Positions(HashMap<(String, String), HashMap<String, i64>>);
 
+fn entry_order(
+    connection: &Connection,
+    source_id: &str,
+    container: &str,
+) -> Result<Vec<sql::ConnectorEntryOrderRow>, AppError> {
+    let mut entries = sql::ConnectorEntryOrder::builder()
+        .conversation_id(container)
+        .source_id(source_id)
+        .build()
+        .query_many(connection)
+        .map_err(AppError::database)?;
+    entries.sort_by(|left, right| {
+        (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
+            right.created_at.is_none(),
+            right.created_at,
+            right.id.as_str(),
+        ))
+    });
+    Ok(entries)
+}
+
+/// Reuse chronological metadata only within one batch of context windows.
+#[derive(Default)]
+pub(super) struct EntryOrders(HashMap<(String, String), Vec<sql::ConnectorEntryOrderRow>>);
+
+impl EntryOrders {
+    fn entries(
+        &mut self,
+        connection: &Connection,
+        source_id: &str,
+        container: &str,
+    ) -> Result<&[sql::ConnectorEntryOrderRow], AppError> {
+        use std::collections::hash_map::Entry;
+        let key = (source_id.to_owned(), container.to_owned());
+        Ok(match self.0.entry(key) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(entry_order(connection, source_id, container)?),
+        })
+    }
+}
+
 impl Positions {
     fn of(
         &mut self,
@@ -766,19 +807,7 @@ impl Positions {
     ) -> Result<Option<i64>, AppError> {
         let key = (source_id.to_owned(), container.to_owned());
         if !self.0.contains_key(&key) {
-            let mut entries = sql::ConnectorEntryOrder::builder()
-                .conversation_id(container)
-                .source_id(source_id)
-                .build()
-                .query_many(connection)
-                .map_err(AppError::database)?;
-            entries.sort_by(|left, right| {
-                (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
-                    right.created_at.is_none(),
-                    right.created_at,
-                    right.id.as_str(),
-                ))
-            });
+            let entries = entry_order(connection, source_id, container)?;
             let positions = entries
                 .into_iter()
                 .enumerate()
@@ -861,6 +890,15 @@ pub(crate) fn view(
     target: &str,
     context: u32,
 ) -> Result<Vec<super::Message>, AppError> {
+    view_with_orders(connection, target, context, &mut EntryOrders::default())
+}
+
+pub(super) fn view_with_orders(
+    connection: &Connection,
+    target: &str,
+    context: u32,
+    orders: &mut EntryOrders,
+) -> Result<Vec<super::Message>, AppError> {
     let Some((_, source_id, id)) = parse_anchor(target) else {
         return Ok(Vec::new());
     };
@@ -891,19 +929,7 @@ pub(crate) fn view(
             };
             // Order the container's entries from indexed columns, then decode
             // only the window: a long channel is not read for a few messages.
-            let mut entries = sql::ConnectorEntryOrder::builder()
-                .conversation_id(container.id.as_str())
-                .source_id(source_id)
-                .build()
-                .query_many(connection)
-                .map_err(AppError::database)?;
-            entries.sort_by(|left, right| {
-                (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
-                    right.created_at.is_none(),
-                    right.created_at,
-                    right.id.as_str(),
-                ))
-            });
+            let entries = orders.entries(connection, source_id, container.id.as_str())?;
             let Some(position) = entries.iter().position(|entry| entry.id.as_str() == id) else {
                 return Ok(Vec::new());
             };

@@ -77,10 +77,11 @@ fn finish_hybrid(
     let selection = crate::search_ranking::select(backend, query, fused, unit)?;
     let documents =
         tracing::info_span!("rerank_context", hits = selection.count).in_scope(|| {
+            let mut reader = storage.context_reader();
             selection.hits[..selection.count]
                 .iter()
                 .map(|hit| {
-                    let context = storage.view_content(
+                    let context = reader.view_content(
                         &hit.id,
                         2,
                         crate::storage::MessageContent::SearchProjection,
