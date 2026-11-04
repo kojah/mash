@@ -102,6 +102,8 @@ pub(crate) struct IndexOptions {
 pub(crate) struct IndexSummary {
     pub(crate) scanned_files: u64,
     pub(crate) malformed_records: u64,
+    /// Sources whose snapshot was rejected, keeping their previous contribution.
+    pub(crate) rejected_sources: u64,
     pub(crate) record_diagnostics: diagnostics::Diagnostics,
     pub(crate) changed_messages: u64,
     pub(crate) removed_messages: u64,
@@ -209,6 +211,7 @@ fn index_at(
     let mut summary = IndexSummary {
         scanned_files: 0,
         malformed_records: 0,
+        rejected_sources: 0,
         record_diagnostics: diagnostics::Diagnostics::default(),
         changed_messages: 0,
         removed_messages: 0,
@@ -321,7 +324,7 @@ fn index_provider_pipeline(
         parse,
         authoritative,
     } = scan;
-    let rejected_before = summary.malformed_records;
+    let rejected_before = summary.rejected_sources;
     let observed_layout = discovery::source_layout(&discovery.sources);
     let (mut pending, observed_paths, mut complete) = prepare_sources(
         storage,
@@ -460,7 +463,9 @@ fn index_provider_pipeline(
     if first_error.is_none() {
         // Optional built-in roots can be absent. Completeness certifies the
         // admitted stored history, not exhaustive coverage of inaccessible roots.
-        storage.finish_silver_scan(provider, summary.malformed_records == rejected_before)?;
+        // Records skipped from an applied source are permanent damage, already
+        // reported; only a rejected source leaves stored history behind it.
+        storage.finish_silver_scan(provider, summary.rejected_sources == rejected_before)?;
     }
     first_error.map_or(Ok(()), Err)
 }
@@ -651,6 +656,7 @@ fn apply_parsed_source(
     // Applying its fragments would replace prior messages and vectors while
     // retaining an old checkpoint, so leave the contribution untouched.
     if parsed.malformed_records != 0 && parsed.conversation.is_none() {
+        summary.rejected_sources += 1;
         storage.reject_silver_source(
             provider,
             &result.source.history.identity,
