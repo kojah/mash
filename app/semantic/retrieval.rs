@@ -195,14 +195,20 @@ fn dense_candidates(
             .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
     });
     ranked.truncate(limit);
+    // Hydrate connector hits together: they share per-container positions.
+    let connector_ids = ranked
+        .iter()
+        .filter(|(connector, _, _)| *connector)
+        .map(|(_, id, _)| *id)
+        .collect::<Vec<_>>();
+    let mut connector_hits = storage.connector_hits(&connector_ids)?.into_iter();
     let mut hits = Vec::with_capacity(ranked.len());
     for (connector, id, score) in ranked {
         let mut hit = if connector {
-            storage.connector_hits(&[id])?
+            connector_hits.next()
         } else {
-            storage.search_hits(&[id])?
+            storage.search_hits(&[id])?.pop()
         }
-        .pop()
         .ok_or_else(|| AppError::database_data("semantic index references a missing record"))?;
         hit.semantic_score = Some(score);
         hits.push(hit);

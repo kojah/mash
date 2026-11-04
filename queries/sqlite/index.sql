@@ -292,6 +292,12 @@ SELECT id, parent_id FROM objects
 WHERE origin = 'connector' AND source = sqlc.arg(source_id)
   AND object_role IN ('container', 'document') AND parent_id IS NOT NULL;
 
+-- name: ConnectorEntryOrder :many
+-- A container's entries with only what orders them; records stay undecoded.
+SELECT id, created_at FROM objects INDEXED BY objects_conversation
+WHERE conversation_id = sqlc.arg(conversation_id) AND object_role = 'entry'
+  AND origin = 'connector' AND source = sqlc.arg(source_id);
+
 -- name: ConnectorInsertUnit :one
 INSERT INTO connector_units(anchor, role, label, source_id, record_id, group_anchor, created_at, digest)
 VALUES (sqlc.arg(anchor), sqlc.arg(role), sqlc.arg(label), sqlc.arg(source_id), sqlc.arg(record_id),

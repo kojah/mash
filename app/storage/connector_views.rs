@@ -645,6 +645,7 @@ impl Storage {
 
     /// Search hits for unit IDs, in the given order.
     pub(crate) fn connector_hits(&self, ids: &[i64]) -> Result<Vec<SearchHit>, AppError> {
+        let mut positions = Positions::default();
         ids.iter()
             .map(|id| {
                 let unit = sql::ConnectorUnit::builder()
@@ -655,7 +656,12 @@ impl Storage {
                     .ok_or_else(|| {
                         AppError::database_data("connector index references a missing unit")
                     })?;
-                connector_hit(&self.connection, &unit.source_id, &unit.record_id)
+                connector_hit(
+                    &self.connection,
+                    &unit.source_id,
+                    &unit.record_id,
+                    &mut positions,
+                )
             })
             .collect()
     }
@@ -745,74 +751,55 @@ pub(crate) fn unit_digest_input(unit: &Unit) -> String {
     )
 }
 
-/// One connector object as a search hit with its ancestry.
-/// Every entry under a container, in the same order `view` reads them.
-fn ordered_entries(
-    connection: &Connection,
-    source_id: &str,
-    container_id: &str,
-) -> Result<Vec<Object>, AppError> {
-    let mut entries = Vec::new();
-    let mut pending = vec![container_id.to_owned()];
-    // Breadth-first over the container's subtree; silver has no cycles.
-    while let Some(parent) = pending.pop() {
-        for row in sql::ConnectorChildren::builder()
-            .source_id(source_id)
-            .parent_id(Some(parent.as_str()))
-            .build()
-            .query_many(connection)
-            .map_err(AppError::database)?
-        {
-            let object = decode(row.record.as_deref())?;
-            if object.role != Role::Container {
-                pending.push(row.id);
-            }
-            if object.role == Role::Entry {
-                entries.push(object);
-            }
+/// Each container's entry positions, computed once per search: the order
+/// `view` reads them in (creation time, then ID), from indexed columns only.
+#[derive(Default)]
+pub(crate) struct Positions(HashMap<(String, String), HashMap<String, i64>>);
+
+impl Positions {
+    fn of(
+        &mut self,
+        connection: &Connection,
+        source_id: &str,
+        container: &str,
+        id: &str,
+    ) -> Result<Option<i64>, AppError> {
+        let key = (source_id.to_owned(), container.to_owned());
+        if !self.0.contains_key(&key) {
+            let mut entries = sql::ConnectorEntryOrder::builder()
+                .conversation_id(container)
+                .source_id(source_id)
+                .build()
+                .query_many(connection)
+                .map_err(AppError::database)?;
+            entries.sort_by(|left, right| {
+                (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
+                    right.created_at.is_none(),
+                    right.created_at,
+                    right.id.as_str(),
+                ))
+            });
+            let positions = entries
+                .into_iter()
+                .enumerate()
+                .map(|(position, entry)| (entry.id, i64::try_from(position).unwrap_or(i64::MAX)))
+                .collect();
+            self.0.insert(key.clone(), positions);
         }
+        Ok(self
+            .0
+            .get(&key)
+            .and_then(|positions| positions.get(id))
+            .copied())
     }
-    entries.sort_by(|left, right| {
-        (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
-            right.created_at.is_none(),
-            right.created_at,
-            right.id.as_str(),
-        ))
-    });
-    Ok(entries)
 }
 
-/// The entry's position among its container's entries.
-fn entry_sequence(
-    connection: &Connection,
-    source_id: &str,
-    id: &str,
-) -> Result<Option<i64>, AppError> {
-    let Some(evidence) = evidence(connection, source_id, id)? else {
-        return Ok(None);
-    };
-    if evidence.object.role != Role::Entry {
-        return Ok(None);
-    }
-    let Some((_, container)) = evidence
-        .ancestors
-        .iter()
-        .find(|(role, _)| *role == Role::Container)
-    else {
-        return Ok(None);
-    };
-    Ok(
-        ordered_entries(connection, source_id, container.id.as_str())?
-            .iter()
-            .position(|entry| entry.id.as_str() == id)
-            .map(|position| i64::try_from(position).unwrap_or(i64::MAX)),
-    )
-}
-
+/// One connector object as a search hit with its ancestry.
 pub(crate) fn connector_hit(
     connection: &Connection,
     source_id: &str,
     id: &str,
+    positions: &mut Positions,
 ) -> Result<SearchHit, AppError> {
     let evidence = evidence(connection, source_id, id)?
         .ok_or_else(|| AppError::database_data("connector index references missing silver"))?;
@@ -841,7 +828,12 @@ pub(crate) fn connector_hit(
         role: None,
         author_kind: evidence.author(),
         author: crate::source::author(None, evidence.author()),
-        sequence: entry_sequence(connection, source_id, id)?,
+        sequence: match (evidence.object.role, evidence.group()) {
+            (Role::Entry, Some(container)) => {
+                positions.of(connection, source_id, container.id.as_str(), id)?
+            }
+            _ => None,
+        },
         content: evidence.content().to_owned(),
         created_at: evidence.object.created_at,
         metadata: crate::search_results::ChatMetadata {
@@ -897,27 +889,14 @@ pub(crate) fn view(
             let Some(container) = evidence.group() else {
                 return Ok(Vec::new());
             };
-            let mut entries = Vec::new();
-            let mut pending = vec![container.id.as_str().to_owned()];
-            // Breadth-first over the container's subtree; silver has no cycles.
-            while let Some(parent) = pending.pop() {
-                for row in sql::ConnectorChildren::builder()
-                    .source_id(source_id)
-                    .parent_id(Some(parent.as_str()))
-                    .build()
-                    .query_many(connection)
-                    .map_err(AppError::database)?
-                {
-                    let object = decode(row.record.as_deref())?;
-                    // A nested container groups its own entries.
-                    if object.role != Role::Container {
-                        pending.push(row.id);
-                    }
-                    if object.role == Role::Entry {
-                        entries.push(object);
-                    }
-                }
-            }
+            // Order the container's entries from indexed columns, then decode
+            // only the window: a long channel is not read for a few messages.
+            let mut entries = sql::ConnectorEntryOrder::builder()
+                .conversation_id(container.id.as_str())
+                .source_id(source_id)
+                .build()
+                .query_many(connection)
+                .map_err(AppError::database)?;
             entries.sort_by(|left, right| {
                 (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
                     right.created_at.is_none(),
@@ -931,17 +910,25 @@ pub(crate) fn view(
             let context = usize::try_from(context).unwrap_or(usize::MAX);
             let first = position.saturating_sub(context);
             let last = position.saturating_add(context).min(entries.len() - 1);
-            Ok(entries[first..=last]
+            entries[first..=last]
                 .iter()
                 .enumerate()
                 .map(|(offset, entry)| {
-                    message(
-                        entry,
+                    let row = sql::ConnectorObject::builder()
+                        .source_id(source_id)
+                        .id(&entry.id)
+                        .build()
+                        .query_opt(connection)
+                        .map_err(AppError::database)?
+                        .ok_or_else(|| AppError::database_data("connector entry disappeared"))?;
+                    let entry = decode(row.record.as_deref())?;
+                    Ok(message(
+                        &entry,
                         first + offset,
                         entry.content.clone().unwrap_or_default(),
-                    )
+                    ))
                 })
-                .collect())
+                .collect()
         }
     }
 }

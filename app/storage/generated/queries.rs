@@ -7355,6 +7355,96 @@ impl<'a> ConnectorRootsBuilder<'a, (&'a str,)> {
         ConnectorRoots { source_id }
     }
 }
+pub struct ConnectorEntryOrderRow {
+    pub id: String,
+    pub created_at: Option<i64>,
+}
+impl ConnectorEntryOrderRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            created_at: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorEntryOrder<'a> {
+    conversation_id: &'a str,
+    source_id: &'a str,
+}
+impl<'a> ConnectorEntryOrder<'a> {
+    pub const QUERY: &'static str = r"SELECT id, created_at FROM objects INDEXED BY objects_conversation
+WHERE conversation_id = ?1 AND object_role = 'entry'
+  AND origin = 'connector' AND source = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorEntryOrder<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorEntryOrderRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorEntryOrderRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id, self.source_id)
+    }
+}
+impl<'a> ConnectorEntryOrder<'a> {
+    pub const fn builder() -> ConnectorEntryOrderBuilder<'a, ((), ())> {
+        ConnectorEntryOrderBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorEntryOrderBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, SourceId> ConnectorEntryOrderBuilder<'a, ((), SourceId)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ConnectorEntryOrderBuilder<'a, (&'a str, SourceId)> {
+        let ((), source_id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorEntryOrderBuilder {
+            fields: (conversation_id, source_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ConversationId> ConnectorEntryOrderBuilder<'a, (ConversationId, ())> {
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorEntryOrderBuilder<'a, (ConversationId, &'a str)> {
+        let (conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorEntryOrderBuilder {
+            fields: (conversation_id, source_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorEntryOrderBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorEntryOrder<'a> {
+        let (conversation_id, source_id) = self.fields;
+        ConnectorEntryOrder {
+            conversation_id,
+            source_id,
+        }
+    }
+}
 pub struct ConnectorInsertUnitRow {
     pub id: i64,
 }

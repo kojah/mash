@@ -40,6 +40,25 @@ impl Storage {
         ) else {
             return Plan::new(query, mode, &vocabulary);
         };
+        // A scope no native message can satisfy, such as a connector source,
+        // would make every candidate lookup below scan all of that word's
+        // matches for nothing. Native search finds nothing there anyway, and
+        // connector search still uses the unscoped alternatives.
+        let in_scope = self
+            .connection
+            .prepare(&format!(
+                "SELECT 1 FROM objects m INDEXED BY objects_searchable_role
+                CROSS JOIN objects c INDEXED BY objects_native_container ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
+                WHERE m.origin = 'provider' AND m.object_role = 'entry' AND COALESCE(m.search_projection, m.content) <> ''
+                  AND {} AND ({}) LIMIT 1",
+                scope.filter.fts_chat_sql("m.conversation_id"),
+                scope.filter.sql(Some(&scope.node))
+            ))
+            .and_then(|mut probe| probe.exists([]))
+            .map_err(AppError::database)?;
+        if !in_scope {
+            return Plan::new(query, mode, &vocabulary);
+        }
         // Candidates come from the whole vocabulary; each one is kept only if
         // an indexed message in scope contains it. One posting-list lookup per
         // candidate replaces enumerating every token occurrence in the index.

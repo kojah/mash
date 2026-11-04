@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const VOCABULARY_LIMIT: usize = 100_000;
 const ALTERNATIVES: usize = 8;
+/// Candidates a scoped plan checks per query word, best-ranked first.
+const MAX_CHECKS: usize = 64;
 
 #[derive(
     Debug,
@@ -188,7 +190,9 @@ impl Plan {
                 alternatives.sort_unstable();
                 alternatives.dedup();
                 let mut group = vec![word];
-                for (_, term) in alternatives {
+                // Each check can scan a word's matches; bound them so a
+                // selective scope cannot turn one query into thousands.
+                for (_, term) in alternatives.into_iter().take(MAX_CHECKS) {
                     if group.len() > ALTERNATIVES {
                         break;
                     }
