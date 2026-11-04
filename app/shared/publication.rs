@@ -380,6 +380,9 @@ async fn publish_result(
         acknowledge(path, config, revision).await?;
         return Ok(preparation);
     }
+    // The server numbers revisions itself after a backfill; the local journal
+    // is read from the local revision acknowledged at that server revision.
+    let journal_base = local_base(path, &self::target(config), target.publication_revision);
     // Parse and spool before starting a remote transaction. Temporary files contain
     // only the outgoing data, have restrictive permissions, and are deleted on drop.
     let db = path.to_path_buf();
@@ -391,9 +394,14 @@ async fn publish_result(
             let mut forwarded_embeddings = 0;
             let revision = Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
                 snapshot::validate_owner(snapshot, &target)?;
+                let base = snapshot.delta_base(
+                    target.instance.as_deref(),
+                    journal_base.unwrap_or(target.publication_revision),
+                )?;
+                // The server accepts a delta only on top of its own head and
+                // only toward a later revision.
                 let base =
-                    snapshot.delta_base(target.instance.as_deref(), target.publication_revision)?;
-                let base = base.filter(|_| allow_delta);
+                    base.filter(|_| allow_delta && snapshot.revision > target.publication_revision);
                 write_event(
                     &mut writer,
                     &Event::Start(Start {
@@ -401,7 +409,7 @@ async fn publish_result(
                         source_silver: Some(snapshot.source_silver.clone()),
                         instance: snapshot.instance.clone(),
                         revision: Some(snapshot.revision),
-                        base_revision: base,
+                        base_revision: base.map(|_| target.publication_revision),
                         snapshot: base.is_none(),
                         forgets: Vec::new(),
                     }),
@@ -451,6 +459,7 @@ async fn publish_result(
     let indexed = upload(config, &file).await?;
     crash_point("after_publish_before_ack");
     acknowledge(path, config, revision).await?;
+    record_server_base(path, &self::target(config), revision, indexed.revision);
     // A delta supplies only changed chats; if the node's views still lack
     // others, nothing later would supply them, so resupply everything once.
     if allow_delta && !indexed.views_current {
@@ -490,6 +499,47 @@ struct BackfillReceipts {
     backfill_id: String,
     revision: i64,
     completed: std::collections::BTreeSet<String>,
+}
+
+/// Which server revision the last acknowledged local revision became. Ordinary
+/// publications keep the client's revision, but a backfill's server numbers its
+/// batches from its own head; deltas then need both to line up again.
+#[derive(serde::Deserialize, serde::Serialize)]
+struct ServerBase {
+    target: String,
+    local: i64,
+    server: i64,
+}
+
+fn server_base_path(database: &Path) -> PathBuf {
+    let mut path = database.as_os_str().to_owned();
+    path.push(".publication-base.json");
+    PathBuf::from(path)
+}
+
+/// Best effort: without the record the next publication is a full snapshot.
+fn record_server_base(database: &Path, target: &str, local: i64, server: i64) {
+    let path = server_base_path(database);
+    let record = ServerBase {
+        target: target.to_owned(),
+        local,
+        server,
+    };
+    let Ok(bytes) = serde_json::to_vec(&record) else {
+        return;
+    };
+    let temporary = path.with_extension("json.tmp");
+    if std::fs::write(&temporary, bytes).is_ok() {
+        let _ = std::fs::rename(&temporary, &path);
+    }
+}
+
+/// The local revision acknowledged when the server reached `server`, if that
+/// is still this target's last record; otherwise the revisions coincide.
+fn local_base(database: &Path, target: &str, server: i64) -> Option<i64> {
+    let record: ServerBase =
+        serde_json::from_slice(&std::fs::read(server_base_path(database)).ok()?).ok()?;
+    (record.target == target && record.server == server).then_some(record.local)
 }
 
 fn backfill_receipts_path(database: &Path) -> PathBuf {
@@ -584,6 +634,9 @@ pub(crate) async fn publish_backfill(
         crate::storage::publication::JournalCoverage::BaselineComplete { through: revision },
     )
     .await?;
+    // The server renumbers baseline batches from its own head, so its revision
+    // now differs from the local one deltas are journaled against.
+    record_server_base(path, &target_key, revision, indexed.revision);
     Ok(indexed.revision)
 }
 
@@ -731,4 +784,21 @@ fn published_artifacts_current(
                     )
                 })
         })
+}
+
+#[cfg(test)]
+mod server_base_tests {
+    use super::{local_base, record_server_base};
+
+    #[test]
+    fn a_backfilled_server_revision_maps_back_to_the_local_one() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("mash.sqlite3");
+        assert_eq!(local_base(&database, "target", 7), None);
+        record_server_base(&database, "target", 5_140_005, 3_528_522);
+        assert_eq!(local_base(&database, "target", 3_528_522), Some(5_140_005));
+        // Another server head or destination means something else wrote there.
+        assert_eq!(local_base(&database, "target", 3_528_523), None);
+        assert_eq!(local_base(&database, "other", 3_528_522), None);
+    }
 }
