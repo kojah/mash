@@ -149,6 +149,72 @@ fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_sc
 }
 
 #[test]
+fn dense_kind_filter_avoids_canonical_row_reads_and_preserves_boolean_scope() {
+    use crate::search_filter::{Filter, Scope};
+    let directory = tempfile::tempdir().unwrap();
+    let mut writer = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let mut source = conversation_with_messages(&[("visible", "visible text")]);
+    source.provider = crate::provider::Provider::ClaudeCode;
+    writer.replace_conversation(&source).unwrap();
+    let mut scope = Scope {
+        match_mode: crate::views::matching::Mode::Strict,
+        node: "local".into(),
+        filter: Filter::Kind(vec!["slack:message".into()]),
+    };
+    let query = super::super::semantic::semantic_filter_query(&scope);
+    // EXPLAIN QUERY PLAN does not label this partial index as covering. Check
+    // the actual bytecode: reading a Column from an objects table cursor would
+    // fetch canonical rows, even when the final scope admits no messages.
+    let root: i64 = writer
+        .connection
+        .query_row(
+            "SELECT rootpage FROM sqlite_schema WHERE name='objects'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let bytecode = writer
+        .connection
+        .prepare(&format!("EXPLAIN {query}"))
+        .unwrap()
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let table_cursors = bytecode
+        .iter()
+        .filter(|(op, _, page, database)| op == "OpenRead" && *page == root && *database == 0)
+        .map(|(_, cursor, _, _)| *cursor)
+        .collect::<std::collections::HashSet<_>>();
+    assert!(
+        !bytecode
+            .iter()
+            .any(|(op, cursor, _, _)| op == "Column" && table_cursors.contains(cursor)),
+        "{bytecode:?}"
+    );
+    assert!(writer.filtered_semantic_rowids(&scope).unwrap().is_empty());
+    scope.filter = Filter::Any(vec![
+        scope.filter,
+        Filter::Kind(vec!["claude-code:message".into()]),
+    ]);
+    let admitted = writer.filtered_semantic_rowids(&scope).unwrap();
+    assert_eq!(admitted.len(), 1);
+    let hits = writer
+        .search_hits(&admitted.into_iter().collect::<Vec<_>>())
+        .unwrap();
+    assert_eq!(hits[0].id, "visible");
+    scope.filter = Filter::Not(Box::new(scope.filter));
+    assert!(writer.filtered_semantic_rowids(&scope).unwrap().is_empty());
+}
+
+#[test]
 fn dense_queue_selection_preserves_users_and_all_role_recipes() {
     use crate::role::Role;
     use crate::views::config::{Build, DenseContent};

@@ -6,8 +6,10 @@ CREATE INDEX IF NOT EXISTS objects_context_parent
 -- indexes must repeat this predicate exactly.
 CREATE INDEX IF NOT EXISTS objects_searchable_role ON objects(role)
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
+-- Kind scopes must also stay on metadata pages: fetching kind from objects
+-- otherwise reads canonical rows even for connector-only searches.
 CREATE INDEX IF NOT EXISTS objects_searchable_metadata
-    ON objects(created_at, conversation_id, role)
+    ON objects(created_at, conversation_id, role, kind)
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
 CREATE INDEX IF NOT EXISTS objects_searchable_identity ON objects(id, role)
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
