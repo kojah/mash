@@ -4,7 +4,7 @@ All external connectors are experimental blueprints. None is currently supported
 for public use. Promote each connector out of this directory only after its
 source behavior and end-to-end delivery have been tested sufficiently.
 
-Packaged implementations live in `obsidian/`, `google_docs/`, `github/`, `slack/`,
+Packaged implementations live in `obsidian/`, `github/`, `slack/`,
 and `discord/`. Their READMEs describe setup and checks; existing CI checks stay
 enabled, but fake API tests do not establish live service readiness.
 

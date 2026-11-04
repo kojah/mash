@@ -124,7 +124,6 @@ provider.
 |---|---|---|
 | slack | `slack:<team_id>:<user_id>` | `auth.test` (team + user) — implemented |
 | github | `github:<login>:<installation_id>` | `GET /installation` (or `/user` for a PAT) |
-| google-docs | `google-docs:<sub>` | tokeninfo `sub` |
 | discord | `discord:<bot_user_id>` | `GET /users/@me` |
 
 Device-scoped connectors (obsidian, apple-notes, imessage) key on

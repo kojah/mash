@@ -99,15 +99,6 @@ jobs:
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --project connectors/blueprints/obsidian --locked python -m unittest discover \
               -s connectors/blueprints/obsidian/tests
-      - name: Verify Google Docs ingestion against a fake Drive and real local search
-        run: |
-          uv sync --project connectors/blueprints/google_docs --locked
-          uv run --project connectors/blueprints/google_docs --locked ruff check connectors/blueprints/google_docs
-          uv run --project connectors/blueprints/google_docs --locked ruff format --check connectors/blueprints/google_docs
-          uv run --project connectors/blueprints/google_docs --locked ty check connectors/blueprints/google_docs
-          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/blueprints/google_docs --locked python -m unittest discover \
-              -s connectors/blueprints/google_docs/tests
       - name: Verify GitHub ingestion against a fake API and real local search
         run: |
           uv sync --project connectors/blueprints/github --locked
