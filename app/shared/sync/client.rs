@@ -1049,7 +1049,7 @@ pub(crate) async fn upload_backfill_plan_with_config(
     backfill_id: &str,
     resume: BackfillResume<'_>,
     on_batch: impl FnMut(&str, i64) -> Result<(), AppError>,
-) -> Result<protocol::Indexed, AppError> {
+) -> Result<i64, AppError> {
     upload_backfill_plan(
         config,
         token(config)?,
@@ -1082,6 +1082,8 @@ pub(crate) fn backfill_lanes() -> usize {
 ///
 /// Batches are independent, so they are spread across sessions and committed
 /// concurrently; each session carries one active operation.
+/// Returns the greatest acknowledged server revision. Baseline coverage does
+/// not prove node-wide views readiness; callers must read freshness for that.
 #[allow(
     clippy::too_many_lines,
     clippy::too_many_arguments,
@@ -1096,7 +1098,7 @@ pub(crate) async fn upload_backfill_plan(
     progress: Option<tokio::sync::mpsc::UnboundedSender<BackfillProgress>>,
     lanes: usize,
     mut on_batch: impl FnMut(&str, i64) -> Result<(), AppError>,
-) -> Result<protocol::Indexed, AppError> {
+) -> Result<i64, AppError> {
     let BackfillResume {
         completed,
         last_revision,
@@ -1211,13 +1213,7 @@ pub(crate) async fn upload_backfill_plan(
         *guard = None;
     }
     finish?;
-    Ok(protocol::Indexed {
-        counts: crate::storage::Counts::default(),
-        revision,
-        removed_messages: 0,
-        purged_conversations: 0,
-        views_current: true,
-    })
+    Ok(revision)
 }
 
 async fn install_backfill_manifest(

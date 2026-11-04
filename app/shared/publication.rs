@@ -625,7 +625,7 @@ pub(crate) async fn publish_backfill(
         completed: &completed,
         last_revision: receipts.server_revision,
     };
-    let indexed = super::sync::client::upload_backfill_plan_with_config(
+    let server_revision = super::sync::client::upload_backfill_plan_with_config(
         config,
         &plan,
         backfill_id,
@@ -647,8 +647,8 @@ pub(crate) async fn publish_backfill(
     .await?;
     // The server renumbers baseline batches from its own head, so its revision
     // now differs from the local one deltas are journaled against.
-    record_server_base(path, &target_key, revision, indexed.revision);
-    Ok(indexed.revision)
+    record_server_base(path, &target_key, revision, server_revision);
+    Ok(server_revision)
 }
 
 /// Backfill identity qualified by the destination it belongs to.

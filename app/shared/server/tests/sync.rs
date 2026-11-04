@@ -1666,7 +1666,7 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
         crate::shared::sync::client::BackfillLimits::default(),
     )
     .expect("plan the baseline");
-    let indexed = crate::shared::sync::client::upload_backfill_plan(
+    let revision = crate::shared::sync::client::upload_backfill_plan(
         &config,
         FIRST.to_owned(),
         &plan,
@@ -1681,7 +1681,7 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
     )
     .await
     .expect("client backfill completes");
-    assert!(indexed.revision >= 1);
+    assert!(revision >= 1);
 
     // Manifest installed, batch covered, baseline complete.
     let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
@@ -1700,7 +1700,7 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
         .iter()
         .find(|node| node.node_id == "first")
         .expect("freshness includes the publishing node");
-    assert_eq!(node.revision, indexed.revision);
+    assert_eq!(node.revision, revision);
     assert!(node.views_current);
     service.cleanup().await;
 }
@@ -2344,7 +2344,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
         publication_redaction: crate::redaction::Policy::new(false),
     };
     let completed = std::collections::BTreeSet::new();
-    let indexed = upload_backfill_plan(
+    let revision = upload_backfill_plan(
         &config,
         FIRST.to_owned(),
         &plan,
@@ -2362,7 +2362,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
 
     // Revisions are assigned under the node lock: four batches, revisions 1..4,
     // so the head is the batch count and no two commits shared a revision.
-    assert_eq!(indexed.revision, 4, "{indexed:?}");
+    assert_eq!(revision, 4);
     let counts = service.counts(FIRST).await;
     assert_eq!(counts.conversations, 4);
     assert_eq!(counts.messages, 4);

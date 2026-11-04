@@ -707,6 +707,12 @@ publication, then drives `FinishBackfill` and waits for `BackfillComplete`.
 `qdrant_client_backfill_sender_completes_a_baseline_end_to_end` runs that sender
 against the real handler and asserts the catalog reports `complete`,
 coverage equals the manifest, and views are certified.
+The sender returns only the greatest acknowledged server revision: manifest
+completion alone does not establish node-wide views readiness. Callers use
+freshness to inspect certification. Removing the synthetic `Indexed` response
+with `views_current=true` changes no wire messages, commits, ordering, coverage
+checks or local acknowledgement/pruning semantics, so the existing backfill
+models apply without a new state transition.
 
 The normal operator surface is `mash index`; the baseline is chosen
 automatically for a large first publication. `mash index --backfill[=ID]` is a
