@@ -177,6 +177,9 @@ pub(crate) fn status(
 /// may observe the owner within this budget, then reports shared-pending.
 const PUBLISH_LOCK_WAIT: Duration = Duration::from_secs(30);
 const PUBLISH_LOCK_POLL: Duration = Duration::from_millis(50);
+/// Why a delta left the node's views uncertified; the publisher resupplies.
+const VIEWS_INCOMPLETE: &str =
+    "shared views still lack chats this delta did not change; resupplying every chat";
 /// The backfill identity publishers choose for themselves; see `publish_backfill`.
 const AUTO_BACKFILL: &str = "auto";
 const SHARED_PENDING: &str =
@@ -240,7 +243,10 @@ pub(crate) async fn publish(
     // One atomic publication cannot exceed the decoded-size limit; a node that
     // fell far behind or holds very long chats catches up through the
     // resumable, size-bounded backfill instead of staying stale.
-    if publication.error.as_deref() == Some(super::sync::wire::BATCH_TOO_LARGE) {
+    if matches!(
+        publication.error.as_deref(),
+        Some(super::sync::wire::BATCH_TOO_LARGE | VIEWS_INCOMPLETE)
+    ) {
         return publish_baseline_now(path, config, AUTO_BACKFILL).await;
     }
     publication
@@ -365,8 +371,7 @@ async fn publish_result(
         });
     }
     // Changed recipes/models require complete replacement, even with a journal.
-    let allow_delta =
-        target.publication_revision > 0 && published_artifacts_current(&freshness, config, &target);
+    let allow_delta = target.publication_revision > 0 && delta_applies(&freshness, config, &target);
     if target.build != crate::views::config::Build::default() {
         let (file, revision, preparation) =
             snapshot::prepare(path, &target, inference, started, allow_delta).await?;
@@ -443,9 +448,14 @@ async fn publish_result(
         preparation_milliseconds: crate::progress::milliseconds(started),
         upload_bytes: file.as_file().metadata().map_err(AppError::io)?.len(),
     };
-    upload(config, &file).await?;
+    let indexed = upload(config, &file).await?;
     crash_point("after_publish_before_ack");
     acknowledge(path, config, revision).await?;
+    // A delta supplies only changed chats; if the node's views still lack
+    // others, nothing later would supply them, so resupply everything once.
+    if allow_delta && !indexed.views_current {
+        return Err(AppError::shared(VIEWS_INCOMPLETE));
+    }
     Ok(preparation)
 }
 
@@ -668,6 +678,29 @@ async fn already_published(
             && published_artifacts_current(&confirmed, config, target))
         .then_some(revision),
     )
+}
+
+/// Whether the server holds exactly this node's last acknowledged revision
+/// under the same views recipe, so a delta can follow it. Unlike
+/// `published_artifacts_current`, the node's views need not be certified: the
+/// server merges a delta into the views it has and certifies only when every
+/// chat is covered. Requiring certification instead made a node that missed
+/// one chat (say, one still growing during a long backfill) resend everything
+/// on every publication.
+fn delta_applies(
+    freshness: &super::Freshness,
+    config: &SharedConfig,
+    target: &super::reuse::Target,
+) -> bool {
+    freshness.group_id == config.group_id
+        && freshness.group_views.as_ref().is_some_and(|group| {
+            group.build == target.build
+                && group.generation == target.generation
+                && group.dimensions == target.dimensions
+        })
+        && freshness.nodes.iter().any(|node| {
+            node.node_id == config.node_id && node.revision == target.publication_revision
+        })
 }
 
 fn published_artifacts_current(
