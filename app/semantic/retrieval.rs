@@ -62,19 +62,22 @@ pub(crate) fn hybrid_search_filtered(
         return Ok(crate::search_ranking::finish_fusion(fused, fusion));
     }
     let selection = crate::search_ranking::select(backend, query, fused, unit)?;
-    let documents = selection.hits[..selection.count]
-        .iter()
-        .map(|hit| {
-            let context = storage.view_content(
-                &hit.id,
-                2,
-                crate::storage::MessageContent::SearchProjection,
-            )?;
-            Ok(crate::search_results::contextual_document(
-                hit, query, &context,
-            ))
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
+    let documents =
+        tracing::info_span!("rerank_context", hits = selection.count).in_scope(|| {
+            selection.hits[..selection.count]
+                .iter()
+                .map(|hit| {
+                    let context = storage.view_content(
+                        &hit.id,
+                        2,
+                        crate::storage::MessageContent::SearchProjection,
+                    )?;
+                    Ok(crate::search_results::contextual_document(
+                        hit, query, &context,
+                    ))
+                })
+                .collect::<Result<Vec<_>, AppError>>()
+        })?;
     crate::search_ranking::score(backend, query, selection, &documents, unit, fusion)
 }
 
@@ -170,14 +173,16 @@ fn dense_candidates(
     let mut scanned = native_chunks.chunks.len();
     // A provider selection names native history only.
     let connector = if provider.is_none() {
-        let chunks = connector_chunks(
-            storage.connector_vectors(
-                generation,
-                crate::storage::cutoff_timestamp(days)?,
-                filters,
-            )?,
-            query.values.len(),
-        );
+        let chunks = tracing::info_span!("load_connector_vectors").in_scope(|| {
+            Ok::<_, AppError>(connector_chunks(
+                storage.connector_vectors(
+                    generation,
+                    crate::storage::cutoff_timestamp(days)?,
+                    filters,
+                )?,
+                query.values.len(),
+            ))
+        })?;
         scanned += chunks.chunks.len();
         rank_quantized(query, &chunks, limit)
     } else {
@@ -201,7 +206,10 @@ fn dense_candidates(
         .filter(|(connector, _, _)| *connector)
         .map(|(_, id, _)| *id)
         .collect::<Vec<_>>();
-    let mut connector_hits = storage.connector_hits(&connector_ids)?.into_iter();
+    let mut connector_hits =
+        tracing::info_span!("hydrate_connector_hits", hits = connector_ids.len())
+            .in_scope(|| storage.connector_hits(&connector_ids))?
+            .into_iter();
     let mut hits = Vec::with_capacity(ranked.len());
     for (connector, id, score) in ranked {
         let mut hit = if connector {
