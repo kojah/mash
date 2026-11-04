@@ -15,6 +15,12 @@ node group, so shared history remains searchable while source machines are offli
 The service keeps shared silver (published canonical history) in SQLite and derived
 shared views (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
 
+Local gold (derived search views) uses SQLite FTS5 and exact cosine vector
+retrieval. SQLite is the chosen local backend following evaluation of USearch
+and Qdrant Edge: the additional snapshot, freshness, filtering and recovery
+complexity is not justified by the demonstrated end-to-end benefit. Local ANN
+adoption is out of scope; the shared service continues to use Qdrant.
+
 ## Quick start
 
 Install a prebuilt binary (macOS Apple Silicon, Linux x86_64 or arm64, Windows x64):
