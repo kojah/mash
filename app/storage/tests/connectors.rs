@@ -463,3 +463,38 @@ fn index_only_counts_match_native_entries_beside_segments_and_connector_objects(
         )
     );
 }
+
+#[test]
+fn an_earlier_message_shifts_positions_without_re_embedding_later_ones() {
+    let root = tempfile::tempdir().unwrap();
+    let path = database(root.path());
+    project(&path);
+    let generation = "test-generation";
+    {
+        let mut writer = Storage::open_writer(&path).unwrap();
+        for (unit, _) in writer.pending_connector_embeddings(generation, 10).unwrap() {
+            writer
+                .store_connector_embedding(unit, generation, &[1, 2, 3], 1.0)
+                .unwrap();
+        }
+        writer.commit_writer().unwrap();
+    }
+    // An older message moves every existing entry one position later.
+    apply(
+        &path,
+        &batch(
+            1,
+            &serde_json::json!([
+                {"op": "upsert-object", "id": "review-0", "role": "entry",
+                 "kind": "github:review-comment", "parent": "review",
+                 "content": "An earlier observation",
+                 "author": {"id": "bob", "kind": "human"}, "created_at": 10},
+            ]),
+        ),
+    );
+    project(&path);
+    let writer = Storage::open_writer(&path).unwrap();
+    let pending = writer.pending_connector_embeddings(generation, 10).unwrap();
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert!(pending[0].1.ends_with("An earlier observation"));
+}

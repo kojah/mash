@@ -9,7 +9,7 @@ use super::{SearchHit, Storage};
 use crate::AppError;
 use crate::connectors::{AuthorKind, Object, Role};
 use crate::source::{Ancestor, ObjectType, Source};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
@@ -482,6 +482,10 @@ impl Storage {
             match known.remove(&unit.anchor) {
                 Some((_, previous)) if previous == digest => {}
                 Some((id, _)) => {
+                    // Positions and ancestry shift as a conversation grows;
+                    // the vector embeds only the text, so keep it when that
+                    // is unchanged instead of re-embedding the conversation.
+                    let text_changed = self.connector_text(id)?.as_deref() != Some(&unit.text);
                     sql::ConnectorUpdateUnit::builder()
                         .label(&unit.object.kind)
                         .group_anchor(&unit.group_anchor)
@@ -491,13 +495,15 @@ impl Storage {
                         .build()
                         .execute(&self.connection)
                         .map_err(AppError::database)?;
-                    self.delete_connector_text(id)?;
-                    self.insert_connector_text(id, &unit.text)?;
-                    sql::ConnectorDeleteUnitEmbedding::builder()
-                        .unit_id(id)
-                        .build()
-                        .execute(&self.connection)
-                        .map_err(AppError::database)?;
+                    if text_changed {
+                        self.delete_connector_text(id)?;
+                        self.insert_connector_text(id, &unit.text)?;
+                        sql::ConnectorDeleteUnitEmbedding::builder()
+                            .unit_id(id)
+                            .build()
+                            .execute(&self.connection)
+                            .map_err(AppError::database)?;
+                    }
                 }
                 None => {
                     let id = sql::ConnectorInsertUnit::builder()
@@ -542,6 +548,17 @@ impl Storage {
             )
             .map_err(AppError::database)?;
         Ok(())
+    }
+
+    fn connector_text(&self, id: i64) -> Result<Option<String>, AppError> {
+        self.connection
+            .query_row(
+                "SELECT content FROM connector_fts WHERE rowid = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(AppError::database)
     }
 
     fn delete_connector_text(&self, id: i64) -> Result<(), AppError> {
