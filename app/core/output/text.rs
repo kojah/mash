@@ -438,8 +438,6 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
             &Chat {
                 conversation_id: &row.conversation_id,
                 provider: &row.provider,
-                object: &row.object,
-                ancestors: &row.ancestors,
                 node_id: Some(&row.node_id),
                 metadata: super::metadata(&row.metadata),
                 score: None,

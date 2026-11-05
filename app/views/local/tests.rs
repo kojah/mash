@@ -253,14 +253,13 @@ async fn local_qdrant_replay_preserves_silver_and_rejects_stale_or_hidden_result
         local.scope.generation,
         semantic::SHARED_EMBEDDING_GENERATION
     );
-    assert_eq!(
-        local
-            .candidates(query("idempotency"))
-            .await
-            .unwrap()
-            .lexical
-            .len(),
-        1
+    let candidates = local.candidates(query("idempotency")).await.unwrap();
+    assert_eq!(candidates.lexical.len(), 1);
+    assert!(
+        candidates.lexical[0]
+            .turn_id
+            .as_ref()
+            .is_some_and(|id| !id.is_empty())
     );
     assert!(
         local

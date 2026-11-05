@@ -174,7 +174,7 @@ fn policy_upgrade_is_pending_and_retries_keep_the_same_revision() {
 }
 
 #[test]
-fn a_disabled_policy_passes_text_metadata_and_ancestors_through() {
+fn a_disabled_policy_passes_text_and_metadata_through() {
     let policy = super::Policy::new(false);
     assert_eq!(policy.text("password=\"hunter2\""), "password=\"hunter2\"");
     let mut metadata = crate::search_results::ChatMetadata {

@@ -7,10 +7,7 @@ mod provider;
 mod role;
 mod silver;
 mod silver_query;
-mod source;
 mod tools;
-
-mod connectors;
 
 // View materialization, retrieval models, policies and query-oriented views.
 mod chat_catalog;

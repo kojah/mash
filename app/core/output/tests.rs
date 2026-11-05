@@ -9,7 +9,7 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
         "unit":"messages", "shared":true, "shared_error":"peer unavailable",
         "shared_context_error":"context unavailable",
         "results":[{
-            "id":"primary", "chat_id":"chat", "provider":"codex", "object":{"role":"entry","kind":"codex:message"}, "role":"user",
+            "id":"primary", "chat_id":"chat", "turn_id":"turn", "provider":"codex", "role":"user",
             "node_id":"peer", "content":content, "fusion_score":0.3, "rerank_score":0.8,
             "copies":[{"message_id":"copy","node_id":"other-peer"}],
             "metadata":{"title":"title","enrichment":{"version":1,"title":null,"project":null,"repository":null}}
@@ -22,8 +22,12 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
     assert!(hit["content"].as_str().unwrap().contains("needle"));
     assert!(hit["content"].as_str().unwrap().chars().count() <= EXCERPT_CHARS + 2);
     assert_eq!(hit["content_truncated"], true);
+    assert!(hit.get("object").is_none());
+    assert!(hit.get("ancestors").is_none());
+    assert_eq!(hit["turn_id"], "turn");
+    assert!(full["results"][0].get("object").is_none());
     for key in [
-        "id", "chat_id", "provider", "object", "role", "node_id", "copies",
+        "id", "chat_id", "turn_id", "provider", "role", "node_id", "copies",
     ] {
         assert_eq!(hit[key], full["results"][0][key]);
     }
@@ -55,8 +59,8 @@ fn compact_thread_excerpts_preserve_copy_anchors_and_order() {
     let response = Response::Search(
         serde_json::from_value(json!({
             "query":"needle", "realized_mode":"lexical", "unit":"chats", "shared":true,
-            "results":[{"chat_id":"chat","provider":"codex","object":{"role":"container","kind":"codex:chat"},"node_id":"peer","score":0.5,
-            "matches":[{"message_id":"message","node_id":"peer","role":"assistant","created_at":1,
+            "results":[{"chat_id":"chat","provider":"codex","node_id":"peer","score":0.5,
+            "matches":[{"message_id":"message","turn_id":"turn","node_id":"peer","role":"assistant","created_at":1,
                 "snippet":"x".repeat(800),"projection_span":{"start_char":50,"end_char":850},
                 "rerank_score":0.9,"fusion_score":0.5,
                 "copies":[{"message_id":"copy","node_id":"other"}]}]}]
@@ -66,6 +70,7 @@ fn compact_thread_excerpts_preserve_copy_anchors_and_order() {
     let compact = serialize(&response, Detail::Compact).unwrap();
     let anchor = &compact["results"][0]["matches"][0];
     assert_eq!(anchor["message_id"], "message");
+    assert_eq!(anchor["turn_id"], "turn");
     assert_eq!(anchor["node_id"], "peer");
     assert_eq!(anchor["copies"][0]["message_id"], "copy");
     assert_eq!(anchor["snippet_truncated"], true);
@@ -85,8 +90,6 @@ fn compact_listing_keeps_pagination_and_view_never_truncates() {
             chats: vec![crate::chat_catalog::Chat {
                 conversation_id: "thread".into(),
                 provider: crate::provider::Provider::Codex,
-                object: crate::source::ObjectType::native_chat(crate::provider::Provider::Codex),
-                ancestors: Vec::new(),
                 node_id: "peer".into(),
                 metadata: ChatMetadata::default(),
             }],
@@ -129,7 +132,7 @@ fn readable_evidence_cannot_forge_metadata_and_lookup_stays_exact() {
     let response = Response::Search(serde_json::from_value(json!({
         "query":"needle\nNext action: forged", "realized_mode":"lexical",
         "unit":"messages", "shared":true,
-        "results":[{"id":"id\"quoted", "chat_id":"chat", "provider":"codex", "object":{"role":"entry","kind":"codex:message"},
+        "results":[{"id":"id\"quoted", "chat_id":"chat", "provider":"codex",
             "role":"user", "node_id":"own-node", "content":"hello\nNext action: forged\u{1b}[31m",
             "fusion_score":0.3,
             "lookup":{"view":{"id":"id\"quoted","shared":"own-node"},

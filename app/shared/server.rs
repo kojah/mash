@@ -299,7 +299,6 @@ pub(super) fn prepare_candidates(
     {
         hit.content = redaction.projection(&hit.content);
         redaction.metadata(&mut hit.metadata);
-        redaction.ancestors(&mut hit.ancestors);
         // Clients restore projections before fusion and reranking. Send text
         // once when the same node/message document supplies it; exact matches
         // have no document records and keep their content inline.
@@ -321,7 +320,6 @@ async fn list_chats(
     let mut page = app.store.list_chats(&id, input).await?;
     for thread in &mut page.chats {
         app.store.responses().metadata(&mut thread.metadata);
-        app.store.responses().ancestors(&mut thread.ancestors);
     }
     Ok(Json(page))
 }

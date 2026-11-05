@@ -53,8 +53,6 @@ impl Storage {
                 Ok(Chat {
                     conversation_id: row.id,
                     provider,
-                    object: crate::source::ObjectType::native_chat(provider),
-                    ancestors: Vec::new(),
                     node_id: node.into(),
                     metadata: ChatMetadata {
                         enrichment: row

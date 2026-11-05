@@ -134,11 +134,6 @@ pub(crate) struct ChatHit {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) provider: crate::provider::Provider,
-    /// The group: an entry's nearest container, or a document itself.
-    pub(crate) object: crate::source::ObjectType,
-    /// Objects enclosing the group, nearest first.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) ancestors: Vec<crate::source::Ancestor>,
     pub(crate) node_id: Option<String>,
     #[serde(flatten)]
     pub(crate) metadata: ChatMetadata,
@@ -154,6 +149,8 @@ pub(crate) struct ChatMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) message_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) turn_id: Option<String>,
     pub(crate) node_id: Option<String>,
     pub(crate) role: crate::role::Role,
     pub(crate) created_at: Option<i64>,
@@ -323,35 +320,11 @@ pub(crate) fn collect_exact(
     collect_inner(hits, unit, page, "", Some(literal), redaction)
 }
 
-/// What a hit groups under: an entry's nearest container (with the objects
-/// outside it), or a document on its own.
-fn group(hit: &SearchHit) -> (crate::source::ObjectType, Vec<crate::source::Ancestor>) {
-    if hit.object.role == crate::connectors::Role::Entry
-        && let Some(index) = hit
-            .ancestors
-            .iter()
-            .position(|ancestor| ancestor.role == crate::connectors::Role::Container)
-    {
-        let container = &hit.ancestors[index];
-        return (
-            crate::source::ObjectType {
-                role: container.role,
-                kind: container.kind.clone(),
-            },
-            hit.ancestors[index + 1..].to_vec(),
-        );
-    }
-    (hit.object.clone(), hit.ancestors.clone())
-}
-
 /// A chat result seeded from its best hit; matches and score accrue later.
 fn chat_for(hit: &SearchHit, redaction: crate::redaction::Policy) -> ChatHit {
-    let (object, ancestors) = group(hit);
     ChatHit {
         conversation_id: hit.conversation_id.clone(),
         provider: hit.provider,
-        object,
-        ancestors,
         node_id: hit.node_id.clone(),
         metadata: ChatMetadata {
             enrichment: None,
@@ -393,7 +366,6 @@ fn collect_inner(
         for hit in &mut hits {
             hit.content = redaction.text(&hit.content);
             redaction.metadata(&mut hit.metadata);
-            redaction.ancestors(&mut hit.ancestors);
         }
         return Collected {
             results: Results::Messages(hits),
@@ -411,7 +383,6 @@ fn collect_inner(
         .enumerate()
     {
         redaction.metadata(&mut hit.metadata);
-        redaction.ancestors(&mut hit.ancestors);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.provider, hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
@@ -452,6 +423,7 @@ fn collect_inner(
             lookup: None,
             lexical_match: hit.lexical_match,
             message_id: hit.id,
+            turn_id: hit.turn_id,
             node_id: hit.node_id,
             role: hit.role.clone(),
 

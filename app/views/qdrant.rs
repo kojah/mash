@@ -92,7 +92,6 @@ struct Document {
     node_id: String,
     provider: crate::provider::Provider,
     role: crate::role::Role,
-    object: crate::source::ObjectType,
     conversation_id: String,
     project: Option<String>,
     repository: Option<String>,
@@ -114,12 +113,10 @@ pub(crate) struct SearchUnit {
     pub(crate) content: String,
     pub(crate) title: Option<String>,
     pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
-    /// Position among the container's entries.
+    /// Message position in its chat.
     pub(crate) sequence: i64,
     pub(crate) chat_created_at: Option<i64>,
     pub(crate) chat_updated_at: Option<i64>,
-    /// Enclosing objects, nearest first.
-    pub(crate) ancestors: Vec<crate::source::Ancestor>,
     /// Set when the point carries a dense vector of this generation.
     pub(crate) generation: Option<String>,
 }
@@ -131,29 +128,14 @@ fn document_hit(
     active: &std::collections::BTreeSet<String>,
     dense: Option<(&Scope, &crate::views::config::Build, bool)>,
 ) -> Result<crate::storage::SearchHit, AppError> {
-    if d.object != crate::source::ObjectType::native_message(d.provider)
-        || d.unit.content != d.unit.text
-    {
+    if d.unit.content != d.unit.text {
         return Err(failure());
     }
     let expected_id = document_id(&d.node_id, &d.unit.anchor);
-    let expected_group = match d.object.role {
-        crate::connectors::Role::Entry => d
-            .unit
-            .ancestors
-            .iter()
-            .find(|ancestor| ancestor.role == crate::connectors::Role::Container)
-            .map_or("", |container| container.id.as_str()),
-        _ => d.unit.anchor.as_str(),
-    };
     if id != expected_id
         || !active.contains(&d.node_id)
         || d.conversation_id.is_empty()
-        || d.conversation_id != expected_group
-        || !matches!(
-            d.object.role,
-            crate::connectors::Role::Entry | crate::connectors::Role::Document
-        )
+        || d.unit.anchor.is_empty()
         || d.tokens != tokens(&d.unit.text)
         || d.unit.text.is_empty()
     {
@@ -177,8 +159,7 @@ fn document_hit(
         id: d.unit.anchor,
         conversation_id: d.conversation_id,
         provider: d.provider,
-        object: d.object,
-        ancestors: d.unit.ancestors,
+        turn_id: None,
         role: d.role,
         sequence: Some(d.unit.sequence),
         content: d.unit.content,

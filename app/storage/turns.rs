@@ -7,6 +7,72 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 
+/// Resolve a message's derived turn while checking its canonical chat identity.
+/// A point can briefly outlive a deleted silver message, in which case it has
+/// no turn reference. Turns themselves are never stored in Qdrant.
+pub(crate) fn message_turn(
+    connection: &Connection,
+    provider: crate::provider::Provider,
+    chat_id: &str,
+    message_id: &str,
+) -> Result<Option<String>, AppError> {
+    use rusqlite::OptionalExtension;
+    let row = connection
+        .prepare_cached(
+            "SELECT m.source, m.conversation_id, p.id, p.object_role
+               FROM objects m
+               LEFT JOIN objects p ON p.storage_id = m.parent_storage_id
+              WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1",
+        )
+        .map_err(AppError::database)?
+        .query_row([message_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .optional()
+        .map_err(AppError::database)?;
+    let Some((source, chat, parent, parent_role)) = row else {
+        return Ok(None);
+    };
+    if source != provider.as_str() || chat != chat_id {
+        return Err(AppError::database_data(
+            "search message identity disagrees with silver",
+        ));
+    }
+    match parent_role.as_deref() {
+        Some("segment") => Ok(parent),
+        Some("container") if parent.as_deref() == Some(chat_id) => Ok(None),
+        _ => Err(AppError::database_data(
+            "message has an invalid turn or chat parent",
+        )),
+    }
+}
+
+impl super::Storage {
+    pub(crate) fn hydrate_turns(
+        &self,
+        candidates: &mut crate::views::retrieval::Candidates,
+    ) -> Result<(), AppError> {
+        for hit in candidates
+            .lexical
+            .iter_mut()
+            .chain(&mut candidates.semantic)
+        {
+            hit.turn_id = message_turn(
+                &self.connection,
+                hit.provider,
+                &hit.conversation_id,
+                &hit.id,
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// What a stored turn records beyond its place in the hierarchy.
 #[derive(Serialize, Deserialize)]
 struct Metadata {

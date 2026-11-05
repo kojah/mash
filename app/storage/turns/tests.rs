@@ -63,6 +63,51 @@ fn turn_count(storage: &Storage) -> i64 {
 }
 
 #[test]
+fn message_turn_lookup_preserves_boundaries_and_checks_search_identity() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let conversation = chat(&[
+        ("ask", Role::User, "fix the bug"),
+        ("answer", Role::Assistant, "done"),
+        ("skill", Role::User, "<skill> injected"),
+        ("thanks", Role::User, "thanks"),
+    ]);
+    storage.replace_conversation(&conversation).unwrap();
+    let lookup = |id| {
+        super::message_turn(
+            &storage.connection,
+            conversation.provider,
+            &conversation.id,
+            id,
+        )
+        .unwrap()
+    };
+    let first = lookup("ask").unwrap();
+    assert_eq!(lookup("answer").as_deref(), Some(first.as_str()));
+    assert_ne!(lookup("thanks").unwrap(), first);
+    assert_eq!(lookup("skill"), None);
+    assert_eq!(lookup("deleted"), None);
+    assert!(
+        super::message_turn(
+            &storage.connection,
+            conversation.provider,
+            "wrong-chat",
+            "ask",
+        )
+        .is_err()
+    );
+    assert!(
+        super::message_turn(
+            &storage.connection,
+            crate::provider::Provider::ClaudeCode,
+            &conversation.id,
+            "ask",
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn indexing_stores_turns_between_chats_and_their_messages() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();

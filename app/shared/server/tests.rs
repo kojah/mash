@@ -897,13 +897,12 @@ async fn http_storage_contract(service: Service) {
     assert_eq!(candidates["lexical"].as_array().unwrap().len(), 1);
     assert_eq!(candidates["semantic"][0]["id"], "searchable");
     assert_eq!(candidates["semantic"][0]["semantic_score"], 1.0);
-    // Ancestry comes from shared silver: the derived turn, then the chat.
+    // Turn references come from shared silver, not Qdrant payloads.
     for kind in ["lexical", "semantic"] {
-        let ancestors = &candidates[kind][0]["ancestors"];
-        assert_eq!(ancestors[0]["role"], "segment", "{ancestors}");
-        assert_eq!(ancestors[0]["kind"], "codex:turn");
-        assert_eq!(ancestors[1]["id"], "conversation");
-        assert_eq!(ancestors[1]["title"], "Shared history");
+        let hit = &candidates[kind][0];
+        assert!(hit["turn_id"].as_str().is_some_and(|id| !id.is_empty()));
+        assert_eq!(hit["chat_id"], "conversation");
+        assert!(hit.get("ancestors").is_none());
     }
     assert_eq!(candidates["semantic"][1]["semantic_score"], -1.0);
     for kind in ["lexical", "semantic"] {

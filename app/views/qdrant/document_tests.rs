@@ -8,7 +8,6 @@ fn document() -> Document {
         node_id: "node".into(),
         provider: Provider::Codex,
         role: Role::User,
-        object: crate::source::ObjectType::native_message(Provider::Codex),
         conversation_id: "chat".into(),
         project: None,
         repository: None,
@@ -23,7 +22,6 @@ fn document() -> Document {
             sequence: 3,
             chat_created_at: Some(90),
             chat_updated_at: Some(110),
-            ancestors: crate::source::native_ancestors(Provider::Codex, "chat", Some("Title")),
             generation: Some("generation".into()),
         },
         vector: Some(vec![1.0, 0.0]),
@@ -58,7 +56,6 @@ fn common_document_preserves_evidence_in_literal_and_ranked_search() {
         .unwrap();
         assert_eq!(literal.id, ranked.id);
         assert_eq!(literal.provider, ranked.provider);
-        assert_eq!(literal.ancestors, ranked.ancestors);
         assert_eq!(literal.content, "needle");
         assert_eq!(ranked.content, "needle");
         assert_eq!(literal.sequence, Some(3));
@@ -74,15 +71,14 @@ fn common_document_rejects_mismatched_identity_and_projection_evidence() {
     {
         assert!(document_hit("wrong-id", document(), &active, None).is_err());
         assert!(document_hit(&id(), document(), &BTreeSet::new(), None).is_err());
-        for field in ["node", "source", "group", "tokens", "empty", "object"] {
+        for field in ["node", "anchor", "group", "tokens", "empty"] {
             let mut d = document();
             match field {
                 "node" => d.node_id = "other".into(),
-                "source" => d.provider = Provider::ClaudeCode,
-                "group" => d.conversation_id = "other".into(),
+                "anchor" => d.unit.anchor.clear(),
+                "group" => d.conversation_id.clear(),
                 "tokens" => d.tokens.clear(),
                 "empty" => d.unit.text.clear(),
-                "object" => d.object.role = crate::connectors::Role::Container,
                 _ => unreachable!(),
             }
             assert!(document_hit(&id(), d, &active, None).is_err(), "{field}");
@@ -116,17 +112,14 @@ fn common_document_requires_current_dense_evidence_only_for_ranked_reads() {
 }
 
 #[test]
-fn common_document_keeps_source_metadata_and_anchor_namespaces_consistent() {
+fn common_document_requires_message_content_and_chat_identity() {
     let active = BTreeSet::from(["node".into()]);
-    for field in ["provider", "kind", "content", "group"] {
+    for field in ["content", "group"] {
         let mut d = document();
         match field {
-            "provider" => d.provider = Provider::ClaudeCode,
-            "kind" => d.object.kind = "notes:note".into(),
             "content" => d.unit.content = "different".into(),
             "group" => {
                 d.conversation_id.clear();
-                d.unit.ancestors.clear();
             }
             _ => unreachable!(),
         }

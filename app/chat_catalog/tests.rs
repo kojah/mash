@@ -23,8 +23,6 @@ fn row(id: &str, time: Option<i64>) -> Chat {
     Chat {
         conversation_id: id.into(),
         provider: Provider::Codex,
-        object: crate::source::ObjectType::native_chat(Provider::Codex),
-        ancestors: Vec::new(),
         node_id: "node".into(),
         metadata: ChatMetadata {
             enrichment: None,

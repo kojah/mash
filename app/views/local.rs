@@ -158,7 +158,13 @@ impl Local {
             ));
         }
         let active = std::collections::BTreeSet::from([self.scope.node_id.clone()]);
-        let result = self.store.search(&self.scope, input, &active).await?;
+        let mut result = self.store.search(&self.scope, input, &active).await?;
+        let database = self.database.clone();
+        result = crate::blocking(move || {
+            Storage::open_silver(&database)?.hydrate_turns(&mut result)?;
+            Ok(result)
+        })
+        .await?;
         if self.current().await?.is_none() {
             return Err(AppError::search_not_ready(
                 "local silver changed during retrieval; retry after indexing",

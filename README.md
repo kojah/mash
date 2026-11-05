@@ -193,8 +193,9 @@ server. Canonical silver is retained.
 
 Search results, chat matches and listed chats identify their provider directly,
 for example `"provider": "codex"`. Messages and matching excerpts carry the agent's
-`role` directly, including provider-defined roles. Message context includes its derived turn
-and enclosing chat. Local and shared Qdrant use views schema 10; silver uses
+`role` directly, including provider-defined roles. Messages and matching excerpts
+include `turn_id` when they belong to a derived turn; `chat_id` identifies their chat.
+Local and shared Qdrant use views schema 11; silver uses
 schema 59. Views are rebuilt from silver; silver from an earlier release crosses
 over through export and `import --keep-identity`.
 

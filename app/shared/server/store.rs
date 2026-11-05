@@ -545,63 +545,56 @@ impl Store {
             ));
         }
         let mut candidates = self.views.search(identity, input, &active).await?;
-        self.native_ancestry(identity, &mut candidates).await?;
+        self.hydrate_turns(identity, &mut candidates).await?;
         Ok(candidates)
     }
 
-    /// Native points name only their chat; each node's shared silver holds the
-    /// derived turns between, so ancestry is read from it at query time. View
-    /// never stores the hierarchy, and turn changes never rewrite points.
-    async fn native_ancestry(
+    /// Derived turns live only in silver and never trigger point rewrites.
+    async fn hydrate_turns(
         &self,
         identity: &Identity,
         candidates: &mut protocol::Candidates,
     ) -> Result<(), AppError> {
-        let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut wanted = BTreeMap::<String, BTreeSet<_>>::new();
         for hit in candidates.lexical.iter().chain(&candidates.semantic) {
             if let Some(node) = &hit.node_id {
-                wanted
-                    .entry(node.clone())
-                    .or_default()
-                    .insert(hit.id.clone());
+                wanted.entry(node.clone()).or_default().insert((
+                    hit.id.clone(),
+                    hit.provider,
+                    hit.conversation_id.clone(),
+                ));
             }
         }
         let mut found = BTreeMap::new();
-        for (node, ids) in wanted {
+        for (node, messages) in wanted {
             let scope = silver_store::node_identity(&identity.group_id, &node);
-            let ancestry = self
+            let turns = self
                 .read(&scope, move |connection| {
-                    let mut ancestry = BTreeMap::new();
-                    for id in ids {
-                        // A point can briefly outlive its silver row; keep its chat.
-                        let Some(row) = crate::storage::generated::NativeEntryParent::builder()
-                            .id(&id)
-                            .build()
-                            .query_opt(connection)
-                            .map_err(AppError::database)?
-                        else {
-                            continue;
-                        };
-                        let ancestors =
-                            crate::storage::objects::ancestors(connection, row.parent_storage_id)?;
-                        ancestry.insert(id, ancestors);
-                    }
-                    Ok(ancestry)
+                    messages
+                        .into_iter()
+                        .map(|(id, provider, chat)| {
+                            let turn = crate::storage::turns::message_turn(
+                                connection, provider, &chat, &id,
+                            )?;
+                            Ok((id, turn))
+                        })
+                        .collect::<Result<BTreeMap<_, _>, AppError>>()
                 })
                 .await?;
-            for (id, ancestors) in ancestry {
-                found.insert((node.clone(), id), ancestors);
+            for (id, turn) in turns {
+                found.insert((node.clone(), id), turn);
             }
         }
         for hit in candidates
             .lexical
             .iter_mut()
-            .chain(candidates.semantic.iter_mut())
+            .chain(&mut candidates.semantic)
         {
-            if let Some(node) = &hit.node_id
-                && let Some(ancestors) = found.get(&(node.clone(), hit.id.clone()))
-            {
-                hit.ancestors.clone_from(ancestors);
+            if let Some(node) = &hit.node_id {
+                hit.turn_id = found
+                    .get(&(node.clone(), hit.id.clone()))
+                    .cloned()
+                    .flatten();
             }
         }
         Ok(())
@@ -631,8 +624,6 @@ impl Store {
             collector.push(crate::chat_catalog::Chat {
                 conversation_id: row.id.clone(),
                 provider: row.provider,
-                object: crate::source::ObjectType::native_chat(row.provider),
-                ancestors: Vec::new(),
                 node_id: thread.node_id,
                 metadata: crate::search_results::ChatMetadata {
                     enrichment: row.enrichment,

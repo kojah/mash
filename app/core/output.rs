@@ -34,8 +34,6 @@ pub(crate) fn serialize(
                 .map(|thread| Chat {
                     conversation_id: &thread.conversation_id,
                     provider: &thread.provider,
-                    object: &thread.object,
-                    ancestors: &thread.ancestors,
                     node_id: Some(&thread.node_id),
                     metadata: metadata(&thread.metadata),
                     score: None,
@@ -68,9 +66,8 @@ struct Message<'a> {
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
     provider: &'a crate::provider::Provider,
-    object: &'a crate::source::ObjectType,
-    #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
-    ancestors: &'a [crate::source::Ancestor],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    turn_id: Option<&'a str>,
     node_id: Option<&'a str>,
     role: &'a crate::role::Role,
     created_at: Option<i64>,
@@ -88,6 +85,8 @@ struct Excerpt<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     lexical_match: Option<&'a crate::views::matching::Evidence>,
     message_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    turn_id: Option<&'a str>,
     node_id: Option<&'a str>,
     role: &'a crate::role::Role,
     created_at: Option<i64>,
@@ -103,6 +102,7 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
             lookup: value.lookup.as_ref(),
             lexical_match: value.lexical_match.as_ref(),
             message_id: &value.message_id,
+            turn_id: value.turn_id.as_deref(),
             node_id: value.node_id.as_deref(),
             role: &value.role,
             created_at: value.created_at,
@@ -126,9 +126,6 @@ struct Chat<'a> {
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
     provider: &'a crate::provider::Provider,
-    object: &'a crate::source::ObjectType,
-    #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
-    ancestors: &'a [crate::source::Ancestor],
     node_id: Option<&'a str>,
     #[serde(flatten)]
     metadata: ChatMetadata,
@@ -143,8 +140,6 @@ impl<'a> From<&'a ChatHit> for Chat<'a> {
         Self {
             conversation_id: &value.conversation_id,
             provider: &value.provider,
-            object: &value.object,
-            ancestors: &value.ancestors,
             node_id: value.node_id.as_deref(),
             metadata: metadata(&value.metadata),
             score: Some(value.score),
@@ -194,8 +189,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         id: &hit.id,
                         conversation_id: &hit.conversation_id,
                         provider: &hit.provider,
-                        object: &hit.object,
-                        ancestors: &hit.ancestors,
+                        turn_id: hit.turn_id.as_deref(),
                         node_id: hit.node_id.as_deref(),
                         role: &hit.role,
                         created_at: hit.created_at,

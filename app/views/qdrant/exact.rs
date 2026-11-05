@@ -17,7 +17,6 @@ const FIELDS: &[&str] = &[
     "repository",
     "created_at",
     "tokens",
-    "object",
     "unit",
 ];
 

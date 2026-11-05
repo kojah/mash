@@ -67,17 +67,13 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) id: String,
-    /// For a document, its own anchor: documents belong to no chat.
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) provider: crate::provider::Provider,
-    pub(crate) object: crate::source::ObjectType,
-    /// Enclosing containers and segments, nearest first.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) ancestors: Vec<crate::source::Ancestor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) turn_id: Option<String>,
     pub(crate) role: crate::role::Role,
-    /// Position in the conversation: a native message's ordinal, or a connector
-    /// entry's position among its container's entries.
+    /// Message position in its chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) sequence: Option<i64>,
     pub(crate) content: String,
