@@ -97,6 +97,33 @@ TLC configurations are unchanged: expiry is already a nondeterministic
 disconnect and must violate `WorkOwnsCapacity`. `MutationAdmissionUnfair.cfg`
 permits taking a non-head waiter and must violate `FairOrder`.
 
+### LocalWriter: retain local ownership across silver and gold work
+
+`LocalWriter.tla` models two processes targeting one local database. `Acquire`
+maps to `storage::admission::acquire` and the OS-held sibling `.writer.lock`.
+Core dispatch admits indexing (including init's first index and views rebuild),
+local connector ingress, forgetting, and import to its destination database.
+Readers and shared-only connector delivery do not acquire this lock. Contention
+returns retryable `index-busy`; there is no queue or fairness claim.
+
+`StartBlocking` maps to `crate::blocking` capturing an Arc of the task's owner.
+`Cancel` can drop the caller while that worker continues; `Commit` ends the
+worker and retains the task's owner through subsequent `refresh` work.
+`Finish` covers success or failure. The model abstracts multiple SQLite commits
+and intervening model work under the same owner; it does not make them atomic.
+`Crash` terminates local work and releases the OS lock. Both deliberately broken
+configurations must violate `WorkOwnsLock`: losing the worker's Arc on cancellation,
+or releasing ownership at the silver commit before refresh finishes.
+
+Assumptions: all local application writers use core admission; one database is
+addressed by its canonical path (hard-linked aliases are unsupported); the lock
+file is never replaced while a writer owns it. External SQL tools are outside
+this contract. MCP operation tasks already survive client disconnection. This
+model proves no remote-write fencing, Qdrant durability or certification claim:
+requests sent before process death may still arrive afterward (tracked in
+`mash-c05a`). Rust tests cover alias resolution, independent databases, continued
+blocking work after cancellation, and public CLI contention with reads available.
+
 ### RuntimeUpgrade: stop admitting writes after observing replacement
 
 [RuntimeUpgrade.tla](RuntimeUpgrade.tla) models one old runtime, two executable

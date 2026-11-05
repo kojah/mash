@@ -1,6 +1,71 @@
 use super::*;
 
 #[test]
+fn local_writer_admission_blocks_cli_mutations_without_blocking_reads() {
+    let fixture = NodeFixture::new();
+    fixture.seed(Some(""));
+    let config = fixture.database.with_extension("toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    let database = std::fs::canonicalize(&fixture.database).unwrap();
+    let mut lock_path = database.as_os_str().to_os_string();
+    lock_path.push(".writer.lock");
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock_path)
+        .unwrap();
+    lock.try_lock().unwrap();
+    for arguments in [vec!["index"], vec!["forget", "missing-chat"]] {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+            ])
+            .args(arguments)
+            .timeout(HANG_GUARD)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(6));
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "index-busy");
+        assert_eq!(error["error"]["retryable"], true);
+    }
+    assert_eq!(
+        run_json(&[
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "status"
+        ])["messages"],
+        1
+    );
+    drop(lock);
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "forget",
+            "missing-chat",
+        ])
+        .timeout(HANG_GUARD)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn locked_status_reports_sqlite_details_and_recovers_after_unlock() {
     let fixture = NodeFixture::new();
     fixture.seed(Some(""));

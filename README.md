@@ -532,6 +532,14 @@ status read can report `operation: "inspect-status"`, `sqlite_code: 5` and
 structured errors carry the same evidence. No SQL statements or bound values
 are added to this diagnostic metadata.
 
+Local mutations also hold a database-scoped `.writer.lock` across silver commits,
+model work and views refresh. A competing CLI or MCP writer returns retryable
+`index-busy`; readers do not take this lock. Import locks its destination database.
+The lock file persists after the operation, but its OS-held lock does not. Do not
+delete or replace it while Mash is running. Blocking workers retain ownership if
+their caller stops waiting. This coordination does not fence requests already
+sent to Qdrant when a process dies.
+
 Local indexing separates durable canonical ingestion (silver) from rebuilding
 built-in retrieval views, reusing the existing stored history. Lexical indexes,
 dense embeddings and connector search units are built-in views: derived from

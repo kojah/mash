@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppError;
 
 // View views and materialized retrieval data.
+pub(crate) mod admission;
 mod catalog;
 pub(crate) mod connector_views;
 mod coverage;

@@ -150,9 +150,24 @@ async fn execute_inner(
     } else {
         None
     };
-    let mut response = dispatch(request.operation, &configuration, &database, &models)
-        .boxed()
-        .await?;
+    let writer_database = match &request.operation {
+        Operation::Index(_) | Operation::IngestConnector { .. } | Operation::Forget { .. } => {
+            Some(database.clone())
+        }
+        Operation::ImportSilver { database, .. } => Some(database.clone()),
+        _ => None,
+    };
+    let owner = match writer_database {
+        Some(path) => {
+            Some(crate::blocking(move || crate::storage::admission::acquire(&path)).await?)
+        }
+        None => None,
+    };
+    let mut response = crate::storage::admission::scope(
+        owner,
+        dispatch(request.operation, &configuration, &database, &models).boxed(),
+    )
+    .await?;
     if let Response::Search(search) = &mut response {
         search.notice = search::empty_notice(search, &configuration);
         search.query = configuration.redaction.output().text(&search.query);
