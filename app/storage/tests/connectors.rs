@@ -459,6 +459,20 @@ fn connector_vectors_join_native_dense_candidates_by_cosine() {
                 .store_connector_embedding(unit, generation, &vector, 127.0)
                 .unwrap();
         }
+        #[cfg(feature = "vec1")]
+        {
+            writer
+                .replace_embeddings(
+                    generation,
+                    &[EmbeddingWrite {
+                        message_id: "native",
+                        vector: &[0, 127, 0],
+                        norm: 127.0,
+                    }],
+                )
+                .unwrap();
+            writer.sync_vec1(generation).unwrap();
+        }
         writer.commit_writer().unwrap();
     }
     let reader = Storage::open_lexical(&path).unwrap();

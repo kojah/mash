@@ -69,6 +69,8 @@ impl Storage {
 
     pub(crate) fn publish_views_manifest(&self, manifest: &Manifest) -> Result<(), AppError> {
         self.require_writer()?;
+        #[cfg(feature = "vec1")]
+        self.sync_vec1(&manifest.build.generation(&manifest.model_generation))?;
         let json = serde_json::to_string(manifest)
             .map_err(|_| AppError::internal("serialize views build manifest"))?;
         self.connection

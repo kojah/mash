@@ -1,5 +1,5 @@
 //! Explicit subprocess check. Never invoke an index/search tool or execute hooks.
-use super::{Client, Component, State, expected_stamp};
+use super::{Client, Component, State};
 use rmcp::{ServiceExt, model::CallToolRequestParams, transport::TokioChildProcess};
 use serde::Deserialize;
 use std::{process::Stdio, time::Duration};
@@ -108,7 +108,9 @@ async fn handshake(command: tokio::process::Command) -> Result<(), &'static str>
                 .ok_or("Mash help omitted structured runtime identity.")?,
         )
         .map_err(|_| "Mash help returned an unsupported runtime identity.")?;
-        if help.runtime.contract_fingerprint != expected_stamp().contract_fingerprint {
+        if !contract_matches(&help.runtime.contract_fingerprint)
+            .map_err(|_| "Cannot encode this CLI's MCP contract.")?
+        {
             return Err(
                 "MCP contract differs from this CLI; update the binary/launcher and reconnect.",
             );
@@ -119,4 +121,22 @@ async fn handshake(command: tokio::process::Command) -> Result<(), &'static str>
     // A bounded cancellation prevents a server ignoring shutdown from hanging status.
     let _ = tokio::time::timeout(Duration::from_secs(1), service.cancel()).await;
     result
+}
+
+fn contract_matches(observed: &str) -> Result<bool, serde_json::Error> {
+    Ok(observed == crate::mcp::guidance::fingerprint()?)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn installation_probe_matches_compiled_contract_and_rejects_another() {
+        let current = crate::mcp::guidance::fingerprint().unwrap();
+        assert!(super::contract_matches(&current).unwrap());
+        assert!(!super::contract_matches(&"0".repeat(64)).unwrap());
+        #[cfg(feature = "vec1")]
+        assert!(
+            !super::contract_matches(&super::super::expected_stamp().contract_fingerprint).unwrap()
+        );
+    }
 }

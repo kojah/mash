@@ -21,6 +21,20 @@ and Qdrant Edge: the additional snapshot, freshness, filtering and recovery
 complexity is not justified by the demonstrated end-to-end benefit. Local ANN
 adoption is out of scope; the shared service continues to use Qdrant.
 
+An experimental `vec1` Cargo feature now exercises SQLite Vec1 for local dense
+retrieval. Build with `cargo build --features vec1`; it uses local views schema 5
+instead of the ordinary schema 4. Use a separate database copy for trials:
+opening it for indexing replaces incompatible derived views and requires an
+explicit rebuild. Silver remains schema 56 and shared retrieval remains Qdrant.
+The trial uses cosine IVF without product quantization, then rescoring with the
+existing quantized vectors. Filters can stream beyond the initial candidate
+count. Changed vectors currently trigger a full IVF rebuild; exact artifacts
+remain for comparison. This is an evaluation implementation, not a measured
+performance recommendation. The first small private-corpus trial showed modest
+all-history/Slack gains but substantial recent-time-filter regressions; exact
+search remains the default. Run feature checks with
+`CARGO_FEATURES=vec1 make iterate FOCUS='test(storage::vec1)'`.
+
 ## Quick start
 
 Install a prebuilt binary (macOS Apple Silicon, Linux x86_64 or arm64, Windows x64):

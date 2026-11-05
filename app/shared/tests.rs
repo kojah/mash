@@ -889,6 +889,8 @@ fn seed(path: &Path) -> Storage {
             }],
         )
         .expect("embedding");
+    #[cfg(feature = "vec1")]
+    storage.sync_vec1(semantic::embedding_generation()).unwrap();
     storage.commit_writer().expect("commit");
     storage
 }
@@ -978,6 +980,8 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     storage
         .replace_embeddings(semantic::embedding_generation(), &embeddings)
         .unwrap();
+    #[cfg(feature = "vec1")]
+    storage.sync_vec1(semantic::embedding_generation()).unwrap();
     storage.commit_writer().unwrap();
     let filter = crate::search_filter::Filter::All(vec![
         crate::search_filter::Filter::Node(vec!["local-node".into()]),

@@ -19,6 +19,8 @@ mod exact;
 mod semantic;
 pub(crate) use semantic::SnapshotCoverage;
 mod semantic_chunks;
+#[cfg(feature = "vec1")]
+pub(crate) mod vec1;
 mod views_manifest;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.

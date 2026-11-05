@@ -49,6 +49,11 @@ path = "app/examples/history_skill.rs"
 
 [features]
 console = ["dep:console-subscriber", "tokio/tracing"]
+# Experimental local IVF retrieval; ordinary releases retain exact search.
+vec1 = ["dep:cc", "dep:libsqlite3-sys"]
+
+[build-dependencies]
+cc = { version = "1.2", optional = true }
 
 [dependencies]
 console-subscriber = { version = "0.5", optional = true }
@@ -77,6 +82,7 @@ directories = "6.0.0"
 fastembed = { version = "6.0.1", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
 hf-hub = { version = "0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+libsqlite3-sys = { version = "0.38.2", optional = true }
 sha2 = "0.11"
 hex = "0.4"
 base64 = "0.22.1"

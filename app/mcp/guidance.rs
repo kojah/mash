@@ -222,7 +222,7 @@ pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
     ])
 }
 
-fn contract() -> Result<Value, serde_json::Error> {
+fn contract(views_version: i64) -> Result<Value, serde_json::Error> {
     let mut tools = Mash::tool_router().list_all();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
     serde_json::to_value((
@@ -230,7 +230,7 @@ fn contract() -> Result<Value, serde_json::Error> {
         examples()?,
         WORKFLOW,
         crate::storage::schema::SCHEMA_VERSION,
-        crate::storage::schema::VIEWS_VERSION,
+        views_version,
         include_str!("../templates/history_skill.md"),
         [
             Topic::Discovery.guidance(),
@@ -241,10 +241,16 @@ fn contract() -> Result<Value, serde_json::Error> {
     ))
 }
 
-fn fingerprint() -> Result<String, serde_json::Error> {
-    Ok(blake3::hash(&serde_json::to_vec(&contract()?)?)
-        .to_hex()
-        .to_string())
+fn fingerprint_for_views(views_version: i64) -> Result<String, serde_json::Error> {
+    Ok(
+        blake3::hash(&serde_json::to_vec(&contract(views_version)?)?)
+            .to_hex()
+            .to_string(),
+    )
+}
+
+pub(crate) fn fingerprint() -> Result<String, serde_json::Error> {
+    fingerprint_for_views(crate::storage::schema::VIEWS_VERSION)
 }
 
 pub(super) fn instructions() -> String {
@@ -376,7 +382,10 @@ pub(super) async fn help(request: Help) -> CallToolResult {
 /// # Errors
 /// Returns an error if a tool schema, example, or plugin manifest cannot be encoded.
 pub fn generate_history_skill() -> Result<(String, String), String> {
-    let fingerprint = fingerprint().map_err(|error| error.to_string())?;
+    // Shipped plugin assets describe ordinary releases. Experimental views
+    // retain their own live fingerprint and advertise it through MCP help.
+    let fingerprint = fingerprint_for_views(crate::storage::schema::RELEASE_VIEWS_VERSION)
+        .map_err(|error| error.to_string())?;
     let bootstrap = example(
         "help",
         Help {

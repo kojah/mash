@@ -4,6 +4,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 mode=release
 focus=''
+features=()
+if [[ -n ${CARGO_FEATURES:-} ]]; then
+    features=(--features "$CARGO_FEATURES")
+fi
 case "${1:-}" in
     --focused) [[ $# == 2 && -n $2 ]] || { echo 'Set one nonempty nextest filter.' >&2; exit 2; }; mode=focused; focus=$2 ;;
     --validate-only) [[ $# == 1 ]] || exit 2; mode=validate ;;
@@ -21,11 +25,11 @@ run() {
 }
 cheap_checks() {
     run cargo fmt --check
-    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Znext-solver=no" run cargo clippy --all-targets -- -D warnings
+    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Znext-solver=no" run cargo clippy "${features[@]}" --all-targets -- -D warnings
 }
 if [[ $mode == focused ]]; then
     cheap_checks
-    run cargo test-clif --locked -E "$focus" --no-tests fail --test-threads 4
+    run cargo test-clif --locked "${features[@]}" -E "$focus" --no-tests fail --test-threads 4
     exit 0
 fi
 validation_key() {
@@ -57,8 +61,8 @@ else
     run bash tools/test-ansible.sh
     run bash tools/test-upgrade-local-index.sh
     run bash tools/generate-history-skill.sh --check
-    run cargo test-clif --locked --profile ci --test-threads 4
-    run cargo test --doc
+    run cargo test-clif --locked "${features[@]}" --profile ci --test-threads 4
+    run cargo test "${features[@]}" --doc
     [[ $(validation_key) == "$key" ]] || { echo 'Source changed during validation; rerun the build gate.' >&2; exit 1; }
     printf '%s\n' "$key" > "$receipt.incoming.$$"
     mv "$receipt.incoming.$$" "$receipt"
@@ -69,5 +73,5 @@ if [[ $mode == validate ]]; then
 fi
 # Commit identity can change while source stays identical. Cargo's build script
 # embeds the current revision; gate reuse never means reusing a differently stamped binary.
-run cargo build --release --locked --bin mash --bin mash-dev-probe
+run cargo build --release --locked "${features[@]}" --bin mash --bin mash-dev-probe
 [[ $(validation_key) == "$key" ]] || { echo 'Source changed during build; do not install this artifact.' >&2; exit 1; }

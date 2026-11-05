@@ -41,6 +41,12 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 filter = 'test(=semantic::retrieval::benchmarks::pipeline::benchmark_local_ann_pipeline)'
 slow-timeout = { period = "60s", terminate-after = 10 }
 
+[[profile.default.overrides]]
+# Explicit private-corpus Vec1 training and paired warm pipeline measurements.
+# Both tests are ignored during ordinary runs and have a bounded manual budget.
+filter = 'test(=storage::vec1::tests::vec1_prepare_corpus) | test(=semantic::retrieval::vec1_trial::vec1_local_gold_trial)'
+slow-timeout = { period = "60s", terminate-after = 15 }
+
 [profile.ci]
 fail-fast = false
 test-threads = "num-cpus"
