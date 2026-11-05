@@ -9,27 +9,19 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
 
 mod admission;
 mod attachments;
 mod configuration;
 mod contexts;
-pub(super) mod store;
+pub(crate) mod store;
 mod sync;
 
 use super::protocol;
 use crate::AppError;
 use store::Store;
 
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Identity {
-    pub group_id: String,
-    pub node_id: String,
-    pub generation: String,
-    pub dimensions: usize,
-}
+pub(crate) use crate::views::scope::Scope as Identity;
 
 #[derive(Clone)]
 struct App {

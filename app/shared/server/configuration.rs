@@ -1,7 +1,7 @@
 //! Strict server settings, bounded loading and configured node identities.
 use super::Identity;
 use crate::AppError;
-use crate::shared::qdrant_index;
+use crate::views::qdrant as qdrant_index;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -295,7 +295,7 @@ mod tests {
         let default: super::Configuration = toml::from_str("version=1\nnodes=[]").unwrap();
         assert_eq!(
             default.qdrant_memory,
-            super::qdrant_index::MemoryTier::Durable
+            crate::views::qdrant::MemoryTier::Durable
         );
         for profile in ["durable", "cached", "cold"] {
             let text = format!("version=1\nnodes=[]\nqdrant_memory='{profile}'");

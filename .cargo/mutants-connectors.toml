@@ -1,5 +1,5 @@
 # Real-backend audit of interrupted connector synchronization and recovery.
-examine_globs = ["app/shared/server/store/connectors.rs", "app/shared/qdrant_index/views.rs"]
+examine_globs = ["app/shared/server/store/connectors.rs", "app/views/qdrant/views.rs"]
 examine_re = ["in Store::sync_connectors", "replace Store::sync_connectors", "replace Store::retain_connector_points"]
 test_package = ["mash"]
 test_tool = "nextest"

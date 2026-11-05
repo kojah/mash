@@ -2059,7 +2059,11 @@ modules are grouped by responsibility:
   Core ML, remote embeddings, hybrid retrieval and query/ranking policies.
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and views embeddings within one atomic revision.
-- `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.
+- `app/views/qdrant/`: common typed REST, collection schema, document writes,
+  and dense/sparse retrieval. The engine takes an index scope, independently
+  of Axum authentication; shared publication owns coordination around it.
+- `app/views/documents.rs` and `app/views/retrieval.rs`: common document and
+  retrieval contracts, also used by the shared HTTP protocol.
 - `app/tests/`: CLI contract tests grouped by behavior, with common setup in
   `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.
 

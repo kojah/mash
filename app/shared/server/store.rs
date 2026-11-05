@@ -3,26 +3,26 @@
 use super::Identity;
 use super::configuration::{Configuration, env_name};
 use crate::AppError;
-use crate::shared::qdrant_index::{self, NodeViews};
 use crate::shared::silver_store::{self, Head, SilverStore};
 use crate::shared::{Freshness, NodeFreshness, protocol};
 use crate::storage::Counts;
+use crate::views::qdrant::{self as qdrant_index, NodeViews};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(super) mod connectors;
 #[cfg(test)]
-pub(in crate::shared) use connectors::Embedder;
+pub(crate) use connectors::Embedder;
 mod replay;
 #[cfg(test)]
-pub(in crate::shared) use replay::ReplayFault;
+pub(crate) use replay::ReplayFault;
 mod sync;
 
 /// Serializes publications per node while other nodes proceed.
 type NodeLock = Arc<tokio::sync::Mutex<()>>;
 
 #[derive(Clone)]
-pub(in crate::shared) struct Store {
+pub(crate) struct Store {
     silver: SilverStore,
     views: qdrant_index::Store,
     /// Embeds connector records; absent when the server has no model setup.
@@ -116,7 +116,7 @@ const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 impl Store {
     /// Attach the durable, group-wide claim table. Production always sets it;
     /// tests that do not exercise ownership leave it unset.
-    pub(in crate::shared) fn with_source_claims(
+    pub(crate) fn with_source_claims(
         mut self,
         claims: std::sync::Arc<std::sync::Mutex<crate::shared::sync::catalog::Catalog>>,
     ) -> Self {
@@ -124,7 +124,7 @@ impl Store {
         self
     }
 
-    pub(in crate::shared) fn new(
+    pub(crate) fn new(
         silver: SilverStore,
         views: qdrant_index::Store,
         max_upload_bytes: u64,
@@ -151,26 +151,23 @@ impl Store {
         }
     }
 
-    pub(in crate::shared) fn with_response_redaction(
-        mut self,
-        responses: crate::redaction::Policy,
-    ) -> Self {
+    pub(crate) fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
         self.responses = responses;
         self.views = self.views.with_response_redaction(responses);
         self
     }
 
-    pub(in crate::shared) fn responses(&self) -> crate::redaction::Policy {
+    pub(crate) fn responses(&self) -> crate::redaction::Policy {
         self.responses
     }
 
-    pub(in crate::shared) fn with_embedder(mut self, embedder: connectors::Embedder) -> Self {
+    pub(crate) fn with_embedder(mut self, embedder: connectors::Embedder) -> Self {
         self.embedder = Some(embedder);
         self
     }
 
     #[cfg(test)]
-    pub(in crate::shared) fn unavailable() -> Self {
+    pub(crate) fn unavailable() -> Self {
         Self::new(
             SilverStore::unavailable(),
             qdrant_index::Store::unavailable(),
@@ -178,13 +175,13 @@ impl Store {
         )
     }
 
-    pub(in crate::shared) fn max_node_bytes(&self) -> u64 {
+    pub(crate) fn max_node_bytes(&self) -> u64 {
         self.max_upload_bytes
     }
 
     /// Serializes the views stamp check with its write, so a slow
     /// certification cannot overwrite a newer one after the guard has passed.
-    pub(in crate::shared) async fn views_write_guard(
+    pub(crate) async fn views_write_guard(
         &self,
         identity: &Identity,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, AppError> {
@@ -201,7 +198,7 @@ impl Store {
     /// Run a typed, read-only query over this node's shared silver. The
     /// connection gets the same views, `query_only`, authorizer and budgets as a
     /// local query; it is opened per call and discarded.
-    pub(in crate::shared) async fn query(
+    pub(crate) async fn query(
         &self,
         identity: &Identity,
         request: crate::silver_query::Request,
@@ -252,7 +249,7 @@ impl Store {
     /// Stage views without certifying them. Used by tests that reconstruct a
     /// certification which lost the race with a newer commit.
     #[cfg(test)]
-    pub(in crate::shared) async fn put_views(
+    pub(crate) async fn put_views(
         &self,
         identity: &Identity,
         views: &NodeViews,
@@ -260,7 +257,7 @@ impl Store {
         self.views.put_node_views(identity, views).await
     }
 
-    pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
+    pub(crate) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
         let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
             .views
@@ -272,7 +269,7 @@ impl Store {
     }
 
     /// View usable for this node: built with the group recipe and model space.
-    pub(in crate::shared) async fn compatible_views(
+    pub(crate) async fn compatible_views(
         &self,
         identity: &Identity,
     ) -> Result<Option<NodeViews>, AppError> {
@@ -284,7 +281,7 @@ impl Store {
     }
 
     /// Configured nodes of one group, in identity order.
-    pub(in crate::shared) fn nodes(&self, group: &str) -> &[String] {
+    pub(crate) fn nodes(&self, group: &str) -> &[String] {
         self.silver.nodes(group)
     }
 
@@ -325,7 +322,7 @@ impl Store {
     }
 
     /// Count conversations another node already holds with the same content.
-    pub(in crate::shared) async fn fingerprint_report(
+    pub(crate) async fn fingerprint_report(
         &self,
         group: &str,
         dimensions: usize,
@@ -384,7 +381,7 @@ impl Store {
 
     /// Receipt recorded on the silver head for the last `/v1/sync` operation.
     #[cfg(test)]
-    pub(in crate::shared) async fn sync_receipt(
+    pub(crate) async fn sync_receipt(
         &self,
         identity: &Identity,
     ) -> Result<Option<(String, String, String)>, AppError> {
@@ -403,10 +400,7 @@ impl Store {
 
     /// One node's publication state, for tests.
     #[cfg(test)]
-    pub(in crate::shared) async fn state(
-        &self,
-        identity: &Identity,
-    ) -> Result<protocol::NodeState, AppError> {
+    pub(crate) async fn state(&self, identity: &Identity) -> Result<protocol::NodeState, AppError> {
         let (head, tombstones) = self
             .read(identity, |connection| {
                 Ok((
@@ -430,10 +424,7 @@ impl Store {
         })
     }
 
-    pub(in crate::shared) async fn freshness(
-        &self,
-        identity: &Identity,
-    ) -> Result<Freshness, AppError> {
+    pub(crate) async fn freshness(&self, identity: &Identity) -> Result<Freshness, AppError> {
         let group_views = self.views.views_configuration(identity).await?;
         let heads = self.heads(&identity.group_id).await?;
         let mut nodes = Vec::new();
@@ -543,7 +534,7 @@ impl Store {
         Ok(active)
     }
 
-    pub(in crate::shared) async fn search(
+    pub(crate) async fn search(
         &self,
         identity: &Identity,
         input: protocol::Search,
@@ -622,7 +613,7 @@ impl Store {
         Ok(())
     }
 
-    pub(in crate::shared) async fn list_chats(
+    pub(crate) async fn list_chats(
         &self,
         identity: &Identity,
         input: crate::chat_catalog::Request,
@@ -678,11 +669,11 @@ impl Store {
     }
 
     /// Fail before streaming when shared silver is unreachable.
-    pub(in crate::shared) async fn available(&self, identity: &Identity) -> Result<(), AppError> {
+    pub(crate) async fn available(&self, identity: &Identity) -> Result<(), AppError> {
         self.head(identity).await.map(|_| ())
     }
 
-    pub(in crate::shared) async fn view(
+    pub(crate) async fn view(
         &self,
         identity: &Identity,
         input: protocol::View,

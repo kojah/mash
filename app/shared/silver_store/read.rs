@@ -9,16 +9,13 @@ use rusqlite::Connection;
 use std::io::Write;
 
 /// One published thread's catalogue row.
-pub(in crate::shared) struct Chat {
-    pub(in crate::shared) node_id: String,
-    pub(in crate::shared) conversation: ConversationRecord,
+pub(crate) struct Chat {
+    pub(crate) node_id: String,
+    pub(crate) conversation: ConversationRecord,
 }
 
 /// Every thread of one node's silver.
-pub(in crate::shared) fn threads(
-    connection: &Connection,
-    node: &str,
-) -> Result<Vec<Chat>, AppError> {
+pub(crate) fn threads(connection: &Connection, node: &str) -> Result<Vec<Chat>, AppError> {
     Ok(conversations(connection)?
         .into_iter()
         .map(|conversation| Chat {
@@ -38,7 +35,7 @@ fn parent(record: &MessageRecord) -> Option<i64> {
 
 /// Canonical messages around one anchor: an ordinal window for linear threads,
 /// or the native ancestor chain and first-child continuation for trees.
-pub(in crate::shared) fn view(
+pub(crate) fn view(
     connection: &Connection,
     id: &str,
     context: u32,
@@ -111,7 +108,7 @@ pub(in crate::shared) fn view(
     Ok(rows)
 }
 
-pub(in crate::shared) fn message(record: MessageRecord, projection: bool) -> Message {
+pub(crate) fn message(record: MessageRecord, projection: bool) -> Message {
     Message {
         attachments: record.attachments,
         id: record.id,
@@ -167,10 +164,7 @@ fn section<'a, W: Write>(
 
 #[cfg(test)]
 /// Stream the retained history wire format: conversations, messages and tombstones.
-pub(in crate::shared) fn export(
-    connection: &Connection,
-    output: &mut impl Write,
-) -> Result<(), AppError> {
+pub(crate) fn export(connection: &Connection, output: &mut impl Write) -> Result<(), AppError> {
     let mut members = section(output, "conversations", true)?;
     for record in conversations(connection)? {
         members.push(&record.id, &encode(&record)?)?;

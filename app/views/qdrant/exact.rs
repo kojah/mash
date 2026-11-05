@@ -1,11 +1,11 @@
 //! Bounded literal scanning of immutable lexical documents, without vectors.
 use super::{
-    AppError, Identity, Store, Stored, api, collection, connector_hit, document_id, failure, tokens,
+    AppError, Scope, Store, Stored, api, collection, connector_hit, document_id, failure, tokens,
 };
 use crate::{
-    shared::protocol,
     storage::SearchHit,
     views::exact::{self, Literal},
+    views::retrieval as protocol,
 };
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -51,7 +51,7 @@ struct Document {
     repository: Option<String>,
     created_at: Option<i64>,
     tokens: Vec<String>,
-    conversation: protocol::ConversationRecord,
+    conversation: crate::views::documents::ConversationRecord,
     message: Message,
 }
 
@@ -121,7 +121,7 @@ fn hit(
 impl Store {
     pub(super) async fn search_exact(
         &self,
-        identity: &Identity,
+        identity: &Scope,
         input: protocol::Search,
         active: &BTreeSet<String>,
     ) -> Result<protocol::Candidates, AppError> {
@@ -210,7 +210,7 @@ mod budget_tests {
 
     #[tokio::test]
     async fn flexible_exact_search_allows_cold_vocabulary_and_keeps_a_deadline() {
-        let identity = Identity {
+        let identity = Scope {
             group_id: "test".into(),
             node_id: "node".into(),
             generation: "unused".into(),
@@ -253,7 +253,7 @@ mod budget_tests {
                 assert_eq!(error.error.kind, crate::ErrorKind::Usage);
                 assert_eq!(
                     error.error.message,
-                    crate::shared::EXACT_SEARCH_BUDGET_ERROR
+                    crate::views::retrieval::EXACT_SEARCH_BUDGET_ERROR
                 );
             }
             server.abort();

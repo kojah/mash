@@ -34,7 +34,7 @@ struct Health {
 impl Client {
     /// Exercise group vector/filter pages and its selected retrieval path.
     #[tracing::instrument(name = "qdrant_warm_search", skip_all)]
-    pub(in crate::shared::qdrant_index) async fn warm_search(
+    pub(in crate::views::qdrant) async fn warm_search(
         &self,
         name: &str,
         using: &str,
@@ -79,7 +79,7 @@ impl Client {
     /// Yellow is normal background indexing; other nodes must not delay this
     /// publication by continuing to write into the same collection.
     #[tracing::instrument(name = "qdrant_check_search_health", skip_all)]
-    pub(in crate::shared::qdrant_index) async fn check_search_health(
+    pub(in crate::views::qdrant) async fn check_search_health(
         &self,
         name: &str,
     ) -> Result<(), AppError> {

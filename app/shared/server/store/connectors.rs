@@ -1,8 +1,8 @@
 //! Connector silver commits share the authenticated node's database and writer
 //! lock; certification brings the node's connector points in line with it.
 use super::{Identity, Store};
-use crate::shared::qdrant_index::{ConnectorPoint, ConnectorUnit, Documents, NodeViews};
 use crate::storage::connector_views::{self, Evidence, Unit};
+use crate::views::qdrant::{ConnectorPoint, ConnectorUnit, Documents, NodeViews};
 use crate::{
     AppError,
     connectors::{Batch, Receipt, silver},
@@ -13,9 +13,9 @@ use std::path::PathBuf;
 /// How the server embeds connector units: nodes supply native vectors, but
 /// connector records arrive as text.
 #[derive(Clone)]
-pub(in crate::shared) struct Embedder {
-    pub(in crate::shared) models: PathBuf,
-    pub(in crate::shared) remote: Option<crate::semantic::remote::Configuration>,
+pub(crate) struct Embedder {
+    pub(crate) models: PathBuf,
+    pub(crate) remote: Option<crate::semantic::remote::Configuration>,
 }
 
 /// Units read in one pass: every current digest, and the units that changed.
@@ -33,19 +33,19 @@ fn digest(unit: &Unit) -> String {
 
 impl Store {
     #[cfg(test)]
-    pub(in crate::shared) fn with_connector_interruption(mut self) -> Self {
+    pub(crate) fn with_connector_interruption(mut self) -> Self {
         self.connector_interruption = true;
         self
     }
 
     #[cfg(test)]
-    pub(in crate::shared) fn with_views_interruption(mut self) -> Self {
+    pub(crate) fn with_views_interruption(mut self) -> Self {
         self.views_interruption = true;
         self
     }
 
     #[cfg(test)]
-    pub(in crate::shared) fn with_views_partial_interruption(self) -> Self {
+    pub(crate) fn with_views_partial_interruption(self) -> Self {
         self.views_partial_interruption
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self
@@ -53,14 +53,14 @@ impl Store {
 
     /// Test hook: allow the next views write to certify again.
     #[cfg(test)]
-    pub(in crate::shared) fn clear_views_partial_interruption(&self) {
+    pub(crate) fn clear_views_partial_interruption(&self) {
         self.views_partial_interruption
             .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Commit silver first. View follows on a best-effort basis: a failure
     /// leaves the node uncertified until the next ingest, upload or replay.
-    pub(in crate::shared) async fn ingest_connector(
+    pub(crate) async fn ingest_connector(
         &self,
         identity: &Identity,
         batch: Batch,

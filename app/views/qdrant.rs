@@ -1,4 +1,4 @@
-//! Qdrant shared views: search documents and their readiness, derived from shared
+//! Common Qdrant views: search documents and readiness derived from canonical
 //! silver in SQLite. Every point here can be rebuilt by replaying silver.
 mod api;
 mod configuration;
@@ -8,16 +8,17 @@ mod read;
 mod tests;
 mod views;
 
-use super::server::Identity;
 use crate::AppError;
+use crate::views::scope::Scope;
+pub(crate) use configuration::Settings;
 use serde::{Deserialize, Serialize};
 
-pub(super) use read::validate_search;
-pub(super) use views::{ConnectorPoint, Documents, NodeViews, ViewChat};
+pub(crate) use read::validate_search;
+pub(crate) use views::{ConnectorPoint, Documents, NodeViews, ViewChat};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum MemoryTier {
+pub(crate) enum MemoryTier {
     #[default]
     Durable,
     Cached,
@@ -26,7 +27,7 @@ pub(super) enum MemoryTier {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum PhysicalMemory {
+pub(crate) enum PhysicalMemory {
     Cached,
     Cold,
     Pinned,
@@ -53,9 +54,9 @@ impl MemoryTier {
 }
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct MemoryPolicy {
-    pub(super) tier: MemoryTier,
-    pub(super) activate: bool,
+pub(crate) struct MemoryPolicy {
+    pub(crate) tier: MemoryTier,
+    pub(crate) activate: bool,
 }
 impl From<MemoryTier> for MemoryPolicy {
     fn from(tier: MemoryTier) -> Self {
@@ -66,10 +67,10 @@ impl From<MemoryTier> for MemoryPolicy {
     }
 }
 
-pub(super) use crate::views::vector::Search as VectorIndex;
+pub(crate) use crate::views::vector::Search as VectorIndex;
 
 #[derive(Clone)]
-pub(super) struct Store {
+pub(crate) struct Store {
     dense_names: std::collections::BTreeMap<String, String>,
     build: crate::views::config::Build,
     api: api::Client,
@@ -90,8 +91,8 @@ struct Document {
     repository: Option<String>,
     created_at: Option<i64>,
     tokens: Vec<String>,
-    conversation: super::protocol::ConversationRecord,
-    message: super::protocol::MessageRecord,
+    conversation: crate::views::documents::ConversationRecord,
+    message: crate::views::documents::MessageRecord,
 }
 
 /// One searchable connector entry or document with its display evidence.
@@ -112,21 +113,21 @@ struct ConnectorDocument {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(in crate::shared) struct ConnectorUnit {
-    pub(in crate::shared) anchor: String,
+pub(crate) struct ConnectorUnit {
+    pub(crate) anchor: String,
     /// Indexed and embedded text; the digest of record for synchronization.
-    pub(in crate::shared) text: String,
-    pub(in crate::shared) content: String,
-    pub(in crate::shared) title: Option<String>,
-    pub(in crate::shared) author_kind: Option<crate::connectors::AuthorKind>,
+    pub(crate) text: String,
+    pub(crate) content: String,
+    pub(crate) title: Option<String>,
+    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     /// Position among the container's entries.
-    pub(in crate::shared) sequence: i64,
-    pub(in crate::shared) chat_created_at: Option<i64>,
-    pub(in crate::shared) chat_updated_at: Option<i64>,
+    pub(crate) sequence: i64,
+    pub(crate) chat_created_at: Option<i64>,
+    pub(crate) chat_updated_at: Option<i64>,
     /// Enclosing objects, nearest first.
-    pub(in crate::shared) ancestors: Vec<crate::source::Ancestor>,
+    pub(crate) ancestors: Vec<crate::source::Ancestor>,
     /// Set when the point carries a dense vector of this generation.
-    pub(in crate::shared) generation: Option<String>,
+    pub(crate) generation: Option<String>,
 }
 
 /// A stored point of either shape; each rejects the other's fields.
@@ -277,7 +278,7 @@ fn sparse(text: &str, query: bool) -> api::Sparse {
 }
 impl Store {
     #[cfg(test)]
-    pub(in crate::shared) fn unavailable() -> Self {
+    pub(crate) fn unavailable() -> Self {
         Self {
             dense_names: std::collections::BTreeMap::new(),
             build: crate::views::config::Build::default(),
@@ -286,22 +287,19 @@ impl Store {
             responses: crate::redaction::Policy::ON,
         }
     }
-    pub(in crate::shared) fn with_response_redaction(
-        mut self,
-        responses: crate::redaction::Policy,
-    ) -> Self {
+    pub(crate) fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
         self.responses = responses;
         self
     }
-    pub(in crate::shared) fn with_build(mut self, build: crate::views::config::Build) -> Self {
+    pub(crate) fn with_build(mut self, build: crate::views::config::Build) -> Self {
         self.build = build;
         self
     }
-    pub(in crate::shared) fn build(&self) -> &crate::views::config::Build {
+    pub(crate) fn build(&self) -> &crate::views::config::Build {
         &self.build
     }
     /// Explicit setup of each group's document and views-state collections.
-    pub(super) async fn connect(
+    pub(crate) async fn connect(
         url: &str,
         key: Option<&str>,
         groups: &[String],
@@ -331,9 +329,16 @@ impl Store {
             responses: crate::redaction::Policy::ON,
         })
     }
-    fn dense_name(&self, identity: &Identity) -> &str {
+    fn dense_name(&self, identity: &Scope) -> &str {
         self.dense_names
             .get(&identity.group_id)
             .map_or("dense", String::as_str)
     }
+}
+
+fn conflict(message: &str) -> AppError {
+    let mut error = failure();
+    error.error.kind = crate::ErrorKind::Conflict;
+    message.clone_into(&mut error.error.message);
+    error
 }

@@ -592,7 +592,7 @@ impl Client {
             // Qdrant indexes large batches. Keep reads bounded and do not replay
             // ambiguous mutations; publication verification owns their recovery.
             if path.ends_with("?wait=true&ordering=strong") {
-                request = request.timeout(crate::shared::BULK_TIMEOUT);
+                request = request.timeout(std::time::Duration::from_mins(30));
             }
             if let Some(body) = body {
                 request = request.json(body);

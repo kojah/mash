@@ -16,7 +16,7 @@ mod tests;
 /// The caller holds the node lock through this operation and subsequent views
 /// synchronization. Duplicate validation rolls back the outer transaction so
 /// SQLite need not retain a snapshot-sized nested-savepoint subjournal.
-pub(in crate::shared) fn write(
+pub(crate) fn write(
     store: &super::SilverStore,
     identity: &Identity,
     file: &tempfile::NamedTempFile,
@@ -86,18 +86,18 @@ fn write_inner(
 }
 
 #[derive(Debug)]
-pub(in crate::shared) struct Applied {
-    pub(in crate::shared) head: Head,
-    pub(in crate::shared) revision: i64,
+pub(crate) struct Applied {
+    pub(crate) head: Head,
+    pub(crate) revision: i64,
     /// Previously accepted snapshot with matching canonical history.
-    pub(in crate::shared) duplicate: bool,
-    pub(in crate::shared) changed: bool,
-    pub(in crate::shared) removed: u64,
-    pub(in crate::shared) purged: u64,
+    pub(crate) duplicate: bool,
+    pub(crate) changed: bool,
+    pub(crate) removed: u64,
+    pub(crate) purged: u64,
     /// Chats whose messages and vectors this upload supplies.
-    pub(in crate::shared) supplied: BTreeSet<String>,
+    pub(crate) supplied: BTreeSet<String>,
     /// Chats removed from silver; their views documents are obsolete.
-    pub(in crate::shared) deleted: BTreeSet<String>,
+    pub(crate) deleted: BTreeSet<String>,
 }
 
 struct Upload<'a> {

@@ -10,13 +10,13 @@ const TARGET_BYTES: usize = 2 * 1024 * 1024;
 const MAX_POINT_BYTES: usize = 30 * 1024 * 1024 - 1024;
 
 #[derive(Default)]
-pub(in crate::shared::qdrant_index) struct StagingBatch {
+pub(in crate::views::qdrant) struct StagingBatch {
     points: Vec<Box<RawValue>>,
     bytes: usize,
 }
 
 impl StagingBatch {
-    pub(in crate::shared::qdrant_index) async fn push<P: Serialize>(
+    pub(in crate::views::qdrant) async fn push<P: Serialize>(
         &mut self,
         client: &Client,
         collection: &str,
@@ -47,7 +47,7 @@ impl StagingBatch {
     }
 
     #[tracing::instrument(name = "qdrant_staging_flush", skip_all, fields(points = self.points.len(), bytes = self.bytes))]
-    pub(in crate::shared::qdrant_index) async fn flush(
+    pub(in crate::views::qdrant) async fn flush(
         &mut self,
         client: &Client,
         collection: &str,

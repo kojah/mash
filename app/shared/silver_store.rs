@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub(super) mod apply;
-pub(super) mod read;
-pub(super) use apply::Applied;
+pub(crate) mod apply;
+pub(crate) mod read;
+pub(crate) use apply::Applied;
 
 // sqlc-gen-rust emits an unused row parameter for :exec result models.
 #[allow(dead_code, unused_variables, clippy::all, clippy::pedantic)]
@@ -24,36 +24,36 @@ use generated as sql;
 /// Server-only publication head of one node, kept in its `shared_head` row.
 /// Fields of retired protocol features are ignored when read back.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct Head {
-    pub(super) instance: String,
-    pub(super) revision: i64,
+pub(crate) struct Head {
+    pub(crate) instance: String,
+    pub(crate) revision: i64,
     /// Changes with every committed publication, including views-only rebuilds.
-    pub(super) version: String,
-    pub(super) silver_revision: Option<State>,
-    pub(super) source_silver: Option<crate::silver::certificate::Certificate>,
-    pub(super) last_synced_at: Option<String>,
-    pub(super) last_updated_at: Option<String>,
+    pub(crate) version: String,
+    pub(crate) silver_revision: Option<State>,
+    pub(crate) source_silver: Option<crate::silver::certificate::Certificate>,
+    pub(crate) last_synced_at: Option<String>,
+    pub(crate) last_updated_at: Option<String>,
     /// Last `/v1/sync` operation committed in this same transaction. Absent for
     /// publications that arrived through the legacy HTTP mutation route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) operation_id: Option<String>,
+    pub(crate) operation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) manifest_digest: Option<String>,
+    pub(crate) manifest_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) receipt_digest: Option<String>,
+    pub(crate) receipt_digest: Option<String>,
 }
 
 /// Transfer receipt recorded with the silver commit it describes. The
 /// transport catalog only tracks spool state; this is the canonical evidence.
 #[derive(Clone, Debug)]
-pub(super) struct SyncReceipt {
-    pub(super) operation_id: String,
-    pub(super) manifest_digest: String,
+pub(crate) struct SyncReceipt {
+    pub(crate) operation_id: String,
+    pub(crate) manifest_digest: String,
 }
 
 /// Receipt identity over the transfer manifest and committed revision. The
 /// client, the silver head and the transport catalog all use this function.
-pub(super) fn receipt_digest(manifest: &str, revision: i64) -> String {
+pub(crate) fn receipt_digest(manifest: &str, revision: i64) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"mash-sync-receipt-v1\0");
     hasher.update(manifest.as_bytes());
@@ -65,7 +65,7 @@ pub(super) fn receipt_digest(manifest: &str, revision: i64) -> String {
 /// `<root>/<group_id>/<node_id>.sqlite3`. WAL readers run concurrently with
 /// the node's single writer. One API process owns the directory at a time.
 #[derive(Clone)]
-pub(super) struct SilverStore {
+pub(crate) struct SilverStore {
     root: PathBuf,
     groups: BTreeMap<String, Vec<String>>,
     /// None only for `unavailable`, whose every connection fails.
@@ -96,16 +96,16 @@ fn database(error: rusqlite::Error) -> AppError {
 }
 
 #[cfg(test)]
-pub(super) fn key(provider: Provider, id: &str) -> String {
+pub(crate) fn key(provider: Provider, id: &str) -> String {
     format!("{provider}\0{id}")
 }
 
-pub(super) fn now() -> String {
+pub(crate) fn now() -> String {
     chrono::DateTime::from(std::time::SystemTime::now())
         .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
-pub(super) fn token() -> Result<String, AppError> {
+pub(crate) fn token() -> Result<String, AppError> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random).map_err(|_| AppError::internal("create publication token"))?;
     Ok(blake3::hash(&random).to_hex().to_string())
@@ -127,7 +127,7 @@ fn provider(name: &str) -> Result<Provider, AppError> {
 impl SilverStore {
     /// Create or open every configured node's database; only the API process
     /// writes them.
-    pub(super) fn open<'a>(
+    pub(crate) fn open<'a>(
         root: &Path,
         identities: impl IntoIterator<Item = &'a Identity>,
     ) -> Result<Self, AppError> {
@@ -158,7 +158,7 @@ impl SilverStore {
 
     /// Test-only store whose every access fails, like an unreachable backend.
     #[cfg(test)]
-    pub(super) fn unavailable() -> Self {
+    pub(crate) fn unavailable() -> Self {
         Self {
             root: PathBuf::from("/proc/mash-unavailable/silver"),
             groups: BTreeMap::new(),
@@ -173,11 +173,11 @@ impl SilverStore {
     }
 
     /// Configured nodes of one group, in identity order.
-    pub(super) fn nodes(&self, group: &str) -> &[String] {
+    pub(crate) fn nodes(&self, group: &str) -> &[String] {
         self.groups.get(group).map_or(&[], Vec::as_slice)
     }
 
-    pub(super) fn connect(&self, identity: &Identity) -> Result<Connection, AppError> {
+    pub(crate) fn connect(&self, identity: &Identity) -> Result<Connection, AppError> {
         // Explicit rather than an uncreatable root: any path is creatable on
         // some platform (Windows maps `/proc/...` to the current drive).
         if self.owner.is_none() {
@@ -198,7 +198,7 @@ impl SilverStore {
     }
 
     /// One transaction on a node's database; SQLite serializes its writers.
-    pub(super) fn write<T>(
+    pub(crate) fn write<T>(
         &self,
         identity: &Identity,
         work: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, AppError>,
@@ -213,7 +213,7 @@ impl SilverStore {
     }
 
     /// Heads of the group's nodes that have published.
-    pub(super) fn heads(&self, group: &str) -> Result<BTreeMap<String, Head>, AppError> {
+    pub(crate) fn heads(&self, group: &str) -> Result<BTreeMap<String, Head>, AppError> {
         let mut heads = BTreeMap::new();
         for node in self.nodes(group) {
             if let Some(head) = head(&self.connect(&node_identity(group, node))?)? {
@@ -225,7 +225,7 @@ impl SilverStore {
 }
 
 /// Addressing identity of another node in the caller's group.
-pub(super) fn node_identity(group: &str, node: &str) -> Identity {
+pub(crate) fn node_identity(group: &str, node: &str) -> Identity {
     Identity {
         group_id: group.to_owned(),
         node_id: node.to_owned(),
@@ -234,7 +234,7 @@ pub(super) fn node_identity(group: &str, node: &str) -> Identity {
     }
 }
 
-pub(super) fn head(connection: &Connection) -> Result<Option<Head>, AppError> {
+pub(crate) fn head(connection: &Connection) -> Result<Option<Head>, AppError> {
     sql::Head
         .query_opt(connection)
         .map_err(database)?
@@ -242,7 +242,7 @@ pub(super) fn head(connection: &Connection) -> Result<Option<Head>, AppError> {
         .transpose()
 }
 
-pub(super) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppError> {
+pub(crate) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppError> {
     sql::PutHead::builder()
         .head(&encode(head)?)
         .build()
@@ -252,7 +252,7 @@ pub(super) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppEr
 }
 
 /// Silver counts. Embedding coverage belongs to views and is reported separately.
-pub(super) fn counts(connection: &Connection) -> Result<Counts, AppError> {
+pub(crate) fn counts(connection: &Connection) -> Result<Counts, AppError> {
     let row = sql::Counts.query_one(connection).map_err(database)?;
     let count = |value: i64| u64::try_from(value).map_err(|_| AppError::database_data("count"));
     Ok(Counts {
@@ -308,7 +308,7 @@ macro_rules! message_record {
 
 use message_record;
 
-pub(super) fn conversation(
+pub(crate) fn conversation(
     connection: &Connection,
     id: &str,
 ) -> Result<Option<ConversationRecord>, AppError> {
@@ -321,7 +321,7 @@ pub(super) fn conversation(
         .transpose()
 }
 
-pub(super) fn conversations(connection: &Connection) -> Result<Vec<ConversationRecord>, AppError> {
+pub(crate) fn conversations(connection: &Connection) -> Result<Vec<ConversationRecord>, AppError> {
     sql::NodeConversations
         .query_many(connection)
         .map_err(database)?
@@ -331,7 +331,7 @@ pub(super) fn conversations(connection: &Connection) -> Result<Vec<ConversationR
 }
 
 /// One thread's silver messages in ordinal order. Vectors are never stored.
-pub(super) fn thread_messages(
+pub(crate) fn thread_messages(
     connection: &Connection,
     id: &str,
 ) -> Result<Vec<MessageRecord>, AppError> {
@@ -345,7 +345,7 @@ pub(super) fn thread_messages(
         .collect()
 }
 
-pub(super) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppError> {
+pub(crate) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppError> {
     sql::NodeTombstones
         .query_many(connection)
         .map_err(database)?
@@ -360,7 +360,7 @@ pub(super) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppE
 }
 
 /// Thread dependency fingerprints, the reuse identity offered to publishers.
-pub(super) fn fingerprints(connection: &Connection) -> Result<BTreeMap<String, String>, AppError> {
+pub(crate) fn fingerprints(connection: &Connection) -> Result<BTreeMap<String, String>, AppError> {
     Ok(sql::Fingerprints
         .query_many(connection)
         .map_err(database)?

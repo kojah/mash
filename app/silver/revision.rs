@@ -1,4 +1,4 @@
-//! Server-owned canonical identity, independent of publication and model state.
+//! Canonical revision identity, independent of publication and model state.
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(in crate::shared) fn validate(&self) -> Result<(), AppError> {
+    pub(crate) fn validate(&self) -> Result<(), AppError> {
         if self.schema_version != SCHEMA_VERSION
             || self.revision == 0
             || self.fingerprint.len() != 64
@@ -27,10 +27,7 @@ impl State {
         Ok(())
     }
 
-    pub(in crate::shared) fn next(
-        previous: Option<&Self>,
-        fingerprint: String,
-    ) -> Result<Self, AppError> {
+    pub(crate) fn next(previous: Option<&Self>, fingerprint: String) -> Result<Self, AppError> {
         let revision = if let Some(previous) = previous {
             previous.validate()?;
             if previous.fingerprint == fingerprint {

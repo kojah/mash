@@ -1,16 +1,13 @@
 //! Group-scoped retrieval over the documents of nodes with compatible views.
 use super::{
-    AppError, Document, Identity, Store, Stored, VectorIndex, api, collection, connector_hit,
+    AppError, Document, Scope, Store, Stored, VectorIndex, api, collection, connector_hit,
     document_id, failure, sparse, tokens,
 };
-use crate::shared::protocol;
 use crate::storage::SearchHit;
+use crate::views::retrieval as protocol;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(in crate::shared) fn validate_search(
-    input: &protocol::Search,
-    identity: &Identity,
-) -> Result<(), AppError> {
+pub(crate) fn validate_search(input: &protocol::Search, identity: &Scope) -> Result<(), AppError> {
     if let Some(policy) = input.vector_policy {
         policy.validate_request()?;
         if input.intent == crate::views::exact::Intent::ExactMention {
@@ -36,7 +33,9 @@ pub(in crate::shared) fn validate_search(
     Ok(())
 }
 
-fn metadata(c: &protocol::ConversationRecord) -> crate::search_results::ChatMetadata {
+fn metadata(
+    c: &crate::views::documents::ConversationRecord,
+) -> crate::search_results::ChatMetadata {
     crate::search_results::ChatMetadata {
         enrichment: c.enrichment.clone(),
         title: c.title.clone(),
@@ -167,7 +166,7 @@ impl Store {
     /// Preserve original lexical candidates before considering expanded terms.
     async fn lexical(
         &self,
-        identity: &Identity,
+        identity: &Scope,
         input: &protocol::Search,
         active: &BTreeSet<String>,
         filter: &api::Filter,
@@ -230,20 +229,20 @@ impl Store {
         Ok(lexical)
     }
     #[tracing::instrument(name = "backend_search", skip_all, fields(backend = "qdrant"))]
-    pub(in crate::shared) async fn search(
+    pub(crate) async fn search(
         &self,
-        identity: &Identity,
+        identity: &Scope,
         mut input: protocol::Search,
         active: &BTreeSet<String>,
     ) -> Result<protocol::Candidates, AppError> {
         validate_search(&input, identity)?;
         if input.intent == crate::views::exact::Intent::ExactMention {
             return tokio::time::timeout(
-                crate::shared::EXACT_SEARCH_TIMEOUT,
+                crate::views::retrieval::EXACT_SEARCH_TIMEOUT,
                 self.search_exact(identity, input, active),
             )
             .await
-            .map_err(|_| AppError::usage(crate::shared::EXACT_SEARCH_BUDGET_ERROR))?;
+            .map_err(|_| AppError::usage(crate::views::retrieval::EXACT_SEARCH_BUDGET_ERROR))?;
         }
         self.build.require_intent(input.intent)?;
         let configuration = self.active_configuration(identity).await?;
@@ -307,7 +306,7 @@ impl Store {
 fn hits(
     points: Vec<api::Scored<Stored<Document>>>,
     lexical: bool,
-    identity: &Identity,
+    identity: &Scope,
     active: &BTreeSet<String>,
     build: &crate::views::config::Build,
 ) -> Result<Vec<SearchHit>, AppError> {

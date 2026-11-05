@@ -154,7 +154,7 @@ pub(super) mod embeddings {
     }
 
     /// A controlled OpenAI-compatible endpoint on its own runtime thread.
-    pub(in crate::shared::qdrant_index::tests) fn serve() -> String {
+    pub(in crate::views::qdrant::tests) fn serve() -> String {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             tokio::runtime::Runtime::new()

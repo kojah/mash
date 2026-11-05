@@ -761,3 +761,5 @@ fn apply_conversation(
     summary.tombstoned_sources += u64::from(change.tombstoned);
     Ok(())
 }
+
+pub(crate) mod revision;

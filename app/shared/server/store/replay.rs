@@ -1,22 +1,22 @@
 //! Reconstruct shared views from shared silver alone, e.g. after losing Qdrant data.
 use super::{Identity, Store};
 use crate::AppError;
-use crate::shared::qdrant_index::{NodeViews, ViewChat};
 use crate::shared::silver_store;
+use crate::views::qdrant::{NodeViews, ViewChat};
 use crate::views::shared as views;
 use std::path::Path;
 
 /// Per-store interruption points; no global state or production fault switches.
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::shared) enum ReplayFault {
+pub(crate) enum ReplayFault {
     AfterInvalidation,
     AfterDeletion,
 }
 
 #[cfg(test)]
 impl Store {
-    pub(in crate::shared) fn with_replay_fault(mut self, fault: ReplayFault) -> Self {
+    pub(crate) fn with_replay_fault(mut self, fault: ReplayFault) -> Self {
         self.replay_fault = Some(fault);
         self
     }
@@ -31,18 +31,18 @@ impl Store {
 
 /// Replay result for one node.
 #[derive(Debug, serde::Serialize)]
-pub(in crate::shared) struct Replayed {
-    pub(in crate::shared) group_id: String,
-    pub(in crate::shared) node_id: String,
-    pub(in crate::shared) chats: u64,
-    pub(in crate::shared) messages: u64,
-    pub(in crate::shared) embeddings: u64,
+pub(crate) struct Replayed {
+    pub(crate) group_id: String,
+    pub(crate) node_id: String,
+    pub(crate) chats: u64,
+    pub(crate) messages: u64,
+    pub(crate) embeddings: u64,
 }
 
 impl Store {
     /// Re-embed every dense-eligible message and rewrite all of the node's views.
     #[allow(clippy::too_many_lines)]
-    pub(in crate::shared) async fn replay(
+    pub(crate) async fn replay(
         &self,
         identity: &Identity,
         models: &Path,
@@ -73,7 +73,7 @@ impl Store {
             messages: 0,
             embeddings: 0,
         };
-        let mut documents = crate::shared::qdrant_index::Documents::new(identity);
+        let mut documents = crate::views::qdrant::Documents::new(identity);
         for (id, fingerprint) in &fingerprints {
             let chat = id.clone();
             let (conversation, messages) = self

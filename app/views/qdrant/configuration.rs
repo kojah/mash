@@ -1,5 +1,5 @@
 //! Group views settings. Changing them is an explicit operator activation.
-use super::{AppError, Identity, PointKind, Store, api, collection, failure, point_id};
+use super::{AppError, PointKind, Scope, Store, api, collection, failure, point_id};
 use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub(super) struct Configuration {
 }
 
 impl Configuration {
-    fn matches(&self, store: &Store, identity: &Identity) -> bool {
+    fn matches(&self, store: &Store, identity: &Scope) -> bool {
         self.build == store.build
             && self.generation == identity.generation
             && self.dimensions == identity.dimensions
@@ -48,14 +48,14 @@ fn version() -> Result<String, AppError> {
 }
 
 impl Store {
-    pub(in crate::shared) fn with_query(mut self, query: super::VectorIndex) -> Self {
+    pub(crate) fn with_query(mut self, query: super::VectorIndex) -> Self {
         self.vector_index = query;
         self
     }
 
     async fn group_configuration(
         &self,
-        identity: &Identity,
+        identity: &Scope,
     ) -> Result<Option<Configuration>, AppError> {
         let id = point_id(&["views-configuration"]);
         let mut points = self
@@ -82,7 +82,7 @@ impl Store {
 
     async fn put_configuration(
         &self,
-        identity: &Identity,
+        identity: &Scope,
         configuration: &Configuration,
     ) -> Result<(), AppError> {
         configuration.validate()?;
@@ -102,9 +102,9 @@ impl Store {
 
     /// Bootstrap once, or explicitly replace the group's recipe and model space.
     /// Replacing them makes every node's views stale until it is republished.
-    pub(in crate::shared) async fn select_views(
+    pub(crate) async fn select_views(
         &self,
-        identity: &Identity,
+        identity: &Scope,
         activate: bool,
     ) -> Result<String, AppError> {
         let previous = self.group_configuration(identity).await?;
@@ -134,9 +134,9 @@ impl Store {
     }
 
     /// Select retrieval defaults and, on explicit activation, planner thresholds.
-    pub(in crate::shared) async fn select_query(
+    pub(crate) async fn select_query(
         &self,
-        identity: &Identity,
+        identity: &Scope,
         activate: bool,
     ) -> Result<(), AppError> {
         self.vector_index.validate()?;
@@ -160,12 +160,9 @@ impl Store {
         Ok(())
     }
 
-    pub(in crate::shared) async fn views_configuration(
-        &self,
-        identity: &Identity,
-    ) -> Result<crate::shared::GroupView, AppError> {
+    pub(crate) async fn views_configuration(&self, identity: &Scope) -> Result<Settings, AppError> {
         let current = self.active_configuration(identity).await?;
-        Ok(crate::shared::GroupView {
+        Ok(Settings {
             version: current.version,
             build: current.build,
             generation: current.generation,
@@ -176,18 +173,27 @@ impl Store {
 
     pub(super) async fn active_configuration(
         &self,
-        identity: &Identity,
+        identity: &Scope,
     ) -> Result<Configuration, AppError> {
         let current = self.group_configuration(identity).await?.ok_or_else(|| {
-            crate::shared::validation::conflict(
-                "shared group views configuration is missing; restart the API",
-            )
+            super::conflict("shared group views configuration is missing; restart the API")
         })?;
         if !current.matches(self, identity) {
-            return Err(crate::shared::validation::conflict(
+            return Err(super::conflict(
                 "shared group views configuration changed; restart this API with the active settings",
             ));
         }
         Ok(current)
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Settings {
+    pub(crate) version: String,
+    pub(crate) build: crate::views::config::Build,
+    pub(crate) generation: String,
+    pub(crate) dimensions: usize,
+    #[serde(default)]
+    pub(crate) vector_search: super::VectorIndex,
 }

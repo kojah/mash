@@ -4,8 +4,8 @@ use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::activity::{Phase, Progress, Unit};
 use crate::shared::protocol::{Batch, ConversationRecord, Event, Indexed};
-use crate::shared::qdrant_index::{NodeViews, ViewChat};
 use crate::shared::silver_store::{self, Applied};
+use crate::views::qdrant::{NodeViews, ViewChat};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::BufRead;
 
@@ -22,7 +22,7 @@ struct Written {
 
 /// Silver committed and awaiting views certification. Holds the node lock so
 /// no other publication interleaves between the two phases.
-pub(in crate::shared) struct SilverCommit {
+pub(crate) struct SilverCommit {
     identity: Identity,
     file: tempfile::NamedTempFile,
     applied: Applied,
@@ -34,7 +34,7 @@ pub(in crate::shared) struct SilverCommit {
 
 impl SilverCommit {
     /// Source revision committed in silver.
-    pub(in crate::shared) fn revision(&self) -> i64 {
+    pub(crate) fn revision(&self) -> i64 {
         self.applied.revision
     }
 }
@@ -42,7 +42,7 @@ impl SilverCommit {
 impl Store {
     /// Test helper: commit silver and certify views in one call.
     #[cfg(test)]
-    pub(in crate::shared) async fn index(
+    pub(crate) async fn index(
         &self,
         identity: &Identity,
         file: tempfile::NamedTempFile,
@@ -56,7 +56,7 @@ impl Store {
     /// First phase: atomically commit canonical silver, its receipt and the
     /// publication head. Views are untouched, so a caller can report
     /// `SilverCommitted` before certification starts.
-    pub(in crate::shared) async fn commit_silver(
+    pub(crate) async fn commit_silver(
         &self,
         identity: &Identity,
         file: tempfile::NamedTempFile,
@@ -105,10 +105,7 @@ impl Store {
     }
 
     /// Second phase: write and certify views for a committed silver revision.
-    pub(in crate::shared) async fn certify_views(
-        &self,
-        commit: SilverCommit,
-    ) -> Result<Indexed, AppError> {
+    pub(crate) async fn certify_views(&self, commit: SilverCommit) -> Result<Indexed, AppError> {
         let SilverCommit {
             identity,
             file,
@@ -141,10 +138,7 @@ impl Store {
     /// Whether this node's stored views cover the current head. Certification
     /// can complete successfully without claiming the head when a newer commit
     /// landed first, so the receipt must ask instead of assuming.
-    pub(in crate::shared) async fn views_current(
-        &self,
-        identity: &Identity,
-    ) -> Result<bool, AppError> {
+    pub(crate) async fn views_current(&self, identity: &Identity) -> Result<bool, AppError> {
         let head = self.head(identity).await?;
         let silver = head.as_ref().and_then(|head| head.silver_revision.as_ref());
         Ok(self
@@ -157,10 +151,7 @@ impl Store {
     /// Current accepted source revision for this node; 0 before its first
     /// publication. Baseline batches rebase onto it so per-conversation
     /// ordering, not node-level staleness, decides what applies.
-    pub(in crate::shared) async fn head_revision(
-        &self,
-        identity: &Identity,
-    ) -> Result<i64, AppError> {
+    pub(crate) async fn head_revision(&self, identity: &Identity) -> Result<i64, AppError> {
         Ok(self.head(identity).await?.map_or(0, |head| head.revision))
     }
 
@@ -168,10 +159,7 @@ impl Store {
     /// replaying its current receipt advances `last_synced_at` like a duplicate
     /// publication, without changing silver. One immediate transaction keeps
     /// the read-modify-write ordered against concurrent commits.
-    pub(in crate::shared) async fn record_check_in(
-        &self,
-        identity: &Identity,
-    ) -> Result<(), AppError> {
+    pub(crate) async fn record_check_in(&self, identity: &Identity) -> Result<(), AppError> {
         let silver = self.silver.clone();
         let identity = identity.clone();
         crate::blocking(move || {
@@ -300,7 +288,7 @@ impl Store {
         let mut written = BTreeMap::<String, Written>::new();
         let mut conversations = HashMap::<String, ConversationRecord>::new();
         let build = self.views.build().clone();
-        let mut documents = crate::shared::qdrant_index::Documents::new(identity);
+        let mut documents = crate::views::qdrant::Documents::new(identity);
         loop {
             let (next, batch) = crate::blocking(move || {
                 let mut batch = Vec::new();
@@ -353,7 +341,7 @@ impl Store {
     }
 
     /// Record views as current only when every silver chat has complete documents.
-    pub(in crate::shared) async fn certify(
+    pub(crate) async fn certify(
         &self,
         identity: &Identity,
         mut views: NodeViews,
@@ -432,6 +420,10 @@ impl Store {
             .flatten();
         self.views.put_node_views(identity, &views).await?;
         drop(write);
-        self.views.settle(identity, progress).await
+        progress.phase(
+            crate::shared::activity::Phase::CheckingSearch,
+            crate::shared::activity::Unit::Records,
+        );
+        self.views.settle(identity).await
     }
 }

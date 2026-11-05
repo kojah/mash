@@ -546,19 +546,19 @@ impl Service {
             directory.path().file_name().unwrap().to_string_lossy()
         );
         let views = if matches!(backend, TestBackend::Qdrant) {
-            super::super::qdrant_index::Store::connect(
+            crate::views::qdrant::Store::connect(
                 &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
                 None,
                 &[group.clone(), format!("{group}-other")],
                 dimensions,
                 64 * 1024 * 1024,
-                super::super::qdrant_index::VectorIndex::default(),
-                super::super::qdrant_index::MemoryPolicy::default(),
+                crate::views::qdrant::VectorIndex::default(),
+                crate::views::qdrant::MemoryPolicy::default(),
             )
             .await
             .unwrap()
         } else {
-            super::super::qdrant_index::Store::unavailable()
+            crate::views::qdrant::Store::unavailable()
         };
         let identities = Arc::new(HashMap::from([
             (

@@ -172,7 +172,7 @@ async fn qdrant_concurrent_publications_keep_views_with_the_latest_accepted_silv
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
     let fixture = Fixture::new(VectorIndex::default()).await;
-    let other = Identity {
+    let other = Scope {
         node_id: "other".into(),
         ..fixture.identity.clone()
     };
@@ -261,7 +261,7 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
     fixture.cleanup().await;
 }
 
-async fn assert_connector_cleanup_is_scoped(fixture: &Fixture, other: &Identity, anchor: &str) {
+async fn assert_connector_cleanup_is_scoped(fixture: &Fixture, other: &Scope, anchor: &str) {
     let name = collection(&fixture.identity.group_id, false);
     fixture
         .store

@@ -1,18 +1,15 @@
 //! HTTP transport, publication coordination and shared storage. The server keeps
 //! silver in SQLite (`silver_store`) and derived, replayable views in Qdrant
-//! (`qdrant_index`); views builders live in `views/shared.rs`.
+//! (`views::qdrant`); views builders live in `views/shared.rs`.
 use serde::{Deserialize, Serialize};
 
 // Full-history upload, validation and staging share one bounded request budget.
 // Keep interactive client deadlines separate so ordinary search falls back promptly.
 const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
 
-// Leave transport/decoding headroom inside the five-second client deadline.
-// A cold vocabulary facet alone can take two seconds on retained node history.
-const EXACT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
-const EXACT_SEARCH_BUDGET_ERROR: &str = "exact query exceeded the shared search budget; narrow the query or metadata filters, or use match_mode=strict";
+use crate::views::retrieval::EXACT_SEARCH_BUDGET_ERROR;
 
-mod activity;
+pub(crate) mod activity;
 pub(crate) mod attachments;
 mod client;
 mod coverage;
@@ -21,12 +18,14 @@ mod lexical_manifest;
 mod output;
 pub(crate) mod protocol;
 pub(crate) mod publication;
-mod qdrant_index;
+#[cfg(test)]
+use crate::views::qdrant as qdrant_index;
+use crate::views::qdrant::Settings as GroupView;
 mod retrieval;
 mod reuse;
 pub(crate) mod server;
-mod silver_revision;
-mod silver_store;
+use crate::silver::revision as silver_revision;
+pub(crate) mod silver_store;
 mod sync;
 mod validation;
 mod views_manifest;
@@ -128,47 +127,36 @@ pub(crate) struct Freshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     unpublished_nodes: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    group_views: Option<Box<GroupView>>,
-    nodes: Vec<NodeFreshness>,
+    pub(crate) group_views: Option<Box<GroupView>>,
+    pub(crate) nodes: Vec<NodeFreshness>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct GroupView {
-    version: String,
-    build: crate::views::config::Build,
-    generation: String,
-    dimensions: usize,
-    #[serde(default)]
-    vector_search: qdrant_index::VectorIndex,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct NodeFreshness {
+pub(crate) struct NodeFreshness {
     /// None means the service did not report artifact publication states.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    artifacts: Option<crate::views::readiness::Artifacts>,
+    pub(crate) artifacts: Option<crate::views::readiness::Artifacts>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     lexical_manifest: Option<lexical_manifest::Manifest>,
     #[serde(default)]
-    lexical_current: bool,
+    pub(crate) lexical_current: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     views_manifest: Option<views_manifest::Manifest>,
     #[serde(default)]
-    views_current: bool,
+    pub(crate) views_current: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    silver_revision: Option<silver_revision::State>,
+    pub(crate) silver_revision: Option<silver_revision::State>,
     /// Retained source-node certificate, not the server-owned canonical revision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    source_silver: Option<crate::silver::certificate::Certificate>,
-    node_id: String,
+    pub(crate) source_silver: Option<crate::silver::certificate::Certificate>,
+    pub(crate) node_id: String,
     /// The local database that owns this node's publications.
-    instance: String,
-    revision: i64,
-    last_synced_at: Option<String>,
-    last_updated_at: Option<String>,
-    conversations: i64,
-    messages: i64,
+    pub(crate) instance: String,
+    pub(crate) revision: i64,
+    pub(crate) last_synced_at: Option<String>,
+    pub(crate) last_updated_at: Option<String>,
+    pub(crate) conversations: i64,
+    pub(crate) messages: i64,
 }
 
 #[cfg(test)]

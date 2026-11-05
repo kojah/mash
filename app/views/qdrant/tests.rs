@@ -18,7 +18,7 @@ struct Fixture {
     server: Server,
     silver: SilverStore,
     _directory: tempfile::TempDir,
-    identity: Identity,
+    identity: Scope,
     url: String,
 }
 impl Fixture {
@@ -31,7 +31,7 @@ impl Fixture {
         getrandom::fill(&mut random).unwrap();
         let group = format!("qdrant-test-{}", hex::encode(random));
         let url = std::env::var("MASH_TEST_QDRANT_URL").unwrap();
-        let identity = Identity {
+        let identity = Scope {
             group_id: group.clone(),
             node_id: "node".into(),
             generation: crate::semantic::model_space("test", 4),

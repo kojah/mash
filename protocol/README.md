@@ -45,6 +45,13 @@ invariants and missing tools fail the command. Negative configurations deliberat
 break the modeled contracts, including the historical replay-ordering bug below.
 A green suite establishes properties of these bounded abstractions only.
 
+The Qdrant engine now lives under `app/views/qdrant`, with common scope and
+retrieval types. This extraction changes module ownership only: collection and
+payload schemas, mutation ordering, locks, revision checks and awaited I/O
+boundaries are unchanged. The existing models retain their semantics; source
+mappings below follow the moved files. Local Qdrant coordination will require
+its own model review when the local workflow changes.
+
 Shared activity reporting is observational: progress records follow the existing
 admission-owned worker, and never gate work or change retries, transaction
 boundaries or certification ordering. Its cancellation and group-isolation
@@ -220,14 +227,14 @@ Source mapping:
 - [server/store/sync.rs](../app/shared/server/store/sync.rs): `index`,
   `sync_upload`, `certify`.
 - [server/store/replay.rs](../app/shared/server/store/replay.rs): `replay`.
-- [qdrant_index/views.rs](../app/shared/qdrant_index/views.rs): `NodeViews::current`,
+- [views/qdrant/views.rs](../app/views/qdrant/views.rs): `NodeViews::current`,
   `put_node_views`, `delete_node_documents`.
-- [qdrant_index/configuration.rs](../app/shared/qdrant_index/configuration.rs):
+- [views/qdrant/configuration.rs](../app/views/qdrant/configuration.rs):
   `select_views`, `active_configuration`.
 - [server/store.rs](../app/shared/server/store.rs): per-node `lock`;
   [silver_store.rs](../app/shared/silver_store.rs): exclusive directory ownership.
-- Existing regressions in [recovery.rs](../app/shared/qdrant_index/tests/recovery.rs)
-  and [recipe.rs](../app/shared/qdrant_index/tests/recipe.rs).
+- Existing regressions in [recovery.rs](../app/views/qdrant/tests/recovery.rs)
+  and [recipe.rs](../app/views/qdrant/tests/recipe.rs).
 
 Concurrent certifications of one node (parallel baseline lanes) are outside the
 one-writer bound. The code keeps the model's property for them by serializing
@@ -306,11 +313,11 @@ This is a safety-only model; it makes no liveness or concurrency claim.
   are not modeled. The Rust `retry_outer_rollback` regression interrupts after
   rollback, reopens a connection and checks history, the head, storage IDs and
   the AUTOINCREMENT sequence, then verifies recovery and altered-payload rejection.
-- `server/store/sync.rs` and `qdrant_index/views.rs`: synchronization removes native
+- `server/store/sync.rs` and `views/qdrant/views.rs`: synchronization removes native
   documents whose chats are absent from silver, including points left by a failed
   request whose in-memory deletion set or metadata was lost. Connector points
   are excluded from this deletion by the provider filter.
-- `qdrant_index/tests/retries.rs`: backend regressions for altered/incomplete
+- `views/qdrant/tests/retries.rs`: backend regressions for altered/incomplete
   retries and forgotten documents surviving retry, plus writer serialization.
 
 The negative configurations restore the reproduced bugs `mash-vcfn` (accept
@@ -331,7 +338,7 @@ insert followed by deletion; after correcting cleanup it found a completed inser
 interrupted deletion and restoration of the original content.
 
 The independent Proptest backend generator in
-`app/shared/qdrant_index/tests/connector_sequences.rs` reproduced and shrank both:
+`app/views/qdrant/tests/connector_sequences.rs` reproduced and shrank both:
 two operations for `mash-9b7s`, three for `mash-5avn`. Named regressions retain those
 sequences; bounded generation also exercises lexical-only and dense configurations
 using a controlled embedding endpoint. `make property-backend-check` runs them,
@@ -339,7 +346,7 @@ and the existing CI Qdrant selection includes them.
 
 Source mapping: `server/store/connectors.rs::sync_connectors` compares digests,
 invalidates evidence for changed/removed anchors and clears the silver marker
-before physical mutation; `qdrant_index/views.rs::retain_connector_points` removes
+before physical mutation; `views/qdrant/views.rs::retain_connector_points` removes
 all absent anchors using a node-scoped connector filter. Successful completion
 persists new digests and certification. Negative configurations restore missing
 physical cleanup and retained stale evidence respectively. Hash equality abstracts

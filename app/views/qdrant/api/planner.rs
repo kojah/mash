@@ -61,7 +61,7 @@ impl Update {
 impl Client {
     /// An intentional query activation may schedule a one-time graph rebuild.
     /// Serving and publication do not wait for that background rebuild.
-    pub(in crate::shared::qdrant_index) async fn prepare_query(
+    pub(in crate::views::qdrant) async fn prepare_query(
         &self,
         name: &str,
         policy: VectorIndex,
