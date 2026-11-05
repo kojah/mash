@@ -69,5 +69,7 @@ if [[ $mode == validate ]]; then
 fi
 # Commit identity can change while source stays identical. Cargo's build script
 # embeds the current revision; gate reuse never means reusing a differently stamped binary.
+# The release embeds the dashboard front end (see build.rs), so build it first.
+run bash -c 'cd dashboard && pnpm install --frozen-lockfile && pnpm run build'
 run cargo build --release --locked --bin mash --bin mash-dev-probe
 [[ $(validation_key) == "$key" ]] || { echo 'Source changed during build; do not install this artifact.' >&2; exit 1; }
