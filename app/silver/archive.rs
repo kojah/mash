@@ -1,10 +1,53 @@
 //! Portable canonical records. No storage-engine schema, vectors or credentials.
-use crate::{
-    attachments::Metadata, message_context::MessageContext, provider::Provider, role::Role,
-};
+use crate::{attachments::Metadata, provider::Provider, role::Role};
 use serde::{Deserialize, Serialize};
 
 pub(crate) const VERSION: u32 = 1;
+
+/// Version 1 archive ancestry is expressed in positions within its frozen
+/// conversation. Keep this wire model independent of live canonical ancestry:
+/// exports from the previous release must remain importable when silver changes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) enum Context {
+    #[default]
+    Linear,
+    Root,
+    Parent {
+        ordinal: i64,
+    },
+}
+
+impl Context {
+    pub(crate) const fn parent(self) -> Option<i64> {
+        match self {
+            Self::Linear => None,
+            Self::Root => Some(-1),
+            Self::Parent { ordinal } => Some(ordinal),
+        }
+    }
+
+    const fn valid(self, ordinal: i64) -> bool {
+        match self {
+            Self::Linear | Self::Root => true,
+            Self::Parent { ordinal: parent } => parent >= 0 && parent < ordinal,
+        }
+    }
+
+    pub(crate) fn from_parent(parent: Option<i64>) -> Result<Self, crate::AppError> {
+        match parent {
+            None => Ok(Self::Linear),
+            Some(-1) => Ok(Self::Root),
+            Some(ordinal) if ordinal >= 0 => Ok(Self::Parent { ordinal }),
+            _ => Err(crate::AppError::database_data(
+                "invalid archive context parent",
+            )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
 
 /// Archive version 1 keeps its original receipt encoding across releases.
 /// Live receipts use `views_ready`; changing the portable wire key would make
@@ -97,7 +140,7 @@ pub(crate) enum Record {
         role: Role,
         content: String,
         dialogue_text: Option<String>,
-        context: MessageContext,
+        context: Context,
         created_at: Option<i64>,
         fingerprint: String,
         /// Absent from archives written before tool activity was recorded.

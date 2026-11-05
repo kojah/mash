@@ -76,7 +76,7 @@ pub(crate) fn visit(
             role: get(row, "role")?,
             content: get(row, "content")?,
             dialogue_text: get(row, "search_projection")?,
-            context: crate::message_context::MessageContext::from_parent(get(
+            context: crate::silver::archive::Context::from_parent(get(
                 row,
                 "context_parent"
             )?)?,
