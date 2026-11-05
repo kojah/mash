@@ -401,9 +401,7 @@ are separate operations.
 (`startup|resume|clear|compact`). It resolves the session's project (the Git
 toplevel of `cwd` and its `origin` URL, matched against each chat's recorded
 project and repository) and adds at most 2,000 characters of context: this
-project's recall records first, then its most recent chats with copyable `view`
-lookups, excluding the current session. It reads only `list-chats --local` and
-`view`, so it needs no models or current lexical views, and it fails open: any
+project's most recent agent chats with copyable `view` lookups, excluding the current session. It reads only `list-chats --local`, so it needs no models or current lexical views, and it fails open: any
 error, missing executable or index, or its 3-second deadline yields no output and
 exit status 0. The executable is `$MASH_BIN`, else `mash-dev`, else `mash`.
 
@@ -426,77 +424,10 @@ characters. Each file is shown once per session; the shown paths live in
 needs current lexical views, has a 2-second deadline, fails open, and
 `MASH_FILE_RECALL=off` disables it.
 
-Distillation is lazy rather than tied to session end. Up to three project chats
-active in the last seven days with messages newer than their watermark are listed
-as undistilled; the agent is asked to read them, open its first reply with a short
-recap and pass durable decisions, preferences, facts and open questions to
-`plugins/mash/hooks/record.py`:
-
-```json
-{"records": [{"kind": "decision", "statement": "...",
-              "evidence": [{"message_id": "...", "quote": "exact text"}],
-              "supersedes": [{"id": "connector#entry#mash-recall#record/..."}]}],
- "covered": [{"chat_id": "...", "message_id": "newest message read"}]}
-```
-
-The helper checks every quote against `mash view MESSAGE_ID` and drops any record
-with a quote that is not an exact substring. A `decision` or `preference` must
-also quote at least one of the user's own messages (a native `user` turn or a
-human-authored connector message): an assistant proposal alone is a suggestion,
-and the helper drops it with that reason, so cite the user's approval or record
-it as a `fact` or `open_question`. Survivors go to local silver through
-`mash index --connector-batch` as connector source `mash-recall`: one
-`recall:project` container per project and `recall:decision`, `recall:preference`,
-`recall:fact` or `recall:open-question` entries whose text and metadata name the
-project and the cited message IDs and quotes. They become searchable after the
-next `mash index` (`mash search ... --source mash-recall`); like other connector
-records they are not published by node publication. Watermarks advance only for
-the covered chats, after delivery succeeds.
-
-Records change through supersession rather than deletion. The optional
-`supersedes` list names up to four earlier records of the same project, by record
-ID (with or without the `connector#entry#mash-recall#` prefix) or by exact
-`statement` (plus `kind` when it differs from the new record's). The new record
-carries its own evidence and a `Supersedes: <id> (<heading>)` line; each replaced
-record is rewritten in place as kind `recall:superseded`, its first lines becoming
-`Superseded <heading>` and `Superseded by: <id> (<heading>)`, with its original
-evidence and time kept. Replacements form chains (Biome, then oxlint, then oxlint
-with type-aware rules): a record that is already superseded can only be replaced
-again through its replacement, so the helper rejects self-supersession, cycles
-and forks, and names that are missing or belong to another project. Within one
-submission a record may supersede an earlier one. Re-recording is idempotent: a
-superseded record stays superseded and keeps its links. The SessionStart hook
-lists only current records; `view` of either record shows the neighbouring link,
-and `python3 plugins/mash/hooks/record.py --history RECORD_ID` prints the whole
-chain, oldest first, without writing. Each record lists the UTC days it was recorded on a `Confirmed:` line (the
-latest ten), so re-recording a statement that still holds confirms it. The
-SessionStart hook ranks current records by ACT-R base-level activation, the log of
-the sum of each confirmation's age in days to the power -0.5, so a statement
-confirmed repeatedly outranks one recorded once, recently; records written before
-this line count their time as one confirmation. Before writing, the helper
-compares statements with up to 64 current records around the project's latest
-one: a statement equal to a stored one of the same kind apart from case,
-punctuation and spacing re-records the stored statement, and a close rewording
-(at least two shared words, IDF-weighted cosine of 0.8 or more, and no differing
-word with a digit) is still written but listed under `similar` with the record it
-resembles, to supersede or keep deliberately. Search the current records with the
-current kinds, for example
-`mash search oxlint --source mash-recall --kind recall:decision`, and their
-history with `--kind recall:superseded`. Supersession is read and written
-without a lock, like the watermarks: run one helper per project at a time.
-
-Other agents record decisions the same way. An agent that already reads Mash
-over MCP (for example a DeepSeek harness worker) pipes the same JSON to
-`record.py --cwd PROJECT` through its shell, with `MASH_BIN` naming the Mash
-executable, and recalls with MCP `search` filtered by `source` and the current
-kinds. Evidence must cite messages Mash has indexed, so a decision taken in a
-history Mash does not ingest is recorded only once its words appear in indexed
-history.
-
-The connector revision and
-per-project watermarks live in `<Mash data directory>/recall/`
-(`~/.local/share/mash/recall` on Linux; override with `MASH_RECALL_STATE_DIR`),
-replaced atomically without a lock. The scripts use only the Python 3.9+
+Hook throttling and per-session file hints live in
+`<Mash data directory>/recall/` (`~/.local/share/mash/recall` on Linux;
+override with `MASH_RECALL_STATE_DIR`). State files are replaced atomically.
+The scripts use only the Python 3.9+
 standard library. Codex runs the same `hooks/hooks.json` once you trust the
 plugin's hooks (`/hooks`); it sets `CLAUDE_PLUGIN_ROOT` for compatibility.
 
@@ -506,11 +437,8 @@ Check the hooks with:
 cd plugins/mash/hooks
 uv tool run --from ruff ruff check . && uv tool run --from ruff ruff format --check .
 uv tool run ty check .
-python3 -m unittest discover -s tests
+uv run --no-project python -m unittest discover -s tests
 ```
-
-`MASH_RECALL_TEST_BINARY=/path/to/mash` additionally delivers records through a
-real Mash into a disposable index.
 
 The manifests/catalogues follow the official
 [Codex plugin format](https://developers.openai.com/plugins/build/plugins) and

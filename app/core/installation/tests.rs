@@ -228,7 +228,6 @@ fn installation_complete_claude_user_setup_has_no_attention_findings() {
         "session_start.py",
         "prompt_recall.py",
         "recall_common.py",
-        "record.py",
         "python.sh",
     ] {
         write(&plugin.join("hooks").join(name), "# script");

@@ -292,7 +292,7 @@ fn hooks(
 }
 
 fn hook_dependencies(client: &mut Client, root: &Path, environment: &Environment) {
-    for helper in ["recall_common.py", "record.py", "python.sh"] {
+    for helper in ["recall_common.py", "python.sh"] {
         let helper = root.join("hooks").join(helper);
         if !readable_file(&helper) {
             client.add(
