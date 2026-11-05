@@ -96,7 +96,7 @@ function onKey(event: KeyboardEvent): void {
 
 {#if searching}
   <button type="button" aria-label="Close search" class="fixed inset-0 z-10 cursor-default border-0 bg-black/30" onclick={() => (searching = false)}></button>
-  <div role="dialog" aria-modal="true" aria-label="Search" class="fixed top-[12vh] left-1/2 z-20 flex max-h-[76vh] w-[min(720px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-[18px] bg-ground p-6 shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
+  <div role="dialog" aria-modal="true" aria-label="Search" class="fixed top-[12vh] left-1/2 z-20 flex max-h-[76vh] w-[min(720px,calc(100vw-32px))] -translate-x-1/2 flex-col rounded-[18px] bg-ground p-6 shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
     <SearchPanel onClose={() => (searching = false)} />
   </div>
 {/if}

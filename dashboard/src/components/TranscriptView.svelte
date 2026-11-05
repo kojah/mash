@@ -75,7 +75,7 @@ const exports = [
       </button>
       {#if searchOpen}
         <button type="button" aria-label="Close search" class="fixed inset-0 z-10 cursor-default border-0 bg-transparent" onclick={() => (searchOpen = false)}></button>
-        <div role="dialog" aria-label="Search" class="absolute -top-1.5 -left-1.5 z-20 max-h-[70vh] w-[min(640px,calc(100vw-32px))] overflow-hidden rounded-2xl bg-surface p-2 shadow-[0_16px_48px_rgba(0,0,0,0.14),0_0_0_0.5px_rgba(0,0,0,0.08)]">
+        <div role="dialog" aria-label="Search" class="absolute -top-1.5 -left-1.5 z-20 max-h-[70vh] w-[min(640px,calc(100vw-32px))] rounded-2xl bg-surface p-2 shadow-[0_16px_48px_rgba(0,0,0,0.14),0_0_0_0.5px_rgba(0,0,0,0.08)]">
           <SearchPanel compact onClose={() => (searchOpen = false)} />
         </div>
       {/if}

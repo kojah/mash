@@ -23,6 +23,7 @@ mod attachments;
 mod cli;
 mod config;
 mod core;
+mod dash;
 mod database_error;
 mod export;
 mod mcp;

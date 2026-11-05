@@ -5,7 +5,8 @@
 mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`, `view`,
-`status`, `forget`, `export`, `import`, `models install`, `mcp`, and `serve`.
+`status`, `forget`, `export`, `import`, `models install`, `mcp`, `serve`, and `dash`
+(the local read-only web dashboard).
 `init` is first-run setup: it writes configuration for detected histories, registers
 Mash with agent CLIs through their own commands, and indexes; it never downloads models.
 

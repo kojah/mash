@@ -225,6 +225,12 @@ enum Command {
     },
     /// Serve search tools over the stdio MCP protocol.
     Mcp,
+    /// Serve the local read-only web dashboard.
+    Dash {
+        /// Address to listen on; loopback by default.
+        #[arg(long, value_name = "ADDRESS", default_value = "127.0.0.1:8790")]
+        listen: std::net::SocketAddr,
+    },
     /// Serve the shared-index HTTP API using a server configuration file.
     Serve {
         #[arg(long, value_name = "PATH")]
@@ -511,7 +517,7 @@ impl Cli {
             Command::Models {
                 command: ModelsCommand::Install,
             } => Operation::ModelsInstall,
-            Command::Mcp | Command::Serve { .. } => {
+            Command::Mcp | Command::Serve { .. } | Command::Dash { .. } => {
                 return Err(AppError::usage(
                     "server commands must run as process commands",
                 ));
@@ -552,7 +558,10 @@ where
     };
     let long_lived = matches!(
         cli.command,
-        Command::Mcp | Command::Serve { .. } | Command::Index { watch: true, .. }
+        Command::Mcp
+            | Command::Serve { .. }
+            | Command::Dash { .. }
+            | Command::Index { watch: true, .. }
     );
     if long_lived {
         crate::platform::release_installed_executable();
@@ -585,6 +594,14 @@ where
             &models,
             replay_views,
         ))?;
+        Ok(Response::McpStopped)
+    } else if let Command::Dash { listen } = cli.command {
+        let paths = Paths {
+            config: cli.config,
+            db: cli.db,
+            models_dir: cli.models_dir,
+        };
+        runtime.block_on(crate::dash::run(paths, listen))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp = cli.command {
         let paths = Paths {
@@ -964,6 +981,7 @@ mod tests {
                 "import",
                 "models",
                 "mcp",
+                "dash",
                 "serve"
             ]
         );
