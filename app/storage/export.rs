@@ -26,14 +26,14 @@ pub(crate) fn certificate_matches(
 }
 
 pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppError> {
-    let history = Storage::open_catalog(source)?;
+    let history = Storage::open_silver(source)?;
     let _transaction = history
         .connection
         .unchecked_transaction()
         .map_err(AppError::database)?;
     let snapshot = Snapshot {
         silver: history.silver_certificate()?,
-        counts: history.counts()?,
+        counts: history.silver_counts()?,
         files: attachments(&history)?,
     };
     let mut temporary = tempfile::NamedTempFile::new_in(
@@ -66,7 +66,9 @@ pub(crate) fn restore(
 ) -> Result<(), AppError> {
     use crate::silver::archive::Record;
     const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
-    let target = Storage::open(destination)?;
+    let connection = rusqlite::Connection::open(destination).map_err(AppError::database)?;
+    super::schema::initialize_silver(&connection)?;
+    let target = Storage::from_silver(connection);
     let transaction = target
         .connection
         .unchecked_transaction()
@@ -166,15 +168,15 @@ pub(crate) fn validate(storage: &Storage) -> Result<(), AppError> {
         .map_err(AppError::database)?
         .exists([])
         .map_err(AppError::database)?;
-    let views: i64 = storage.connection.query_row(
-        "SELECT (SELECT count(*) FROM message_embeddings)+(SELECT count(*) FROM semantic_chunks)
-        +(SELECT count(*) FROM message_fts)+(SELECT count(*) FROM pending_embeddings)
-        +(SELECT count(*) FROM views_manifest WHERE manifest IS NOT NULL)
-        +(SELECT count(*) FROM lexical_manifest WHERE manifest IS NOT NULL)
-        +(SELECT count(*) FROM derived_state WHERE search_dirty<>1 OR semantic_ready_generation IS NOT NULL OR resume_generation IS NOT NULL)
-        +(SELECT count(*) FROM shared_publication WHERE acknowledged<>0 OR target<>'')",
-        [], |row| row.get(0)).map_err(AppError::database)?;
-    if check != "ok" || foreign_keys || views != 0 {
+    let published: i64 = storage
+        .connection
+        .query_row(
+            "SELECT count(*) FROM shared_publication WHERE acknowledged<>0 OR target<>''",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(AppError::database)?;
+    if check != "ok" || foreign_keys || published != 0 {
         return Err(AppError::database_data("invalid silver export database"));
     }
     Ok(())

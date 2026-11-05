@@ -121,7 +121,7 @@ pub(super) fn inspect(paths: &Paths) -> Report {
     };
     add_runtime_findings(&mut report);
     let storage = if compatible {
-        Storage::open_catalog(&database).ok()
+        Storage::open_silver(&database).ok()
     } else {
         None
     };

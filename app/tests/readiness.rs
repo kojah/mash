@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn canonical_cli_view_and_catalog_ignore_unavailable_gold() {
+    let fixture = NodeFixture::new();
+    fixture.seed(Some(""));
+    let views = support::views_path(&fixture.database);
+    std::fs::write(&views, b"unreadable gold fixture").unwrap();
+    let config = fixture.database.with_extension("toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        fixture.database.to_str().unwrap(),
+    ];
+    let response = run_json(&[base.as_slice(), &["view", "message"]].concat());
+    assert_eq!(response["messages"][0]["content"], "canonical tool output");
+    let response = run_json(&[base.as_slice(), &["list-chats", "--local"]].concat());
+    assert_eq!(response["chats"].as_array().unwrap().len(), 1);
+    assert_eq!(std::fs::read(&views).unwrap(), b"unreadable gold fixture");
+}
+
+#[test]
 fn local_writer_admission_blocks_cli_mutations_without_blocking_reads() {
     let fixture = NodeFixture::new();
     fixture.seed(Some(""));

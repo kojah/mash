@@ -22,6 +22,9 @@ fn export_imports_history_offline_and_requires_explicit_views_rebuild() {
     ];
     let original_args = [base.as_slice(), &["--db", original.to_str().unwrap()]].concat();
     run_json(&[original_args.as_slice(), &["index"]].concat());
+    // Canonical export must survive unusable gold and must not repair it.
+    let views = support::views_path(&original);
+    std::fs::write(&views, b"unreadable gold fixture").unwrap();
     let created = run_json(
         &[
             original_args.as_slice(),
@@ -31,6 +34,7 @@ fn export_imports_history_offline_and_requires_explicit_views_rebuild() {
     );
     assert_eq!(created["counts"]["conversations"], 1);
     assert_eq!(created["counts"]["messages"], 1);
+    assert_eq!(std::fs::read(&views).unwrap(), b"unreadable gold fixture");
     std::fs::remove_dir_all(provider).unwrap();
     let result = run_json(
         &[
@@ -45,6 +49,7 @@ fn export_imports_history_offline_and_requires_explicit_views_rebuild() {
         .concat(),
     );
     assert_eq!(result["search_ready"], false);
+    assert!(!support::views_path(&imported).exists());
     assert_eq!(result["recommended_action"], "rebuild-local-views");
     let imported_args = [base.as_slice(), &["--db", imported.to_str().unwrap()]].concat();
     let search_args = [imported_args.as_slice(), &["search", "needle", "--local"]].concat();

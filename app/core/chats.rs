@@ -108,7 +108,7 @@ async fn run_inner(
         let path = database.to_path_buf();
         let node = node.to_owned();
         let rows =
-            crate::blocking(move || Storage::open_catalog(&path)?.chat_candidates(&input, &node))
+            crate::blocking(move || Storage::open_silver(&path)?.chat_candidates(&input, &node))
                 .await?;
         stage.complete(None, Some(rows.len()));
         Ok(rows)

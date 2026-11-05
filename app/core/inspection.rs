@@ -18,7 +18,7 @@ pub(super) async fn list_attachments(
         shared::attachments::list(required_shared(configuration)?, &node, &message).await
     } else {
         let db = database.to_path_buf();
-        crate::blocking(move || Storage::open_catalog(&db)?.list_attachments(&message)).await
+        crate::blocking(move || Storage::open_silver(&db)?.list_attachments(&message)).await
     }
 }
 
@@ -39,7 +39,7 @@ pub(super) async fn get_attachment(
         .await
     } else {
         let db = database.to_path_buf();
-        crate::blocking(move || Storage::open_catalog(&db)?.get_attachment(&message, &attachment))
+        crate::blocking(move || Storage::open_silver(&db)?.get_attachment(&message, &attachment))
             .await
     }
 }
@@ -111,7 +111,7 @@ fn local_view(
     context: u32,
     output: crate::redaction::Policy,
 ) -> Result<ViewResponse, AppError> {
-    let storage = Storage::open_existing(database_path)?;
+    let storage = Storage::open_silver(database_path)?;
     let mut messages = storage.view(&id, context)?;
     for message in &mut messages {
         message.content = output.text(&message.content);

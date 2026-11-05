@@ -48,6 +48,14 @@ impl Storage {
 
     /// Current schema only: never initialize, migrate or require models.
     pub(crate) fn open_catalog(path: &Path) -> Result<Self, AppError> {
+        let storage = Self::open_silver(path)?;
+        super::schema::attach_views(&storage.connection, &super::schema::views_path(path), false)?;
+        Ok(storage)
+    }
+
+    /// Canonical history has no dependency on the availability or format of gold.
+    /// This reader never attaches or creates a views database, including temp views.
+    pub(crate) fn open_silver(path: &Path) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
         }
@@ -65,15 +73,18 @@ impl Storage {
         if version != SCHEMA_VERSION {
             return Err(super::schema::unsupported(version));
         }
-        super::schema::attach_views(&connection, &super::schema::views_path(path), false)?;
-        Ok(Self {
+        Ok(Self::from_silver(connection))
+    }
+
+    pub(super) fn from_silver(connection: Connection) -> Self {
+        Self {
             attachments_config: crate::attachments::Configuration::default(),
             output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
             connector_scope: None,
-        })
+        }
     }
 
     pub(crate) fn open_existing(path: &Path) -> Result<Self, AppError> {
@@ -170,6 +181,36 @@ impl Storage {
                 .map_err(|_| AppError::internal("negative searchable message count"))?,
             embeddings: u64::try_from(counts.embeddings)
                 .map_err(|_| AppError::internal("negative embedding count"))?,
+        })
+    }
+
+    /// Native history counts without consulting derived embedding coverage.
+    pub(crate) fn silver_counts(&self) -> Result<Counts, AppError> {
+        let (conversations, messages, searchable): (i64, i64, i64) = self
+            .connection
+            .query_row(
+                "SELECT
+             (SELECT count(*) FROM objects INDEXED BY objects_native_container
+              WHERE origin='provider' AND object_role='container'),
+             (SELECT count(*) FROM objects INDEXED BY objects_native_id
+              WHERE origin='provider' AND object_role<>'container')
+             - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+                WHERE origin='provider' AND object_role IN ('segment','document')),
+             (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+              WHERE origin='provider' AND object_role='entry'
+                AND COALESCE(search_projection,content)<>'')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(AppError::database)?;
+        let count = |value| {
+            u64::try_from(value).map_err(|_| AppError::database_data("negative silver count"))
+        };
+        Ok(Counts {
+            conversations: count(conversations)?,
+            messages: count(messages)?,
+            searchable_messages: count(searchable)?,
+            ..Counts::default()
         })
     }
 

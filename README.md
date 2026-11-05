@@ -540,6 +540,11 @@ delete or replace it while Mash is running. Blocking workers retain ownership if
 their caller stops waiting. This coordination does not fence requests already
 sent to Qdrant when a process dies.
 
+Canonical operations—`view`, `list-chats`, attachment reads and silver export—
+read silver directly. They do not open or repair gold, and remain available when
+its files are missing or corrupt. Import reconstructs silver alone; retrieval
+views require an explicit rebuild afterward.
+
 Local indexing separates durable canonical ingestion (silver) from rebuilding
 built-in retrieval views, reusing the existing stored history. Lexical indexes,
 dense embeddings and connector search units are built-in views: derived from

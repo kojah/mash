@@ -206,6 +206,7 @@ fn canonical_exports_preserve_external_records_and_upgrade_receipts() {
     crate::storage::export::write(&source, &archive).unwrap();
     let restored = directory.path().join("restored.sqlite3");
     crate::storage::export::restore(&archive, &restored, true).unwrap();
+    assert!(!crate::storage::schema::views_path(&restored).exists());
     let mut store = Store::open(&restored).unwrap();
     assert_eq!(store.apply(&first).unwrap(), receipt);
     let note = store.object(&id("source"), &id("note")).unwrap().unwrap();

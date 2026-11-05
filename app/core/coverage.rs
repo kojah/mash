@@ -113,7 +113,7 @@ pub(super) async fn local(
         if scope.includes(node) {
             let storage = database
                 .is_file()
-                .then(|| crate::storage::Storage::open_catalog(&database))
+                .then(|| crate::storage::Storage::open_silver(&database))
                 .transpose()?;
             let providers = if scope.provider.is_empty() {
                 Provider::ALL.to_vec()

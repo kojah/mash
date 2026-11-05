@@ -152,7 +152,7 @@ pub(crate) fn load(
     let output = stage.path().join("imported.sqlite3");
     drop(crate::scratch::sqlite(&output)?);
     storage::export::restore(&input, &output, keep_identity)?;
-    let history = Storage::open_catalog(&output)?;
+    let history = Storage::open_silver(&output)?;
     storage::export::validate(&history)?;
     let files = storage::export::attachments(&history)?;
     if !storage::export::certificate_matches(&history, &manifest.silver)?
@@ -194,7 +194,7 @@ pub(crate) fn load(
 }
 
 fn counts(storage: &Storage, files: &BTreeMap<String, u64>) -> Result<HistoryCounts, AppError> {
-    let counts = storage.counts()?;
+    let counts = storage.silver_counts()?;
     history_counts(&counts, files)
 }
 

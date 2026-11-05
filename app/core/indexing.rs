@@ -196,7 +196,7 @@ fn index(
     if rebuild_local_views {
         // Read-only preflight prevents schema migration or empty database
         // creation from becoming an implicit bronze-to-silver operation.
-        require_certified_silver(&Storage::open_catalog(database_path)?)?;
+        require_certified_silver(&Storage::open_silver(database_path)?)?;
     }
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     if build.dense_enabled() && !build.users_only() {

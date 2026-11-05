@@ -1,4 +1,4 @@
-//! Temporary read/write boundary while the local SQLite backend is retired.
+//! Typed canonical archive records for the shared local/server silver schema.
 //! The records it produces are independent of SQLite's schema and row identities.
 use super::super::Storage;
 use crate::{
@@ -25,7 +25,7 @@ fn connector_id(row: &Row<'_>, name: &str) -> Result<crate::connectors::Id, AppE
 
 #[allow(
     clippy::too_many_lines,
-    reason = "exhaustive typed canonical table mapping at the temporary SQLite conversion boundary"
+    reason = "exhaustive typed canonical table mapping at the archive boundary"
 )]
 pub(crate) fn visit(
     storage: &Storage,

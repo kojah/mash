@@ -45,7 +45,7 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
         let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
         let mut conversations = BTreeMap::new();
         let mut visible = 0;
-        let revision = Storage::open_catalog(path)?.with_publication_snapshot(|snapshot| {
+        let revision = Storage::open_silver(path)?.with_publication_snapshot(|snapshot| {
             validate_owner(snapshot, target)?;
             let base = snapshot
                 .delta_base(target.instance.as_deref(), target.publication_revision)?

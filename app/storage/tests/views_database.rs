@@ -35,6 +35,36 @@ fn main_tables(path: &Path) -> Vec<String> {
 }
 
 #[test]
+fn canonical_silver_reader_never_opens_or_synthesizes_gold() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    indexed(&path);
+    let views = views_path(&path);
+    crate::storage::schema::remove_views(&views).unwrap();
+    std::fs::write(&views, b"unreadable gold fixture").unwrap();
+    let reader = Storage::open_silver(&path).unwrap();
+    assert_eq!(reader.silver_counts().unwrap().messages, 1);
+    assert_eq!(
+        reader.view("message-1", 0).unwrap()[0].content,
+        "durable needle"
+    );
+    let mut statement = reader.connection.prepare("PRAGMA database_list").unwrap();
+    let databases: Vec<String> = statement
+        .query_map([], |row| row.get(1))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(databases, ["main"]);
+    assert!(
+        reader
+            .connection
+            .execute("DELETE FROM objects", [])
+            .is_err()
+    );
+    assert_eq!(std::fs::read(&views).unwrap(), b"unreadable gold fixture");
+}
+
+#[test]
 fn silver_holds_no_views_and_views_holds_no_history() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");

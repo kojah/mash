@@ -45,10 +45,9 @@ pub(crate) async fn get(
 pub(crate) async fn publish(database: &Path, config: &SharedConfig) -> Result<(), AppError> {
     let db = database.to_path_buf();
     // Only IDs are materialized; each file is loaded and uploaded individually.
-    let candidates = crate::blocking(move || {
-        crate::storage::Storage::open_catalog(&db)?.attachment_candidates()
-    })
-    .await?;
+    let candidates =
+        crate::blocking(move || crate::storage::Storage::open_silver(&db)?.attachment_candidates())
+            .await?;
     for (message_id, attachment_id) in candidates {
         let remote = list(config, &config.node_id, &message_id).await?;
         if !remote.attachments.iter().any(|m| {
@@ -59,7 +58,7 @@ pub(crate) async fn publish(database: &Path, config: &SharedConfig) -> Result<()
         let db = database.to_path_buf();
         let lookup = message_id.clone();
         let file = crate::blocking(move || {
-            crate::storage::Storage::open_catalog(&db)?.get_attachment(&lookup, &attachment_id)
+            crate::storage::Storage::open_silver(&db)?.get_attachment(&lookup, &attachment_id)
         })
         .await?;
         let bytes = STANDARD

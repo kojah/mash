@@ -719,7 +719,7 @@ async fn already_published(
     let revision = target.publication_revision;
     let same_source = crate::blocking(move || {
         let mut same = false;
-        Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
+        Storage::open_silver(&db)?.with_publication_snapshot(|snapshot| {
             same = instance.as_deref() == Some(snapshot.instance.as_str())
                 && revision == snapshot.revision
                 && snapshot.source_silver.is_complete()
