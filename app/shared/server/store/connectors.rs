@@ -2,8 +2,8 @@
 //! lock; certification brings the node's connector points in line with it.
 use super::{Identity, Store};
 use crate::storage::connector_views::{self, Evidence, Unit};
-use crate::views::materialize::{connector_digest as digest, connector_point as point};
-use crate::views::qdrant::{Documents, NodeViews};
+use crate::views::materialize::{Writer, connector_digest as digest, connector_point as point};
+use crate::views::qdrant::NodeViews;
 use crate::{
     AppError,
     connectors::{Batch, Receipt, silver},
@@ -163,42 +163,19 @@ impl Store {
         self.views
             .retain_connector_points(identity, units.digests.keys().cloned().collect())
             .await?;
-        let mut documents = Documents::new(identity);
-        let mut pool = None;
-        let mut build = crate::views::shared::Build::default();
+        let model = self
+            .embedder
+            .as_ref()
+            .map(|model| (model.models.as_path(), model.remote.as_ref()));
+        let mut writer = Writer::new(&self.views, identity, model);
         for batch in units.changed.chunks(crate::views::shared::BATCH_ROWS) {
-            let vectors = if self.views.build().dense_enabled() {
-                let embedder = self.embedder.as_ref().ok_or_else(|| {
-                    AppError::model(
-                        "the shared server has no embedding model for connector records",
-                    )
-                })?;
-                let texts = batch
-                    .iter()
-                    .map(|(unit, _)| unit.text.as_str())
-                    .collect::<Vec<_>>();
-                let vectors = crate::views::shared::embed_texts(
-                    &embedder.models,
-                    embedder.remote.as_ref(),
-                    &mut pool,
-                    &texts,
-                    &mut build,
-                )
-                .await?;
-                if vectors.len() != texts.len() {
-                    return Err(AppError::model("missing connector embedding"));
-                }
-                vectors.into_iter().map(Some).collect()
-            } else {
-                vec![None; batch.len()]
-            };
-            for ((unit, evidence), vector) in batch.iter().zip(vectors) {
-                documents
-                    .push_connector(&self.views, identity, point(unit, evidence, vector))
-                    .await?;
-            }
+            let points = batch
+                .iter()
+                .map(|(unit, evidence)| point(unit, evidence, None))
+                .collect::<Vec<_>>();
+            writer.write_connectors(&points).await?;
         }
-        documents.finish(&self.views).await?;
+        writer.finish().await?;
         #[cfg(test)]
         if self.connector_interruption {
             return Err(AppError::internal("injected connector interruption"));

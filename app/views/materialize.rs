@@ -1,7 +1,7 @@
-//! Native silver projection and embedding shared by direct and server workflows.
+//! Silver projection and embedding shared by direct and server workflows.
 //! Callers own silver snapshots, mutation admission and final certification.
-use super::documents::{ConversationRecord, MessageRecord};
-use super::qdrant::{Documents, Store};
+use super::documents::{ConversationRecord, EmbeddingInput, MessageRecord};
+use super::qdrant::{ConnectorPoint, Documents, Store};
 use super::scope::Scope;
 use super::shared::{self as embedding, Build};
 use crate::AppError;
@@ -33,14 +33,14 @@ pub(crate) fn connector_point(
             generation: None,
         },
         vector,
+        embedding_fingerprint: None,
     }
 }
 
-pub(crate) struct NativeWriter<'a> {
+pub(crate) struct Writer<'a> {
     store: &'a Store,
     scope: &'a Scope,
-    models: &'a Path,
-    embeddings: Option<&'a remote::Configuration>,
+    model: Option<(&'a Path, Option<&'a remote::Configuration>)>,
     pool: Option<LoadedIndexer>,
     build: Build,
     documents: Documents,
@@ -63,18 +63,16 @@ pub(crate) struct ChatBuild {
     pub(crate) complete: bool,
 }
 
-impl<'a> NativeWriter<'a> {
+impl<'a> Writer<'a> {
     pub(crate) fn new(
         store: &'a Store,
         scope: &'a Scope,
-        models: &'a Path,
-        embeddings: Option<&'a remote::Configuration>,
+        model: Option<(&'a Path, Option<&'a remote::Configuration>)>,
     ) -> Self {
         Self {
             store,
             scope,
-            models,
-            embeddings,
+            model,
             pool: None,
             build: Build::default(),
             documents: Documents::new(scope),
@@ -114,33 +112,35 @@ impl<'a> NativeWriter<'a> {
             })
             .await?;
             units = next;
-            let texts = prepared
+            let inputs = rows
                 .iter()
-                .flatten()
-                .map(String::as_str)
+                .zip(&prepared)
+                .filter_map(|(message, text)| {
+                    text.as_deref().map(|text| EmbeddingInput {
+                        source: crate::source::Source::Provider(conversation.provider),
+                        anchor: &message.id,
+                        text,
+                    })
+                })
                 .collect::<Vec<_>>();
-            let mut vectors = embedding::embed_texts(
-                self.models,
-                self.embeddings,
-                &mut self.pool,
-                &texts,
-                &mut self.build,
-            )
-            .await?
-            .into_iter();
-            if vectors.len() != texts.len() {
-                return Err(AppError::model("missing materialized embedding"));
-            }
-            self.build.embeddings.model_inferences += texts.len() as u64;
+            let mut vectors = self.embed(&inputs).await?.into_iter();
             for (mut message, unit) in rows.into_iter().zip(prepared) {
-                if unit.is_some() {
+                let fingerprint = if unit.is_some() {
                     expected += 1;
-                    message.vector = vectors.next();
+                    let (vector, fingerprint) = vectors
+                        .next()
+                        .ok_or_else(|| AppError::model("missing materialized embedding"))?;
+                    message.vector = Some(vector);
                     message.generation = Some(self.scope.generation.clone());
-                }
+                    Some(fingerprint)
+                } else {
+                    message.vector = None;
+                    message.generation = None;
+                    None
+                };
                 stored += self
                     .documents
-                    .push(self.store, self.scope, conversation, message)
+                    .push_native(self.store, self.scope, conversation, message, fingerprint)
                     .await?;
             }
         }
@@ -149,6 +149,96 @@ impl<'a> NativeWriter<'a> {
             embeddings: stored,
             complete: stored == expected,
         })
+    }
+
+    /// Connector normalization supplies the same evidence and bounded writer as
+    /// native projection. Callers retain ownership of reconciliation and receipts.
+    pub(crate) async fn write_connectors(
+        &mut self,
+        points: &[ConnectorPoint],
+    ) -> Result<(), AppError> {
+        for batch in points.chunks(embedding::BATCH_ROWS) {
+            let vectors = if self.store.build().dense_enabled() {
+                let inputs = batch
+                    .iter()
+                    .map(|point| EmbeddingInput {
+                        source: crate::source::Source::Connector(point.source_id.clone()),
+                        anchor: &point.unit.anchor,
+                        text: &point.unit.text,
+                    })
+                    .collect::<Vec<_>>();
+                self.embed(&inputs)
+                    .await?
+                    .into_iter()
+                    .map(Some)
+                    .collect::<Vec<_>>()
+            } else {
+                vec![None; batch.len()]
+            };
+            for (point, vector) in batch.iter().zip(vectors) {
+                let mut point = point.clone();
+                if let Some((vector, fingerprint)) = vector {
+                    point.vector = Some(vector);
+                    point.embedding_fingerprint = Some(fingerprint);
+                } else {
+                    point.vector = None;
+                    point.embedding_fingerprint = None;
+                }
+                self.documents
+                    .push_connector(self.store, self.scope, point)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn embed(
+        &mut self,
+        inputs: &[EmbeddingInput<'_>],
+    ) -> Result<Vec<(Vec<f64>, String)>, AppError> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let cached = self.store.reusable_vectors(self.scope, inputs).await?;
+        let texts = inputs
+            .iter()
+            .zip(&cached)
+            .filter_map(|(input, cached)| cached.is_none().then_some(input.text))
+            .collect::<Vec<_>>();
+        let vectors = if texts.is_empty() {
+            Vec::new()
+        } else {
+            let (models, configuration) = self.model.ok_or_else(AppError::models_missing)?;
+            embedding::embed_texts(
+                models,
+                configuration,
+                &mut self.pool,
+                &texts,
+                &mut self.build,
+            )
+            .await?
+        };
+        if vectors.len() != texts.len() {
+            return Err(AppError::model("missing materialized embedding"));
+        }
+        self.build.embeddings.model_inferences += texts.len() as u64;
+        self.build.embeddings.reused_vectors += (inputs.len() - texts.len()) as u64;
+        let mut fresh = vectors.into_iter();
+        inputs
+            .iter()
+            .zip(cached)
+            .map(|(input, cached)| {
+                let vector = cached
+                    .or_else(|| fresh.next())
+                    .ok_or_else(|| AppError::model("missing materialized embedding"))?;
+                Ok((vector, input.fingerprint(self.scope)))
+            })
+            .collect()
+    }
+
+    /// Preserve coordinator flush boundaries while retaining the loaded model.
+    pub(crate) async fn flush(&mut self) -> Result<(), AppError> {
+        self.documents.flush(self.store).await
     }
 
     /// All queued documents must finish before the caller certifies coverage.

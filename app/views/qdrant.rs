@@ -84,7 +84,7 @@ pub(crate) struct Store {
 
 /// The same searchable evidence shape for every source. Filter fields are
 /// denormalized from the source and checked when decoding a result.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
     node_id: String,
@@ -102,6 +102,7 @@ struct Document {
     /// Omitted by literal scans, which do not inspect dense evidence.
     #[serde(default)]
     vector: Option<Vec<f64>>,
+    embedding_fingerprint: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

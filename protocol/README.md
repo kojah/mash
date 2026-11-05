@@ -149,7 +149,7 @@ Source mapping:
 - `Invalidate` is the awaited `put_node_views` with an empty, uncertified node,
   before any point deletion or upsert.
 - `Delete(item)` and `Write(item)` represent separate completed Qdrant mutation
-  requests in `views/local/projection.rs` and the common `NativeWriter` and
+  requests in `views/local/projection.rs` and the common `Writer` and
   `Documents` helpers. Clearing a point before replacing it is an allowed
   intermediate state, not an atomic silver-and-gold transaction. Modeling each
   item separately permits more interleavings than a batched request.
@@ -157,6 +157,13 @@ Source mapping:
   certificate and active settings. Only this final metadata write claims
   current views. Compatible unchanged point reuse is abstracted as writing the
   same projection; digest correctness is covered by Rust/backend regressions.
+  The common materializer may reuse a vector from an uncertified point only
+  when its node, source, anchor, model generation, dimensions and prepared-text
+  fingerprint match. It still writes fresh silver-derived evidence and follows
+  every flush and certification guard above. This adds no durable transition;
+  fingerprint collisions are excluded. The `qdrant_materializer_*` backend
+  regressions cover metadata edits, title/parent dependencies and corrupt-cache
+  repair; bounded models do not establish the correctness of those hashes.
 - `Crash` preserves completed durable writes and releases local ownership.
   Retry captures silver again and starts with invalidation. This is a safety
   model, without a delivery, retry fairness, or eventual recovery promise.
@@ -335,7 +342,7 @@ Source mapping:
 - [server/store/sync.rs](../app/shared/server/store/sync.rs): `index`,
   `sync_upload`, `certify`.
 - [server/store/replay.rs](../app/shared/server/store/replay.rs): `replay`.
-- [views/materialize.rs](../app/views/materialize.rs): `NativeWriter::write_chat`
+- [views/materialize.rs](../app/views/materialize.rs): `Writer::write_chat`
   and `finish` retain replay's inference batches and awaited point writes;
   invalidation, ownership and certification remain in the replay coordinator.
 - [views/qdrant/views.rs](../app/views/qdrant/views.rs): `NodeViews::current`,

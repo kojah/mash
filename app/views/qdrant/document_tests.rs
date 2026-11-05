@@ -50,6 +50,7 @@ fn document(native: bool) -> Document {
             generation: Some("generation".into()),
         },
         vector: Some(vec![1.0, 0.0]),
+        embedding_fingerprint: None,
     }
 }
 

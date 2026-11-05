@@ -2,7 +2,7 @@
 use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::silver_store;
-use crate::views::materialize::NativeWriter;
+use crate::views::materialize::Writer;
 use crate::views::qdrant::{NodeViews, ViewChat};
 use std::path::Path;
 
@@ -69,7 +69,7 @@ impl Store {
             messages: 0,
             embeddings: 0,
         };
-        let mut writer = NativeWriter::new(&self.views, identity, models, embeddings);
+        let mut writer = Writer::new(&self.views, identity, Some((models, embeddings)));
         for (id, fingerprint) in &fingerprints {
             let chat = id.clone();
             let (conversation, messages) = self

@@ -223,11 +223,15 @@ pub(crate) async fn build(
     store
         .retain_node_conversations(&scope, input.chats.keys().cloned().collect())
         .await?;
-    let mut work = Box::pin(projection::native(
+    let mut writer = super::materialize::Writer::new(
         &store,
         &scope,
-        models,
-        configuration,
+        Some((models, configuration.embeddings.as_ref())),
+    );
+    Box::pin(projection::native(
+        &store,
+        &scope,
+        &mut writer,
         &input,
         previous.as_ref(),
         &mut node,
@@ -236,13 +240,13 @@ pub(crate) async fn build(
     Box::pin(projection::connectors(
         &store,
         &scope,
-        (models, configuration),
+        &mut writer,
         &input,
         previous.as_ref(),
         &mut node,
-        &mut work,
     ))
     .await?;
+    let mut work = writer.finish().await?;
     let stored = node.stored_vectors();
     emit_progress(stored, &work.embeddings, started);
     store.settle(&scope).await?;

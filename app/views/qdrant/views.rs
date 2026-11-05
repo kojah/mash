@@ -97,6 +97,53 @@ fn views_id(node: &str) -> String {
 }
 
 impl Store {
+    /// Read bounded reusable dense evidence. An uncertified point may supply a
+    /// vector, but never metadata or certification: the caller writes fresh
+    /// canonical evidence and completes the normal certification sequence.
+    pub(crate) async fn reusable_vectors(
+        &self,
+        scope: &Scope,
+        inputs: &[crate::views::documents::EmbeddingInput<'_>],
+    ) -> Result<Vec<Option<Vec<f64>>>, AppError> {
+        let mut result = Vec::with_capacity(inputs.len());
+        for batch in inputs.chunks(crate::views::shared::BATCH_ROWS) {
+            let ids = batch
+                .iter()
+                .map(|input| match input.source {
+                    crate::source::Source::Provider(_) => document_id(&scope.node_id, input.anchor),
+                    crate::source::Source::Connector(_) => {
+                        connector_id(&scope.node_id, input.anchor)
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mut points = self
+                .api
+                .retrieve::<Document>(&collection(&scope.group_id, false), &ids)
+                .await?
+                .into_iter()
+                .map(|point| (point.id, point.payload))
+                .collect::<BTreeMap<_, _>>();
+            for (input, id) in batch.iter().zip(ids) {
+                let vector = points
+                    .remove(&id)
+                    .filter(|point| {
+                        point.node_id == scope.node_id
+                            && point.source == input.source
+                            && point.unit.anchor == input.anchor
+                            && point.unit.generation.as_deref() == Some(scope.generation.as_str())
+                            && point.embedding_fingerprint.as_deref()
+                                == Some(input.fingerprint(scope).as_str())
+                            && point.vector.as_ref().is_some_and(|v| {
+                                crate::views::retrieval::valid_vector(v, scope.dimensions)
+                            })
+                    })
+                    .and_then(|point| point.vector);
+                result.push(vector);
+            }
+        }
+        Ok(result)
+    }
+
     pub(crate) async fn node_views(&self, identity: &Scope) -> Result<Option<NodeViews>, AppError> {
         let id = views_id(&identity.node_id);
         let mut points = self
@@ -268,6 +315,18 @@ impl Documents {
         conversation: &ConversationRecord,
         message: MessageRecord,
     ) -> Result<u64, AppError> {
+        self.push_native(store, identity, conversation, message, None)
+            .await
+    }
+
+    pub(crate) async fn push_native(
+        &mut self,
+        store: &Store,
+        identity: &Scope,
+        conversation: &ConversationRecord,
+        message: MessageRecord,
+        embedding_fingerprint: Option<String>,
+    ) -> Result<u64, AppError> {
         if message.conversation_id != conversation.id {
             return Err(failure());
         }
@@ -315,6 +374,7 @@ impl Documents {
                         generation: message.generation,
                     },
                     vector: message.vector,
+                    embedding_fingerprint,
                 },
             },
         )
@@ -336,6 +396,7 @@ impl Documents {
             created_at,
             mut unit,
             vector,
+            embedding_fingerprint,
         } = point;
         let words = tokens(&unit.text);
         unit.generation = vector.as_ref().map(|_| identity.generation.clone());
@@ -359,6 +420,7 @@ impl Documents {
                     tokens: words,
                     unit,
                     vector,
+                    embedding_fingerprint,
                 },
             },
         )
@@ -388,6 +450,10 @@ impl Documents {
     }
 
     pub(crate) async fn finish(mut self, store: &Store) -> Result<(), AppError> {
+        self.flush(store).await
+    }
+
+    pub(crate) async fn flush(&mut self, store: &Store) -> Result<(), AppError> {
         self.batch.flush(&store.api, &self.name).await
     }
 }
@@ -395,6 +461,7 @@ impl Documents {
 /// One connector unit ready to write.
 #[derive(Clone, serde::Serialize)]
 pub(crate) struct ConnectorPoint {
+    pub(crate) embedding_fingerprint: Option<String>,
     pub(crate) source_id: String,
     pub(crate) object: crate::source::ObjectType,
     pub(crate) group_anchor: String,

@@ -11,6 +11,7 @@ mod readiness;
 mod recipe;
 mod recovery;
 mod retries;
+mod reuse;
 
 /// One disposable group: a SQLite silver file and its Qdrant views collections.
 struct Fixture {

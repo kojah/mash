@@ -193,6 +193,7 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
                 &fixture.store,
                 identity,
                 ConnectorPoint {
+                    embedding_fingerprint: None,
                     source_id: "notes".into(),
                     object: crate::source::ObjectType {
                         role: crate::connectors::Role::Document,
