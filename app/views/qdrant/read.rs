@@ -85,8 +85,6 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         F::Project(values) => ("project", values.clone()),
         F::Repository(values) => ("repository", values.clone()),
         // Native points carry no source_id, so they never match.
-        F::Source(values) => ("source_id", values.clone()),
-        F::Kind(values) => ("object.kind", values.clone()),
     };
     if field.1.is_empty() {
         api::impossible()
@@ -292,20 +290,4 @@ fn hits(
         output.push(hit);
     }
     Ok(output)
-}
-
-#[cfg(test)]
-mod kind_tests {
-    #[test]
-    fn kinds_match_connector_payloads_and_native_providers() {
-        let condition = super::condition(&crate::search_filter::Filter::Kind(vec![
-            "codex:message".to_owned(),
-            "slack:message".to_owned(),
-            "codex:chat".to_owned(),
-        ]));
-        assert_eq!(
-            serde_json::to_value(condition).unwrap(),
-            serde_json::json!({"key": "object.kind", "match": {"any": ["codex:message", "slack:message", "codex:chat"]}})
-        );
-    }
 }

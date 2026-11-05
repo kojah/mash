@@ -171,7 +171,7 @@ mash init [--force] [--no-agents] [--no-index] [--marketplace SOURCE]
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-views [--full]
 mash search <query> [--unit chats|messages] [--local | --shared] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
-mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
+mash list-chats [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <chat-id>
@@ -1079,7 +1079,7 @@ page and recency orders only that page, so pages never repeat or skip results. T
 relevance order. Exact-mention search already breaks ties by recency.
 
 CLI search accepts repeatable `--provider`, `--node`, `--role`, `--chat`,
-`--project`, `--repository`, `--source` and `--kind`. Repeated values for one field are alternatives;
+`--project` and `--repository`. Repeated values for one field are alternatives;
 different fields are combined with AND. `--node` filters publishing identity and
 does not connect directly to another node. A standalone local installation uses
 the node label `local`. `--days` is a rolling message-age window. `--after` is
@@ -1087,7 +1087,7 @@ inclusive and `--before` exclusive; both accept `YYYY-MM-DD` (UTC midnight) or
 RFC3339 timestamps with an explicit offset.
 
 MCP exposes the same selection fields: `provider`, `chat`, `node`,
-`role`, `project`, `repository`, `source` and `kind` are arrays, including for a single
+`role`, `project` and `repository` are arrays, including for a single
 value. `provider` and `role` name native history, so they never match connector
 records; `source` names connector source IDs, so it never matches native history.
 `kind` names object kinds from either: `codex:message` for native messages, or a

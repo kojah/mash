@@ -38,10 +38,6 @@ pub(crate) struct Request {
     pub(crate) provider: Vec<Provider>,
     #[arg(long)]
     pub(crate) node: Vec<String>,
-    /// Chat kind label, such as codex:chat or slack:channel; repeat for alternatives.
-    #[arg(long)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(crate) kind: Vec<String>,
     /// Literal substring, ASCII case insensitive; no wildcard syntax. Omit when unused;
     /// supplied text must be nonempty, at most 4096 bytes, without control characters.
     #[schemars(length(min = 1, max = 4096))]
@@ -75,7 +71,6 @@ impl Default for Request {
         Self {
             provider: Vec::new(),
             node: Vec::new(),
-            kind: Vec::new(),
             title_contains: None,
             after: None,
             before: None,
@@ -97,7 +92,6 @@ impl Request {
         }
         crate::search_filter::Filter::Provider(self.provider.clone()).validate()?;
         crate::search_filter::Filter::Node(self.node.clone()).validate()?;
-        crate::search_filter::Filter::Kind(self.kind.clone()).validate()?;
         if let Some(title) = &self.title_contains
             && (title.trim().is_empty()
                 || title.len() > 4096
@@ -125,7 +119,6 @@ impl Request {
                 .source
                 .provider()
                 .is_some_and(|provider| self.provider.contains(&provider)))
-            && (self.kind.is_empty() || self.kind.contains(&thread.object.kind))
             && self.title_contains.as_ref().is_none_or(|title| {
                 thread.metadata.title.as_ref().is_some_and(|value| {
                     value

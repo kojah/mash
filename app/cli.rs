@@ -274,12 +274,6 @@ struct SearchArguments {
     /// Exact Git origin URL; repeat for alternatives.
     #[arg(long)]
     repository: Vec<String>,
-    /// Connector source ID; repeat for alternatives. Native history never matches.
-    #[arg(long)]
-    source: Vec<String>,
-    /// Object kind label, such as codex:message or slack:message; repeat for alternatives.
-    #[arg(long)]
-    kind: Vec<String>,
     /// Inclusive date or RFC3339 timestamp.
     #[arg(long)]
     after: Option<String>,
@@ -313,8 +307,6 @@ impl SearchArguments {
             conversation: self.conversation,
             project: self.project,
             repository: self.repository,
-            source: self.source,
-            kind: self.kind,
             after: self
                 .after
                 .as_deref()

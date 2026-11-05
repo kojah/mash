@@ -24,6 +24,10 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
         json!({"query":"database", "provider":"codex"}),
         json!({"query":"database", "chat":"thread-a"}),
         json!({"query":"database", "unknown_filter":[]}),
+        json!({"query":"database", "source":["external"]}),
+        json!({"query":"database", "kind":["codex:message"]}),
+        json!({"query":"database", "filter":{"source":["external"]}}),
+        json!({"query":"database", "filter":{"kind":["codex:message"]}}),
     ] {
         assert!(serde_json::from_value::<Search>(invalid).is_err());
     }

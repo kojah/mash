@@ -46,10 +46,6 @@ pub(crate) struct Selection {
     pub(crate) project: Vec<String>,
     /// Exact Git origin URL; repeat for alternatives.
     pub(crate) repository: Vec<String>,
-    /// Connector source IDs; native provider history never matches.
-    pub(crate) source: Vec<String>,
-    /// Object kind labels, such as `codex:message` or `slack:message`.
-    pub(crate) kind: Vec<String>,
     /// Inclusive Unix timestamp in seconds.
     pub(crate) after: Option<i64>,
     /// Exclusive Unix timestamp in seconds.
@@ -75,8 +71,6 @@ pub(crate) enum Field {
     Chat,
     Project,
     Repository,
-    Source,
-    Kind,
     After,
     Before,
 }
@@ -91,8 +85,6 @@ impl Selection {
             (!self.conversation.is_empty(), Field::Chat),
             (!self.project.is_empty(), Field::Project),
             (!self.repository.is_empty(), Field::Repository),
-            (!self.source.is_empty(), Field::Source),
-            (!self.kind.is_empty(), Field::Kind),
             (self.after.is_some() || self.days.is_some(), Field::After),
             (self.before.is_some(), Field::Before),
         ] {
@@ -119,8 +111,6 @@ impl Selection {
             (self.conversation, Filter::Chat),
             (self.project, Filter::Project),
             (self.repository, Filter::Repository),
-            (self.source, Filter::Source),
-            (self.kind, Filter::Kind),
         ] {
             if !values.is_empty() {
                 all.push(constructor(values));
@@ -168,10 +158,6 @@ pub(crate) enum Filter {
     Chat(Vec<String>),
     Project(Vec<String>),
     Repository(Vec<String>),
-    /// Connector source IDs; native provider history never matches.
-    Source(Vec<String>),
-    /// Object kind labels; native messages are `<provider>:message`.
-    Kind(Vec<String>),
     /// Inclusive Unix timestamp in seconds.
     After(i64),
     /// Exclusive Unix timestamp in seconds.
@@ -194,8 +180,6 @@ impl Filter {
             Self::Chat(_) => Field::Chat,
             Self::Project(_) => Field::Project,
             Self::Repository(_) => Field::Repository,
-            Self::Source(_) => Field::Source,
-            Self::Kind(_) => Field::Kind,
             Self::After(_) => Field::After,
             Self::Before(_) => Field::Before,
         };
@@ -245,12 +229,9 @@ impl Filter {
 
     fn values(&self) -> Vec<&str> {
         match self {
-            Self::Node(v)
-            | Self::Chat(v)
-            | Self::Project(v)
-            | Self::Repository(v)
-            | Self::Source(v)
-            | Self::Kind(v) => v.iter().map(String::as_str).collect(),
+            Self::Node(v) | Self::Chat(v) | Self::Project(v) | Self::Repository(v) => {
+                v.iter().map(String::as_str).collect()
+            }
             Self::Provider(v) => v.iter().map(|p| p.as_str()).collect(),
             Self::Role(v) => v.iter().map(crate::role::Role::as_str).collect(),
             _ => Vec::new(),
@@ -279,8 +260,6 @@ impl Filter {
                     Self::Chat(_) => columns.chat.to_owned(),
                     Self::Project(_) => columns.project.to_owned(),
                     Self::Repository(_) => columns.repository.to_owned(),
-                    Self::Source(_) => columns.source.to_owned(),
-                    Self::Kind(_) => columns.kind.to_owned(),
                     _ => unreachable!(),
                 };
                 let values = self.values();
@@ -312,8 +291,6 @@ struct Columns {
     chat: &'static str,
     project: &'static str,
     repository: &'static str,
-    source: &'static str,
-    kind: &'static str,
     created_at: &'static str,
 }
 
@@ -325,8 +302,6 @@ impl Columns {
         chat: "m.conversation_id",
         project: "c.project",
         repository: "c.repository",
-        source: "NULL",
-        kind: "m.kind",
         created_at: "m.created_at",
     };
 }
