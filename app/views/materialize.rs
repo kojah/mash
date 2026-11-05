@@ -196,44 +196,16 @@ impl<'a> Writer<'a> {
         &mut self,
         inputs: &[EmbeddingInput<'_>],
     ) -> Result<Vec<(Vec<f64>, String)>, AppError> {
-        if inputs.is_empty() {
-            return Ok(Vec::new());
-        }
         let cached = self.store.reusable_vectors(self.scope, inputs).await?;
-        let texts = inputs
-            .iter()
-            .zip(&cached)
-            .filter_map(|(input, cached)| cached.is_none().then_some(input.text))
-            .collect::<Vec<_>>();
-        let vectors = if texts.is_empty() {
-            Vec::new()
-        } else {
-            let (models, configuration) = self.model.ok_or_else(AppError::models_missing)?;
-            embedding::embed_texts(
-                models,
-                configuration,
-                &mut self.pool,
-                &texts,
-                &mut self.build,
-            )
-            .await?
-        };
-        if vectors.len() != texts.len() {
-            return Err(AppError::model("missing materialized embedding"));
-        }
-        self.build.embeddings.model_inferences += texts.len() as u64;
-        self.build.embeddings.reused_vectors += (inputs.len() - texts.len()) as u64;
-        let mut fresh = vectors.into_iter();
-        inputs
-            .iter()
-            .zip(cached)
-            .map(|(input, cached)| {
-                let vector = cached
-                    .or_else(|| fresh.next())
-                    .ok_or_else(|| AppError::model("missing materialized embedding"))?;
-                Ok((vector, input.fingerprint(self.scope)))
-            })
-            .collect()
+        embedding::embed_units(
+            inputs,
+            (&self.scope.generation, self.scope.dimensions),
+            self.model,
+            &mut self.pool,
+            &mut self.build,
+            cached,
+        )
+        .await
     }
 
     /// Preserve coordinator flush boundaries while retaining the loaded model.

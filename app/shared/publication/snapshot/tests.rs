@@ -1,6 +1,108 @@
 use super::*;
 use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
 
+fn publication_target(fixture: &crate::views::local::test_support::Fixture) -> Target {
+    Target {
+        build: fixture.configuration.views.build.clone(),
+        generation: fixture.local.scope.generation.clone(),
+        dimensions: fixture.local.scope.dimensions,
+        instance: None,
+        publication_revision: 0,
+        redaction: crate::redaction::Policy::ON,
+    }
+}
+
+async fn prepared_snapshot(
+    database: &Path,
+    target: &Target,
+    configuration: &crate::config::ResolvedConfig,
+) -> (tempfile::NamedTempFile, SnapshotWork) {
+    let (file, _, work) = prepare(
+        database,
+        target,
+        Some(Inference {
+            models_dir: Path::new("/nonexistent/mash-test-models"),
+            embeddings: configuration.embeddings.as_ref(),
+            local: Some(configuration),
+        }),
+        Instant::now(),
+        Selection::Replace,
+    )
+    .await
+    .unwrap();
+    (file, work)
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_publication_reuses_local_vectors_and_survives_missing_local_views() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = seed(directory.path());
+    let fixture = crate::views::local::test_support::Fixture::new(&database, "publisher").await;
+    let target = publication_target(&fixture);
+    // A dead embedding endpoint proves that matching cached vectors need no inference.
+    let mut offline = fixture.configuration.clone();
+    offline.embeddings.as_mut().unwrap().url = "http://127.0.0.1:9/embeddings".into();
+    let (cached, work) = prepared_snapshot(&database, &target, &offline).await;
+    assert_eq!(work.forwarded_embeddings, 29);
+    assert_eq!(work.model_inferences, 0);
+    let cached = std::fs::read_to_string(cached.path()).unwrap();
+    fixture.cleanup().await;
+    let (fresh, work) = prepared_snapshot(&database, &target, &fixture.configuration).await;
+    assert_eq!(work.forwarded_embeddings, 0);
+    assert_eq!(work.model_inferences, 29);
+    assert_eq!(std::fs::read_to_string(fresh.path()).unwrap(), cached);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_publication_reuse_obeys_target_recipe_and_model() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = seed(directory.path());
+    let fixture = crate::views::local::test_support::Fixture::new(&database, "publisher").await;
+    let original = publication_target(&fixture);
+    let mut target = original.clone();
+    target.build.embedding_text = crate::views::config::EmbeddingText::TitleAndDialogue;
+    let (_, work) = prepared_snapshot(&database, &target, &fixture.configuration).await;
+    assert_eq!(work.forwarded_embeddings, 0);
+    assert_eq!(work.model_inferences, 29);
+
+    let mut other_model = fixture.configuration.clone();
+    other_model.embeddings.as_mut().unwrap().model = "different-model".into();
+    target = original;
+    target.generation = crate::semantic::configured_generation(other_model.embeddings.as_ref());
+    let (_, work) = prepared_snapshot(&database, &target, &other_model).await;
+    assert_eq!(work.forwarded_embeddings, 0);
+    assert_eq!(work.model_inferences, 29);
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_publication_reuse_obeys_redacted_snapshot_input() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = seed(directory.path());
+    let fixture = crate::views::local::test_support::Fixture::new(&database, "publisher").await;
+    crate::storage::test_support::write(
+        &database,
+        "UPDATE objects SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE origin='provider' AND id='b-100'",
+    );
+    let (file, work) = prepared_snapshot(
+        &database,
+        &publication_target(&fixture),
+        &fixture.configuration,
+    )
+    .await;
+    assert_eq!(work.forwarded_embeddings, 28);
+    assert_eq!(work.model_inferences, 1);
+    assert!(
+        !std::fs::read_to_string(file.path())
+            .unwrap()
+            .contains("hunter2")
+    );
+    fixture.cleanup().await;
+}
+
 #[test]
 fn incremental_capture_includes_only_changed_complete_threads_and_explicit_removals() {
     let directory = tempfile::tempdir().unwrap();

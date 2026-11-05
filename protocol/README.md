@@ -202,6 +202,13 @@ snapshot rows come from a consistent silver read, local journal bases select
 delta rows, wire bases name acknowledged server heads, and embeddings are
 prepared after capture. No gold mutation advances the native publication
 journal. The mapped journal/wire-base Rust regression supplements those models.
+Publication can now reuse local Qdrant vectors after capture, using the shared
+target's model, dimensions and prepared redacted input fingerprint. Cache reads
+are advisory: missing or incompatible local views fall back to inference. They
+never supply canonical rows, advance the journal or certify either destination.
+This changes computation within snapshot preparation, not the modeled durable
+transitions, lock boundaries or acknowledgement semantics. The disposable
+`qdrant_publication_reuse*` tests cover target isolation, redaction and cache loss.
 
 ### RuntimeUpgrade: stop admitting writes after observing replacement
 

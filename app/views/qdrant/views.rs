@@ -132,7 +132,11 @@ impl Store {
                             && point.unit.anchor == input.anchor
                             && point.unit.generation.as_deref() == Some(scope.generation.as_str())
                             && point.embedding_fingerprint.as_deref()
-                                == Some(input.fingerprint(scope).as_str())
+                                == Some(
+                                    input
+                                        .fingerprint(&scope.generation, scope.dimensions)
+                                        .as_str(),
+                                )
                             && point.vector.as_ref().is_some_and(|v| {
                                 crate::views::retrieval::valid_vector(v, scope.dimensions)
                             })

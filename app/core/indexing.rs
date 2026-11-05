@@ -67,6 +67,7 @@ pub(super) async fn run(
             return Ok(result);
         };
         let inference = shared::publication::Inference {
+            local: Some(configuration),
             models_dir: models,
             embeddings: configuration.embeddings.as_ref(),
         };
@@ -97,6 +98,7 @@ pub(super) async fn run(
                 models,
                 configuration.embeddings.as_ref(),
                 configuration.attachments.share_files,
+                Some(configuration),
             ) {
                 Ok(()) => shared::Publication::pending(),
                 Err(error) => {
@@ -110,6 +112,7 @@ pub(super) async fn run(
                 database,
                 config,
                 Some(shared::Inference {
+                    local: Some(configuration),
                     models_dir: models,
                     embeddings: configuration.embeddings.as_ref(),
                 }),

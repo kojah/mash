@@ -449,7 +449,15 @@ async fn deferred_publication_queues_without_blocking_the_indexing_task() {
 
     // Watch mode hands the snapshot to the publisher task and returns at once.
     let started = std::time::Instant::now();
-    super::publication::enqueue(&path, &config, &dir.path().join("models"), None, false).unwrap();
+    super::publication::enqueue(
+        &path,
+        &config,
+        &dir.path().join("models"),
+        None,
+        false,
+        None,
+    )
+    .unwrap();
     assert!(
         started.elapsed() < Duration::from_millis(200),
         "enqueue must not wait for the network"

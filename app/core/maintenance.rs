@@ -31,6 +31,7 @@ pub(super) async fn forget(
                 database,
                 config,
                 Some(shared::publication::Inference {
+                    local: Some(configuration),
                     models_dir: models,
                     embeddings: configuration.embeddings.as_ref(),
                 }),

@@ -104,8 +104,8 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                                 .build
                                 .includes_dense(&message.role, &message.projection),
                         );
-                        // Local views have a different recipe. Only canonical rows enter
-                        // this temporary stream; shared embedding follows below.
+                        // Only canonical rows enter this stream. Reuse is checked
+                        // against the target's prepared, redacted input below.
                         message.vector = None;
                         message.generation = None;
                     }
@@ -228,10 +228,16 @@ fn validate_model(target: &Target, inference: &Inference<'_>) -> Result<(), AppE
     Ok(())
 }
 
+struct Prepared<'a> {
+    conversation: &'a ConversationRecord,
+    texts: &'a [String],
+    cache: Option<&'a crate::views::local::Local>,
+}
+
 async fn embed_batch(
     batch: &mut [MessageRecord],
     target: &Target,
-    prepared: &[String],
+    prepared: Prepared<'_>,
     inference: Option<&Inference<'_>>,
     pool: &mut Option<crate::semantic::LoadedIndexer>,
     build: &mut views::Build,
@@ -239,24 +245,48 @@ async fn embed_batch(
     let inference = inference
         .ok_or_else(|| AppError::shared("shared views needs preparation; run mash index"))?;
     validate_model(target, inference)?;
-    let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
-    let vectors = views::embed_texts(
-        inference.models_dir,
-        inference.embeddings,
+    let eligible = batch
+        .iter()
+        .filter(|m| target.build.includes_dense(&m.role, &m.projection))
+        .collect::<Vec<_>>();
+    if eligible.len() != prepared.texts.len() {
+        return Err(AppError::internal(
+            "prepared publication input cardinality differs from messages",
+        ));
+    }
+    let inputs = eligible
+        .iter()
+        .zip(prepared.texts)
+        .map(|(message, text)| crate::views::documents::EmbeddingInput {
+            source: crate::source::Source::Provider(prepared.conversation.provider),
+            anchor: &message.id,
+            text,
+        })
+        .collect::<Vec<_>>();
+    let cached = if let Some(local) = prepared.cache {
+        let mut scope = local.scope.clone();
+        scope.generation.clone_from(&target.generation);
+        scope.dimensions = target.dimensions;
+        match local.store.reusable_vectors(&scope, &inputs).await {
+            Ok(cached) => cached,
+            Err(error) => {
+                tracing::debug!(kind = ?error.error.kind, "local embedding cache unavailable during publication");
+                vec![None; inputs.len()]
+            }
+        }
+    } else {
+        vec![None; inputs.len()]
+    };
+    let vectors = views::embed_units(
+        &inputs,
+        (&target.generation, target.dimensions),
+        Some((inference.models_dir, inference.embeddings)),
         pool,
-        &texts,
         build,
+        cached,
     )
     .await?;
-    if vectors.len() != prepared.len()
-        || vectors
-            .iter()
-            .any(|v| !crate::shared::protocol::valid_vector(v, target.dimensions))
-    {
-        return Err(AppError::model("invalid prepared shared embeddings"));
-    }
-    build.embeddings.model_inferences += vectors.len() as u64;
-    for (message, vector) in batch
+    for (message, (vector, _)) in batch
         .iter_mut()
         .filter(|m| target.build.includes_dense(&m.role, &m.projection))
         .zip(vectors)
@@ -274,10 +304,24 @@ pub(super) async fn prepare(
     started: Instant,
     selection: Selection,
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
-    let path = path.to_path_buf();
+    let database = path.to_path_buf();
+    let path = database.clone();
     let redaction = target.redaction;
     let metadata = target.clone();
     let source = crate::blocking(move || capture(&path, &metadata, selection)).await?;
+    let cache = if let Some(configuration) =
+        inference.as_ref().and_then(|inference| inference.local)
+    {
+        match crate::views::local::Local::open(&database, configuration).await {
+            Ok(local) => Some(local),
+            Err(error) => {
+                tracing::debug!(kind = ?error.error.kind, "local embedding cache unavailable during publication");
+                None
+            }
+        }
+    } else {
+        None
+    };
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input, redaction)).await?;
     let mut build = views::Build::default();
@@ -294,10 +338,11 @@ pub(super) async fn prepare(
             .iter()
             .any(|m| target.build.includes_dense(&m.role, &m.projection));
         if visible && target.build.dense_enabled() {
-            let title = source
+            let conversation = source
                 .conversations
                 .get(&batch[0].conversation_id)
-                .and_then(|c| c.title.clone());
+                .ok_or_else(|| AppError::internal("publication message has no conversation"))?;
+            let title = conversation.title.clone();
             let (next, next_batch, prepared) =
                 prepare_units(reader, batch, &target.build, title).await?;
             reader = next;
@@ -305,7 +350,11 @@ pub(super) async fn prepare(
             embed_batch(
                 &mut batch,
                 target,
-                &prepared,
+                Prepared {
+                    conversation,
+                    texts: &prepared,
+                    cache: cache.as_ref(),
+                },
                 inference.as_ref(),
                 &mut pool,
                 &mut build,
@@ -321,7 +370,7 @@ pub(super) async fn prepare(
             Ok(reader)
         })
         .await?;
-        let processed = build.embeddings.model_inferences;
+        let processed = build.embeddings.model_inferences + build.embeddings.reused_vectors;
         let elapsed = crate::progress::milliseconds(started);
         crate::progress::emit(&crate::progress::Event {
             stored_vectors: Some(processed),
@@ -340,7 +389,7 @@ pub(super) async fn prepare(
     })
     .await?;
     let preparation = SnapshotWork {
-        forwarded_embeddings: 0,
+        forwarded_embeddings: build.embeddings.reused_vectors,
         model_inferences: build.embeddings.model_inferences,
         model_load_milliseconds: build.model_load_milliseconds,
         embedding_milliseconds: build.embedding_milliseconds,

@@ -11,14 +11,14 @@ pub(crate) struct EmbeddingInput<'a> {
 }
 
 impl EmbeddingInput<'_> {
-    pub(crate) fn fingerprint(&self, scope: &super::scope::Scope) -> String {
+    pub(crate) fn fingerprint(&self, generation: &str, dimensions: usize) -> String {
         let mut hash = blake3::Hasher::new();
         hash.update(b"mash-embedding-input\0");
-        for value in [scope.generation.as_bytes(), self.text.as_bytes()] {
+        for value in [generation.as_bytes(), self.text.as_bytes()] {
             hash.update(&(value.len() as u64).to_le_bytes());
             hash.update(value);
         }
-        hash.update(&(scope.dimensions as u64).to_le_bytes());
+        hash.update(&(dimensions as u64).to_le_bytes());
         hash.finalize().to_hex().to_string()
     }
 }

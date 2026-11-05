@@ -39,6 +39,7 @@ async fn contract() {
             paths.db.as_deref().unwrap(),
             &config,
             Some(crate::shared::Inference {
+                local: None,
                 models_dir: paths.models_dir.as_deref().unwrap(),
                 embeddings: local_config.embeddings.as_ref(),
             })

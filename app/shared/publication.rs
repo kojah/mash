@@ -14,6 +14,7 @@ mod snapshot;
 pub(crate) struct Inference<'a> {
     pub(crate) models_dir: &'a Path,
     pub(crate) embeddings: Option<&'a crate::semantic::remote::Configuration>,
+    pub(crate) local: Option<&'a crate::config::ResolvedConfig>,
 }
 
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -79,6 +80,7 @@ struct Job {
     models: std::path::PathBuf,
     embeddings: Option<crate::semantic::remote::Configuration>,
     attachments: bool,
+    local: Option<crate::config::ResolvedConfig>,
 }
 
 static PUBLISHER: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<Job>> =
@@ -104,10 +106,12 @@ fn publisher() -> &'static tokio::sync::mpsc::UnboundedSender<Job> {
                         models,
                         embeddings,
                         attachments,
+                        local,
                     } = job;
                     let inference = Inference {
                         models_dir: &models,
                         embeddings: embeddings.as_ref(),
+                        local: local.as_ref(),
                     };
                     let published = publish(&database, &config, Some(inference)).await;
                     if published.is_pending() {
@@ -140,6 +144,7 @@ pub(crate) fn enqueue(
     models: &Path,
     embeddings: Option<&crate::semantic::remote::Configuration>,
     attachments: bool,
+    local: Option<&crate::config::ResolvedConfig>,
 ) -> Result<(), AppError> {
     publisher()
         .send(Job {
@@ -148,6 +153,7 @@ pub(crate) fn enqueue(
             models: models.to_path_buf(),
             embeddings: embeddings.cloned(),
             attachments,
+            local: local.cloned(),
         })
         .map_err(|_| AppError::internal("background publisher is unavailable"))
 }
