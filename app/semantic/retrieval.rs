@@ -192,31 +192,41 @@ fn dense_candidates(
             selection.2,
             limit,
         )?;
-        let mut ranked = candidates
-            .into_iter()
-            .map(|candidate| {
-                if candidate.vector.len() != query.values.len() {
-                    return Err(AppError::database_data(
-                        "Vec1 vector dimensions do not match query",
-                    ));
-                }
-                Ok((
-                    candidate.connector,
-                    candidate.id,
-                    quantized_cosine(query, &candidate.vector, candidate.norm),
-                ))
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-        ranked.sort_by(|left, right| {
-            right
-                .2
-                .total_cmp(&left.2)
-                .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
-        });
-        ranked.truncate(limit);
-        return Ok((hydrate_ranked(storage, ranked)?, eligible));
+        return Ok((rank_vec1(storage, query, candidates, limit)?, eligible));
     }
     dense_candidates_exact(storage, generation, query, selection, limit)
+}
+
+#[cfg(feature = "vec1")]
+fn rank_vec1(
+    storage: &Storage,
+    query: &QuantizedVector,
+    candidates: Vec<crate::storage::vec1::Candidate>,
+    limit: usize,
+) -> Result<Vec<SearchHit>, AppError> {
+    let mut ranked = candidates
+        .into_iter()
+        .map(|candidate| {
+            if candidate.vector.len() != query.values.len() {
+                return Err(AppError::database_data(
+                    "Vec1 vector dimensions do not match query",
+                ));
+            }
+            Ok((
+                candidate.connector,
+                candidate.id,
+                quantized_cosine(query, &candidate.vector, candidate.norm),
+            ))
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    ranked.sort_by(|left, right| {
+        right
+            .2
+            .total_cmp(&left.2)
+            .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
+    });
+    ranked.truncate(limit);
+    hydrate_ranked(storage, ranked)
 }
 
 fn dense_candidates_exact(

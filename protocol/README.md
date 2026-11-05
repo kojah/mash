@@ -54,13 +54,14 @@ regressions use Rust tests; no protocol-model transition changes are required.
 
 ### LocalVec1: experimental local IVF publication
 
-`LocalVec1.tla` models two embedding revisions, invalidation, a partial or complete
+`LocalVec1.tla` models two input revisions (embeddings and filter metadata), invalidation, a partial or complete
 Vec1 rebuild, publication and rollback. SQLite's single writer prevents a second
 source mutation during a build. Readers accept only a clean projection. The
 positive model requires every reported-current projection to match its input;
 the negative configurations omit invalidation or certify before finishing.
 
-Source mapping: `storage/vec1.rs` installs embedding-change triggers, rebuilds
+Source mapping: `storage/vec1.rs` installs embedding and filter-metadata change
+triggers (native objects and connector units), rebuilds
 the projection and clears its dirty marker only after training. Its shadow tables
 and marker are in the same attached views file and existing writer transaction.
 `storage/semantic.rs` includes that marker in readiness; `views_manifest.rs`
@@ -73,6 +74,11 @@ the statically linked extension. It does not prove Vec1's native implementation,
 ANN recall, power-loss durability, or atomic commits across silver and views WAL
 files. Silver/manifest freshness checks remain required. No shared publication,
 HTTP acknowledgement or Qdrant semantics change.
+
+The invariant checks persisted certification state; it does not model a
+multi-statement reader holding one snapshot across readiness, selection and
+hydration. The internal-filter corpus experiment freezes both files while
+measuring. Live concurrent-reader behavior remains separate acceptance work.
 
 ### MutationAdmission: bounded FIFO waiting and worker ownership
 

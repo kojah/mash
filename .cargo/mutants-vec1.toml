@@ -1,6 +1,6 @@
 # Audit the experimental projection's fail-closed persisted readiness guard.
 examine_globs = ["app/storage/vec1.rs", "app/core/installation/probe.rs"]
-examine_re = ["replace Storage::vec1_ready", "in Storage::vec1_ready", "replace contract_matches", "in contract_matches"]
+examine_re = ["replace Storage::vec1_ready", "in Storage::vec1_ready", "replace contract_matches", "in contract_matches", "replace track_changes"]
 test_package = ["mash"]
 test_tool = "nextest"
 cap_lints = true

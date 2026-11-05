@@ -7,7 +7,7 @@ vars == <<source, indexed, dirty, phase, staged, stagedDirty>>
 Init == /\ source = 1 /\ indexed = 1 /\ dirty = FALSE
         /\ phase = "idle" /\ staged = 1 /\ stagedDirty = FALSE
 
-\* A committed embedding mutation invalidates the projection in the same
+\* A committed embedding or filter-metadata mutation invalidates the projection in the same
 \* SQLite transaction. Only one SQLite writer is admitted at a time.
 Change == /\ phase = "idle" /\ source = 1
           /\ source' = 2 /\ dirty' = IF Invalidate THEN TRUE ELSE dirty

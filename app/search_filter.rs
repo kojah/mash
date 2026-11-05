@@ -243,7 +243,7 @@ impl Filter {
         Ok(())
     }
 
-    fn values(&self) -> Vec<&str> {
+    pub(crate) fn values(&self) -> Vec<&str> {
         match self {
             Self::Node(v)
             | Self::Chat(v)

@@ -10,7 +10,7 @@ use crate::database_error::Operation;
 pub(crate) const SCHEMA_VERSION: i64 = 56;
 pub(crate) const RELEASE_VIEWS_VERSION: i64 = 4;
 pub(crate) const VIEWS_VERSION: i64 = if cfg!(feature = "vec1") {
-    5
+    6
 } else {
     RELEASE_VIEWS_VERSION
 };

@@ -28,6 +28,9 @@ struct NamedScope {
 #[serde(rename_all = "lowercase")]
 enum Engine {
     Exact,
+    Streaming,
+    #[serde(rename = "metadata_streaming")]
+    MetadataStreaming,
     Vec1,
 }
 #[derive(Deserialize)]
@@ -61,6 +64,8 @@ struct Sample {
     eligible: usize,
     dense_ms: f64,
     pipeline_ms: f64,
+    phases: Option<crate::storage::vec1::Timings>,
+    dense_candidates: Vec<Identity>,
     result: Snapshot,
 }
 
@@ -105,11 +110,63 @@ fn snapshot(hits: Vec<SearchHit>, unit: SearchUnit, query: &str) -> Snapshot {
     }
 }
 
+fn retrieve(
+    storage: &Storage,
+    generation: &str,
+    vector: &QuantizedVector,
+    scope: &Scope,
+    limit: usize,
+    engine: Engine,
+) -> (Vec<SearchHit>, usize, Option<crate::storage::vec1::Timings>) {
+    match engine {
+        Engine::Exact => {
+            let (dense, eligible) = dense_candidates_exact(
+                storage,
+                generation,
+                vector,
+                (None, None, Some(scope)),
+                limit,
+            )
+            .unwrap();
+            (dense, eligible, None)
+        }
+        engine => {
+            let (candidates, eligible, phases) = match engine {
+                Engine::Vec1 => storage.vec1_candidates_profiled(
+                    generation,
+                    &vector.values,
+                    None,
+                    None,
+                    Some(scope),
+                    limit,
+                ),
+                Engine::Streaming => {
+                    storage.vec1_streaming_control(generation, &vector.values, scope, limit)
+                }
+                Engine::MetadataStreaming => storage.vec1_metadata_streaming_control(
+                    generation,
+                    &vector.values,
+                    scope,
+                    limit,
+                ),
+                Engine::Exact => unreachable!(),
+            }
+            .unwrap();
+            (
+                rank_vec1(storage, vector, candidates, limit).unwrap(),
+                eligible,
+                Some(phases),
+            )
+        }
+    }
+}
+
 fn measure(
     storage: &Storage,
     backend: &mut Backend,
     input: &Input,
     trial: &RegisteredCase,
+    eligible_ids: &std::collections::BTreeSet<String>,
 ) -> Sample {
     let query = &input.queries[trial.query_index];
     let filter = &input
@@ -133,24 +190,22 @@ fn measure(
         .search_filtered(&query.query, limit, None, None, Some(&scope))
         .unwrap();
     let dense_started = Instant::now();
-    let (dense, eligible) = match trial.backend {
-        Engine::Exact => dense_candidates_exact(
-            storage,
-            &input.generation,
-            &vector,
-            (None, None, Some(&scope)),
-            limit,
-        ),
-        Engine::Vec1 => dense_candidates(
-            storage,
-            &input.generation,
-            &vector,
-            (None, None, Some(&scope)),
-            limit,
-        ),
-    }
-    .unwrap();
+    let (dense, eligible, phases) = retrieve(
+        storage,
+        &input.generation,
+        &vector,
+        &scope,
+        limit,
+        trial.backend,
+    );
     let dense_ms = dense_started.elapsed().as_secs_f64() * 1000.0;
+    let dense_candidates = dense
+        .iter()
+        .map(|hit| Identity {
+            source: hit.source.clone(),
+            id: hit.id.clone(),
+        })
+        .collect();
     let hits = finish_hybrid(
         storage,
         backend,
@@ -161,7 +216,7 @@ fn measure(
     )
     .unwrap();
     let result = snapshot(hits, trial.unit, &query.query);
-    Sample {
+    let sample = Sample {
         trial_number: trial.trial_number,
         backend: trial.backend,
         query_index: trial.query_index,
@@ -172,7 +227,21 @@ fn measure(
         dense_ms,
         pipeline_ms: started.elapsed().as_secs_f64() * 1000.0,
         result,
+        phases,
+        dense_candidates,
+    };
+    assert_eq!(
+        sample.eligible,
+        eligible_ids.len(),
+        "canonical eligibility count"
+    );
+    for candidate in &sample.dense_candidates {
+        assert!(
+            eligible_ids.contains(&candidate.id),
+            "dense candidate violates canonical scope"
+        );
     }
+    sample
 }
 
 #[test]
@@ -185,13 +254,36 @@ fn vec1_local_gold_trial() {
         serde_json::from_slice(&std::fs::read(path("MASH_VEC1_TRIAL_PLAN")).unwrap()).unwrap();
     let database = path("MASH_VEC1_TRIAL_DB");
     let storage = Storage::open_search(&database, &input.generation).unwrap();
+    assert_eq!(storage.vec1_projection_mismatches().unwrap(), 0);
+    let eligible_ids = input
+        .scopes
+        .iter()
+        .map(|scope| {
+            let selection = Scope {
+                filter: scope.filter.clone(),
+                node: "local".into(),
+                match_mode: crate::views::matching::Mode::default(),
+            };
+            (
+                scope.name.clone(),
+                storage
+                    .vec1_canonical_eligible_ids(&input.generation, &selection)
+                    .unwrap(),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut backend = crate::semantic::Models::new(path("MASH_TEST_MODELS_DIR"))
         .load()
         .unwrap()
         .expect("installed models");
     // Warm both paths before registered measurements; query embeddings are
     // frozen inputs, so these timings exclude embedding and process startup.
-    for engine in [Engine::Exact, Engine::Vec1] {
+    for engine in [
+        Engine::Exact,
+        Engine::Streaming,
+        Engine::MetadataStreaming,
+        Engine::Vec1,
+    ] {
         let warm = RegisteredCase {
             trial_number: usize::MAX,
             backend: engine,
@@ -200,7 +292,7 @@ fn vec1_local_gold_trial() {
             unit: SearchUnit::Messages,
             round: 0,
         };
-        measure(&storage, &mut backend, &input, &warm);
+        measure(&storage, &mut backend, &input, &warm, &eligible_ids["all"]);
     }
     let file = std::fs::OpenOptions::new()
         .write(true)
@@ -209,12 +301,20 @@ fn vec1_local_gold_trial() {
         .unwrap();
     let mut output = std::io::BufWriter::new(file);
     for trial in trials {
-        let sample = measure(&storage, &mut backend, &input, &trial);
+        let sample = measure(
+            &storage,
+            &mut backend,
+            &input,
+            &trial,
+            &eligible_ids[&trial.scope],
+        );
         println!(
             "trial={} backend={} dense_ms={:.2} pipeline_ms={:.2}",
             sample.trial_number,
             match sample.backend {
                 Engine::Exact => "exact",
+                Engine::Streaming => "streaming",
+                Engine::MetadataStreaming => "metadata_streaming",
                 Engine::Vec1 => "vec1",
             },
             sample.dense_ms,

@@ -4,6 +4,54 @@ use crate::storage::EmbeddingWrite;
 
 const GENERATION: &str = "vec1-fixture";
 
+fn generated_filter() -> impl proptest::strategy::Strategy<Value = Filter> {
+    use proptest::prelude::*;
+    prop_oneof![
+        (0_i64..5).prop_map(Filter::After),
+        (0_i64..5).prop_map(Filter::Before),
+        Just(Filter::Role(vec![crate::role::Role::Assistant])),
+        Just(Filter::Role(vec![crate::role::Role::User])),
+        Just(Filter::Source(vec!["slack".into()])),
+        Just(Filter::Project(vec!["p'x".into()])),
+        Just(Filter::Repository(vec!["absent".into()])),
+        Just(Filter::Chat(vec!["session-1".into()])),
+        Just(Filter::Kind(vec!["codex:message".into()])),
+        Just(Filter::Provider(vec![crate::provider::Provider::Codex])),
+        Just(Filter::Node(vec!["elsewhere".into()])),
+    ]
+    .prop_recursive(3, 24, 3, |inner| {
+        prop_oneof![
+            proptest::collection::vec(inner.clone(), 0..4).prop_map(Filter::All),
+            proptest::collection::vec(inner.clone(), 0..4).prop_map(Filter::Any),
+            inner.prop_map(|child| Filter::Not(Box::new(child))),
+        ]
+    })
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::test_runner::Config::with_cases(32))]
+    #[test]
+    fn vec1_boolean_prefilters_match_independent_canonical_sql(filter in generated_filter()) {
+        let (_root, path) = fixture();
+        let mut writer = Storage::open_writer(&path).unwrap();
+        for (id, timestamp) in [("near", None), ("middle",Some(1000)), ("far",Some(2000)), ("near-two",Some(3000)), ("near-three",Some(4000))] {
+            writer.connection.execute("UPDATE objects SET created_at=?1 WHERE origin='provider' AND object_role='entry' AND id=?2", params![timestamp,id]).unwrap();
+        }
+        writer.connection.execute("UPDATE objects SET project='p''x' WHERE origin='provider' AND object_role='container'", []).unwrap();
+        writer.sync_vec1(GENERATION).unwrap();
+        writer.commit_writer().unwrap();
+        let scope = Scope {filter, node:"local".into(), match_mode:crate::views::matching::Mode::Strict};
+        let sql = format!("SELECT m.storage_id FROM objects m JOIN objects c ON c.id=m.conversation_id AND c.origin='provider' AND c.object_role='container'
+            WHERE m.origin='provider' AND m.object_role='entry' AND ({}) ORDER BY m.storage_id", scope.filter.sql(Some("local")));
+        let mut expected = writer.connection.prepare(&sql).unwrap();
+        let expected = expected.query_map([], |row| row.get::<_,i64>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        let (hits, count) = writer.vec1_candidates(GENERATION, &[127,0],None,None,Some(&scope),100).unwrap();
+        let mut actual = hits.into_iter().map(|hit|hit.id).collect::<Vec<_>>(); actual.sort_unstable();
+        proptest::prop_assert_eq!(count, expected.len());
+        proptest::prop_assert_eq!(actual, expected);
+    }
+}
+
 fn fixture() -> (tempfile::TempDir, std::path::PathBuf) {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("index.sqlite3");
@@ -122,6 +170,127 @@ fn vec1_filters_stream_before_candidate_limit_and_empty_is_empty() {
         .unwrap();
     assert!(hits.is_empty());
     assert_eq!(count, 0);
+}
+
+#[test]
+fn vec1_excessive_boolean_expansion_uses_internal_eligible_key_constraint() {
+    let (_root, path) = fixture();
+    let reader = Storage::open_catalog(&path).unwrap();
+    let mut children = (0..8)
+        .map(|value| {
+            let atom = Filter::After(value);
+            Filter::Any(vec![atom.clone(), Filter::Not(Box::new(atom))])
+        })
+        .collect::<Vec<_>>();
+    children.push(Filter::Role(vec![crate::role::Role::Assistant]));
+    let scope = Scope {
+        filter: Filter::All(children),
+        node: "local".into(),
+        match_mode: crate::views::matching::Mode::Strict,
+    };
+    assert!(matches!(
+        filter::plan(&scope.filter, &scope.node),
+        filter::Plan::EligibleKeys
+    ));
+    let (hits, count, phases) = reader
+        .vec1_candidates_profiled(GENERATION, &[127, 0], None, None, Some(&scope), 1)
+        .unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(phases.eligible_key_queries, 1);
+}
+
+#[test]
+fn vec1_query_plan_consumes_native_metadata_and_eligible_key_constraints() {
+    let (_root, path) = fixture();
+    let storage = Storage::open_catalog(&path).unwrap();
+    let ast = Filter::All(vec![
+        Filter::After(1),
+        Filter::Source(vec!["slack".into(), "email".into()]),
+    ]);
+    let filter::Plan::Direct(native) = filter::plan(&ast, "local") else {
+        panic!("simple constraints must use metadata")
+    };
+    let ast = Filter::Any(vec![
+        Filter::Source(vec!["slack".into()]),
+        Filter::Provider(vec![crate::provider::Provider::Codex]),
+    ]);
+    let filter::Plan::Direct(union) = filter::plan(&ast, "local") else {
+        panic!("ordinary OR must use native branches")
+    };
+    assert_eq!(union.len(), 2);
+    for (branches, expected) in [
+        (native, vec!["A00", "E02", "I08"]),
+        (
+            vec![vec![
+                "v.point_key IN (SELECT value FROM json_each(:eligible))".into(),
+            ]],
+            vec!["A00", "I01"],
+        ),
+        (union, vec!["A00"]),
+    ] {
+        let sql = format!("EXPLAIN QUERY PLAN {}", candidate_sql(false, &branches));
+        let mut statement = storage.connection.prepare(&sql).unwrap();
+        let mut rows = statement.raw_query();
+        let mut details = Vec::new();
+        while let Some(row) = rows.next().unwrap() {
+            details.push(row.get::<_, String>(3).unwrap());
+        }
+        let plans = details
+            .iter()
+            .filter(|detail| detail.contains("VIRTUAL TABLE INDEX 5:"))
+            .collect::<Vec<_>>();
+        assert_eq!(plans.len(), branches.len());
+        for plan in plans {
+            for constraint in &expected {
+                assert!(plan.contains(*constraint), "missing {constraint} in {plan}");
+            }
+        }
+    }
+}
+
+#[test]
+fn vec1_metadata_only_updates_invalidate_and_rebuild_without_reembedding() {
+    let (_root, path) = fixture();
+    let mut writer = Storage::open_writer(&path).unwrap();
+    let scope = Scope {
+        node: "local".into(),
+        match_mode: crate::views::matching::Mode::Strict,
+        filter: Filter::All(vec![
+            Filter::After(2),
+            Filter::Before(4),
+            Filter::Role(vec![crate::role::Role::Assistant]),
+        ]),
+    };
+    writer.connection.execute("UPDATE objects SET created_at=3000 WHERE origin='provider' AND object_role='entry' AND id='far'", []).unwrap();
+    assert!(!writer.vec1_ready(GENERATION).unwrap());
+    assert!(
+        writer
+            .vec1_candidates(GENERATION, &[127, 0], None, None, Some(&scope), 1)
+            .is_err()
+    );
+    writer.sync_vec1(GENERATION).unwrap();
+    assert_eq!(ids(&writer, Some(&scope)).len(), 1);
+    assert_eq!(writer.vec1_projection_mismatches().unwrap(), 0);
+    let canonical = writer
+        .vec1_canonical_eligible_ids(GENERATION, &scope)
+        .unwrap();
+    assert_eq!(canonical.len(), 1);
+    assert!(canonical.contains("far"));
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let reader = Storage::open_catalog(&path).unwrap();
+    assert_eq!(ids(&reader, Some(&scope)).len(), 1);
+    let writer = Storage::open_writer(&path).unwrap();
+    writer.connection.execute("UPDATE objects SET created_at=9000 WHERE origin='provider' AND object_role='entry' AND id='far'", []).unwrap();
+    writer.sync_vec1(GENERATION).unwrap();
+    assert_eq!(ids(&writer, Some(&scope)), [] as [i64; 0]);
+    drop(writer);
+    assert_eq!(
+        ids(&reader, Some(&scope)).len(),
+        1,
+        "metadata and projection roll back together"
+    );
 }
 
 #[test]
@@ -296,6 +465,7 @@ fn vec1_prepare_corpus() {
     let started = std::time::Instant::now();
     writer.sync_vec1(&generation).unwrap();
     let build_ms = started.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(writer.vec1_projection_mismatches().unwrap(), 0);
     writer.commit_writer().unwrap();
     let points: i64 = writer
         .connection
