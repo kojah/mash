@@ -172,6 +172,7 @@ enum ErrorKind {
     RemoteInference,
     Conflict,
     SourceChanged,
+    SearchTimeout,
 }
 
 impl ErrorKind {
@@ -294,6 +295,18 @@ impl AppError {
             "another model installer is active; retry after it finishes",
             true,
             Action::ModelsInstall,
+        )
+    }
+
+    fn search_timeout(limit: std::time::Duration) -> Self {
+        Self::new(
+            12,
+            ErrorKind::SearchTimeout,
+            format!(
+                "search did not finish within {} s and was stopped; retry, or narrow it with filters",
+                limit.as_secs()
+            ),
+            true,
         )
     }
 

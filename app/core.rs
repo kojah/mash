@@ -60,9 +60,11 @@ async fn execute_admitted(
         let started = std::time::Instant::now();
         let capture = matches!(&request.operation, Operation::Search { diagnostics: true, .. })
             .then(crate::observability::retrieval::Capture::default);
+        let deadline = matches!(&request.operation, Operation::Search { .. }).then_some(SEARCH_DEADLINE);
+        let run = within(deadline, execute_inner(request, capacity).boxed());
         let mut result = match &capture {
-            Some(capture) => capture.scope(execute_inner(request, capacity)).await,
-            None => execute_inner(request, capacity).await,
+            Some(capture) => capture.scope(run).await,
+            None => run.await,
         };
         if let Ok(Response::Search(response)) = &mut result
             && let Some(diagnostics) = &mut response.diagnostics
@@ -86,6 +88,22 @@ async fn execute_admitted(
             elapsed_ms = tracing::field::Empty
         ))
         .await
+}
+
+/// Every search, including any wait for model capacity, ends by this deadline
+/// rather than hanging. Blocking work already started may finish unobserved.
+const SEARCH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
+
+async fn within<T>(
+    deadline: Option<std::time::Duration>,
+    work: impl std::future::Future<Output = Result<T, AppError>>,
+) -> Result<T, AppError> {
+    match deadline {
+        Some(limit) => tokio::time::timeout(limit, work)
+            .await
+            .unwrap_or_else(|_| Err(AppError::search_timeout(limit))),
+        None => work.await,
+    }
 }
 
 async fn execute_inner(
@@ -420,4 +438,21 @@ pub(crate) fn default_models_path() -> PathBuf {
         || PathBuf::from("models"),
         |directories| directories.data_local_dir().join("models"),
     )
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::within;
+
+    #[tokio::test]
+    async fn a_stalled_search_returns_a_retryable_timeout() {
+        let limit = std::time::Duration::from_millis(20);
+        let stalled = std::future::pending::<Result<(), crate::AppError>>();
+        let error = within(Some(limit), stalled).await.unwrap_err();
+        assert_eq!(error.error.kind, crate::ErrorKind::SearchTimeout);
+        assert!(error.error.retryable);
+        // Work that finishes in time, or has no deadline, is untouched.
+        assert!(within(Some(limit), async { Ok(()) }).await.is_ok());
+        assert!(within(None, async { Ok(()) }).await.is_ok());
+    }
 }
