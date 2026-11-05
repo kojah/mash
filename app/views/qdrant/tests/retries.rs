@@ -170,131 +170,56 @@ async fn qdrant_concurrent_publications_keep_views_with_the_latest_accepted_silv
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
+async fn qdrant_native_cleanup_preserves_other_nodes() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let other = Scope {
         node_id: "other".into(),
         ..fixture.identity.clone()
     };
-    let anchor = "connector#document#notes#note";
-    // Native IDs are opaque; even a collision with a connector group anchor
-    // must not widen native deletion into the connector's destination scope.
-    let mut conversation = Fixture::conversation();
-    conversation.id = anchor.into();
-    for identity in [&fixture.identity, &other] {
-        let mut documents = Documents::new(identity);
-        let mut message = fixture.messages("native").remove(0);
-        message.conversation_id.clone_from(&conversation.id);
-        documents
-            .push(&fixture.store, identity, &conversation, message)
-            .await
-            .unwrap();
-        documents
-            .push_connector(
-                &fixture.store,
-                identity,
-                ConnectorPoint {
-                    embedding_fingerprint: None,
-                    source_id: "notes".into(),
-                    object: crate::source::ObjectType {
-                        role: crate::connectors::Role::Document,
-                        kind: "notes:note".into(),
-                    },
-                    group_anchor: anchor.into(),
-                    created_at: None,
-                    unit: SearchUnit {
-                        enrichment: None,
-                        anchor: anchor.into(),
-                        text: "needle connector".into(),
-                        content: "needle connector".into(),
-                        title: None,
-                        author_kind: None,
-                        sequence: 0,
-                        chat_created_at: None,
-                        chat_updated_at: None,
-                        ancestors: Vec::new(),
-                        generation: None,
-                    },
-                    vector: None,
-                },
+    let conversation = Fixture::conversation();
+    for operation in 0..3 {
+        for identity in [&fixture.identity, &other] {
+            let mut documents = Documents::new(identity);
+            let mut message = fixture.messages("native").remove(0);
+            message.conversation_id.clone_from(&conversation.id);
+            documents
+                .push(&fixture.store, identity, &conversation, message)
+                .await
+                .unwrap();
+            documents.finish(&fixture.store).await.unwrap();
+        }
+        match operation {
+            0 => fixture
+                .store
+                .retain_node_conversations(&fixture.identity, Vec::new())
+                .await
+                .unwrap(),
+            1 => fixture
+                .store
+                .retain_documents(&fixture.identity, &conversation.id, Vec::new())
+                .await
+                .unwrap(),
+            _ => fixture
+                .store
+                .delete_node_documents(&fixture.identity)
+                .await
+                .unwrap(),
+        }
+        let name = collection(&fixture.identity.group_id, false);
+        let native = fixture
+            .store
+            .api
+            .retrieve::<Document>(
+                &name,
+                &[
+                    document_id(&fixture.identity.node_id, "message-0"),
+                    document_id(&other.node_id, "message-0"),
+                ],
             )
             .await
             .unwrap();
-        documents.finish(&fixture.store).await.unwrap();
+        assert_eq!(native.len(), 1);
+        assert_eq!(native[0].payload.node_id, other.node_id);
     }
-    fixture
-        .store
-        .retain_node_conversations(&fixture.identity, Vec::new())
-        .await
-        .unwrap();
-    fixture
-        .store
-        .retain_documents(&fixture.identity, &conversation.id, Vec::new())
-        .await
-        .unwrap();
-    let name = collection(&fixture.identity.group_id, false);
-    let native = fixture
-        .store
-        .api
-        .retrieve::<Document>(
-            &name,
-            &[
-                document_id(&fixture.identity.node_id, "message-0"),
-                document_id(&other.node_id, "message-0"),
-            ],
-        )
-        .await
-        .unwrap();
-    assert_eq!(native.len(), 1);
-    assert_eq!(native[0].payload.node_id, other.node_id);
-    let connectors = fixture
-        .store
-        .api
-        .retrieve::<Document>(
-            &name,
-            &[
-                connector_id(&fixture.identity.node_id, anchor),
-                connector_id(&other.node_id, anchor),
-            ],
-        )
-        .await
-        .unwrap();
-    assert_eq!(connectors.len(), 2);
-    assert_connector_cleanup_is_scoped(&fixture, &other, anchor).await;
     fixture.cleanup().await;
-}
-
-async fn assert_connector_cleanup_is_scoped(fixture: &Fixture, other: &Scope, anchor: &str) {
-    let name = collection(&fixture.identity.group_id, false);
-    fixture
-        .store
-        .retain_connector_points(&fixture.identity, Vec::new())
-        .await
-        .unwrap();
-    fixture
-        .store
-        .delete_node_documents(&fixture.identity)
-        .await
-        .unwrap();
-    let native = fixture
-        .store
-        .api
-        .retrieve::<Document>(&name, &[document_id(&other.node_id, "message-0")])
-        .await
-        .unwrap();
-    assert_eq!(native.len(), 1);
-    let connectors = fixture
-        .store
-        .api
-        .retrieve::<Document>(
-            &name,
-            &[
-                connector_id(&fixture.identity.node_id, anchor),
-                connector_id(&other.node_id, anchor),
-            ],
-        )
-        .await
-        .unwrap();
-    assert_eq!(connectors.len(), 1);
-    assert_eq!(connectors[0].payload.node_id, other.node_id);
 }

@@ -10,7 +10,6 @@ use crate::views::qdrant::{self as qdrant_index, NodeViews};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-pub(super) mod connectors;
 mod replay;
 #[cfg(test)]
 pub(crate) use replay::ReplayFault;
@@ -23,8 +22,6 @@ type NodeLock = Arc<tokio::sync::Mutex<()>>;
 pub(crate) struct Store {
     silver: SilverStore,
     views: qdrant_index::Store,
-    /// Embeds connector records; absent when the server has no model setup.
-    embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
     /// Serializes the short read-check-write that stamps node views. Distinct
@@ -115,6 +112,25 @@ pub(super) async fn initialize(
 const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
 impl Store {
+    #[cfg(test)]
+    pub(crate) fn with_views_interruption(mut self) -> Self {
+        self.views_interruption = true;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_views_partial_interruption(self) -> Self {
+        self.views_partial_interruption
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn clear_views_partial_interruption(&self) {
+        self.views_partial_interruption
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub(crate) fn new(
         silver: SilverStore,
         views: qdrant_index::Store,
@@ -123,7 +139,6 @@ impl Store {
         Self {
             silver,
             views,
-            embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
             views_writes: Arc::default(),
@@ -147,11 +162,6 @@ impl Store {
 
     pub(crate) fn responses(&self) -> crate::redaction::Policy {
         self.responses
-    }
-
-    pub(crate) fn with_embedder(mut self, embedder: connectors::Embedder) -> Self {
-        self.embedder = Some(embedder);
-        self
     }
 
     #[cfg(test)]
@@ -423,19 +433,13 @@ impl Store {
             };
             let mut counts = self.read(&node, silver_store::counts).await?;
             let views = self.views.node_views(&node).await?;
-            let connectors_current = match &views {
-                Some(g) => {
-                    g.projections.connector_digests() == self.connector_digests(&node).await?
-                }
-                None => false,
-            };
             let silver = head.silver_revision.as_ref();
-            let lexical_current = views.as_ref().is_some_and(|g| {
-                connectors_current && silver.is_some() && g.silver.as_ref() == silver
-            });
+            let lexical_current = views
+                .as_ref()
+                .is_some_and(|g| silver.is_some() && g.silver.as_ref() == silver);
             let views_current = views
                 .as_ref()
-                .is_some_and(|g| connectors_current && g.current(&self.views, &node, silver));
+                .is_some_and(|g| g.current(&self.views, &node, silver));
             counts.embeddings = views
                 .as_ref()
                 .filter(|g| g.compatible(&self.views, &node))

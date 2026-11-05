@@ -174,9 +174,6 @@ impl From<Condition> for q::Condition {
         use q::condition::ConditionOneOf as C;
         let condition_one_of = Some(match value {
             Condition::Nested(filter) => C::Filter(filter.into()),
-            Condition::IsEmpty { is_empty } => {
-                C::IsEmpty(q::IsEmptyCondition { key: is_empty.key })
-            }
             Condition::Match { key, r#match } => C::Field(q::FieldCondition {
                 key,
                 r#match: Some(q::Match {
@@ -274,16 +271,9 @@ mod tests {
     }
 
     #[test]
-    fn delete_filters_preserve_native_connector_and_exclusion_scopes() {
+    fn delete_filters_preserve_node_and_exclusion_scopes() {
         let filter: q::Filter = Filter {
-            must: vec![
-                super::super::matches("node_id", vec!["node".into()]),
-                Condition::IsEmpty {
-                    is_empty: super::super::Field {
-                        key: "provider".into(),
-                    },
-                },
-            ],
+            must: vec![super::super::matches("node_id", vec!["node".into()])],
             must_not: vec![Condition::Nested(Filter {
                 should: vec![super::super::matches("unit.anchor", vec!["keep".into()])],
                 ..Default::default()
@@ -291,11 +281,8 @@ mod tests {
             ..Default::default()
         }
         .into();
-        assert_eq!(filter.must.len(), 2);
+        assert_eq!(filter.must.len(), 1);
         assert_eq!(filter.must_not.len(), 1);
-        assert!(
-            matches!(&filter.must[1].condition_one_of, Some(q::condition::ConditionOneOf::IsEmpty(v)) if v.key == "provider")
-        );
         let Some(q::condition::ConditionOneOf::Filter(nested)) =
             &filter.must_not[0].condition_one_of
         else {

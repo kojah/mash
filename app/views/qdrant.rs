@@ -17,9 +17,9 @@ pub(crate) use api::endpoint;
 pub(crate) use configuration::{SCHEMA_VERSION, Settings};
 use serde::{Deserialize, Serialize};
 
-pub(crate) use evidence::{ProjectionEvidence, ProjectionFamily, ProjectionScope, Projections};
+pub(crate) use evidence::{ProjectionEvidence, Projections};
 pub(crate) use read::validate_search;
-pub(crate) use views::{ConnectorPoint, Documents, NodeViews};
+pub(crate) use views::{Documents, NodeViews};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

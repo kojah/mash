@@ -10,8 +10,6 @@ pub(super) struct Report {
     providers: Vec<ProviderStatus>,
     configuration_loaded: bool,
     silver: Option<crate::silver::certificate::Certificate>,
-    connectors: Option<Vec<crate::source::SourceStatus>>,
-    connector_scope: &'static str,
     runtimes: crate::runtime::Inventory,
 }
 
@@ -115,9 +113,7 @@ pub(super) fn inspect(paths: &Paths) -> Report {
         providers: vec![],
         configuration_loaded: false,
         silver: None,
-        connectors: None,
         runtimes: crate::runtime::inspect(paths),
-        connector_scope: "Local committed connector deliveries only. No delivery does not prove a connector is unconfigured. External credentials, live connections and shared-only sources are not inspected; use `mash status --shared` for shared readiness.",
     };
     add_runtime_findings(&mut report);
     let storage = if compatible {
@@ -180,14 +176,10 @@ fn inspect_catalog(
             }
             Err(_) => report.findings.push(unverified("Cannot read the stored history certificate; source interpretation freshness is unverified.")),
         }
-        match storage.connector_activity() {
-            Ok(connectors) => report.connectors = Some(connectors),
-            Err(_) => report.findings.push(unverified(
-                "Cannot read retained connector delivery evidence.",
-            )),
-        }
     } else if compatible {
-        report.findings.push(unverified("Schema matches, but the catalog cannot be inspected. Provider scans and connector deliveries are unverified."));
+        report.findings.push(unverified(
+            "Schema matches, but the catalog cannot be inspected. Provider scans are unverified.",
+        ));
     }
 }
 
@@ -429,12 +421,11 @@ mod tests {
     }
 
     #[test]
-    fn installation_resources_distinguish_deliveries_scans_and_live_health() {
+    fn installation_resources_report_recorded_scans_without_claiming_configuration() {
         let directory = tempfile::tempdir().unwrap();
         let database = directory.path().join("silver.sqlite3");
         drop(Storage::open(&database).unwrap());
         let connection = rusqlite::Connection::open(&database).unwrap();
-        connection.execute_batch("INSERT INTO connector_sources VALUES('example', '1'); INSERT INTO connector_activity(source_id,modes,snapshot_at,complete_snapshot_at) VALUES('example','[\"snapshot\"]',1234,1234);").unwrap();
         connection
             .execute(
                 "INSERT INTO silver_scans VALUES('codex',?1,1)",
@@ -450,14 +441,6 @@ mod tests {
             models_dir: None,
         });
         assert_eq!(report.findings[0].state, State::Present);
-        let connectors = report.connectors.unwrap();
-        assert_eq!(connectors.len(), 1);
-        assert_eq!(
-            connectors[0].source,
-            crate::source::Source::Connector("example".into())
-        );
-        assert_eq!(connectors[0].last_complete_snapshot_at, Some(1234));
-        assert_eq!(connectors[0].last_live_at, None);
         let codex = report
             .providers
             .iter()
@@ -469,6 +452,5 @@ mod tests {
             crate::silver::certificate::Completeness::Complete
         );
         assert_eq!(codex.scan.as_ref().unwrap().rejected_sources, 0);
-        assert!(report.connector_scope.contains("live connections"));
     }
 }

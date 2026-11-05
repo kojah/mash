@@ -65,7 +65,7 @@ impl NodeViews {
 
     pub(crate) fn embeddings(&self) -> u64 {
         self.projections
-            .native()
+            .sessions()
             .map(|(_, evidence)| evidence.embeddings)
             .sum()
     }
@@ -77,23 +77,6 @@ impl NodeViews {
 
 fn views_id(node: &str) -> String {
     point_id(&["node-views", node])
-}
-
-fn family_condition(family: super::ProjectionFamily) -> api::Condition {
-    match family {
-        super::ProjectionFamily::Native => api::matches(
-            "provider",
-            crate::provider::Provider::ALL
-                .iter()
-                .map(|p| p.as_str().to_owned())
-                .collect(),
-        ),
-        super::ProjectionFamily::Connector => api::Condition::IsEmpty {
-            is_empty: api::Field {
-                key: "provider".into(),
-            },
-        },
-    }
 }
 
 impl Store {
@@ -196,28 +179,6 @@ impl Store {
             must: vec![
                 api::matches("node_id", vec![identity.node_id.clone()]),
                 api::matches("conversation_id", vec![conversation.to_owned()]),
-                family_condition(super::ProjectionFamily::Native),
-            ],
-            ..api::Filter::default()
-        };
-        if !current.is_empty() {
-            filter.must_not.push(api::matches("unit.anchor", current));
-        }
-        self.api
-            .delete_filtered(&collection(&identity.group_id, false), filter)
-            .await
-    }
-
-    /// Remove obsolete connector points, including writes never recorded in metadata.
-    pub(crate) async fn retain_connector_points(
-        &self,
-        identity: &Scope,
-        current: Vec<String>,
-    ) -> Result<(), AppError> {
-        let mut filter = api::Filter {
-            must: vec![
-                api::matches("node_id", vec![identity.node_id.clone()]),
-                family_condition(super::ProjectionFamily::Connector),
             ],
             ..api::Filter::default()
         };
@@ -236,10 +197,7 @@ impl Store {
         current: Vec<String>,
     ) -> Result<(), AppError> {
         let mut filter = api::Filter {
-            must: vec![
-                api::matches("node_id", vec![identity.node_id.clone()]),
-                family_condition(super::ProjectionFamily::Native),
-            ],
+            must: vec![api::matches("node_id", vec![identity.node_id.clone()])],
             ..api::Filter::default()
         };
         if !current.is_empty() {
@@ -375,51 +333,6 @@ impl Documents {
         Ok(embedded)
     }
 
-    /// Queue one connector unit's point, with its vector when dense views are built.
-    pub(crate) async fn push_connector(
-        &mut self,
-        store: &Store,
-        identity: &Scope,
-        point: ConnectorPoint,
-    ) -> Result<(), AppError> {
-        let ConnectorPoint {
-            source_id,
-            object,
-            group_anchor,
-            created_at,
-            mut unit,
-            vector,
-            embedding_fingerprint,
-        } = point;
-        let words = tokens(&unit.text);
-        unit.generation = vector.as_ref().map(|_| identity.generation.clone());
-        let vectors = Self::vectors(store, identity, &unit.text, &words, vector.clone());
-        self.push_point(
-            store,
-            api::Point {
-                id: connector_id(&identity.node_id, &unit.anchor),
-                vector: vectors,
-                payload: Document {
-                    node_id: identity.node_id.clone(),
-                    source: crate::source::Source::Connector(source_id.clone()),
-                    provider: None,
-                    source_id: Some(source_id),
-                    role: None,
-                    project: None,
-                    repository: None,
-                    object,
-                    conversation_id: group_anchor,
-                    created_at,
-                    tokens: words,
-                    unit,
-                    vector,
-                    embedding_fingerprint,
-                },
-            },
-        )
-        .await
-    }
-
     fn vectors(
         store: &Store,
         identity: &Scope,
@@ -449,16 +362,4 @@ impl Documents {
     pub(crate) async fn flush(&mut self, store: &Store) -> Result<(), AppError> {
         self.batch.flush(&store.api, &self.name).await
     }
-}
-
-/// One connector unit ready to write.
-#[derive(Clone, serde::Serialize)]
-pub(crate) struct ConnectorPoint {
-    pub(crate) embedding_fingerprint: Option<String>,
-    pub(crate) source_id: String,
-    pub(crate) object: crate::source::ObjectType,
-    pub(crate) group_anchor: String,
-    pub(crate) created_at: Option<i64>,
-    pub(crate) unit: SearchUnit,
-    pub(crate) vector: Option<Vec<f64>>,
 }

@@ -1,41 +1,12 @@
 //! Silver projection and embedding shared by direct and server workflows.
 //! Callers own silver snapshots, mutation admission and final certification.
 use super::documents::{ConversationRecord, EmbeddingInput, MessageRecord};
-use super::qdrant::{ConnectorPoint, Documents, Store};
+use super::qdrant::{Documents, Store};
 use super::scope::Scope;
 use super::shared::{self as embedding, Build};
 use crate::AppError;
 use crate::semantic::{LoadedIndexer, remote};
 use std::path::Path;
-
-pub(crate) fn connector_point(
-    unit: &crate::storage::connector_views::Unit,
-    evidence: &crate::storage::connector_views::Evidence,
-    vector: Option<Vec<f64>>,
-) -> super::qdrant::ConnectorPoint {
-    let (group_created_at, group_updated_at) = evidence.group_times();
-    super::qdrant::ConnectorPoint {
-        source_id: unit.source_id.clone(),
-        object: unit.object.clone(),
-        group_anchor: unit.group_anchor.clone(),
-        created_at: unit.created_at,
-        unit: super::qdrant::SearchUnit {
-            anchor: unit.anchor.clone(),
-            text: unit.text.clone(),
-            content: evidence.content().to_owned(),
-            title: evidence.title().map(str::to_owned),
-            enrichment: None,
-            author_kind: evidence.author(),
-            sequence: unit.sequence,
-            chat_created_at: group_created_at,
-            chat_updated_at: group_updated_at,
-            ancestors: evidence.ancestors(&unit.source_id),
-            generation: None,
-        },
-        vector,
-        embedding_fingerprint: None,
-    }
-}
 
 pub(crate) struct Writer<'a> {
     store: &'a Store,
@@ -44,17 +15,6 @@ pub(crate) struct Writer<'a> {
     pool: Option<LoadedIndexer>,
     build: Build,
     documents: Documents,
-}
-
-/// Reuse must preserve all stored evidence, not only the embedding text.
-pub(crate) fn connector_digest(
-    unit: &crate::storage::connector_views::Unit,
-    evidence: &crate::storage::connector_views::Evidence,
-) -> Result<String, AppError> {
-    let point = connector_point(unit, evidence, None);
-    let bytes = serde_json::to_vec(&point)
-        .map_err(|_| AppError::internal("encode connector projection fingerprint"))?;
-    Ok(blake3::hash(&bytes).to_hex().to_string())
 }
 
 pub(crate) struct ChatBuild {
@@ -150,47 +110,6 @@ impl<'a> Writer<'a> {
             embeddings: stored,
             complete: stored == expected,
         })
-    }
-
-    /// Connector normalization supplies the same evidence and bounded writer as
-    /// native projection. Callers retain ownership of reconciliation and receipts.
-    pub(crate) async fn write_connectors(
-        &mut self,
-        points: &[ConnectorPoint],
-    ) -> Result<(), AppError> {
-        for batch in points.chunks(embedding::BATCH_ROWS) {
-            let vectors = if self.store.build().dense_enabled() {
-                let inputs = batch
-                    .iter()
-                    .map(|point| EmbeddingInput {
-                        source: crate::source::Source::Connector(point.source_id.clone()),
-                        anchor: &point.unit.anchor,
-                        text: &point.unit.text,
-                    })
-                    .collect::<Vec<_>>();
-                self.embed(&inputs)
-                    .await?
-                    .into_iter()
-                    .map(Some)
-                    .collect::<Vec<_>>()
-            } else {
-                vec![None; batch.len()]
-            };
-            for (point, vector) in batch.iter().zip(vectors) {
-                let mut point = point.clone();
-                if let Some((vector, fingerprint)) = vector {
-                    point.vector = Some(vector);
-                    point.embedding_fingerprint = Some(fingerprint);
-                } else {
-                    point.vector = None;
-                    point.embedding_fingerprint = None;
-                }
-                self.documents
-                    .push_connector(self.store, self.scope, point)
-                    .await?;
-            }
-        }
-        Ok(())
     }
 
     async fn embed(

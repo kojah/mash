@@ -1,7 +1,7 @@
 //! Direct local Qdrant projection from committed SQLite silver. No HTTP service.
 use super::{
     manifest::Manifest,
-    qdrant::{NodeViews, ProjectionEvidence, ProjectionScope, Store},
+    qdrant::{NodeViews, ProjectionEvidence, Store},
     scope::Scope,
 };
 use crate::{
@@ -229,15 +229,6 @@ pub(crate) async fn build(
         Some((models, configuration.embeddings.as_ref())),
     );
     Box::pin(projection::native(
-        &store,
-        &scope,
-        &mut writer,
-        &input,
-        previous.as_ref(),
-        &mut node,
-    ))
-    .await?;
-    Box::pin(projection::connectors(
         &store,
         &scope,
         &mut writer,

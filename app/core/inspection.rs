@@ -259,7 +259,7 @@ fn local_status(
             crate::Action::ModelsInstall
         }),
         configuration: configuration.status(),
-        sources: [native_sources(configuration), snapshot.connectors].concat(),
+        sources: native_sources(configuration),
         shared: shared::status(database_path, publication_config(configuration))?,
         shared_index: None,
         duplicates: None,

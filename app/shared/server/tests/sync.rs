@@ -2365,7 +2365,7 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
 async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();
-    let scope = crate::views::qdrant::ProjectionScope::NativeChat("conversation".into());
+    let scope = "conversation".to_owned();
     service
         .upload(FIRST, &snapshot(1))
         .await
@@ -2434,7 +2434,7 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
             .unwrap()
             .unwrap();
         assert_eq!(
-            merged.projections.native().count(),
+            merged.projections.sessions().count(),
             2,
             "a stale marker must not suppress valid coverage"
         );
@@ -2497,7 +2497,7 @@ async fn qdrant_certification_requires_vectors_for_every_eligible_native_unit() 
 async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alternate() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();
-    let scope = crate::views::qdrant::ProjectionScope::NativeChat("conversation".into());
+    let scope = "conversation".to_owned();
     service
         .upload(FIRST, &snapshot(1))
         .await

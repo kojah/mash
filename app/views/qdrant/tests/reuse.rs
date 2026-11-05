@@ -14,81 +14,51 @@ fn model() -> crate::semantic::remote::Configuration {
     }
 }
 
-fn note() -> ConnectorPoint {
-    let anchor = "connector#document#notes#note";
-    ConnectorPoint {
-        source_id: "notes".into(),
-        object: crate::source::ObjectType {
-            role: crate::connectors::Role::Document,
-            kind: "notes:note".into(),
-        },
-        group_anchor: anchor.into(),
-        created_at: Some(1),
-        unit: SearchUnit {
-            anchor: anchor.into(),
-            text: "needle note".into(),
-            content: "needle note".into(),
-            title: None,
-            enrichment: None,
-            author_kind: None,
-            sequence: 0,
-            chat_created_at: Some(1),
-            chat_updated_at: Some(1),
-            ancestors: vec![],
-            generation: None,
-        },
-        vector: None,
-        embedding_fingerprint: None,
-    }
-}
-
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
-async fn qdrant_materializer_reuses_both_sources_after_metadata_edits_without_a_model() {
+async fn qdrant_materializer_reuses_session_vectors_after_metadata_edits_without_a_model() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let model = model();
     let mut chat = Fixture::conversation();
-    let messages = fixture.messages("native");
-    let mut note = note();
+    let mut messages = fixture.messages("native");
     let mut writer = Writer::new(
         &fixture.store,
         &fixture.identity,
         Some((Path::new(""), Some(&model))),
     );
     writer.write_chat(&chat, &messages).await.unwrap();
-    writer.write_connectors(&[note.clone()]).await.unwrap();
     assert_eq!(
         writer.finish().await.unwrap().embeddings.model_inferences,
-        3
+        2
     );
 
     chat.title = Some("changed title, dialogue-only recipe".into());
-    note.created_at = Some(200);
+    chat.updated_at = Some(200);
     let mut writer = Writer::new(&fixture.store, &fixture.identity, None);
     writer.write_chat(&chat, &messages).await.unwrap();
-    writer.write_connectors(&[note.clone()]).await.unwrap();
     let result = writer.finish().await.unwrap();
     assert_eq!(result.embeddings.model_inferences, 0);
-    assert_eq!(result.embeddings.reused_vectors, 3);
+    assert_eq!(result.embeddings.reused_vectors, 2);
     let stored = fixture
         .store
         .api
         .retrieve::<Document>(
             &collection(&fixture.identity.group_id, false),
-            &[
-                document_id(&fixture.identity.node_id, "message-0"),
-                connector_id(&fixture.identity.node_id, &note.unit.anchor),
-            ],
+            &[document_id(&fixture.identity.node_id, "message-0")],
         )
         .await
         .unwrap();
-    assert_eq!(stored.len(), 2);
+    assert_eq!(stored.len(), 1);
     assert!(stored.iter().any(|p| p.payload.unit.title == chat.title));
-    assert!(stored.iter().any(|p| p.payload.created_at == Some(200)));
+    assert!(
+        stored
+            .iter()
+            .any(|p| p.payload.unit.chat_updated_at == Some(200))
+    );
 
-    note.unit.text = "changed embedding input".into();
+    messages[0].projection = "changed embedding input".into();
     let mut writer = Writer::new(&fixture.store, &fixture.identity, None);
-    assert!(writer.write_connectors(&[note]).await.is_err());
+    assert!(writer.write_chat(&chat, &messages).await.is_err());
     fixture.cleanup().await;
 }
 

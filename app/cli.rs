@@ -156,7 +156,7 @@ enum Command {
         #[arg(long, value_name = "NODE_ID")]
         shared: Option<String>,
     },
-    /// Report readiness; --installation discovers providers, connector deliveries and agent setup.
+    /// Report readiness; --installation discovers providers and agent setup.
     Status {
         /// Inspect agent integrations without opening the Mash configuration, index or models.
         #[arg(long, conflicts_with_all = ["coverage", "shared"])]

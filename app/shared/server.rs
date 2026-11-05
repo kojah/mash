@@ -350,8 +350,7 @@ pub(crate) struct Activation {
     pub(crate) memory: bool,
 }
 
-/// `models` is used for connector records, which arrive without vectors, and
-/// for `replay` of all views from silver before serving.
+/// `models` is used to replay views from silver before serving.
 pub(crate) async fn run(
     path: &Path,
     activation: Activation,
@@ -369,10 +368,6 @@ pub(crate) async fn run(
         activation.memory,
     )
     .await?
-    .with_embedder(store::connectors::Embedder {
-        models: models.to_path_buf(),
-        remote: config.embeddings.remote(remote_redaction)?,
-    })
     .with_response_redaction(crate::redaction::Policy::new(config.redaction.responses));
     if replay {
         let remote = config.embeddings.remote(remote_redaction)?;

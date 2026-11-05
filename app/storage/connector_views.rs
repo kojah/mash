@@ -50,22 +50,6 @@ pub(crate) fn unit_text(title: Option<&str>, content: &str) -> String {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct Unit {
-    pub(crate) anchor: String,
-    pub(crate) object: ObjectType,
-    pub(crate) source_id: String,
-    pub(crate) record_id: String,
-    /// An entry's nearest container, or a document's own anchor.
-    pub(crate) group_anchor: String,
-    pub(crate) created_at: Option<i64>,
-    /// Position among the container's entries, the same total order the thread
-    /// reader uses. Native messages call this `ordinal`.
-    pub(crate) sequence: i64,
-    /// What is indexed and embedded; its digest decides when to re-index.
-    pub(crate) text: String,
-}
-
 fn decode(record: Option<&str>) -> Result<Object, AppError> {
     let record =
         record.ok_or_else(|| AppError::database_data("stored connector record is missing"))?;
@@ -101,15 +85,6 @@ impl Evidence {
         self.object.content.as_deref().unwrap_or_default()
     }
 
-    pub(crate) fn author(&self) -> Option<AuthorKind> {
-        (self.object.role == Role::Entry).then(|| {
-            self.object
-                .author
-                .as_ref()
-                .map_or(AuthorKind::Unknown, |author| author.kind)
-        })
-    }
-
     pub(crate) fn text(&self) -> String {
         unit_text(self.title(), self.content())
     }
@@ -131,11 +106,6 @@ impl Evidence {
                 title: object.title.clone(),
             })
             .collect()
-    }
-
-    pub(crate) fn group_times(&self) -> (Option<i64>, Option<i64>) {
-        self.group()
-            .map_or((None, None), |group| (group.created_at, group.updated_at))
     }
 }
 
@@ -172,125 +142,6 @@ pub(crate) fn evidence(
         current = row.parent_id;
     }
     Ok(Some(Evidence { object, ancestors }))
-}
-
-struct Row {
-    role: Role,
-    parent: Option<String>,
-    object: Object,
-}
-
-impl Row {
-    fn new(role: &str, parent: Option<String>, record: Option<&str>) -> Result<Self, AppError> {
-        Ok(Self {
-            role: parse_role(role)
-                .ok_or_else(|| AppError::database_data("stored connector role is invalid"))?,
-            parent,
-            object: decode(record)?,
-        })
-    }
-}
-
-/// Every searchable unit that connector silver currently holds.
-pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppError> {
-    let mut objects = HashMap::new();
-    for row in sql::ConnectorSilverObjects
-        .query_many(connection)
-        .map_err(AppError::database)?
-    {
-        objects.insert(
-            (row.source_id, row.id),
-            Row::new(&row.role, row.parent_id, row.record.as_deref())?,
-        );
-    }
-    units(&objects, None)
-}
-
-fn units(
-    objects: &HashMap<(String, String), Row>,
-    emit: Option<&std::collections::HashSet<(String, String)>>,
-) -> Result<Vec<Unit>, AppError> {
-    let mut units = Vec::new();
-    for ((source_id, id), row) in objects {
-        if emit.is_some_and(|emit| !emit.contains(&(source_id.clone(), id.clone()))) {
-            continue;
-        }
-        let content = match (row.role, row.object.content.as_deref()) {
-            (Role::Entry | Role::Document, Some(content)) if !content.trim().is_empty() => content,
-            _ => continue,
-        };
-        let (group_anchor, title) = if row.role == Role::Entry {
-            // Silver guarantees a container ancestor and no cycles.
-            let mut current = row.parent.clone();
-            let mut found = None;
-            while let Some(parent) = current.take() {
-                let Some(ancestor) = objects.get(&(source_id.clone(), parent.clone())) else {
-                    break;
-                };
-                if ancestor.role == Role::Container {
-                    found = Some((
-                        anchor(Role::Container, source_id, &parent),
-                        ancestor.object.title.as_deref(),
-                    ));
-                    break;
-                }
-                current.clone_from(&ancestor.parent);
-            }
-            found.ok_or_else(|| AppError::database_data("connector entry has no container"))?
-        } else {
-            (anchor(row.role, source_id, id), row.object.title.as_deref())
-        };
-        units.push(Unit {
-            anchor: anchor(row.role, source_id, id),
-            object: ObjectType {
-                role: row.role,
-                kind: row.object.kind.as_str().to_owned(),
-            },
-            source_id: source_id.clone(),
-            record_id: id.clone(),
-            group_anchor,
-            created_at: row.object.created_at,
-            sequence: 0,
-            text: unit_text(title, content),
-        });
-    }
-    units.sort_by(|left, right| left.anchor.cmp(&right.anchor));
-    order_entries(&mut units);
-    Ok(units)
-}
-
-/// Assign each entry its position among its container's entries, ordered by
-/// creation time and then id. Documents and containers stay at zero.
-fn order_entries(units: &mut [Unit]) {
-    use std::collections::BTreeMap;
-    let mut groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
-    for (index, unit) in units.iter().enumerate() {
-        if unit.object.role == Role::Entry {
-            groups
-                .entry((unit.source_id.clone(), unit.group_anchor.clone()))
-                .or_default()
-                .push(index);
-        }
-    }
-    for indices in groups.values_mut() {
-        indices.sort_by(|left, right| {
-            let left = &units[*left];
-            let right = &units[*right];
-            (
-                left.created_at.is_none(),
-                left.created_at,
-                left.record_id.as_str(),
-            )
-                .cmp(&(
-                    right.created_at.is_none(),
-                    right.created_at,
-                    right.record_id.as_str(),
-                ))
-        });
-        for (position, index) in indices.iter().enumerate() {
-            units[*index].sequence = i64::try_from(position).unwrap_or(i64::MAX);
-        }
-    }
 }
 
 impl Storage {
@@ -450,44 +301,4 @@ pub(crate) fn chats(
             })
         })
         .collect()
-}
-
-#[cfg(test)]
-mod sequence_tests {
-    use super::*;
-
-    fn entry(id: &str, created_at: Option<i64>) -> Unit {
-        Unit {
-            anchor: id.to_owned(),
-            object: ObjectType {
-                role: Role::Entry,
-                kind: "slack:message".to_owned(),
-            },
-            source_id: "slack:T0TEAM:U0ALICE".to_owned(),
-            record_id: id.to_owned(),
-            group_anchor: "channel".to_owned(),
-            created_at,
-            sequence: 0,
-            text: String::new(),
-        }
-    }
-
-    /// Connector entries get the position `thread()` reads them in: creation
-    /// time, then id, with undated entries last.
-    #[test]
-    fn entries_are_ordered_by_creation_then_id() {
-        let mut units = vec![
-            entry("b", Some(2)),
-            entry("a", Some(1)),
-            entry("c", None),
-            entry("d", Some(1)),
-        ];
-        order_entries(&mut units);
-        let mut ordered: Vec<_> = units
-            .iter()
-            .map(|unit| (unit.sequence, unit.record_id.as_str()))
-            .collect();
-        ordered.sort_unstable();
-        assert_eq!(ordered, vec![(0, "a"), (1, "d"), (2, "b"), (3, "c")]);
-    }
 }

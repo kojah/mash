@@ -3,7 +3,7 @@ use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::silver_store;
 use crate::views::materialize::Writer;
-use crate::views::qdrant::{NodeViews, ProjectionEvidence, ProjectionScope};
+use crate::views::qdrant::{NodeViews, ProjectionEvidence};
 use std::path::Path;
 
 /// Per-store interruption points; no global state or production fault switches.
@@ -83,7 +83,7 @@ impl Store {
                 .await?;
             let built = writer.write_chat(&conversation, &messages).await?;
             node.projections.insert(
-                ProjectionScope::NativeChat(id.clone()),
+                id.clone(),
                 ProjectionEvidence {
                     fingerprint: fingerprint.clone(),
                     embeddings: built.embeddings,

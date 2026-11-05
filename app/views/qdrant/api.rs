@@ -159,11 +159,6 @@ pub(super) enum Condition {
     Match { key: String, r#match: Match },
     Range { key: String, range: Range },
     Nested(Filter),
-    IsEmpty { is_empty: Field },
-}
-#[derive(Clone, Serialize)]
-pub(super) struct Field {
-    pub key: String,
 }
 #[derive(Clone, Serialize)]
 pub(super) struct Match {

@@ -1,11 +1,8 @@
 //! Consistent canonical input for local Qdrant projection. No SQLite gold reads.
-use super::{Counts, Storage, connector_views};
+use super::{Counts, Storage};
 use crate::{
     AppError,
-    views::{
-        documents::{ConversationRecord, MessageRecord},
-        qdrant::ConnectorPoint,
-    },
+    views::documents::{ConversationRecord, MessageRecord},
 };
 use std::{
     collections::BTreeMap,
@@ -25,7 +22,6 @@ pub(crate) struct Input {
     pub(crate) certificate: crate::silver::certificate::Certificate,
     pub(crate) counts: Counts,
     pub(crate) chats: BTreeMap<String, Chat>,
-    pub(crate) connectors: Vec<(String, ConnectorPoint)>,
     messages: tempfile::NamedTempFile,
 }
 
@@ -87,25 +83,10 @@ impl Input {
                 }
                 Ok(())
             })?;
-            let mut connectors = Vec::new();
-            for unit in connector_views::silver_units(&storage.connection)? {
-                let evidence = connector_views::evidence(
-                    &storage.connection,
-                    &unit.source_id,
-                    &unit.record_id,
-                )?
-                .ok_or_else(|| AppError::database_data("connector gold input disappeared"))?;
-                let digest = crate::views::materialize::connector_digest(&unit, &evidence)?;
-                connectors.push((
-                    digest,
-                    crate::views::materialize::connector_point(&unit, &evidence, None),
-                ));
-            }
             captured = Some((
                 storage.local_gold_identity(path)?,
                 snapshot.source_silver.clone(),
                 storage.silver_counts()?,
-                connectors,
             ));
             Ok(())
         })?;
@@ -117,14 +98,13 @@ impl Input {
                 .ok_or_else(|| AppError::internal("missing captured chat"))?
                 .fingerprint = hash.finalize().to_hex().to_string();
         }
-        let (instance, certificate, counts, connectors) =
+        let (instance, certificate, counts) =
             captured.ok_or_else(|| AppError::internal("missing gold input"))?;
         Ok(Self {
             instance,
             certificate,
             counts,
             chats,
-            connectors,
             messages,
         })
     }

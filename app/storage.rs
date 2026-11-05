@@ -59,7 +59,6 @@ pub(crate) struct Counts {
 pub(crate) struct StatusSnapshot {
     pub(crate) silver: Option<crate::silver::certificate::Certificate>,
     pub(crate) counts: Counts,
-    pub(crate) connectors: Vec<crate::source::SourceStatus>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -51,18 +51,13 @@ original extraction preserved shared mutation ordering and revision checks.
 The local cutover is modeled separately by `LocalWriter` and `LocalGold` below;
 shared coordinators retain their existing models.
 
-Native chat and connector unit evidence now share `NodeViews.projections`, keyed
-by a typed dependency scope, with fingerprint, vector count and completeness on
-every entry. `Projections::merge_native` implements the same preferred/current
-fingerprint rule modeled by `CoverageMerge`; `retain_matching` preserves the
-other scope family while dropping stale evidence. Connector entries are added
-only after completed point writes, and invalidation still precedes those writes.
-This representation change leaves the `LocalGold`, `SharedViews`, `RetryViews`
-and `CoverageMerge` durable actions and lock boundaries unchanged. Native deletion
-filters now explicitly restrict the source family even for one chat, enforcing
-the models' assumption that deleting native history cannot delete connector
-points with a colliding group ID. The mixed-source cleanup regression exercises
-that boundary; the models do not represent raw string IDs or Qdrant filters.
+Session evidence lives in `NodeViews.projections`, keyed directly by session ID,
+with a fingerprint, vector count, and completeness flag. `Projections::merge_matching`
+implements the preferred/current fingerprint rule modeled by `CoverageMerge`;
+`retain_matching` drops evidence that no longer matches committed history.
+The `LocalGold`, `SharedViews`, `RetryViews`, and `CoverageMerge` durable actions
+and lock boundaries remain unchanged. Node-scoped deletion is tested against
+another publisher with identical session and message IDs.
 
 Qdrant point publication now uses the generated Tonic client in
 `app/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
@@ -97,8 +92,8 @@ body receipt/worker start, and work completion. This is not a wall-clock latency
 guarantee: the implementation has a five-minute waiting deadline, and neither the
 model nor FIFO promises equal throughput across nodes or body sizes. HTTP socket
 closure is not assumed to immediately cancel a handler. Rust tests verify FIFO,
-overflow, timeout/cancellation cleanup, phase reporting, a real HTTP connector
-request completing after waiting, and detached worker ownership. Per-node locks,
+overflow, timeout/cancellation cleanup, phase reporting, and detached worker
+ownership. Per-node locks,
 SQLite and Qdrant durability remain covered by their existing models/tests.
 The deadline was increased after a 32-publisher mixed-workload trial took
 104–151 seconds and forced repeated queue expiry at 60 seconds. The model and
@@ -114,8 +109,8 @@ permits taking a non-head waiter and must violate `FairOrder`.
 `LocalWriter.tla` models two processes targeting one local database. `Acquire`
 maps to `storage::admission::acquire` and the OS-held sibling `.writer.lock`.
 Core dispatch admits indexing (including init's first index and views rebuild),
-local connector ingress, forgetting, and import to its destination database.
-Readers and shared-only connector delivery do not acquire this lock. Contention
+forgetting, and import to its destination database.
+Readers do not acquire this lock. Contention
 returns retryable `index-busy`; there is no queue or fairness claim.
 
 `StartBlocking` maps to `crate::blocking` capturing an Arc of the task's owner.
@@ -139,7 +134,7 @@ blocking work after cancellation, and public CLI contention with reads available
 ### LocalGold: invalidate before mutation and certify completed replay
 
 `LocalGold.tla` checks the direct local coordinator with two silver revisions,
-two build settings, and one native and one connector projection. Revision 2
+two build settings, and two session projections. Revision 2
 deletes the native projection. A reader reports current only when certification,
 the captured silver revision, and build settings agree. `CurrentMatchesSilver`
 then requires both persisted projections to equal that input.
@@ -155,7 +150,7 @@ that reader policy, including rejection after silver changes.
 Source mapping:
 
 - `Commit` abstracts a committed canonical transaction in `core/indexing.rs`,
-  `core/maintenance.rs`, or `core/connector_ingestion.rs`. `LocalWriter` checks
+  `core/maintenance.rs`. `LocalWriter` checks
   that admission spans these writes and the following refresh.
 - `Capture` maps to `storage/gold_input.rs::Input::capture`; `Activate` covers
   changed settings selected before replay in `views/local.rs::build`.
@@ -203,11 +198,8 @@ must invalidate an existing reader; the Rust regression isolates this identity
 check. The bounded model fixes one database identity, so this additional reader
 guard does not change its transitions or completed-write assumptions.
 The model's unchanged-projection reuse assumes equal fingerprints cover every
-stored field. `mash-ysdx.5` reproduced a violation of that assumption in the
-previous partial connector digest: metadata-only updates left old timestamps
-certified on both destinations. Both coordinators now fingerprint the complete
-typed connector point before embedding. Named backend regressions cover this
-implementation/model gap; invalidation and durable-write ordering are unchanged.
+stored field. Session fingerprints include canonical message and session metadata;
+embedding reuse separately requires matching prepared text and model settings.
 
 The cutover removes SQL-gold participation from publication snapshots. The
 existing `Publication` and backfill models retain their transition semantics:
@@ -302,45 +294,11 @@ Source mapping:
   [canonical revision and atomic publication](../app/shared/server/tests/silver_revision.rs).
 
 Chat bodies, source certificates, canonical hashing, ordinary `Remove` events,
-provider-qualified identity and connector isolation are outside this model.
+provider-qualified identity is outside this model.
 Delta requests add chat IDs and/or forget them; replacement bodies are abstracted
 away. Aborted transactions are atomic rollback, not a model of SQLite internals.
 Invalid inputs have no committing transition; input decoding remains a Rust test
 responsibility. This model makes no delivery/progress claim.
-
-### ConnectorReceipts: atomic data, ordering and retry identity
-
-[ConnectorReceipts.tla](ConnectorReceipts.tla) checks a source-scoped batch
-receipt before its expected revision, commits data/order/receipt together, and
-allows a crash on either side of that transaction. Bounds: one source, two batch
-IDs, two payload choices, one canonical object and one active transaction.
-Requests can retry any batch, including after later commits, or reuse its ID
-with different content/expected revision.
-
-Checks: exactly one commit per batch ID, atomic receipt existence, contiguous
-receipt revisions, canonical object agreement with the latest commit, durable
-response revisions and fingerprint agreement. Fair processing after failures
-stop eventually resolves an active request. `ConnectorWrongPayload.cfg` removes
-the fingerprint check and demonstrates a successful reply for the wrong batch.
-
-Source mapping:
-
-- [connectors/silver.rs](../app/connectors/silver.rs): `Store::apply`, `apply`.
-- [server/store/connectors.rs](../app/shared/server/store/connectors.rs):
-  `ingest_connector` commits silver before best-effort recertification.
-- Existing regressions in [silver/tests.rs](../app/connectors/silver/tests.rs):
-  `committed_records_and_receipt_survive_lost_response_reopen_and_later_batches`,
-  `changed_batch_identity_and_stale_source_revision_never_mutate_records`,
-  `failure_to_record_receipt_rolls_back_data_and_ordering`.
-- [Generated SQLite sequences](../app/connectors/silver/tests/properties.rs)
-  check independent expected objects, revisions and receipts across two sources,
-  retries, rejected writes, reopening and archive restoration.
-
-Fingerprint equality represents equality of the entire validated batch, not
-just text; hash collisions are excluded. Object graph validation, multiple
-sources, rollback implementation and connector view digests are not modeled.
-A receipt confirms silver durability, never view readiness. Progress means
-resolution, which may be rejection; it does not guarantee eventual client retry.
 
 ### SharedViews: separate data writes from certification
 
@@ -376,7 +334,7 @@ Source mapping:
 
 Concurrent certifications of one node (parallel baseline lanes) are outside the
 one-writer bound. The code keeps the model's property for them by serializing
-`certify` per node under `views_write_guard`, connector pass included, and by
+`certify` per node under `views_write_guard`, and by
 deciding there against the stored views and the silver fingerprints read under
 that lock: chats another certification recorded with the same recipe and content
 count as covered (an older certification adds its chats to a newer stored one
@@ -411,7 +369,7 @@ order; the negative configuration is now labeled as a historical mutation.
 
 No all-time physical-subset guarantee is claimed while views are stale: in-place
 updates permit old documents until deletion completes. This model also excludes
-search response snapshot consistency, connector digests, independently restored
+search response snapshot consistency, independently restored
 Qdrant metadata/data, arbitrary delayed writes after a process crash, and
 multiple servers with different silver directories sharing one Qdrant namespace.
 Successful operations are assumed durable and ordered at the modeled boundary;
@@ -453,8 +411,8 @@ This is a safety-only model; it makes no liveness or concurrency claim.
   the AUTOINCREMENT sequence, then verifies recovery and altered-payload rejection.
 - `server/store/sync.rs` and `views/qdrant/views.rs`: synchronization removes native
   documents whose chats are absent from silver, including points left by a failed
-  request whose in-memory deletion set or metadata was lost. Connector points
-  are excluded from this deletion by the provider filter.
+  request whose in-memory deletion set or metadata was lost. The node filter
+  preserves other publishers' records.
 - `views/qdrant/tests/retries.rs`: backend regressions for altered/incomplete
   retries and forgotten documents surviving retry, plus writer serialization.
 
@@ -463,34 +421,8 @@ changed payload) and `mash-w8q7` (lose deletion intent). The original `SharedVie
 model required `docs = Desired` before certification; it did not verify that the
 implementation's per-chat metadata was sufficient to establish that condition.
 This additional model separates the supplied contents from retained silver.
-Multiple messages, partial point writes, connector records and cryptographic
+Multiple messages, partial point writes and cryptographic
 collision resistance remain Rust/backend test or review responsibilities.
-
-### Connector views after interrupted writes
-
-[ConnectorViews.tla](ConnectorViews.tla) explores up to three connector commits
-for one anchor (absent or either of two contents), with interruptions before or
-after point writes and before persisted digest completion. Physical point contents
-and recorded digests are independent variables. TLC first found an interrupted
-insert followed by deletion; after correcting cleanup it found a completed insert,
-interrupted deletion and restoration of the original content.
-
-The independent Proptest backend generator in
-`app/views/qdrant/tests/connector_sequences.rs` reproduced and shrank both:
-two operations for `mash-9b7s`, three for `mash-5avn`. Named regressions retain those
-sequences; bounded generation also exercises lexical-only and dense configurations
-using a controlled embedding endpoint. `make property-backend-check` runs them,
-and the existing CI Qdrant selection includes them.
-
-Source mapping: `server/store/connectors.rs::sync_connectors` compares digests,
-invalidates evidence for changed/removed anchors and clears the silver marker
-before physical mutation; `views/qdrant/views.rs::retain_connector_points` removes
-all absent anchors using a node-scoped connector filter. Successful completion
-persists new digests and certification. Negative configurations restore missing
-physical cleanup and retained stale evidence respectively. Hash equality abstracts
-full unit equality; multiple anchors, arbitrary late remote writes, process kill
-and power-loss durability are outside this model. The runtime hook simulates the
-boundary after completed point writes, not those other failure classes.
 
 ### Local index upgrade cutover
 
@@ -608,7 +540,7 @@ Known implementation/model gaps, recorded in Beads:
    never recorded.
 2. Startup recovery is implemented: `server::sync::recover` runs before the
    listener serves and resumes `queued_for_apply`, `applying` and
-   `views_pending` rows for every configured node, including connector,
+   `views_pending` rows for every configured node, including
    attachment and backfill-manifest operations. It uses the ordinary mutation
    admission budget and logs failures instead of blocking startup. The same
    recovery runs on a 30-second task (`spawn_apply_recovery`), so a queued row
@@ -867,7 +799,7 @@ complete; the command reports
 Retrying with the same identity resumes the same server session and skips
 batches already recorded in `<database>.backfill.json`. It requires the default
 views recipe and a configured shared destination, and conflicts with
-`--watch`, `--connector-batch` and `--rebuild-local-views`.
+`--watch` and `--rebuild-local-views`.
 `qdrant_backfill_command_publishes_a_baseline_through_the_cli` runs the real
 binary against a real server and asserts the catalog reports `complete` with
 full coverage and that shared status shows the same revision.
@@ -907,9 +839,6 @@ snapshot/journal persistence, identity changes and simultaneous publishers are
 outside this model. Tombstones have no later recreation in the bounded history.
 
 The two models are checked separately; their composition is not proven.
-`ProgressiveBackfill` still needs each remaining model action mapped to its
-transaction/await/lock boundary, and a client that actually sends baseline
-batches, before it can replace the HTTP connector and snapshot paths.
 
 Client-driven backfill coverage:
 `qdrant_client_backfill_sender_completes_a_baseline_end_to_end`.

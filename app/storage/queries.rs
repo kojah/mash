@@ -90,7 +90,6 @@ impl Storage {
             return Ok(StatusSnapshot {
                 silver: None,
                 counts: Counts::default(),
-                connectors: Vec::new(),
             });
         }
         if version != SCHEMA_VERSION {
@@ -105,34 +104,7 @@ impl Storage {
         Ok(StatusSnapshot {
             silver: Some(storage.silver_certificate()?),
             counts: storage.silver_counts()?,
-            connectors: storage.connector_activity()?,
         })
-    }
-
-    /// Every connector source with its declared modes and last deliveries.
-    pub(crate) fn connector_activity(&self) -> Result<Vec<crate::source::SourceStatus>, AppError> {
-        sql::ConnectorActivity
-            .query_many(&self.connection)
-            .map_err(AppError::database)?
-            .into_iter()
-            .map(|row| {
-                let modes = row
-                    .modes
-                    .as_deref()
-                    .map(serde_json::from_str)
-                    .transpose()
-                    .map_err(|_| AppError::database_data("stored connector modes are invalid"))?
-                    .unwrap_or_default();
-                Ok(crate::source::SourceStatus {
-                    source: crate::source::Source::Connector(row.source_id),
-                    modes,
-                    last_snapshot_at: row.snapshot_at,
-                    last_complete_snapshot_at: row.complete_snapshot_at,
-                    last_live_at: row.live_at,
-                    last_change_at: row.change_at,
-                })
-            })
-            .collect()
     }
 
     pub(crate) fn counts(&self) -> Result<Counts, AppError> {

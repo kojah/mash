@@ -336,48 +336,6 @@ fn batches_must_come_from_a_declared_mode() {
 }
 
 #[test]
-fn commits_record_declared_modes_and_when_each_trigger_last_ran() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("index.sqlite3");
-    let mut store = Store::open(&path).unwrap();
-    let complete = labelled("first", 0, "complete-snapshot", &["live", "snapshot"]).unwrap();
-    store.apply(&complete).unwrap();
-    let activity = || {
-        crate::storage::Storage::open_existing(&path)
-            .unwrap()
-            .connector_activity()
-            .unwrap()
-            .remove(0)
-    };
-    let first = activity();
-    assert_eq!(
-        first.modes,
-        [
-            crate::connectors::Mode::Snapshot,
-            crate::connectors::Mode::Live
-        ]
-    );
-    assert!(first.last_snapshot_at.is_some());
-    assert_eq!(first.last_complete_snapshot_at, first.last_snapshot_at);
-    assert!(first.last_live_at.is_none() && first.last_change_at.is_none());
-    // A replayed batch commits nothing, so it records nothing either.
-    std::thread::sleep(std::time::Duration::from_millis(5));
-    store.apply(&complete).unwrap();
-    assert_eq!(activity(), first);
-    // A later live batch keeps the snapshot times and its declared modes.
-    store
-        .apply(&labelled("second", 1, "live", &[]).unwrap())
-        .unwrap();
-    let second = activity();
-    assert!(second.last_live_at.is_some());
-    assert_eq!(
-        second.last_complete_snapshot_at,
-        first.last_complete_snapshot_at
-    );
-    assert_eq!(second.modes, first.modes);
-}
-
-#[test]
 fn complete_snapshot_deletes_containers_it_no_longer_captures() {
     use crate::connectors::Trigger;
 
