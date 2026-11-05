@@ -53,6 +53,7 @@ all:
           mash_deploy_preflight: [[sh, -c, 'echo api-preflight >> $scratch/actions; test ! -e $scratch/fail-api']]
           mash_install: [[sh, -c, 'echo api-install >> $scratch/actions; if test -e $scratch/fail-after-api-install; then touch $scratch/fail-api; fi']]
           mash_verify: [[sh, -c, 'echo api-verify >> $scratch/actions; test ! -e $scratch/fail-api']]
+          mash_replay_views: [[sh, -c, 'echo api-replay >> $scratch/actions; test ! -e $scratch/fail-replay']]
     mash_history:
       hosts:
         one:
@@ -143,6 +144,16 @@ run_playbook sync '["one"]' deployment/playbooks/refresh.yml explicit
 run_playbook local-views '["one"]' deployment/playbooks/refresh.yml offline
 [[ $(grep -c '^local-views$' "$scratch/actions") == 1 ]]
 if run_playbook sync '["api"]' deployment/playbooks/refresh.yml invalid; then echo 'API refresh was accepted.' >&2; exit 1; fi
+replay_builds=$(grep -c '^build$' "$scratch/actions")
+run_playbook replay-views '["api"]' deployment/playbooks/replay-views.yml successful
+jq -e '.state == "succeeded" and .replayed == true and .deployed == false' "$scratch/replay-views-successful/api.json" >/dev/null
+[[ $(grep -c '^api-replay$' "$scratch/actions") == 1 ]]
+[[ $(grep -c '^build$' "$scratch/actions") == "$replay_builds" ]]
+touch "$scratch/fail-replay"
+if run_playbook replay-views '["api"]' deployment/playbooks/replay-views.yml failed; then echo 'Failed replay was accepted.' >&2; exit 1; fi
+jq -e '.state == "failed"' "$scratch/replay-views-failed/api.json" >/dev/null
+rm "$scratch/fail-replay"
+if run_playbook replay-views '["one"]' deployment/playbooks/replay-views.yml invalid; then echo 'History target accepted for API replay.' >&2; exit 1; fi
 MASH_DEPLOY_INVENTORY="$scratch/inventory.yml" MASH_DEPLOY_LOGS="$scratch/launcher" \
     bash "$repository/tools/fleet.sh" check api one offline > "$scratch/summary.jsonl"
 jq -se 'length == 3 and any(.[]; .target == "one" and .state == "succeeded") and any(.[]; .target == "offline" and .state == "skipped")' \

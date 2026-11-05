@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Invoke the existing Ansible policy directly; retain private reports for review.
 set -euo pipefail
-[[ $# -ge 2 ]] || { echo 'usage: fleet.sh preflight|deploy|check|sync|local-views TARGET...' >&2; exit 2; }
+[[ $# -ge 2 ]] || { echo 'usage: fleet.sh preflight|deploy|check|sync|local-views|replay-views TARGET...' >&2; exit 2; }
 operation=$1
 shift
 case "$operation" in
     preflight|deploy|check) playbook=$operation ;;
     sync|local-views) playbook=refresh ;;
+    replay-views) playbook=replay-views ;;
     *) echo 'Unknown fleet operation.' >&2; exit 2 ;;
 esac
 for target in "$@"; do

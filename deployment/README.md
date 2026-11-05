@@ -18,7 +18,16 @@ bash tools/fleet.sh deploy shared-api xenia
 bash tools/fleet.sh check shared-api xenia
 bash tools/fleet.sh sync xenia
 bash tools/fleet.sh local-views xenia
+bash tools/fleet.sh replay-views shared-api
 ```
+
+`replay-views` invokes the API target's explicit `mash_replay_views` commands,
+between its existing authenticated `mash_verify` checks. Configure that hook to
+restart the owning service with the installed binary's `serve --replay-views`,
+wait for replay and certification, and restore normal startup settings. This
+operation builds and installs nothing, does not upgrade silver, and accepts only
+API targets. Replay re-embeds from shared silver and may keep the API unavailable
+for a long time; retain private progress logs and verify freshness afterward.
 
 Commit and push focused, validated changes without deploying each one. Deploy
 at an explicitly requested release or agreed stable-batch milestone. Use

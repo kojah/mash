@@ -1,0 +1,40 @@
+- import_playbook: prepare.yml
+
+- name: Replay shared views with the installed API release
+  hosts: mash_available:&mash_api
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Replay and verify through the configured service lifecycle
+      block:
+        - name: Require explicit installed-release replay commands
+          ansible.builtin.assert:
+            that:
+              - mash_replay_views | default([]) | length > 0
+              - mash_verify | default([]) | length > 0
+            quiet: true
+        - ansible.builtin.include_tasks: tasks/api-check.yml
+        - name: Run shared views replay without building or installing
+          ansible.builtin.command:
+            argv: "{{ item }}"
+            chdir: "{{ mash_repository }}"
+          loop: "{{ mash_replay_views }}"
+          delegate_to: localhost
+          no_log: true
+        - ansible.builtin.include_tasks: tasks/api-check.yml
+        - name: Record completed replay
+          ansible.builtin.copy:
+            dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+            mode: '0600'
+            content: '{"state":"succeeded","replayed":true,"deployed":false,"results":[]}'
+          delegate_to: localhost
+      rescue:
+        - name: Record failed replay without claiming readiness
+          ansible.builtin.copy:
+            dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+            mode: '0600'
+            content: '{"state":"failed","error":"Installed-release views replay or readiness verification failed; inspect the configured service and private replay logs.","results":[]}'
+          delegate_to: localhost
+        - ansible.builtin.fail:
+            msg: Shared views replay failed; no release was built or installed.
