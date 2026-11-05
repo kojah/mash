@@ -25,10 +25,6 @@ mutation-certification:
 mutation-runtime:
 	$(DEV_RUN) bash tools/mutation-check.sh --runtime
 
-.PHONY: mutation-vec1
-mutation-vec1:
-	$(DEV_RUN) bash tools/mutation-check.sh --vec1
-
 property-check:
 	$(MAKE) iterate FOCUS='test(connectors::silver::tests::properties)'
 

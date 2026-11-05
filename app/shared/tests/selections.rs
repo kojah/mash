@@ -46,8 +46,6 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
             )
             .unwrap();
     }
-    #[cfg(feature = "vec1")]
-    storage.sync_vec1(semantic::embedding_generation()).unwrap();
     storage.commit_writer().unwrap();
     for (threads, expected) in [
         (vec![], vec!["codex", "claude-code"]),

@@ -11,8 +11,6 @@ use std::collections::HashMap;
 
 #[cfg(test)]
 mod benchmarks;
-#[cfg(all(test, feature = "vec1"))]
-mod vec1_trial;
 
 pub(super) struct QuantizedVector {
     pub(super) values: Vec<u8>,
@@ -172,64 +170,6 @@ pub(crate) fn local_candidates(
 /// Native and connector vectors scored against one query, best first.
 /// Returns the hits and the number of vectors admitted by the filters.
 fn dense_candidates(
-    storage: &Storage,
-    generation: &str,
-    query: &QuantizedVector,
-    selection: (
-        Option<crate::provider::Provider>,
-        Option<u32>,
-        Option<&crate::search_filter::Scope>,
-    ),
-    limit: usize,
-) -> Result<(Vec<SearchHit>, usize), AppError> {
-    #[cfg(feature = "vec1")]
-    if query.norm > 0.0 && limit > 0 {
-        let (candidates, eligible) = storage.vec1_candidates(
-            generation,
-            &query.values,
-            selection.0,
-            selection.1,
-            selection.2,
-            limit,
-        )?;
-        return Ok((rank_vec1(storage, query, candidates, limit)?, eligible));
-    }
-    dense_candidates_exact(storage, generation, query, selection, limit)
-}
-
-#[cfg(feature = "vec1")]
-fn rank_vec1(
-    storage: &Storage,
-    query: &QuantizedVector,
-    candidates: Vec<crate::storage::vec1::Candidate>,
-    limit: usize,
-) -> Result<Vec<SearchHit>, AppError> {
-    let mut ranked = candidates
-        .into_iter()
-        .map(|candidate| {
-            if candidate.vector.len() != query.values.len() {
-                return Err(AppError::database_data(
-                    "Vec1 vector dimensions do not match query",
-                ));
-            }
-            Ok((
-                candidate.connector,
-                candidate.id,
-                quantized_cosine(query, &candidate.vector, candidate.norm),
-            ))
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
-    ranked.sort_by(|left, right| {
-        right
-            .2
-            .total_cmp(&left.2)
-            .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
-    });
-    ranked.truncate(limit);
-    hydrate_ranked(storage, ranked)
-}
-
-fn dense_candidates_exact(
     storage: &Storage,
     generation: &str,
     query: &QuantizedVector,

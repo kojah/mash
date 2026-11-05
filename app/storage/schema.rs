@@ -8,12 +8,7 @@ use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
 pub(crate) const SCHEMA_VERSION: i64 = 56;
-pub(crate) const RELEASE_VIEWS_VERSION: i64 = 4;
-pub(crate) const VIEWS_VERSION: i64 = if cfg!(feature = "vec1") {
-    6
-} else {
-    RELEASE_VIEWS_VERSION
-};
+pub(crate) const VIEWS_VERSION: i64 = 4;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -157,8 +152,6 @@ fn create_views(connection: &Connection, schema: &str) -> Result<(), AppError> {
             qualified_views(schema)
         ))
         .map_err(AppError::database)?;
-    #[cfg(feature = "vec1")]
-    super::vec1::create(connection, schema)?;
     connection
         .execute(
             &format!(
@@ -244,8 +237,6 @@ pub(super) fn attach_views(
     }
     if writable {
         install_connection_triggers(connection)?;
-        #[cfg(feature = "vec1")]
-        super::vec1::track_changes(connection)?;
     }
     Ok(())
 }

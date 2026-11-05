@@ -1,8 +1,0 @@
-# Audit the experimental projection's fail-closed persisted readiness guard.
-examine_globs = ["app/storage/vec1.rs", "app/core/installation/probe.rs"]
-examine_re = ["replace Storage::vec1_ready", "in Storage::vec1_ready", "replace contract_matches", "in contract_matches", "replace track_changes"]
-test_package = ["mash"]
-test_tool = "nextest"
-cap_lints = true
-additional_cargo_args = ["--locked", "--lib", "--features", "vec1", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
-additional_cargo_test_args = ["-E", "test(storage::vec1::tests) | test(core::installation::probe::tests)", "--no-tests", "fail", "--test-threads", "2"]

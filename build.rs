@@ -1,8 +1,6 @@
 use std::process::Command;
 
 fn main() {
-    #[cfg(feature = "vec1")]
-    build_vec1();
     let override_revision = std::env::var("MASH_BUILD_REVISION").ok();
     let revision = override_revision.clone().unwrap_or_else(|| {
         Command::new("git")
@@ -38,25 +36,5 @@ fn main() {
                 println!("cargo:rerun-if-changed={}", path.trim());
             }
         }
-    }
-}
-
-#[cfg(feature = "vec1")]
-fn build_vec1() {
-    for file in ["app/storage/vec1/vec1.c", "app/storage/vec1/register.c"] {
-        println!("cargo:rerun-if-changed={file}");
-    }
-    cc::Build::new()
-        .files(["app/storage/vec1/vec1.c", "app/storage/vec1/register.c"])
-        .include(std::env::var("DEP_SQLITE3_INCLUDE").expect("bundled SQLite headers"))
-        .define("VEC1_STATIC", None)
-        .define("NDEBUG", None)
-        .warnings(false)
-        .opt_level(2)
-        // Retain the native initializer even though application Rust has no FFI.
-        .link_lib_modifier("+whole-archive")
-        .compile("mash_vec1");
-    if std::env::var("CARGO_CFG_TARGET_FAMILY").as_deref() == Ok("unix") {
-        println!("cargo:rustc-link-lib=m");
     }
 }

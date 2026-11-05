@@ -134,9 +134,5 @@ mod tests {
         let current = crate::mcp::guidance::fingerprint().unwrap();
         assert!(super::contract_matches(&current).unwrap());
         assert!(!super::contract_matches(&"0".repeat(64)).unwrap());
-        #[cfg(feature = "vec1")]
-        assert!(
-            !super::contract_matches(&super::super::expected_stamp().contract_fingerprint).unwrap()
-        );
     }
 }

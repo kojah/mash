@@ -40,7 +40,6 @@ export PATH="$scratch/bin:$PATH" CARGO_TARGET_DIR="$scratch/target"
 export TEST_BUILD_CALLS="$scratch/calls" TEST_BUILD_FAIL="$scratch/fail" TEST_BUILD_MUTATE="$scratch/mutate"
 export TEST_BUILD_CHILD="$scratch/compiler-daemon.pid"
 export TEST_BUILD_CLIPPY_FAIL="$scratch/clippy-fail"
-unset CARGO_FEATURES
 run_build() { timeout 10 bash "$scratch/repository/tools/build-dev-linux.sh" "$@"; }
 timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
     DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' >/dev/null
@@ -49,11 +48,6 @@ timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
 [[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked -E test(contract) --no-tests fail --test-threads 4' ]]
 [[ $(wc -l < "$TEST_BUILD_CALLS") == 3 ]]
 [[ -z $(find "$scratch/target" -name '*.ok' -print -quit) ]]
-: > "$TEST_BUILD_CALLS"
-CARGO_FEATURES=vec1 run_build --focused 'test(vec1)' >/dev/null
-grep -Fxq 'clippy --features vec1 --all-targets -- -D warnings' "$TEST_BUILD_CALLS"
-grep -Fxq 'test-clif --locked --features vec1 -E test(vec1) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
-[[ $(wc -l < "$TEST_BUILD_CALLS") == 3 ]]
 : > "$TEST_BUILD_CALLS"
 touch "$TEST_BUILD_CLIPPY_FAIL"
 if run_build >/dev/null 2>&1; then echo 'Failed Clippy was accepted.' >&2; exit 1; fi

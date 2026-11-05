@@ -113,10 +113,6 @@ impl Storage {
     }
 
     pub(crate) fn semantic_index_is_ready(&self, generation: &str) -> Result<bool, AppError> {
-        #[cfg(feature = "vec1")]
-        if !self.vec1_ready(generation)? {
-            return Ok(false);
-        }
         if !self.connector_embeddings_complete(generation)? {
             return Ok(false);
         }
@@ -228,8 +224,6 @@ impl Storage {
                 "packed semantic index coverage is incomplete",
             ));
         }
-        #[cfg(feature = "vec1")]
-        self.sync_vec1(generation)?;
         self.connection
             .execute(
                 "UPDATE derived_state
