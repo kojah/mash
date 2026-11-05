@@ -48,6 +48,8 @@ fn router(state: Arc<Dash>) -> Router {
     Router::new()
         .route("/api/health", axum::routing::get(health))
         .route("/api/chats", axum::routing::get(list_chats))
+        .route("/api/search", axum::routing::get(search))
+        .route("/api/view", axum::routing::get(view))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
@@ -123,6 +125,120 @@ async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
     json_result(core::execute(request).await)
 }
 
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct SearchParams {
+    q: String,
+    /// Comma-separated provider names, such as `claude-code,codex`.
+    provider: String,
+    /// Comma-separated machine (node) IDs.
+    machine: String,
+    /// Comma-separated recorded working directories.
+    project: String,
+    days: Option<u32>,
+}
+
+fn split(list: &str) -> Vec<String> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn providers(list: &str) -> Result<Vec<crate::provider::Provider>, AppError> {
+    split(list)
+        .into_iter()
+        .map(|name| {
+            serde_json::from_value(serde_json::Value::String(name))
+                .map_err(|_| AppError::usage("unknown provider"))
+        })
+        .collect()
+}
+
+/// A query searches messages; an empty one lists the matching chats, newest first.
+fn search_operation(params: SearchParams) -> Result<Operation, AppError> {
+    let provider = providers(&params.provider)?;
+    if params.q.trim().is_empty() {
+        let input = crate::chat_catalog::Request {
+            provider,
+            node: split(&params.machine),
+            ..Default::default()
+        };
+        return Ok(Operation::ListChats {
+            input: Box::new(input),
+            local: false,
+            shared: false,
+            diagnostics: false,
+        });
+    }
+    let filters = crate::search_filter::Selection {
+        provider,
+        node: split(&params.machine),
+        project: split(&params.project),
+        days: params.days,
+        ..Default::default()
+    };
+    Ok(Operation::Search {
+        shared_vector_search: None,
+        query: params.q,
+        intent: None,
+        limit: None,
+        offset: 0,
+        unit: None,
+        fusion: crate::views::config::FusionOverrides::default(),
+        ranking: None,
+        diagnostics: false,
+        filters: Box::new(filters),
+        shared: false,
+        local: false,
+    })
+}
+
+async fn search(
+    State(state): State<Arc<Dash>>,
+    axum::extract::Query(params): axum::extract::Query<SearchParams>,
+) -> Response {
+    match search_operation(params) {
+        Ok(operation) => json_result(
+            core::execute(Request {
+                paths: state.paths.clone(),
+                operation,
+            })
+            .await,
+        ),
+        Err(error) => json_result(Err(error)),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ViewParams {
+    id: String,
+    #[serde(default)]
+    context: Option<u32>,
+}
+
+/// Messages on each side of the anchor; chunked chat reads are tracked in mash-twg6.
+const MAX_VIEW_CONTEXT: u32 = 500;
+
+async fn view(
+    State(state): State<Arc<Dash>>,
+    axum::extract::Query(params): axum::extract::Query<ViewParams>,
+) -> Response {
+    let operation = Operation::View {
+        id: params.id,
+        context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
+        shared: None,
+    };
+    json_result(
+        core::execute(Request {
+            paths: state.paths.clone(),
+            operation,
+        })
+        .await,
+    )
+}
+
 fn json_result(result: Result<core::Response, AppError>) -> Response {
     match result {
         Ok(response) => axum::Json(response).into_response(),
@@ -173,7 +289,42 @@ fn content_type(path: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{allowed_hosts, content_type};
+    use super::{Operation, SearchParams, allowed_hosts, content_type, search_operation};
+
+    #[test]
+    fn empty_queries_list_chats_and_queries_search_with_filters() {
+        let listed = search_operation(SearchParams {
+            provider: "claude-code, codex".into(),
+            machine: "xenia".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let Operation::ListChats { input, .. } = listed else {
+            panic!("expected a chat listing")
+        };
+        assert_eq!(input.provider.len(), 2);
+        assert_eq!(input.node, ["xenia"]);
+        let searched = search_operation(SearchParams {
+            q: "backfill".into(),
+            project: "/p".into(),
+            days: Some(7),
+            ..Default::default()
+        })
+        .unwrap();
+        let Operation::Search { query, filters, .. } = searched else {
+            panic!("expected a search")
+        };
+        assert_eq!(query, "backfill");
+        assert_eq!(filters.project, ["/p"]);
+        assert_eq!(filters.days, Some(7));
+        assert!(
+            search_operation(SearchParams {
+                provider: "nope".into(),
+                ..Default::default()
+            })
+            .is_err()
+        );
+    }
 
     #[test]
     fn loopback_accepts_its_own_names_and_nothing_else() {
