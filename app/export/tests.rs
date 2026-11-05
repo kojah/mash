@@ -116,40 +116,11 @@ fn import_preserves_past_interpretation_evidence_without_certifying_current_view
 }
 
 #[test]
-fn portable_v1_receipts_keep_their_encoding_and_replay_as_live_views_receipts() {
-    let root = tempfile::tempdir().unwrap();
-    let (database, connection) = fixture(root.path());
-    drop(connection);
-    let batch = crate::connectors::Batch::decode(include_bytes!(
-        "../../fixtures/external-connector-batch.json"
-    ))
-    .unwrap();
-    let receipt = crate::connectors::silver::Store::open(&database)
-        .unwrap()
-        .apply(&batch)
-        .unwrap();
-    let archive = root.path().join("export");
-    write(&database, &archive, None).unwrap();
-    let records = fs::read_to_string(archive.join(DATABASE)).unwrap();
-    assert!(records.contains("\"gold_ready\":false"));
-    assert!(!records.contains("\"views_ready\""));
-    let imported = root.path().join("imported.sqlite3");
-    load(&archive, &imported, true).unwrap();
-    let replayed = crate::connectors::silver::Store::open(&imported)
-        .unwrap()
-        .apply(&batch)
-        .unwrap();
-    assert_eq!(replayed, receipt);
-    let live = serde_json::to_value(replayed).unwrap();
-    assert_eq!(live["views_ready"], false);
-    assert!(live.get("gold_ready").is_none());
-}
-
-#[test]
 fn portable_records_reject_corrupt_structure_even_with_a_matching_file_digest() {
     for fault in [
         "unknown_field",
         "unknown_record",
+        "retired_external_record",
         "missing_state",
         "after_state",
         "duplicate",
@@ -166,6 +137,10 @@ fn portable_records_reject_corrupt_structure_even_with_a_matching_file_digest() 
         match fault {
             "unknown_field" => lines[0].insert_str(1, "\"embedding\":[1,0],"),
             "unknown_record" => lines[0] = "{\"record\":\"invented\"}".into(),
+            "retired_external_record" => lines.insert(
+                1,
+                r#"{"record":"connector_source","source_id":"slack","revision":1}"#.into(),
+            ),
             "missing_state" => {
                 lines.pop();
             }

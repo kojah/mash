@@ -8,7 +8,7 @@ DEV_TARGET_DIR ?= /home/james/scratch/achi-targets/integrated
 DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local/bin/agent-test,)
 export FOCUS
 
-.PHONY: mutation-tools mutation-check mutation-certification property-check
+.PHONY: mutation-tools mutation-check mutation-certification
 mutation-tools:
 	bash tools/mutation-check.sh --install-tools
 
@@ -21,9 +21,6 @@ mutation-certification:
 .PHONY: mutation-runtime
 mutation-runtime:
 	$(DEV_RUN) bash tools/mutation-check.sh --runtime
-
-property-check:
-	$(MAKE) iterate FOCUS='test(connectors::silver::tests::properties)'
 
 .PHONY: protocol-tools protocol-check
 protocol-tools:

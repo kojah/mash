@@ -1,6 +1,6 @@
 # Correctness checks
 
-Mash combines bounded [protocol models](../protocol/README.md), generated tests
+Mash combines bounded [protocol models](../protocol/README.md), tests
 against real storage, targeted failure regressions, and focused mutation audits.
 Each checks a different claim; none proves the whole distributed system correct.
 
@@ -8,49 +8,12 @@ The entry points are:
 
 | Check | Command | Setup |
 | --- | --- | --- |
-| SQLite generated sequences | `make property-check` | Repository Rust toolchain and nextest |
-| Qdrant generated recovery sequences | `make property-backend-check` | Disposable `MASH_TEST_QDRANT_URL` |
 | Bounded protocol exploration | `make protocol-check` | Explicit `make protocol-tools` installation |
 | Revision/freshness mutation audit | `make mutation-check` | Explicit `make mutation-tools` installation |
-| Connector recovery mutation audit | `make mutation-connectors` | Mutation tools and disposable `MASH_TEST_QDRANT_URL` |
 
-`PROPTEST_CASES` increases generated cases and `PROPTEST_RNG_SEED` makes an
-investigation repeatable. Ordinary CI runs SQLite properties in its usual test
-job; its existing `test(qdrant)` selection also runs bounded generated connector
-sequences and named regressions. Mutation audits remain explicit because they
-rebuild and retest each variant. On Xenia all Make targets use `agent-test` for
-heavy work. No check installs embedding models or uses production backend data.
-
-The backend generator varies connector content and timestamps, deletions and interruptions
-between actual point writes and persisted digest writes. It compares physical
-Qdrant records to independent expected content and timestamps after successful recovery, then
-shrinks a failing operation sequence. Its per-instance interruption hook is
-compiled only into tests. This simulates a durable boundary failure, not process
-termination or a remote request that continues after timing out.
-The default is 16 sequences of up to four operations, across lexical and dense
-configurations; dense cases use a synthetic local embedding endpoint.
-
-## Generated connector sequences
-
-The [Proptest harness](../app/connectors/silver/tests/properties.rs) compares real
-SQLite data, source revisions and stored receipts to an independent reference
-after every operation. It generates writes/deletes across two sources, old
-retries, conflicting batch identities, incorrect revisions, transactions that
-must roll back, reopening, and export/import with identity preservation.
-It runs in ordinary nextest/CI with 32 sequences of up to 24 operations.
-A named sequence ensures every operation is exercised regardless of randomness.
-
-```bash
-make iterate FOCUS='test(connectors::silver::tests)'
-PROPTEST_CASES=256 PROPTEST_RNG_SEED=42 \
-  make iterate FOCUS='test(generated_connector_sequences)'
-```
-
-Proptest shrinks failures and reports the minimal sequence. Capture CI output;
-use an explicit `PROPTEST_RNG_SEED` for repeatable investigations, then preserve
-the minimal failure as a named regression. Automatic source-tree persistence is
-disabled. Generated strings are synthetic, not private history. These tests do
-not simulate SQLite power loss, network delivery or concurrent writers.
+Mutation audits remain explicit because they rebuild and retest each variant.
+On Xenia all Make targets use `agent-test` for heavy work. No check installs
+embedding models or uses production backend data.
 
 ## Replay interruption
 
@@ -94,7 +57,7 @@ agent-test env TMPDIR=/home/james/scratch/achi-tmp \
 ```
 
 These tests cover committed silver before replay, stale status, hidden/deleted
-records, failed inference, connector updates, and namespace isolation after
+records, failed inference, and namespace isolation after
 copying or replacing silver. Public CLI/MCP acceptance adds first-run setup,
 readiness, pagination, evidence, privacy, and streamed rebuild progress. Tests
 using real embedding models require an explicit `MASH_TEST_MODELS_DIR`.
@@ -121,15 +84,6 @@ bash tools/mutation-check.sh --list  # Review scope without building.
 make mutation-check                  # Baseline first; then isolated mutations.
 ```
 
-For connector recovery, set `MASH_TEST_QDRANT_URL` to your disposable backend,
-review `bash tools/mutation-check.sh --list-connectors`, then run
-`PROPTEST_RNG_SEED=42 make mutation-connectors`. Its separate configuration
-selects connector synchronization, the common complete-projection fingerprint,
-and shared document-cleanup mutations, with generated recovery, metadata-only
-updates on both destinations, node-isolation and HTTP publication tests. Review the list
-when changing either source file: field-deletion candidates can include adjacent
-cleanup helpers. Results describe that selected scope, not a coverage percentage.
-
 For native chat certification, set the disposable `MASH_TEST_QDRANT_URL`, review
 `bash tools/mutation-check.sh --list-certification`, and run
 `make mutation-certification`. Its separate scope covers `Store::certify` with
@@ -155,5 +109,5 @@ set wrong, or is the mutation behaviorally equivalent? Add meaningful regression
 assertions for real gaps. Review unviable mutations and timeouts separately;
 they do not demonstrate detection. Keep baseline failures visible. Changing the
 scope requires reviewing the selected tests too. Run audits manually for relevant
-changes or periodic test reviews; ordinary CI runs the property and backend
+changes or periodic test reviews; ordinary CI runs the unit and backend
 regressions without paying mutation build costs on every push.

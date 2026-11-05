@@ -36,22 +36,6 @@ fn database(_: rusqlite::Error) -> Error {
     Error::Database
 }
 
-pub(crate) fn app_error(problem: Error) -> crate::AppError {
-    use crate::{AppError, ErrorKind};
-    match problem {
-        Error::BatchConflict | Error::RevisionConflict => {
-            AppError::new(12, ErrorKind::Conflict, problem.to_string(), false)
-        }
-        Error::InvalidBatch(_) | Error::InvalidReferences | Error::SchemaViolation => {
-            AppError::usage(problem.to_string())
-        }
-        Error::UnsupportedSchema => AppError::schema(problem.to_string()),
-        Error::Database => AppError::new(5, ErrorKind::Database, problem.to_string(), true),
-        Error::CorruptRecord | Error::RevisionExhausted => {
-            AppError::database_data(problem.to_string())
-        }
-    }
-}
 fn encode(value: &impl Serialize) -> Result<String, Error> {
     serde_json::to_string(value).map_err(|_| Error::CorruptRecord)
 }
@@ -644,31 +628,6 @@ fn check_object(
             return Err(Error::InvalidReferences);
         }
         current = target.reply_to;
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_archive(connection: &Connection) -> Result<(), Error> {
-    let mut schemas = std::collections::BTreeMap::new();
-    for row in sql::ConnectorAllSchemas
-        .query_many(connection)
-        .map_err(database)?
-    {
-        let schema: Schema = decode(&row.schema)?;
-        schema.validate().map_err(Error::InvalidBatch)?;
-        schemas.insert(row.source_id, schema);
-    }
-    let mut checked = BTreeSet::new();
-    for row in sql::ConnectorAllObjects
-        .query_many(connection)
-        .map_err(database)?
-    {
-        let schema = schemas.get(&row.source_id);
-        check_object(connection, &row.source_id, &row.id, schema, &mut checked)?;
-        // Each container regroups its subtree; parentless objects group alone.
-        if row.role == "container" || row.parent_id.is_none() {
-            group(connection, &row.source_id, &row.id, Some(&None))?;
-        }
     }
     Ok(())
 }

@@ -122,10 +122,6 @@ pub(crate) fn restore(
             "archive native history does not follow its provider topology",
         ));
     }
-    // Connector regrouping writes derived parent addresses and invalidates the
-    // revision too. Restore both archived revisions after all reconstruction.
-    crate::connectors::silver::validate_archive(&transaction)
-        .map_err(|_| AppError::usage("invalid connector archive reply graph"))?;
     transaction
         .execute(
             "UPDATE silver_state SET revision=?1 WHERE singleton=1",
@@ -147,9 +143,7 @@ pub(crate) fn restore(
         } else {
             "UPDATE shared_publication SET instance=lower(hex(randomblob(16))),revision=1,acknowledged=0,target='';
              DELETE FROM shared_changes;
-             UPDATE shared_change_state SET floor=1;
-             DELETE FROM connector_receipts;
-             UPDATE connector_sources SET revision='0';"
+             UPDATE shared_change_state SET floor=1;"
         })
         .map_err(AppError::database)?;
     transaction.commit().map_err(AppError::database)?;

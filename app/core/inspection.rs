@@ -167,13 +167,7 @@ fn local_view(
     for message in &mut messages {
         message.content = output.text(&message.content);
         output.tools(&mut message.tools);
-        // Connector attachments are source references, not captured files.
-        if !message
-            .id
-            .starts_with(crate::storage::connector_views::ANCHOR_PREFIX)
-        {
-            message.attachments = storage.list_attachments(&message.id)?.attachments;
-        }
+        message.attachments = storage.list_attachments(&message.id)?.attachments;
     }
     Ok(ViewResponse { id, messages })
 }

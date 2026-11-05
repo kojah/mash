@@ -18,11 +18,6 @@ fn json<T: DeserializeOwned>(row: &Row<'_>, name: &str) -> Result<T, AppError> {
 fn tools(row: &Row<'_>) -> Result<crate::tools::Activity, AppError> {
     crate::tools::Activity::decode(get::<Option<String>>(row, "metadata")?.as_deref())
 }
-fn connector_id(row: &Row<'_>, name: &str) -> Result<crate::connectors::Id, AppError> {
-    crate::connectors::Id::try_from(get::<String>(row, name)?)
-        .map_err(|_| AppError::database_data("invalid connector archive identity"))
-}
-
 #[allow(
     clippy::too_many_lines,
     reason = "exhaustive typed canonical table mapping at the archive boundary"
@@ -190,36 +185,6 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT id,revision FROM connector_sources ORDER BY id",
-        |row| Ok::<_, AppError>(Record::ConnectorSource {
-            source_id: connector_id(row, "id")?,
-            revision: get::<String>(row, "revision")?
-                .parse()
-                .map_err(|_| AppError::database_data("invalid connector source revision"))?,
-        })
-    );
-    table!(
-        "SELECT source_id,schema FROM connector_schemas ORDER BY source_id",
-        |row| Ok::<_, AppError>(Record::ConnectorSchema {
-            source_id: connector_id(row, "source_id")?,
-            schema: json(row, "schema")?,
-        })
-    );
-    table!(
-        "SELECT source AS source_id,record FROM objects WHERE origin='connector' ORDER BY source,id",
-        |row| Ok::<_, AppError>(Record::ConnectorObject {
-            source_id: connector_id(row, "source_id")?,
-            object: json(row, "record")?,
-        })
-    );
-    table!(
-        "SELECT fingerprint,receipt FROM connector_receipts ORDER BY source_id,batch_id",
-        |row| Ok::<_, AppError>(Record::ConnectorReceipt {
-            fingerprint: get(row, "fingerprint")?,
-            receipt: json::<crate::connectors::Receipt>(row, "receipt")?.into(),
-        })
-    );
-    table!(
         "SELECT revision,interpretation_version FROM silver_state WHERE singleton=1",
         |row| Ok::<_, AppError>(Record::State {
             revision: u64::try_from(get::<i64>(row, "revision")?)
@@ -256,42 +221,6 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
         };
     }
     match record {
-        Record::ConnectorSource {
-            source_id,
-            revision,
-        } => {
-            execute!(
-                "INSERT INTO connector_sources(id,revision) VALUES(?1,?2)",
-                source_id.as_str(),
-                revision.to_string()
-            );
-        }
-        Record::ConnectorSchema { source_id, schema } => {
-            execute!(
-                "INSERT INTO connector_schemas(source_id,schema) VALUES(?1,?2)",
-                source_id.as_str(),
-                encode(&schema)?
-            );
-        }
-        Record::ConnectorObject { source_id, object } => {
-            // The parent edge is deferred, so objects may precede their
-            // parents; archive validation groups them once all are present.
-            crate::connectors::silver::put_object(connection, &source_id, &object)
-                .map_err(crate::connectors::silver::app_error)?;
-        }
-        Record::ConnectorReceipt {
-            fingerprint,
-            receipt,
-        } => {
-            let receipt = crate::connectors::Receipt::from(receipt);
-            execute!(
-                "INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt) VALUES(?1,?2,?3,?4)",
-                receipt.source_id.as_str(),
-                receipt.batch_id.as_str(),
-                fingerprint,
-                encode(&receipt)?
-            );
-        }
         Record::Publication { instance, revision } => {
             if instance.len() != 32
                 || !instance.bytes().all(|b| b.is_ascii_hexdigit())

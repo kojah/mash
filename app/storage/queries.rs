@@ -8,33 +8,6 @@ use super::{Counts, Message, StatusSnapshot, Storage};
 use crate::AppError;
 use crate::database_error::Operation;
 
-/// A short-lived context reader: share connector ordering, but decode only one
-/// window at a time. Construct a new reader for each search.
-pub(crate) struct ContextReader<'a> {
-    storage: &'a Storage,
-    orders: super::connector_views::EntryOrders,
-}
-
-impl ContextReader<'_> {
-    pub(crate) fn view_content(
-        &mut self,
-        id: &str,
-        context: u32,
-        representation: super::MessageContent,
-    ) -> Result<Vec<Message>, AppError> {
-        if id.starts_with(super::connector_views::ANCHOR_PREFIX) {
-            super::connector_views::view_with_orders(
-                &self.storage.connection,
-                id,
-                context,
-                &mut self.orders,
-            )
-        } else {
-            self.storage.view_content(id, context, representation)
-        }
-    }
-}
-
 impl Storage {
     /// Canonical history has no dependency on the availability or format of gold.
     /// This reader never attaches or creates a views database, including temp views.
@@ -145,22 +118,12 @@ impl Storage {
         self.view_content(id, context, super::MessageContent::Canonical)
     }
 
-    pub(crate) fn context_reader(&self) -> ContextReader<'_> {
-        ContextReader {
-            storage: self,
-            orders: super::connector_views::EntryOrders::default(),
-        }
-    }
-
     pub(crate) fn view_content(
         &self,
         id: &str,
         context: u32,
         representation: super::MessageContent,
     ) -> Result<Vec<Message>, AppError> {
-        if id.starts_with(super::connector_views::ANCHOR_PREFIX) {
-            return self.connector_view(id, context);
-        }
         let anchor = sql::Anchor::builder()
             .id(id)
             .build()

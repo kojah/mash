@@ -626,21 +626,6 @@ impl Store {
                 .await?,
             );
         }
-        for node in self.silver.nodes(&identity.group_id) {
-            if !input.admits_node(node, &identity.node_id) {
-                continue;
-            }
-            let node = node.clone();
-            let scope = silver_store::node_identity(&identity.group_id, &node);
-            let chats = self
-                .read(&scope, move |connection| {
-                    crate::storage::connector_views::chats(connection, &node)
-                })
-                .await?;
-            for chat in chats {
-                collector.push(chat);
-            }
-        }
         for thread in threads {
             let row = thread.conversation;
             collector.push(crate::chat_catalog::Chat {
@@ -686,16 +671,6 @@ impl Store {
             input.content,
             crate::storage::MessageContent::SearchProjection
         );
-        if input
-            .id
-            .starts_with(crate::storage::connector_views::ANCHOR_PREFIX)
-        {
-            return self
-                .read(&node, move |connection| {
-                    crate::storage::connector_views::view(connection, &input.id, input.context)
-                })
-                .await;
-        }
         self.read(&node, move |connection| {
             Ok(
                 silver_store::read::view(connection, &input.id, input.context)?

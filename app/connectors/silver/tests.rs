@@ -1,6 +1,5 @@
 use super::*;
 use serde_json::json;
-mod properties;
 
 fn id(value: &str) -> Id {
     Id::try_from(value.to_owned()).unwrap()
@@ -194,33 +193,6 @@ fn failure_to_record_receipt_rolls_back_data_and_ordering() {
         .execute_batch("DROP TRIGGER fail_receipt;")
         .unwrap();
     assert_eq!(store.apply(&initial("source")).unwrap().source_revision, 1);
-}
-
-#[test]
-fn canonical_exports_preserve_external_records_and_upgrade_receipts() {
-    let directory = tempfile::tempdir().unwrap();
-    let source = directory.path().join("source.sqlite3");
-    let archive = directory.path().join("snapshot.jsonl");
-    let first = initial("source");
-    let receipt = Store::open(&source).unwrap().apply(&first).unwrap();
-    crate::storage::export::write(&source, &archive).unwrap();
-    let restored = directory.path().join("restored.sqlite3");
-    crate::storage::export::restore(&archive, &restored, true).unwrap();
-    assert!(!directory.path().join("restored.views.sqlite3").exists());
-    let mut store = Store::open(&restored).unwrap();
-    assert_eq!(store.apply(&first).unwrap(), receipt);
-    let note = store.object(&id("source"), &id("note")).unwrap().unwrap();
-    assert_eq!(note.attachments.len(), 1);
-    let new_identity = directory.path().join("new-identity.sqlite3");
-    crate::storage::export::restore(&archive, &new_identity, false).unwrap();
-    let mut fresh = Store::open(&new_identity).unwrap();
-    assert_eq!(fresh.apply(&first).unwrap().source_revision, 1);
-    assert!(
-        fresh
-            .object(&id("source"), &id("message"))
-            .unwrap()
-            .is_some()
-    );
 }
 
 #[test]
