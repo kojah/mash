@@ -2064,6 +2064,9 @@ modules are grouped by responsibility:
   of Axum authentication; shared publication owns coordination around it.
 - `app/views/documents.rs` and `app/views/retrieval.rs`: common document and
   retrieval contracts, also used by the shared HTTP protocol.
+- `app/views/materialize.rs`: native silver-to-Qdrant text preparation,
+  inference and bounded document writes. Callers own silver snapshots, mutation
+  coordination and final certification.
 - `app/tests/`: CLI contract tests grouped by behavior, with common setup in
   `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.
 

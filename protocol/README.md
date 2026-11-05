@@ -227,6 +227,9 @@ Source mapping:
 - [server/store/sync.rs](../app/shared/server/store/sync.rs): `index`,
   `sync_upload`, `certify`.
 - [server/store/replay.rs](../app/shared/server/store/replay.rs): `replay`.
+- [views/materialize.rs](../app/views/materialize.rs): `NativeWriter::write_chat`
+  and `finish` retain replay's inference batches and awaited point writes;
+  invalidation, ownership and certification remain in the replay coordinator.
 - [views/qdrant/views.rs](../app/views/qdrant/views.rs): `NodeViews::current`,
   `put_node_views`, `delete_node_documents`.
 - [views/qdrant/configuration.rs](../app/views/qdrant/configuration.rs):

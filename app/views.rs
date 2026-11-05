@@ -7,6 +7,7 @@ pub(crate) mod lexical_manifest;
 pub(crate) mod local;
 pub(crate) mod manifest;
 pub(crate) mod matching;
+pub(crate) mod materialize;
 pub(crate) mod qdrant;
 pub(crate) mod readiness;
 pub(crate) mod retrieval;
