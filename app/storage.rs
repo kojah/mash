@@ -11,7 +11,6 @@ use crate::AppError;
 // View views and materialized retrieval data.
 pub(crate) mod admission;
 mod catalog;
-pub(crate) mod connector_views;
 mod coverage;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.
@@ -71,7 +70,7 @@ pub(crate) struct SearchHit {
     /// For a document, its own anchor: documents belong to no chat.
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
-    pub(crate) source: crate::source::Source,
+    pub(crate) provider: crate::provider::Provider,
     pub(crate) object: crate::source::ObjectType,
     /// Enclosing containers and segments, nearest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -116,14 +115,8 @@ impl SearchHit {
         let Some(author) = &self.author else {
             return;
         };
-        match &self.source {
-            crate::source::Source::Provider(_) if self.role.is_none() => {
-                self.role = author.id.as_deref().map(crate::role::Role::from);
-            }
-            crate::source::Source::Connector(_) if self.author_kind.is_none() => {
-                self.author_kind = Some(author.kind);
-            }
-            _ => {}
+        if self.role.is_none() {
+            self.role = author.id.as_deref().map(crate::role::Role::from);
         }
     }
 }

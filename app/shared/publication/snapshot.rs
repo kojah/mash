@@ -259,7 +259,7 @@ async fn embed_batch(
         .iter()
         .zip(prepared.texts)
         .map(|(message, text)| crate::views::documents::EmbeddingInput {
-            source: crate::source::Source::Provider(prepared.conversation.provider),
+            provider: prepared.conversation.provider,
             anchor: &message.id,
             text,
         })

@@ -51,7 +51,7 @@ fn hit() -> SearchHit {
     SearchHit {
         id: "peer-message".into(),
         conversation_id: "peer-thread".into(),
-        source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+        provider: crate::provider::Provider::Codex,
         object: crate::source::ObjectType::native_message(crate::provider::Provider::Codex),
         ancestors: Vec::new(),
         role: Some(crate::role::Role::User),

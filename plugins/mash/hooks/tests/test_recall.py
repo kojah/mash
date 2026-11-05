@@ -34,7 +34,7 @@ def chat(chat_id: str, project: str, repository: str | None = None, **extra: Any
     now = int(time.time() * 1000)
     return {
         "chat_id": chat_id,
-        "source": {"provider": "codex"},
+        "provider": "codex",
         "title": chat_id,
         "project": project,
         "repository": repository,

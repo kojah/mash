@@ -38,7 +38,7 @@ class Chat(NamedTuple):
 
 
 def parse_chat(row: Any) -> Chat | None:
-    provider, updated = (row.get("source") or {}).get("provider"), row["updated_at"]
+    provider, updated = row.get("provider"), row["updated_at"]
     if not provider or not isinstance(updated, int):
         return None
     stamps = (row.get("enrichment") or {}).get("timestamps") or {}

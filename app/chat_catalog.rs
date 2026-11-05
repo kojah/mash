@@ -113,12 +113,7 @@ impl Request {
     }
 
     fn matches(&self, thread: &Chat) -> bool {
-        // A provider selection names native providers; it excludes connector chats.
-        (self.provider.is_empty()
-            || thread
-                .source
-                .provider()
-                .is_some_and(|provider| self.provider.contains(&provider)))
+        (self.provider.is_empty() || self.provider.contains(&thread.provider))
             && self.title_contains.as_ref().is_none_or(|title| {
                 thread.metadata.title.as_ref().is_some_and(|value| {
                     value
@@ -146,7 +141,7 @@ impl Request {
 pub(crate) struct Chat {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
-    pub(crate) source: crate::source::Source,
+    pub(crate) provider: crate::provider::Provider,
     pub(crate) object: crate::source::ObjectType,
     /// Objects enclosing this container, nearest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -173,7 +168,7 @@ enum Value {
 struct Key {
     value: Option<Value>,
     descending: bool,
-    source: crate::source::Source,
+    provider: crate::provider::Provider,
     id: String,
     node: String,
 }
@@ -198,7 +193,7 @@ impl Ord for Key {
             }
         };
         value
-            .then_with(|| self.source.to_string().cmp(&other.source.to_string()))
+            .then_with(|| self.provider.to_string().cmp(&other.provider.to_string()))
             .then_with(|| self.id.cmp(&other.id))
             .then_with(|| self.node.cmp(&other.node))
     }
@@ -213,7 +208,7 @@ impl PartialOrd for Key {
 pub(crate) struct Collector {
     request: Request,
     rows: BTreeMap<Key, Chat>,
-    identities: HashMap<(crate::source::Source, String), Key>,
+    identities: HashMap<(crate::provider::Provider, String), Key>,
 }
 
 impl Collector {
@@ -238,11 +233,11 @@ impl Collector {
         let key = Key {
             value,
             descending: matches!(self.request.direction, Direction::Desc),
-            source: thread.source.clone(),
+            provider: thread.provider,
             id: thread.conversation_id.clone(),
             node: thread.node_id.clone(),
         };
-        let identity = (thread.source.clone(), thread.conversation_id.clone());
+        let identity = (thread.provider, thread.conversation_id.clone());
         if let Some(previous) = self.identities.get(&identity) {
             if key >= *previous {
                 return;
@@ -257,7 +252,7 @@ impl Collector {
                 .pop_last()
                 .expect("window contains at least one row");
             self.identities
-                .remove(&(removed.source, removed.conversation_id));
+                .remove(&(removed.provider, removed.conversation_id));
         }
     }
 

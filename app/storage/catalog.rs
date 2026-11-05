@@ -52,7 +52,7 @@ impl Storage {
                 let provider: crate::provider::Provider = row.provider.parse()?;
                 Ok(Chat {
                     conversation_id: row.id,
-                    source: crate::source::Source::Provider(provider),
+                    provider,
                     object: crate::source::ObjectType::native_chat(provider),
                     ancestors: Vec::new(),
                     node_id: node.into(),

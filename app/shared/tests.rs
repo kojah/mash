@@ -122,7 +122,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
                 format!("slow-{index}")
             },
             conversation_id: "thread".into(),
-            source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+            provider: crate::provider::Provider::Codex,
             object: crate::source::ObjectType::native_message(crate::provider::Provider::Codex),
             ancestors: Vec::new(),
             role: Some(crate::role::Role::User),

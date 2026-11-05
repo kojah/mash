@@ -95,7 +95,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
         .unwrap();
     assert_ne!(overridden.is_error, Some(true), "{overridden:?}");
     assert_eq!(overridden.structured_content.unwrap()["unit"], "chats");
-    let found = client.call_tool(CallToolRequestParams::new("search").with_arguments(json!({"query":"authentication", "local":true,"unit":"messages","provider":[selected["source"]["provider"]],"chat":[selected["chat_id"]]}).as_object().unwrap().clone())).await.unwrap();
+    let found = client.call_tool(CallToolRequestParams::new("search").with_arguments(json!({"query":"authentication", "local":true,"unit":"messages","provider":[selected["provider"]],"chat":[selected["chat_id"]]}).as_object().unwrap().clone())).await.unwrap();
     assert_ne!(found.is_error, Some(true), "{found:?}");
     let found = found.structured_content.unwrap();
     let results = found["results"].as_array().unwrap();
@@ -178,7 +178,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     assert_ne!(result.is_error, Some(true));
     let body = result.structured_content.unwrap();
     assert_eq!(body["chats"][0]["chat_id"], "orientation");
-    assert_eq!(body["chats"][0]["source"]["provider"], "codex");
+    assert_eq!(body["chats"][0]["provider"], "codex");
     assert_eq!(body["chats"][0]["updated_at"], 3000);
     assert_eq!(body["chats"][0]["node_id"], "local");
     assert_eq!(body["next_offset"], json!(null));

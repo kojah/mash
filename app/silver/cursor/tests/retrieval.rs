@@ -71,19 +71,11 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
                 match response.results {
                     crate::search_results::Results::Chats(threads) => {
                         assert_eq!(threads.len(), 1);
-                        assert_eq!(
-                            threads[0].source,
-                            crate::source::Source::Provider(Provider::Cursor)
-                        );
+                        assert_eq!(threads[0].provider, Provider::Cursor);
                     }
                     crate::search_results::Results::Messages(messages) => {
                         assert!(!messages.is_empty());
-                        assert!(
-                            messages
-                                .iter()
-                                .all(|m| m.source
-                                    == crate::source::Source::Provider(Provider::Cursor))
-                        );
+                        assert!(messages.iter().all(|m| m.provider == Provider::Cursor));
                     }
                 }
             }

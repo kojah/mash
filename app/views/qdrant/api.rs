@@ -445,9 +445,6 @@ fn schema_fields_mode(
             ("tokens", "keyword"),
             ("created_at", "integer"),
             ("unit.sequence", "integer"),
-            // Source ownership and object kind apply to the common payload.
-            ("source_id", "keyword"),
-            ("object.kind", "keyword"),
         ]
     } else {
         &[("kind", "keyword"), ("version", "keyword")]

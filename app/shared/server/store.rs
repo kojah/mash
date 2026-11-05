@@ -559,7 +559,7 @@ impl Store {
     ) -> Result<(), AppError> {
         let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for hit in candidates.lexical.iter().chain(&candidates.semantic) {
-            if let (crate::source::Source::Provider(_), Some(node)) = (&hit.source, &hit.node_id) {
+            if let Some(node) = &hit.node_id {
                 wanted
                     .entry(node.clone())
                     .or_default()
@@ -630,7 +630,7 @@ impl Store {
             let row = thread.conversation;
             collector.push(crate::chat_catalog::Chat {
                 conversation_id: row.id.clone(),
-                source: crate::source::Source::Provider(row.provider),
+                provider: row.provider,
                 object: crate::source::ObjectType::native_chat(row.provider),
                 ancestors: Vec::new(),
                 node_id: thread.node_id,

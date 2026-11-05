@@ -68,7 +68,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             for number in 0..110 {
                 collector.push(Chat {
                     conversation_id: format!("thread-{number:03}"),
-                    source: crate::source::Source::Provider(Provider::Codex),
+                    provider: Provider::Codex,
                     object: crate::source::ObjectType::native_chat(Provider::Codex),
                     ancestors: Vec::new(),
                     node_id: "peer".into(),

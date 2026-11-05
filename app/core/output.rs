@@ -33,7 +33,7 @@ pub(crate) fn serialize(
                 .iter()
                 .map(|thread| Chat {
                     conversation_id: &thread.conversation_id,
-                    source: &thread.source,
+                    provider: &thread.provider,
                     object: &thread.object,
                     ancestors: &thread.ancestors,
                     node_id: Some(&thread.node_id),
@@ -67,7 +67,7 @@ struct Message<'a> {
     id: &'a str,
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
-    source: &'a crate::source::Source,
+    provider: &'a crate::provider::Provider,
     object: &'a crate::source::ObjectType,
     #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
     ancestors: &'a [crate::source::Ancestor],
@@ -132,7 +132,7 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
 struct Chat<'a> {
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
-    source: &'a crate::source::Source,
+    provider: &'a crate::provider::Provider,
     object: &'a crate::source::ObjectType,
     #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
     ancestors: &'a [crate::source::Ancestor],
@@ -149,7 +149,7 @@ impl<'a> From<&'a ChatHit> for Chat<'a> {
     fn from(value: &'a ChatHit) -> Self {
         Self {
             conversation_id: &value.conversation_id,
-            source: &value.source,
+            provider: &value.provider,
             object: &value.object,
             ancestors: &value.ancestors,
             node_id: value.node_id.as_deref(),
@@ -200,7 +200,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         lexical_match: hit.lexical_match.as_ref(),
                         id: &hit.id,
                         conversation_id: &hit.conversation_id,
-                        source: &hit.source,
+                        provider: &hit.provider,
                         object: &hit.object,
                         ancestors: &hit.ancestors,
                         node_id: hit.node_id.as_deref(),

@@ -84,7 +84,6 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         F::Chat(values) => ("conversation_id", values.clone()),
         F::Project(values) => ("project", values.clone()),
         F::Repository(values) => ("repository", values.clone()),
-        // Native points carry no source_id, so they never match.
     };
     if field.1.is_empty() {
         api::impossible()

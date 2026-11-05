@@ -110,7 +110,7 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
         &format!(
             "\n{number}. {} · {} · node {}",
             safe(value.metadata.title.as_deref().unwrap_or("Untitled thread")),
-            safe(&value.source.to_string()),
+            safe(&value.provider.to_string()),
             safe(value.node_id.unwrap_or("unspecified"))
         ),
     );
@@ -174,7 +174,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                         "\n{}. {} · {} · {}",
                         index + 1,
                         safe(hit.id),
-                        safe(&hit.source.to_string()),
+                        safe(&hit.provider.to_string()),
                         origin(hit.node_id, hit.lookup)
                     ),
                 );
@@ -437,7 +437,7 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
             index + 1,
             &Chat {
                 conversation_id: &row.conversation_id,
-                source: &row.source,
+                provider: &row.provider,
                 object: &row.object,
                 ancestors: &row.ancestors,
                 node_id: Some(&row.node_id),

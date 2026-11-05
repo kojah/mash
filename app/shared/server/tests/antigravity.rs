@@ -58,7 +58,7 @@ async fn contract(service: Service) {
             result
                 .lexical
                 .iter()
-                .all(|m| m.source == crate::source::Source::Provider(Provider::Antigravity))
+                .all(|m| m.provider == Provider::Antigravity)
         );
     }
     let request = View {

@@ -578,7 +578,7 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
+async fn qdrant_provider_and_role_indexes_are_required_on_existing_collections() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let open = || async {
         Store::open(
@@ -600,7 +600,7 @@ async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
     );
     let indexed = || async {
         let info: serde_json::Value = reqwest::get(&path).await.unwrap().json().await.unwrap();
-        ["source_id", "object.kind"].map(|field| {
+        ["provider", "role"].map(|field| {
             info["result"]["payload_schema"][field]["data_type"]
                 .as_str()
                 .map(str::to_owned)
@@ -609,7 +609,7 @@ async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
     let keyword = || Some("keyword".to_owned());
     assert_eq!(indexed().await, [keyword(), keyword()]);
     // Interrupted setup must not be repaired by a reader.
-    for field in ["source_id", "object.kind"] {
+    for field in ["provider", "role"] {
         reqwest::Client::new()
             .delete(format!("{path}/index/{field}?wait=true"))
             .send()

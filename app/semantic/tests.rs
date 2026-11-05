@@ -190,7 +190,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
         SearchHit {
             id: id.to_owned(),
             conversation_id: "conversation".to_owned(),
-            source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+            provider: crate::provider::Provider::Codex,
             object: crate::source::ObjectType::native_message(crate::provider::Provider::Codex),
             ancestors: Vec::new(),
             role: Some(crate::role::Role::User),

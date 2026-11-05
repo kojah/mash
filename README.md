@@ -191,20 +191,11 @@ The shared views' chat state also uses the new names: replay shared views from s
 with `mash serve --server-config PATH --replay-views` when upgrading an existing
 server. Canonical silver is retained.
 
-Search results, chat matches and listed chats identify their origin with a tagged
-`source`: `{"provider": "codex"}` for native history or
-`{"connector": "<source_id>"}` for external connector records. Every result also
-carries `object`, its core role and its source's kind label (for example
-`{"role": "entry", "kind": "codex:message"}`), and `ancestors`: the containers
-and segments enclosing it, nearest first. A native message's ancestors are its
-turn (`codex:turn`, a prompt with the answers that follow it, derived from
-silver) and then its chat. Chat-level results group under an
-entry's nearest container, or a document on its own. Native messages keep
-`role`; connector entries carry `author_kind` (`human`, `bot` or `unknown`)
-instead, and documents carry neither. Local and shared Qdrant use views schema 4;
-silver uses schema 57. Local views are rebuilt from silver by the next
-`mash index`, and silver from an earlier release crosses over through export and
-`import --keep-identity`.
+Search results, chat matches and listed chats identify their provider directly,
+for example `"provider": "codex"`. Message context includes its derived turn
+and enclosing chat. Local and shared Qdrant use views schema 9; silver uses
+schema 59. Views are rebuilt from silver; silver from an earlier release crosses
+over through export and `import --keep-identity`.
 
 Silver compresses canonical text of at least 1 KiB with zstd when it saves space.
 This applies to native providers and connectors in `objects`, and to retained

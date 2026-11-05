@@ -90,9 +90,7 @@ pub(crate) struct Store {
 #[serde(deny_unknown_fields)]
 struct Document {
     node_id: String,
-    source: crate::source::Source,
-    provider: Option<crate::provider::Provider>,
-    source_id: Option<String>,
+    provider: crate::provider::Provider,
     role: Option<crate::role::Role>,
     object: crate::source::ObjectType,
     conversation_id: String,
@@ -127,10 +125,6 @@ pub(crate) struct SearchUnit {
     pub(crate) generation: Option<String>,
 }
 
-fn connector_id(node: &str, anchor: &str) -> String {
-    point_id(&["connector", node, anchor])
-}
-
 /// Verify source identity, grouping and projection evidence for every query mode.
 fn document_hit(
     id: &str,
@@ -138,34 +132,14 @@ fn document_hit(
     active: &std::collections::BTreeSet<String>,
     dense: Option<(&Scope, &crate::views::config::Build, bool)>,
 ) -> Result<crate::storage::SearchHit, AppError> {
-    let expected_id = match &d.source {
-        crate::source::Source::Provider(provider) => {
-            if d.provider != Some(*provider)
-                || d.source_id.is_some()
-                || d.role.is_none()
-                || d.unit.author_kind.is_some()
-                || d.object != crate::source::ObjectType::native_message(*provider)
-                || d.unit.content != d.unit.text
-            {
-                return Err(failure());
-            }
-            document_id(&d.node_id, &d.unit.anchor)
-        }
-        crate::source::Source::Connector(source) => {
-            if d.provider.is_some()
-                || d.source_id.as_ref() != Some(source)
-                || d.role.is_some()
-                || crate::storage::connector_views::parse_anchor(&d.unit.anchor).is_none_or(
-                    |(role, anchor_source, object_id)| {
-                        role != d.object.role || anchor_source != source || object_id.is_empty()
-                    },
-                )
-            {
-                return Err(failure());
-            }
-            connector_id(&d.node_id, &d.unit.anchor)
-        }
-    };
+    if d.role.is_none()
+        || d.unit.author_kind.is_some()
+        || d.object != crate::source::ObjectType::native_message(d.provider)
+        || d.unit.content != d.unit.text
+    {
+        return Err(failure());
+    }
+    let expected_id = document_id(&d.node_id, &d.unit.anchor);
     let expected_group = match d.object.role {
         crate::connectors::Role::Entry => d
             .unit
@@ -209,7 +183,7 @@ fn document_hit(
         node_id: Some(d.node_id),
         id: d.unit.anchor,
         conversation_id: d.conversation_id,
-        source: d.source,
+        provider: d.provider,
         object: d.object,
         ancestors: d.unit.ancestors,
         role: d.role,

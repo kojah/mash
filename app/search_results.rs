@@ -133,7 +133,7 @@ impl Results {
 pub(crate) struct ChatHit {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
-    pub(crate) source: crate::source::Source,
+    pub(crate) provider: crate::provider::Provider,
     /// The group: an entry's nearest container, or a document itself.
     pub(crate) object: crate::source::ObjectType,
     /// Objects enclosing the group, nearest first.
@@ -189,7 +189,7 @@ pub(crate) type Speaker = (
     Option<crate::role::Role>,
     Option<crate::connectors::AuthorKind>,
 );
-pub(crate) type EvidenceKey = (crate::source::Source, String, Speaker, blake3::Hash);
+pub(crate) type EvidenceKey = (crate::provider::Provider, String, Speaker, blake3::Hash);
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) enum HitKey {
     Message(EvidenceKey, String),
@@ -206,7 +206,7 @@ pub(crate) fn hit_key(hit: &SearchHit, unit: SearchUnit) -> HitKey {
 pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
     let text = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
     (
-        hit.source.clone(),
+        hit.provider,
         hit.conversation_id.clone(),
         (hit.role.clone(), hit.author_kind),
         blake3::hash(text.as_bytes()),
@@ -284,7 +284,7 @@ pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit
     let mut counts = HashMap::new();
     let mut rounds: [Vec<SearchHit>; 6] = Default::default();
     for hit in hits {
-        let key = (hit.source.clone(), hit.conversation_id.clone());
+        let key = (hit.provider, hit.conversation_id.clone());
         let count = counts.entry(key).or_insert(0);
         if *count < rounds.len() {
             rounds[*count].push(hit);
@@ -359,7 +359,7 @@ fn chat_for(hit: &SearchHit, redaction: crate::redaction::Policy) -> ChatHit {
     let (object, ancestors) = group(hit);
     ChatHit {
         conversation_id: hit.conversation_id.clone(),
-        source: hit.source.clone(),
+        provider: hit.provider,
         object,
         ancestors,
         node_id: hit.node_id.clone(),
@@ -423,7 +423,7 @@ fn collect_inner(
         redaction.metadata(&mut hit.metadata);
         redaction.ancestors(&mut hit.ancestors);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
-        let key = (hit.source.clone(), hit.conversation_id.clone());
+        let key = (hit.provider, hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
             threads.push(chat_for(&hit, redaction));
             (threads.len() - 1, rank)
@@ -477,7 +477,7 @@ fn collect_inner(
     threads.sort_by(|a, b| {
         b.score
             .total_cmp(&a.score)
-            .then_with(|| a.source.to_string().cmp(&b.source.to_string()))
+            .then_with(|| a.provider.to_string().cmp(&b.provider.to_string()))
             .then_with(|| a.conversation_id.cmp(&b.conversation_id))
     });
     let (threads, next_offset) = page.take(threads.into_iter(), unit.result_window());

@@ -78,7 +78,7 @@ impl<'a> Writer<'a> {
                 .zip(&prepared)
                 .filter_map(|(message, text)| {
                     text.as_deref().map(|text| EmbeddingInput {
-                        source: crate::source::Source::Provider(conversation.provider),
+                        provider: conversation.provider,
                         anchor: &message.id,
                         text,
                     })

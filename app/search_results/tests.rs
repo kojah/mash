@@ -45,7 +45,7 @@ fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
     divergent.node_id = Some("peer-diverged".into());
     divergent.content = "changed history".into();
     let mut another_provider = hit("thread", "message");
-    another_provider.source = crate::source::Source::Provider(Provider::ClaudeCode);
+    another_provider.provider = Provider::ClaudeCode;
     let another_thread = hit("other-thread", "message");
     let rows = deduplicate(
         vec![
@@ -63,10 +63,7 @@ fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
     assert_eq!(rows[0].copies[0].node_id.as_deref(), Some("peer"));
     assert_eq!(rows[1].id, "repeated-message");
     assert_eq!(rows[2].content, "changed history");
-    assert_eq!(
-        rows[3].source,
-        crate::source::Source::Provider(Provider::ClaudeCode)
-    );
+    assert_eq!(rows[3].provider, Provider::ClaudeCode);
     assert_eq!(rows[4].conversation_id, "other-thread");
 }
 
@@ -124,7 +121,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
         conversation_id: thread.into(),
-        source: crate::source::Source::Provider(Provider::Codex),
+        provider: Provider::Codex,
         object: crate::source::ObjectType::native_message(Provider::Codex),
         ancestors: Vec::new(),
         role: Some(crate::role::Role::User),
@@ -428,7 +425,7 @@ fn candidate_diversity_prevents_one_chat_from_occupying_the_rerank_budget() {
 fn provider_identity_limits_and_message_mode_are_preserved() {
     let first = hit("same-id", "first");
     let mut second = hit("same-id", "second");
-    second.source = crate::source::Source::Provider(Provider::ClaudeCode);
+    second.provider = Provider::ClaudeCode;
     assert_eq!(threads(vec![first, second], 20).len(), 2);
     assert!(threads(vec![hit("a", "a")], 0).is_empty());
     let Results::Messages(messages) = collect(
@@ -599,80 +596,5 @@ fn pages_partition_the_ranked_window_and_skip_abstaining_candidates() {
         assert!(Page::new(7, window, unit).is_err());
         assert!(Page::new(0, 0, unit).is_err());
         assert!(Page::new(Page::MAX_LIMIT + 1, 0, unit).is_err());
-    }
-}
-
-/// A Slack thread and a Codex thread are the same evidence: one speaker shape,
-/// one ancestry shape, one grouping key, one copy contract.
-#[test]
-fn native_and_connector_threads_share_one_hit_shape() {
-    use crate::connectors::{AuthorKind, Role};
-
-    let mut native = hit("thread", "message");
-    native.role = Some(crate::role::Role::User);
-    native.author = crate::source::author(Some(crate::role::Role::User), None);
-    native.ancestors = crate::source::native_ancestors(Provider::Codex, "thread", Some("Thread"));
-    native.sequence = Some(2);
-
-    let mut slack = hit("thread", "message");
-    slack.source = crate::source::Source::Connector("slack:T0TEAM:U0ALICE".into());
-    slack.object = crate::source::ObjectType {
-        role: Role::Entry,
-        kind: "slack:message".into(),
-    };
-    slack.role = None;
-    slack.author_kind = Some(AuthorKind::Human);
-    slack.author = crate::source::author(None, Some(AuthorKind::Human));
-    slack.ancestors = vec![crate::source::Ancestor {
-        id: "thread".into(),
-        role: Role::Container,
-        kind: "slack:channel".into(),
-        title: Some("Thread".into()),
-    }];
-    slack.sequence = Some(2);
-
-    let native = serde_json::to_value(&native).unwrap();
-    let slack = serde_json::to_value(&slack).unwrap();
-
-    let keys = |value: &serde_json::Value| {
-        let mut keys: Vec<_> = value
-            .as_object()
-            .expect("hit object")
-            .keys()
-            .cloned()
-            .collect();
-        keys.sort();
-        keys
-    };
-    assert_eq!(keys(&native), keys(&slack), "{native} vs {slack}");
-
-    // Grouping: one anchor key and one ancestry entry with the same fields.
-    assert_eq!(native["chat_id"], slack["chat_id"]);
-    let native_ancestry = native["ancestors"][0].as_object().unwrap();
-    let slack_ancestry = slack["ancestors"][0].as_object().unwrap();
-    assert_eq!(keys(&native["ancestors"][0]), keys(&slack["ancestors"][0]));
-    assert_eq!(native_ancestry["role"], slack_ancestry["role"]);
-    assert_eq!(native_ancestry["role"], "container");
-
-    // One ordering field, same meaning: both are the third message of the thread.
-    assert_eq!(native["sequence"], slack["sequence"]);
-    assert_eq!(native["sequence"], 2);
-
-    // Copies are absent for both until another node holds the same evidence.
-    assert!(native.get("copies").is_none(), "{native}");
-    assert!(slack.get("copies").is_none(), "{slack}");
-
-    // One speaker shape; the role/author_kind split is not serialized.
-    assert_eq!(
-        native["author"],
-        serde_json::json!({"id": "user", "kind": "human"})
-    );
-    assert_eq!(
-        slack["author"],
-        serde_json::json!({"id": null, "kind": "human"})
-    );
-    for field in ["role", "author_kind"] {
-        assert!(native.get(field).is_none(), "{field} leaked into {native}");
-        assert!(slack.get(field).is_none(), "{field} leaked into {slack}");
     }
 }

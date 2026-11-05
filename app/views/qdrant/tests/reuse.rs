@@ -132,15 +132,14 @@ async fn qdrant_materializer_reuse_requires_matching_source_model_and_input() {
     ] {
         let mut scope = fixture.identity.clone();
         let mut input = EmbeddingInput {
-            source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+            provider: crate::provider::Provider::Codex,
             anchor: "message-0",
             text: "needle native",
         };
         match change {
             "none" => {}
             "source" => {
-                input.source =
-                    crate::source::Source::Provider(crate::provider::Provider::ClaudeCode);
+                input.provider = crate::provider::Provider::ClaudeCode;
             }
             "text" => input.text = "different",
             "anchor" => input.anchor = "missing",
@@ -199,8 +198,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
         match field {
             "node" => document.node_id = "foreign".into(),
             "source" => {
-                document.source =
-                    crate::source::Source::Provider(crate::provider::Provider::ClaudeCode);
+                document.provider = crate::provider::Provider::ClaudeCode;
             }
             "anchor" => document.unit.anchor = "foreign".into(),
             "generation" => document.unit.generation = Some("foreign".into()),
@@ -232,7 +230,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
             .await
             .unwrap();
         let input = EmbeddingInput {
-            source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+            provider: crate::provider::Provider::Codex,
             anchor: "message-0",
             text: "needle native",
         };

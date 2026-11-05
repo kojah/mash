@@ -23,7 +23,7 @@ pub(crate) fn ancestors(
             .ok_or_else(|| AppError::database_data("object ancestry is incomplete"))?;
         ancestors.push(Ancestor {
             id: row.id,
-            role: super::connector_views::parse_role(&row.object_role)
+            role: parse_role(&row.object_role)
                 .ok_or_else(|| AppError::database_data("stored object role is invalid"))?,
             kind: row.kind,
             title: row.title,
@@ -76,4 +76,14 @@ pub(crate) fn native_violations(connection: &Connection) -> Result<Vec<String>, 
         }
     }
     Ok(violations)
+}
+
+fn parse_role(role: &str) -> Option<crate::connectors::Role> {
+    use crate::connectors::Role;
+    match role {
+        "container" => Some(Role::Container),
+        "segment" => Some(Role::Segment),
+        "entry" => Some(Role::Entry),
+        _ => None,
+    }
 }

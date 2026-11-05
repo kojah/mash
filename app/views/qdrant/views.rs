@@ -1,8 +1,8 @@
 //! Per-node views state and in-place document synchronization. No staging versions:
 //! silver in SQLite is authoritative and any lost or partial views are replayed.
 use super::{
-    AppError, Document, PointKind, Scope, SearchUnit, Store, api, collection, connector_id,
-    document_id, failure, point_id, sparse, tokens,
+    AppError, Document, PointKind, Scope, SearchUnit, Store, api, collection, document_id, failure,
+    point_id, sparse, tokens,
 };
 use crate::silver::revision::State;
 use crate::views::documents::{ConversationRecord, MessageRecord};
@@ -92,12 +92,7 @@ impl Store {
         for batch in inputs.chunks(crate::views::shared::BATCH_ROWS) {
             let ids = batch
                 .iter()
-                .map(|input| match input.source {
-                    crate::source::Source::Provider(_) => document_id(&scope.node_id, input.anchor),
-                    crate::source::Source::Connector(_) => {
-                        connector_id(&scope.node_id, input.anchor)
-                    }
-                })
+                .map(|input| document_id(&scope.node_id, input.anchor))
                 .collect::<Vec<_>>();
             let mut points = self
                 .api
@@ -111,7 +106,7 @@ impl Store {
                     .remove(&id)
                     .filter(|point| {
                         point.node_id == scope.node_id
-                            && point.source == input.source
+                            && point.provider == input.provider
                             && point.unit.anchor == input.anchor
                             && point.unit.generation.as_deref() == Some(scope.generation.as_str())
                             && point.embedding_fingerprint.as_deref()
@@ -297,9 +292,7 @@ impl Documents {
                 vector,
                 payload: Document {
                     node_id: identity.node_id.clone(),
-                    source: crate::source::Source::Provider(conversation.provider),
-                    provider: Some(conversation.provider),
-                    source_id: None,
+                    provider: conversation.provider,
                     role: Some(message.role),
                     object: crate::source::ObjectType::native_message(conversation.provider),
                     conversation_id: conversation.id.clone(),

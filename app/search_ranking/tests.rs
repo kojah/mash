@@ -8,7 +8,7 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
         conversation_id: thread.into(),
-        source: crate::source::Source::Provider(Provider::Codex),
+        provider: Provider::Codex,
         object: crate::source::ObjectType::native_message(Provider::Codex),
         ancestors: Vec::new(),
         role: Some(Role::User),

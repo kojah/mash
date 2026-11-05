@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Actual model input after source-specific context/title preparation. Identity
 /// selects a cached point; the fingerprint determines whether its vector fits.
 pub(crate) struct EmbeddingInput<'a> {
-    pub(crate) source: crate::source::Source,
+    pub(crate) provider: crate::provider::Provider,
     pub(crate) anchor: &'a str,
     pub(crate) text: &'a str,
 }

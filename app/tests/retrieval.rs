@@ -431,16 +431,22 @@ fn search_without_models_fails_before_database_access() {
 }
 
 #[test]
-fn search_with_missing_embeddings_recommends_index_without_loading_models() {
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+fn qdrant_search_with_missing_embeddings_recommends_index_without_loading_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");
     let database = directory.path().join("mash.sqlite3");
     create_valid_model_marker(&models);
     seed_readiness_database(&database, None);
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    configure_qdrant(&config);
 
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
         .args([
+            "--config",
+            config.to_str().unwrap(),
             "--db",
             database.to_str().unwrap(),
             "--models-dir",
@@ -459,7 +465,8 @@ fn search_with_missing_embeddings_recommends_index_without_loading_models() {
 }
 
 #[test]
-fn merged_search_requires_explicit_indexing_before_inference_or_http() {
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+fn qdrant_merged_search_requires_explicit_indexing_before_inference_or_http() {
     let directory = tempfile::tempdir().unwrap();
     let models = directory.path().join("models");
     create_valid_model_marker(&models); // Marker is valid; inference assets are intentionally unusable.
@@ -477,6 +484,7 @@ token_env = "MASH_TEST_UNSET_INDEX_READINESS_TOKEN"
 "#,
     )
     .unwrap();
+    configure_qdrant(&config);
     let database = directory.path().join("local.sqlite3");
     for exists in [false, true] {
         if exists {

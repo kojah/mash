@@ -22,7 +22,7 @@ fn pagination_stops_at_the_documented_offset_cap() {
 fn row(id: &str, time: Option<i64>) -> Chat {
     Chat {
         conversation_id: id.into(),
-        source: crate::source::Source::Provider(Provider::Codex),
+        provider: Provider::Codex,
         object: crate::source::ObjectType::native_chat(Provider::Codex),
         ancestors: Vec::new(),
         node_id: "node".into(),
@@ -80,7 +80,7 @@ fn metadata_filters_compose_and_time_bounds_exclude_unknown_activity() {
         let mut thread = row(id, time);
         thread.metadata.title = Some("100%_literal".into());
         collector.push(thread.clone());
-        thread.source = crate::source::Source::Provider(Provider::Opencode);
+        thread.provider = Provider::Opencode;
         collector.push(thread);
     }
     let page = collector.finish();
