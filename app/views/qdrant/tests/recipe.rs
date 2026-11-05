@@ -580,6 +580,19 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
     let fixture = Fixture::new(VectorIndex::default()).await;
+    let open = || async {
+        Store::open(
+            &fixture.url,
+            None,
+            std::slice::from_ref(&fixture.identity.group_id),
+            fixture.identity.dimensions,
+            64 * 1024 * 1024,
+            VectorIndex::default(),
+            MemoryTier::Cached,
+        )
+        .await
+    };
+    open().await.unwrap();
     let path = format!(
         "{}/collections/{}",
         fixture.url,
@@ -595,7 +608,7 @@ async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
     };
     let keyword = || Some("keyword".to_owned());
     assert_eq!(indexed().await, [keyword(), keyword()]);
-    // A collection from an earlier release has neither; opening it adds them.
+    // Interrupted setup must not be repaired by a reader.
     for field in ["source_id", "object.kind"] {
         reqwest::Client::new()
             .delete(format!("{path}/index/{field}?wait=true"))
@@ -606,10 +619,61 @@ async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
             .unwrap();
     }
     assert_eq!(indexed().await, [None, None]);
+    assert!(open().await.is_err());
+    assert_eq!(indexed().await, [None, None]);
     fixture
         .reopen(VectorIndex::default(), MemoryTier::Cached)
         .await
         .unwrap();
     assert_eq!(indexed().await, [keyword(), keyword()]);
+    open().await.unwrap();
+    fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_read_open_does_not_create_missing_collections_or_vector_fields() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let absent = format!("{}-absent", fixture.identity.group_id);
+    for (group, dimensions) in [(&absent, 4), (&fixture.identity.group_id, 8)] {
+        assert!(
+            Store::open(
+                &fixture.url,
+                None,
+                std::slice::from_ref(group),
+                dimensions,
+                64 * 1024 * 1024,
+                VectorIndex::default(),
+                MemoryTier::Cached,
+            )
+            .await
+            .is_err()
+        );
+    }
+    for metadata in [false, true] {
+        let response = reqwest::get(format!(
+            "{}/collections/{}",
+            fixture.url,
+            collection(&absent, metadata)
+        ))
+        .await
+        .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+    }
+    let info: serde_json::Value = reqwest::get(format!(
+        "{}/collections/{}",
+        fixture.url,
+        collection(&fixture.identity.group_id, false)
+    ))
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    let vectors = info["result"]["config"]["params"]["vectors"]
+        .as_object()
+        .unwrap();
+    assert_eq!(vectors.len(), 1);
+    assert_eq!(vectors["dense"]["size"], 4);
     fixture.cleanup().await;
 }

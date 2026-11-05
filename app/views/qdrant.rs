@@ -311,12 +311,43 @@ impl Store {
         vector_index.validate()?;
         let api = api::Client::new(url, key, max_response_bytes)?;
         api.verify_version().await?;
-        let mut dense_names = std::collections::BTreeMap::new();
         for group in groups {
             api.initialize(&collection(group, true), None, memory)
                 .await?;
+            api.initialize(&collection(group, false), Some(dimensions), memory)
+                .await?;
+        }
+        Self::open(
+            url,
+            key,
+            groups,
+            dimensions,
+            max_response_bytes,
+            vector_index,
+            memory.tier,
+        )
+        .await
+    }
+
+    /// Open existing views for readers. Missing or incomplete setup fails closed;
+    /// only the explicit setup path may create indexes or change vector fields.
+    pub(crate) async fn open(
+        url: &str,
+        key: Option<&str>,
+        groups: &[String],
+        dimensions: usize,
+        max_response_bytes: usize,
+        vector_index: VectorIndex,
+        memory: MemoryTier,
+    ) -> Result<Self, AppError> {
+        vector_index.validate()?;
+        let api = api::Client::new(url, key, max_response_bytes)?;
+        api.verify_version().await?;
+        let mut dense_names = std::collections::BTreeMap::new();
+        for group in groups {
+            api.inspect(&collection(group, true), None, memory).await?;
             let name = api
-                .initialize(&collection(group, false), Some(dimensions), memory)
+                .inspect(&collection(group, false), Some(dimensions), memory)
                 .await?
                 .ok_or_else(failure)?;
             dense_names.insert(group.clone(), name);

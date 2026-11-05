@@ -2062,6 +2062,8 @@ modules are grouped by responsibility:
 - `app/views/qdrant/`: common typed REST, collection schema, document writes,
   and dense/sparse retrieval. The engine takes an index scope, independently
   of Axum authentication; shared publication owns coordination around it.
+  `Store::open` inspects existing collections without writes; `Store::connect`
+  explicitly completes setup and then verifies the same reader contract.
 - `app/views/documents.rs` and `app/views/retrieval.rs`: common document and
   retrieval contracts, also used by the shared HTTP protocol.
 - `app/views/materialize.rs`: native silver-to-Qdrant text preparation,

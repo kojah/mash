@@ -632,6 +632,26 @@ impl Client {
         envelope.record_metrics();
         Ok(envelope.result)
     }
+    /// Inspect an existing collection without repairing or creating anything.
+    pub(super) async fn inspect(
+        &self,
+        name: &str,
+        dimensions: Option<usize>,
+        memory: MemoryTier,
+    ) -> Result<Option<String>, AppError> {
+        let info: Info = self
+            .call(Method::GET, &format!("collections/{name}"), None::<&()>)
+            .await?;
+        for &(field, _) in schema_fields(&info, dimensions, memory)? {
+            if !info.payload_schema.contains_key(field) {
+                return Err(AppError::configuration(
+                    "Qdrant views setup is incomplete; rebuild views before querying",
+                ));
+            }
+        }
+        Ok(dimensions.and_then(|size| dense_name(&info, size)))
+    }
+
     pub(super) async fn initialize(
         &self,
         name: &str,
