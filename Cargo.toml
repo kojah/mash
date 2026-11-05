@@ -102,7 +102,9 @@ predicates = "3.1.4"
 
 [profile.release]
 codegen-units = 16
-strip = true
+# Keep symbol names so a stuck or crashed process can be diagnosed with
+# gdb or a backtrace; debug info stays stripped to keep the binary small.
+strip = "debuginfo"
 panic = "abort"
 opt-level = 3
 
