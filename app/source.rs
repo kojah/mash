@@ -46,54 +46,6 @@ impl ObjectType {
     }
 }
 
-/// How each native provider can be kept in sync, declared like a connector's
-/// modes: `mash index` takes a snapshot, and `index --watch` follows file
-/// changes. Every provider is a set of files or databases Mash can watch.
-pub(crate) const fn native_modes(provider: Provider) -> &'static [crate::connectors::Mode] {
-    use crate::connectors::Mode::{Live, Snapshot};
-    match provider {
-        Provider::ClaudeCode
-        | Provider::Codex
-        | Provider::Opencode
-        | Provider::Copilot
-        | Provider::Cursor
-        | Provider::Antigravity => &[Snapshot, Live],
-    }
-}
-
-/// Every native provider's topology, declared like a connector's: a chat is a
-/// root container, turns segment it, and messages sit in a turn, or directly
-/// in the chat when they belong to none (injected or empty records).
-pub(crate) fn native_schema(provider: Provider) -> crate::connectors::Schema {
-    use crate::connectors::{Kind, KindRule, Role};
-    let kind = |name: &str| {
-        Kind::try_from(format!("{}:{name}", provider.as_str()))
-            .expect("provider names are valid kind namespaces")
-    };
-    crate::connectors::Schema {
-        kinds: vec![
-            KindRule {
-                kind: kind("chat"),
-                role: Role::Container,
-                parents: Vec::new(),
-                root: true,
-            },
-            KindRule {
-                kind: kind("turn"),
-                role: Role::Segment,
-                parents: vec![kind("chat")],
-                root: false,
-            },
-            KindRule {
-                kind: kind("message"),
-                role: Role::Entry,
-                parents: vec![kind("chat"), kind("turn")],
-                root: false,
-            },
-        ],
-    }
-}
-
 /// A native chat's ancestry for Qdrant points, which do not record turns;
 /// the shared server replaces it from shared silver.
 pub(crate) fn native_ancestors(
@@ -107,37 +59,6 @@ pub(crate) fn native_ancestors(
         kind: format!("{}:chat", provider.as_str()),
         title: title.map(str::to_owned),
     }]
-}
-
-/// A source's declared sync modes, and for connectors when each kind of
-/// delivery last committed (Unix milliseconds).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct SourceStatus {
-    pub(crate) source: Source,
-    /// Empty when a connector has not declared its modes.
-    pub(crate) modes: Vec<crate::connectors::Mode>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) last_snapshot_at: Option<i64>,
-    /// Only a complete snapshot deletes what the source no longer holds.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) last_complete_snapshot_at: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) last_live_at: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) last_change_at: Option<i64>,
-}
-
-impl SourceStatus {
-    pub(crate) fn native(provider: Provider) -> Self {
-        Self {
-            source: Source::Provider(provider),
-            modes: native_modes(provider).to_vec(),
-            last_snapshot_at: None,
-            last_complete_snapshot_at: None,
-            last_live_at: None,
-            last_change_at: None,
-        }
-    }
 }
 
 /// An enclosing object of a result, listed nearest first.

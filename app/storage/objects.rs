@@ -56,17 +56,22 @@ pub(crate) fn native_violations(connection: &Connection) -> Result<Vec<String>, 
     let mut violations = Vec::new();
     for row in rows {
         let (id, source, role, kind, parent) = row.map_err(AppError::database)?;
-        let conforms = (|| {
-            let schema = crate::source::native_schema(source.parse().ok()?);
-            let kind = crate::connectors::Kind::try_from(kind).ok()?;
-            let parent = match parent {
-                Some(parent) => Some(crate::connectors::Kind::try_from(parent).ok()?),
-                None => None,
+        let conforms = source.parse::<crate::provider::Provider>().is_ok()
+            && match role.as_str() {
+                "container" => kind == format!("{source}:chat") && parent.is_none(),
+                "segment" => {
+                    kind == format!("{source}:turn")
+                        && parent.as_deref() == Some(format!("{source}:chat").as_str())
+                }
+                "entry" => {
+                    kind == format!("{source}:message")
+                        && parent.as_deref().is_some_and(|parent| {
+                            parent == format!("{source}:chat") || parent == format!("{source}:turn")
+                        })
+                }
+                _ => false,
             };
-            let role = super::connector_views::parse_role(&role)?;
-            Some(schema.admits(&kind, role, parent.as_ref()))
-        })();
-        if conforms != Some(true) {
+        if !conforms {
             violations.push(id);
         }
     }

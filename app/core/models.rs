@@ -290,8 +290,6 @@ pub(crate) struct StatusResponse {
     pub(super) realized_mode: SearchMode,
     pub(super) recommended_action: Option<crate::Action>,
     pub(super) configuration: ConfigurationStatus,
-    /// Each configured provider and connector source, with its sync modes.
-    pub(super) sources: Vec<crate::source::SourceStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared: Option<shared::Publication>,
     #[serde(skip_serializing_if = "Option::is_none")]

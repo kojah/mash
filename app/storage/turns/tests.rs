@@ -131,8 +131,33 @@ fn unchanged_reindexing_leaves_silver_untouched() {
 }
 
 #[test]
-fn every_provider_declares_a_valid_native_topology() {
+fn agent_topology_accepts_each_provider_and_rejects_invalid_message_parents() {
     for &provider in crate::provider::Provider::ALL {
-        crate::source::native_schema(provider).validate().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+        let mut session = chat(&[("ask", Role::User, "question")]);
+        session.provider = provider;
+        storage.replace_conversation(&session).unwrap();
+        storage.commit_writer().unwrap();
+        assert_eq!(
+            super::super::objects::native_violations(&storage.connection).unwrap(),
+            Vec::<String>::new(),
+            "{provider}"
+        );
+        for mutation in [
+            "UPDATE objects SET kind='unknown:message' WHERE object_role='entry'",
+            "UPDATE objects SET parent_storage_id=NULL WHERE object_role='entry'",
+            "UPDATE objects SET parent_storage_id=storage_id WHERE object_role='entry'",
+            "UPDATE objects SET source='unknown-provider' WHERE object_role='entry'",
+        ] {
+            let transaction = storage.connection.unchecked_transaction().unwrap();
+            transaction.execute_batch(mutation).unwrap();
+            assert_eq!(
+                super::super::objects::native_violations(&transaction).unwrap(),
+                ["ask"],
+                "{provider}: {mutation}"
+            );
+            transaction.rollback().unwrap();
+        }
     }
 }

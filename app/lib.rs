@@ -10,8 +10,7 @@ mod silver_query;
 mod source;
 mod tools;
 
-// Experimental source-neutral contract for out-of-process connectors.
-pub mod connectors;
+mod connectors;
 
 // View materialization, retrieval models, policies and query-oriented views.
 mod chat_catalog;
