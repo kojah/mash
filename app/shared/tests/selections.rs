@@ -2,10 +2,12 @@ use super::*;
 use crate::provider::Provider;
 use crate::search_filter::Selection;
 
-#[test]
-fn local_message_candidates_intersect_thread_provider_and_time_selections() {
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+async fn local_message_candidates_intersect_thread_provider_and_time_selections() {
     let directory = tempfile::tempdir().unwrap();
-    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let mut storage = Storage::open_writer(&database).unwrap();
     for provider in [Provider::Codex, Provider::ClaudeCode, Provider::Opencode] {
         let id = provider.as_str();
         storage
@@ -35,18 +37,10 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
                 .into(),
             })
             .unwrap();
-        storage
-            .replace_embeddings(
-                semantic::embedding_generation(),
-                &[EmbeddingWrite {
-                    message_id: id,
-                    vector: &[127, 0],
-                    norm: 127.0,
-                }],
-            )
-            .unwrap();
     }
     storage.commit_writer().unwrap();
+    drop(storage);
+    let gold = crate::views::local::test_support::Fixture::new(&database, "local").await;
     for (threads, expected) in [
         (vec![], vec!["codex", "claude-code"]),
         (vec!["codex", "claude-code"], vec!["codex", "claude-code"]),
@@ -63,16 +57,15 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
             }
             .resolve("local")
             .unwrap();
-            let (hits, _) = semantic::local_candidates(
-                &storage,
-                semantic::embedding_generation(),
-                "providerneedle",
-                &[127.0, 0.0],
-                (None, None, SearchUnit::Messages),
-                Some(&scope),
+            let candidates = gold
+                .candidates("providerneedle", vec![127.0, 0.0], Some(scope.filter))
+                .await;
+            let hits = semantic::fuse(
+                candidates.lexical,
+                candidates.semantic,
+                SearchUnit::Messages,
                 crate::views::config::Fusion::default(),
-            )
-            .unwrap();
+            );
             let mut ids: Vec<_> = hits
                 .into_iter()
                 .map(|hit| {
@@ -86,4 +79,5 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
             assert_eq!(ids, expected);
         }
     }
+    gold.cleanup().await;
 }

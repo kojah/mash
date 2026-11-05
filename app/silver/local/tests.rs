@@ -64,7 +64,7 @@ fn native_rejections_remain_incomplete_across_provider_and_time_scopes_until_rep
     storage.commit_writer().unwrap();
     drop(storage);
     assert_eq!(
-        Storage::open_catalog(&database)
+        Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap(),

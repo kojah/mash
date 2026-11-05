@@ -89,7 +89,7 @@ async fn lost_ack_recovers_only_with_stable_source_and_current_artifacts() {
     ] {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("node.sqlite3");
-        seed_ready(&path, semantic::SHARED_EMBEDDING_GENERATION);
+        seed_certified(&path);
         let storage = Storage::open_existing(&path).unwrap();
         let mut target = reuse::Target {
             build: crate::views::config::Build::default(),

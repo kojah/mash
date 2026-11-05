@@ -190,6 +190,7 @@ fn readable_model_installation_and_forget_preserve_typed_results() {
         Response::Forget(crate::core::models::ForgetResponse {
             id: "thread".into(),
             forgotten: true,
+            local_views_error: None,
             shared: None,
         }),
     ];

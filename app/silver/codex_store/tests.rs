@@ -57,16 +57,11 @@ fn codex_paginated_large_file_change_preserves_tool_context_and_dialogue() {
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 5);
     assert_eq!(
-        storage
-            .search("visiblequartz", 10, None, None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(&storage, "visiblequartz", None).len(),
         1
     );
     assert!(
-        storage
-            .search("largepatchcanary", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&storage, "largepatchcanary", None)
             .is_empty()
     );
     let source = sources(vec![HistorySource::file(&path)]).unwrap().remove(0);
@@ -146,17 +141,21 @@ fn codex_paginated_replaces_jsonl_mirror_without_purging_same_native_chat() {
     writer.commit_writer().unwrap();
     assert_eq!(writer.counts().unwrap().conversations, 1);
     assert_eq!(
-        writer
-            .search("visiblequartz", 10, Some(Provider::Codex), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "visiblequartz",
+            Some(Provider::Codex)
+        )
+        .len(),
         1
     );
     assert_eq!(
-        writer
-            .search("legacyzircon", 10, Some(Provider::Codex), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "legacyzircon",
+            Some(Provider::Codex)
+        )
+        .len(),
         0
     );
 }
@@ -252,17 +251,21 @@ fn codex_paginated_index_refresh_and_rejection_keep_committed_history() {
     writer.commit_writer().unwrap();
     assert_eq!(writer.counts().unwrap().conversations, 1);
     assert_eq!(
-        writer
-            .search("visiblequartz", 10, Some(Provider::Codex), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "visiblequartz",
+            Some(Provider::Codex)
+        )
+        .len(),
         1
     );
     assert!(
-        writer
-            .search("hiddenreasoning", 10, Some(Provider::Codex), None)
-            .unwrap()
-            .is_empty()
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "hiddenreasoning",
+            Some(Provider::Codex)
+        )
+        .is_empty()
     );
     drop(writer);
     let mut writer = Storage::open_writer(&database).unwrap();
@@ -285,10 +288,12 @@ fn codex_paginated_index_refresh_and_rejection_keep_committed_history() {
     drop(writer);
     let writer = Storage::open_writer(&database).unwrap();
     assert_eq!(
-        writer
-            .search("visiblequartz", 10, Some(Provider::Codex), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "visiblequartz",
+            Some(Provider::Codex)
+        )
+        .len(),
         1
     );
 }

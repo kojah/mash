@@ -1,10 +1,10 @@
 use super::coreml::coreml_sequence_bucket;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use super::coreml::{CoreMlEmbeddingPool, load_coreml_embedding};
-use super::embeddings::{EmbeddingGroup, plan_embedding_groups};
-use super::retrieval::{quantize_vector, quantized_cosine, rank_quantized};
+use super::embeddings::EmbeddingGroup;
+
 use super::*;
-use crate::storage::{SearchHit, SearchableMessage, SemanticChunks};
+use crate::storage::SearchHit;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -17,72 +17,6 @@ fn reranking_is_bounded_to_ten_documents() {
         crate::search_results::SearchUnit::Messages.rerank_limit(),
         10
     );
-}
-
-#[test]
-fn quantized_cosine_supports_large_model_dimensions() {
-    let positive = quantize_vector(&vec![1.0; 2048]);
-    let negative = quantize_vector(&vec![-1.0; 2048]);
-    assert!(positive.norm.is_finite());
-    assert!((quantized_cosine(&positive, &positive.values, positive.norm) - 1.0).abs() < 1e-6);
-    assert!((quantized_cosine(&positive, &negative.values, negative.norm) + 1.0).abs() < 1e-6);
-}
-
-#[test]
-fn embedding_plan_groups_identical_text_and_sorts_message_ids() {
-    let groups = plan_embedding_groups(vec![
-        SearchableMessage {
-            id: "message-c".to_owned(),
-            content: "same text".to_owned(),
-        },
-        SearchableMessage {
-            id: "message-b".to_owned(),
-            content: "different".to_owned(),
-        },
-        SearchableMessage {
-            id: "message-a".to_owned(),
-            content: "same text".to_owned(),
-        },
-    ]);
-
-    assert_eq!(groups.len(), 2);
-    let repeated = groups
-        .iter()
-        .find(|group| group.content == "same text")
-        .expect("repeated text group");
-    assert_eq!(repeated.message_ids, ["message-a", "message-c"]);
-}
-
-#[test]
-fn embedding_plan_is_length_ordered_and_input_order_independent() {
-    fn contents(groups: &[EmbeddingGroup]) -> Vec<&str> {
-        groups
-            .iter()
-            .map(|group| group.content.as_str())
-            .collect::<Vec<_>>()
-    }
-
-    fn messages(order: &[usize]) -> Vec<SearchableMessage> {
-        let values = [
-            ("message-long", "longest text"),
-            ("message-short-b", "b"),
-            ("message-short-a", "a"),
-            ("message-medium", "medium"),
-        ];
-        order
-            .iter()
-            .map(|index| SearchableMessage {
-                id: values[*index].0.to_owned(),
-                content: values[*index].1.to_owned(),
-            })
-            .collect()
-    }
-
-    let forward = plan_embedding_groups(messages(&[0, 1, 2, 3]));
-    let reverse = plan_embedding_groups(messages(&[3, 2, 1, 0]));
-
-    assert_eq!(contents(&forward), ["a", "b", "medium", "longest text"]);
-    assert_eq!(contents(&forward), contents(&reverse));
 }
 
 #[test]
@@ -128,7 +62,7 @@ fn benchmark_coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
             .collect::<Vec<_>>();
         let expected = reference.model.embed(texts.clone(), None).unwrap();
         let actual = pool.embed(&groups).unwrap();
-        let mut min_cosine = 1_f32;
+        let mut min_cosine = 1_f64;
         for (expected, actual) in expected.iter().zip(&actual) {
             let expected = quantize_vector(expected);
             let actual = quantize_vector(actual);
@@ -212,16 +146,15 @@ fn real_model_length_aware_batches_preserve_quantized_vectors() {
             (text.clone(), quantize_vector(&vector))
         })
         .collect::<HashMap<_, _>>();
-    let messages = samples
+    let groups = samples
         .iter()
         .rev()
         .enumerate()
-        .map(|(index, text)| crate::storage::SearchableMessage {
-            id: format!("message-{index}"),
+        .map(|(index, text)| EmbeddingGroup {
+            message_ids: vec![format!("message-{index}")],
             content: text.clone(),
         })
-        .collect();
-    let groups = plan_embedding_groups(messages);
+        .collect::<Vec<_>>();
     let candidate = pool.embed_wave(&groups).expect("length-aware embeddings");
     let repeated = pool
         .embed_wave(&groups)
@@ -240,49 +173,6 @@ fn real_model_length_aware_batches_preserve_quantized_vectors() {
         assert_eq!(actual.values, repeated.values, "{}", group.content);
         assert_eq!(actual.norm, repeated.norm, "{}", group.content);
     }
-}
-
-#[test]
-fn quantized_cosine_handles_bounds_and_preserves_direction() {
-    let positive = quantize_vector(&[1.0, 0.0]);
-    let negative = quantize_vector(&[-1.0, 0.0]);
-    let zero = quantize_vector(&[0.0, 0.0]);
-    assert!(
-        (quantized_cosine(&positive, &positive.values, positive.norm) - 1.0).abs() < f32::EPSILON
-    );
-    assert!(
-        (quantized_cosine(&positive, &negative.values, negative.norm) + 1.0).abs() < f32::EPSILON
-    );
-    assert_eq!(quantized_cosine(&positive, &[127], 127.0), 0.0);
-    assert_eq!(
-        quantized_cosine(&zero, &positive.values, positive.norm),
-        0.0
-    );
-}
-
-#[test]
-fn quantized_ranking_selects_the_best_candidates_deterministically() {
-    let query = quantize_vector(&[1.0, 0.0]);
-    let first = quantize_vector(&[1.0, 0.0]);
-    let second = quantize_vector(&[0.8, 0.2]);
-    let third = quantize_vector(&[-1.0, 0.0]);
-    let vectors = SemanticChunks {
-        chunks: vec![crate::storage::SemanticChunk {
-            message_rowids: vec![10, 20, 30],
-            values: [first.values, second.values, third.values].concat(),
-            norms: vec![first.norm, second.norm, third.norm],
-            eligible: vec![true; 3],
-            dimensions: 2,
-        }],
-        dimensions: 2,
-    };
-
-    let ranked = rank_quantized(&query, &vectors, 2);
-    assert_eq!(
-        ranked.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
-        [10, 20]
-    );
-    assert!(ranked[0].1 > ranked[1].1);
 }
 
 #[test]
@@ -374,4 +264,41 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
         assert_eq!(ranked[0].id, expected);
         assert!((ranked[0].fusion_score - 4.0 / 11.0).abs() < 1e-6);
     }
+}
+
+// Test-only f64 reference for comparing embeddings from different inference batches.
+struct Quantized {
+    values: Vec<u8>,
+    norm: f64,
+}
+fn quantize_vector(vector: &[f32]) -> Quantized {
+    let values = super::retrieval::quantize_vector(vector).values;
+    let norm = values
+        .iter()
+        .map(|v| f64::from(v.cast_signed()).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    Quantized { values, norm }
+}
+fn quantized_cosine(left: &Quantized, right: &[u8], right_norm: f64) -> f64 {
+    assert_eq!(left.values.len(), right.len());
+    left.values
+        .iter()
+        .zip(right)
+        .map(|(a, b)| f64::from(a.cast_signed()) * f64::from(b.cast_signed()))
+        .sum::<f64>()
+        / (left.norm * right_norm)
+}
+
+#[test]
+fn quantization_preserves_signed_components_zero_and_large_dimensions() {
+    assert_eq!(
+        super::retrieval::quantize_vector(&[1.0, -0.5, 0.0]).values,
+        [127, (-64_i8).cast_unsigned(), 0]
+    );
+    assert_eq!(super::retrieval::quantize_vector(&[0.0; 4]).values, [0; 4]);
+    assert_eq!(
+        super::retrieval::quantize_vector(&vec![1.0; 2048]).values,
+        vec![127; 2048]
+    );
 }

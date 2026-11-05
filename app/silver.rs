@@ -155,6 +155,7 @@ pub(crate) struct NormalizedMessage {
 }
 
 impl NormalizedMessage {
+    #[cfg(test)]
     pub(crate) fn dialogue(&self) -> &str {
         self.dialogue_text.as_deref().unwrap_or(&self.content)
     }

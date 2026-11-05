@@ -48,12 +48,11 @@ fn unfiltered(fixture: &Fixture) {
 }
 
 fn local_witness(fixture: &Fixture) -> Vec<String> {
-    let connection = open_index(&fixture.database);
+    let connection = open_silver(&fixture.database);
     [
         "SELECT json_object('id',id,'provider',source,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id",
         "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id",
         "SELECT json_object('id',conversation_id,'evidence',evidence) AS witness FROM conversation_enrichment ORDER BY conversation_id",
-        "SELECT json_object('id',message_id,'generation',generation,'vector',hex(vector),'norm',norm) AS witness FROM message_embeddings ORDER BY message_id",
     ].into_iter().flat_map(|sql| {
         connection.prepare(sql).unwrap().query_map([], |row| row.get::<_, String>("witness")).unwrap()
             .collect::<Result<Vec<_>, _>>().unwrap()
@@ -71,10 +70,11 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     unfiltered(&fixture);
     let initial = fixture.json(&["index", "--all-history"], true);
     assert_eq!(initial["shared"]["state"], "published");
-    assert_eq!(initial["shared"]["preparation"]["forwarded_embeddings"], 2);
-    assert_eq!(initial["shared"]["preparation"]["model_inferences"], 0);
+    assert_eq!(initial["shared"]["preparation"]["forwarded_embeddings"], 0);
+    assert_eq!(initial["shared"]["preparation"]["model_inferences"], 2);
     let before = fixture.remote_node("split");
     let local = local_witness(&fixture);
+    let local_points = local_gold_points(&fixture.database, "split");
     let dialogue_scores = search_scores(&fixture);
     drop(fixture.server.take());
     fixture.server = Some(shared_server::Server::with_recipe(
@@ -92,6 +92,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
         before["silver_revision"]
     );
     assert_eq!(local_witness(&fixture), local);
+    assert_eq!(local_gold_points(&fixture.database, "split"), local_points);
     let title_scores = search_scores(&fixture);
     assert_ne!(title_scores, dialogue_scores);
     let current = fixture.remote_node("split");
@@ -108,7 +109,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     assert_eq!(edited["shared"]["preparation"]["model_inferences"], 1);
     std::fs::remove_file(fixture.codex.join("session.jsonl")).unwrap();
     std::fs::remove_file(fixture.directory.path().join("claude/session.jsonl")).unwrap();
-    let connection = open_index(&fixture.database);
+    let connection = open_silver(&fixture.database);
     let id: String = connection
         .query_row(
             "SELECT id FROM objects WHERE origin='provider' AND object_role='container' AND source='codex'",

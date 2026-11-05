@@ -17,7 +17,6 @@ fn benchmark_parser_admission_retention() {
     };
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    storage.defer_search_updates().unwrap();
     let roots = [root];
     let discovery = discover_history_files(Provider::ClaudeCode, &roots, true).unwrap();
     let mut summary = IndexSummary::default();

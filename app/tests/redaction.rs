@@ -1,16 +1,19 @@
 use super::*;
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn cli_masks_archived_credentials_without_changing_local_history() {
     cli_output_redaction(true);
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn output_redaction_can_be_turned_off_in_configuration() {
     cli_output_redaction(false);
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn private_spans_never_reach_silver_or_its_views() {
     let root = tempfile::tempdir().unwrap();
     let chats = root.path().join("chats");
@@ -21,6 +24,7 @@ fn private_spans_never_reach_silver_or_its_views() {
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n[redaction]\noutput=false\n", chats.display())).unwrap();
     let db = root.path().join("index.sqlite3");
+    configure_qdrant(&config);
     let prefix = [
         "--config",
         config.to_str().unwrap(),
@@ -63,6 +67,7 @@ fn private_spans_never_reach_silver_or_its_views() {
         std::fs::read_to_string(source).unwrap(),
         format!("{body}\n")
     );
+    cleanup_local_gold(&db, "local");
 }
 
 fn cli_output_redaction(masked: bool) {
@@ -75,6 +80,7 @@ fn cli_output_redaction(masked: bool) {
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n{}", chats.display(), if masked { "" } else { "[redaction]\noutput=false\n" })).unwrap();
     let db = root.path().join("index.sqlite3");
+    configure_qdrant(&config);
     let prefix = [
         "--config",
         config.to_str().unwrap(),
@@ -131,4 +137,5 @@ fn cli_output_redaction(masked: bool) {
         )
         .unwrap();
     assert!(canonical.contains("hunter2"));
+    cleanup_local_gold(&db, "local");
 }

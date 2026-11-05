@@ -39,7 +39,14 @@ struct Source {
     visible: u64,
 }
 
-fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, AppError> {
+#[derive(Clone, Copy)]
+pub(super) enum Selection {
+    Replace,
+    Delta { journal_base: i64 },
+    Backfill,
+}
+
+fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source, AppError> {
     crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
         let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
         let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
@@ -47,9 +54,12 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
         let mut visible = 0;
         let revision = Storage::open_silver(path)?.with_publication_snapshot(|snapshot| {
             validate_owner(snapshot, target)?;
-            let base = snapshot
-                .delta_base(target.instance.as_deref(), target.publication_revision)?
-                .filter(|_| allow_delta);
+            let base = match selection {
+                Selection::Delta { journal_base } => snapshot
+                    .delta_base(target.instance.as_deref(), journal_base)?
+                    .filter(|_| snapshot.revision > target.publication_revision),
+                Selection::Replace | Selection::Backfill => None,
+            };
             let incremental = base.is_some();
             write_event(
                 &mut writer,
@@ -58,8 +68,12 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
                     source_silver: Some(snapshot.source_silver.clone()),
                     instance: snapshot.instance.clone(),
                     revision: Some(snapshot.revision),
-                    base_revision: base,
-                    snapshot: !incremental,
+                    base_revision: if matches!(selection, Selection::Backfill) {
+                        Some(snapshot.revision.saturating_sub(1))
+                    } else {
+                        base.map(|_| target.publication_revision)
+                    },
+                    snapshot: !incremental && !matches!(selection, Selection::Backfill),
                     forgets: Vec::new(),
                 }),
                 target.redaction,
@@ -258,12 +272,12 @@ pub(super) async fn prepare(
     target: &Target,
     inference: Option<Inference<'_>>,
     started: Instant,
-    allow_delta: bool,
+    selection: Selection,
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
     let path = path.to_path_buf();
     let redaction = target.redaction;
     let metadata = target.clone();
-    let source = crate::blocking(move || capture(&path, &metadata, allow_delta)).await?;
+    let source = crate::blocking(move || capture(&path, &metadata, selection)).await?;
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input, redaction)).await?;
     let mut build = views::Build::default();

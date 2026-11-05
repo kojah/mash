@@ -2,7 +2,8 @@
 """Compare local views units on a private copy of already certified silver.
 
 No provider reads or remote inference. Output must be outside the repository.
-This measures build/storage/process-cold search costs, not semantic quality.
+Requires disposable local Qdrant. Measures build/process-cold search costs and
+SQLite silver storage, excluding Qdrant server memory/disk and semantic quality.
 """
 import argparse
 import json
@@ -23,6 +24,7 @@ def run(args):
     models = args.models.resolve(strict=True)
     source = args.source_db.resolve(strict=True)
     output = args.output.resolve()
+    qdrant = COST.qdrant_configuration(args.qdrant_url, args.qdrant_grpc_url)
     if output.is_relative_to(Path(__file__).resolve().parent.parent):
         raise ValueError('private output must be outside the repository')
     output.mkdir(mode=0o700)
@@ -36,7 +38,7 @@ def run(args):
     for number, unit in enumerate(('message', 'parent-and-message', 'message')):
         config = output / f'{unit}.toml'
         config.write_text('version=1\n[providers]\n[views.build]\n' +
-                          f'retrieval_unit="{unit}"\n[views.query]\nintent="exact-mention"\n')
+                          f'retrieval_unit="{unit}"\n[views.query]\nintent="exact-mention"\n' + qdrant)
         command = base + ['--config', str(config)]
         result, measurement = COST.measure(command + ['index', '--rebuild-local-views'],
                                             binary, output / f'build-{number}-{unit}')
@@ -76,4 +78,6 @@ if __name__ == '__main__':
     parser.add_argument('--models', type=Path, required=True)
     parser.add_argument('--source-db', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--qdrant-url', required=True)
+    parser.add_argument('--qdrant-grpc-url', required=True)
     run(parser.parse_args())

@@ -45,12 +45,11 @@ invariants and missing tools fail the command. Negative configurations deliberat
 break the modeled contracts, including the historical replay-ordering bug below.
 A green suite establishes properties of these bounded abstractions only.
 
-The Qdrant engine now lives under `app/views/qdrant`, with common scope and
-retrieval types. This extraction changes module ownership only: collection and
-payload schemas, mutation ordering, locks, revision checks and awaited I/O
-boundaries are unchanged. The existing models retain their semantics; source
-mappings below follow the moved files. Local Qdrant coordination will require
-its own model review when the local workflow changes.
+The Qdrant engine lives under `app/views/qdrant`, with common scope, projection,
+and retrieval types for direct local access and the shared HTTP service. The
+original extraction preserved shared mutation ordering and revision checks.
+The local cutover is modeled separately by `LocalWriter` and `LocalGold` below;
+shared coordinators retain their existing models.
 
 Qdrant point publication now uses the generated Tonic client in
 `app/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
@@ -123,6 +122,79 @@ model proves no remote-write fencing, Qdrant durability or certification claim:
 requests sent before process death may still arrive afterward (tracked in
 `mash-c05a`). Rust tests cover alias resolution, independent databases, continued
 blocking work after cancellation, and public CLI contention with reads available.
+
+### LocalGold: invalidate before mutation and certify completed replay
+
+`LocalGold.tla` checks the direct local coordinator with two silver revisions,
+two build settings, and one native and one connector projection. Revision 2
+deletes the native projection. A reader reports current only when certification,
+the captured silver revision, and build settings agree. `CurrentMatchesSilver`
+then requires both persisted projections to equal that input.
+
+Exact readers select the persisted build recipe rather than activating a newly
+requested dense recipe; they still require that recipe's complete certification
+for the current silver. Status reports the persisted recipe and leaves requested
+dense artifacts stale when it differs. This does not alter any durable transition
+or weaken the model's certification guard. The real-model CLI contract and
+`local_qdrant_exact_uses_certified_recipe_without_activating_dense_changes` cover
+that reader policy, including rejection after silver changes.
+
+Source mapping:
+
+- `Commit` abstracts a committed canonical transaction in `core/indexing.rs`,
+  `core/maintenance.rs`, or `core/connector_ingestion.rs`. `LocalWriter` checks
+  that admission spans these writes and the following refresh.
+- `Capture` maps to `storage/gold_input.rs::Input::capture`; `Activate` covers
+  changed settings selected before replay in `views/local.rs::build`.
+- `Invalidate` is the awaited `put_node_views` with an empty, uncertified node,
+  before any point deletion or upsert.
+- `Delete(item)` and `Write(item)` represent separate completed Qdrant mutation
+  requests in `views/local/projection.rs` and the common `NativeWriter` and
+  `Documents` helpers. Clearing a point before replacing it is an allowed
+  intermediate state, not an atomic silver-and-gold transaction. Modeling each
+  item separately permits more interleavings than a batched request.
+- `Certify` follows all flushes, settle, and revalidation of the input silver
+  certificate and active settings. Only this final metadata write claims
+  current views. Compatible unchanged point reuse is abstracted as writing the
+  same projection; digest correctness is covered by Rust/backend regressions.
+- `Crash` preserves completed durable writes and releases local ownership.
+  Retry captures silver again and starts with invalidation. This is a safety
+  model, without a delivery, retry fairness, or eventual recovery promise.
+
+`LocalGoldClearFirst.cfg` deliberately deletes a point before invalidation.
+`LocalGoldEarlyCertify.cfg` deliberately certifies before both projections have
+finished. Both must violate `CurrentMatchesSilver`; neither is a proposed
+implementation.
+
+Limitations: this model assumes mutations have either completed or have not
+been sent when `Crash` occurs. It does **not** cover requests still executing
+at Qdrant after cancellation, timeout, or process death. The local OS lock does
+not fence those requests; that uncovered risk is tracked in
+`mash-c05a`. It also assumes all silver writers obey admission, Qdrant retains
+acknowledged writes, and collection/configuration mutation by external clients
+does not race the operation. No power-loss or remote fencing proof is claimed.
+The direct local lifecycle tests in `app/views/local/tests.rs` exercise real
+gRPC mutations, hidden/deleted projections, failed inference, and replay. Status
+reads use one SQLite snapshot for counts and certificate and decline readiness
+if their later Qdrant inspection captured different silver.
+Retrieval also rechecks database identity and certificate in one SQLite snapshot
+before and after Qdrant search. Replacing a database with the same certificate
+must invalidate an existing reader; the Rust regression isolates this identity
+check. The bounded model fixes one database identity, so this additional reader
+guard does not change its transitions or completed-write assumptions.
+The model's unchanged-projection reuse assumes equal fingerprints cover every
+stored field. `mash-ysdx.5` reproduced a violation of that assumption in the
+previous partial connector digest: metadata-only updates left old timestamps
+certified on both destinations. Both coordinators now fingerprint the complete
+typed connector point before embedding. Named backend regressions cover this
+implementation/model gap; invalidation and durable-write ordering are unchanged.
+
+The cutover removes SQL-gold participation from publication snapshots. The
+existing `Publication` and backfill models retain their transition semantics:
+snapshot rows come from a consistent silver read, local journal bases select
+delta rows, wire bases name acknowledged server heads, and embeddings are
+prepared after capture. No gold mutation advances the native publication
+journal. The mapped journal/wire-base Rust regression supplements those models.
 
 ### RuntimeUpgrade: stop admitting writes after observing replacement
 

@@ -1,6 +1,4 @@
-//! Shared SQLite infrastructure for silver history and views retrieval tables.
-//! Canonical mutation also invalidates dependent views in the same transaction;
-//! views/local owns rebuilding. See silver.sql and views.sql for the two databases.
+//! Canonical SQLite silver storage. Qdrant projection lives in views/local.
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -15,18 +13,13 @@ pub(crate) mod admission;
 mod catalog;
 pub(crate) mod connector_views;
 mod coverage;
-pub(crate) mod embedding_plan;
-mod exact;
-mod semantic;
-pub(crate) use semantic::SnapshotCoverage;
-mod semantic_chunks;
-mod views_manifest;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.
 mod attachments;
 mod claude_sources;
 mod enrichment;
 pub(crate) mod export;
+pub(crate) mod gold_input;
 mod indexing;
 pub(crate) mod objects;
 pub(crate) mod packed;
@@ -44,9 +37,6 @@ use schema::SCHEMA_VERSION;
 #[allow(dead_code, unused_variables, clippy::all, clippy::pedantic)]
 #[path = "storage/generated/queries.rs"]
 pub(crate) mod generated;
-use schema::initialize;
-#[cfg(test)]
-use semantic_chunks::validate_quantized_vector;
 
 pub(crate) struct Storage {
     attachments_config: crate::attachments::Configuration,
@@ -54,54 +44,6 @@ pub(crate) struct Storage {
     output_redaction: crate::redaction::Policy,
     connection: Connection,
     writer_active: bool,
-    search_updates: SearchUpdates,
-    /// A one-shot scope for the next connector unit refresh.
-    connector_scope: Option<connector_views::Conversations>,
-}
-
-/// Native entries inserted and deleted since the writer transaction began,
-/// so the pre-transaction message count is known without counting at BEGIN.
-/// Temporary state rolls back with the transaction and its savepoints;
-/// foreign-key cascades fire these triggers like direct deletes.
-const TRANSACTION_ENTRY_DELTA: &str = "
-    CREATE TEMP TABLE IF NOT EXISTS transaction_entry_delta (
-        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-        inserted INTEGER NOT NULL DEFAULT 0,
-        deleted INTEGER NOT NULL DEFAULT 0
-    );
-    INSERT OR IGNORE INTO transaction_entry_delta(singleton) VALUES (1);
-    CREATE TEMP TRIGGER IF NOT EXISTS transaction_entry_inserted
-    AFTER INSERT ON main.objects
-    WHEN NEW.origin = 'provider' AND NEW.object_role = 'entry' BEGIN
-        UPDATE transaction_entry_delta SET inserted = inserted + 1;
-    END;
-    CREATE TEMP TRIGGER IF NOT EXISTS transaction_entry_deleted
-    AFTER DELETE ON main.objects
-    WHEN OLD.origin = 'provider' AND OLD.object_role = 'entry' BEGIN
-        UPDATE transaction_entry_delta SET deleted = deleted + 1;
-    END;
-    CREATE TEMP TRIGGER IF NOT EXISTS transaction_entry_reclassified
-    AFTER UPDATE OF origin, object_role ON main.objects
-    WHEN (OLD.origin = 'provider' AND OLD.object_role = 'entry')
-        <> (NEW.origin = 'provider' AND NEW.object_role = 'entry') BEGIN
-        UPDATE transaction_entry_delta
-           SET inserted = inserted + (NEW.origin = 'provider' AND NEW.object_role = 'entry'),
-               deleted = deleted + (OLD.origin = 'provider' AND OLD.object_role = 'entry');
-    END;";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SearchUpdates {
-    Immediate,
-    Deferred,
-    FullRebuild,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum FtsRefreshStrategy {
-    None,
-    Incremental,
-    Bulk,
-    Deferred,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -115,13 +57,8 @@ pub(crate) struct Counts {
 }
 
 pub(crate) struct StatusSnapshot {
-    pub(crate) lexical: Option<crate::views::lexical_manifest::Manifest>,
-    pub(crate) views: Option<crate::views::manifest::Manifest>,
     pub(crate) silver: Option<crate::silver::certificate::Certificate>,
     pub(crate) counts: Counts,
-    pub(crate) current_embeddings: u64,
-    pub(crate) derived_clean: bool,
-    pub(crate) exact_semantic_coverage: bool,
     pub(crate) connectors: Vec<crate::source::SourceStatus>,
 }
 
@@ -226,31 +163,6 @@ impl MessageContent {
     }
 }
 
-#[cfg(test)]
-pub(crate) struct SearchableMessage {
-    pub(crate) id: String,
-    pub(crate) content: String,
-}
-
-pub(crate) struct EmbeddingWrite<'a> {
-    pub(crate) message_id: &'a str,
-    pub(crate) vector: &'a [u8],
-    pub(crate) norm: f32,
-}
-
-pub(crate) struct SemanticChunk {
-    pub(crate) message_rowids: Vec<i64>,
-    pub(crate) values: Vec<u8>,
-    pub(crate) norms: Vec<f32>,
-    pub(crate) eligible: Vec<bool>,
-    pub(crate) dimensions: usize,
-}
-
-pub(crate) struct SemanticChunks {
-    pub(crate) chunks: Vec<SemanticChunk>,
-    pub(crate) dimensions: usize,
-}
-
 #[derive(Default)]
 pub(crate) struct ConversationChange {
     pub(crate) unchanged: bool,
@@ -271,28 +183,13 @@ impl Storage {
             fs::create_dir_all(parent).map_err(AppError::io)?;
         }
         let connection = Connection::open(path).map_err(AppError::database)?;
-        initialize(&connection, &schema::views_path(path))?;
-        connection
-            .execute_batch(
-                "CREATE TEMP TABLE IF NOT EXISTS pending_fts_messages (
-                    message_id TEXT PRIMARY KEY
-                 ) WITHOUT ROWID;
-                 CREATE TEMP TABLE IF NOT EXISTS dirty_semantic_chunks (
-                    chunk_id INTEGER PRIMARY KEY,
-                    generation TEXT
-                 ) WITHOUT ROWID;",
-            )
-            .map_err(AppError::database)?;
-        connection
-            .execute_batch(TRANSACTION_ENTRY_DELTA)
-            .map_err(AppError::database)?;
+        schema::initialize_silver(&connection)?;
+        schema::install_publication_triggers(&connection)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
             output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
-            search_updates: SearchUpdates::Immediate,
-            connector_scope: None,
         })
     }
 
@@ -309,15 +206,12 @@ impl Storage {
                 crate::database_error::Operation::BeginWriter,
             ))?;
         storage.writer_active = true;
-        storage.reset_transaction_entry_delta()?;
         Ok(storage)
     }
 
     #[tracing::instrument(name = "commit_writer", skip_all)]
     pub(crate) fn commit_writer(&mut self) -> Result<(), AppError> {
         if self.writer_active {
-            self.refresh_pending_fts()?;
-            self.finalize_semantic_chunks()?;
             self.connection
                 .execute_batch("COMMIT")
                 .map_err(AppError::database)?;
@@ -343,8 +237,6 @@ impl Storage {
 
     fn commit_and_restart_writer(&mut self, continuation: &str) -> Result<(), AppError> {
         self.require_writer()?;
-        self.refresh_pending_fts()?;
-        self.finalize_semantic_chunks()?;
         self.connection
             .execute_batch("COMMIT")
             .map_err(AppError::database)?;
@@ -353,17 +245,7 @@ impl Storage {
             .execute_batch(continuation)
             .map_err(AppError::database)?;
         self.writer_active = true;
-        self.reset_transaction_entry_delta()
-    }
-
-    fn reset_transaction_entry_delta(&self) -> Result<(), AppError> {
-        self.connection
-            .execute(
-                "UPDATE transaction_entry_delta SET inserted = 0, deleted = 0",
-                [],
-            )
-            .map(drop)
-            .map_err(AppError::database)
+        Ok(())
     }
 
     fn require_writer(&self) -> Result<(), AppError> {
@@ -388,22 +270,6 @@ impl Drop for Storage {
 /// A column every native entry has; its absence means corrupt silver.
 pub(crate) fn required<T>(value: Option<T>, field: &str) -> Result<T, AppError> {
     value.ok_or_else(|| AppError::database_data(format!("native silver is missing {field}")))
-}
-
-pub(crate) fn cutoff_timestamp(days: Option<u32>) -> Result<Option<i64>, AppError> {
-    let Some(days) = days else {
-        return Ok(None);
-    };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| {
-            AppError::internal(format!("system clock precedes Unix epoch: {error}"))
-        })?;
-    let age = std::time::Duration::from_secs(u64::from(days).saturating_mul(86_400));
-    let cutoff = now.saturating_sub(age).as_millis();
-    i64::try_from(cutoff)
-        .map(Some)
-        .map_err(|_| AppError::internal("timestamp exceeds SQLite range"))
 }
 
 #[cfg(test)]

@@ -50,6 +50,9 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      MASH_TEST_QDRANT_URL: http://localhost:6333
+      MASH_TEST_QDRANT_GRPC_URL: http://localhost:6334
     services:
       qdrant:
         image: qdrant/qdrant:v1.19.1
@@ -154,8 +157,8 @@ jobs:
           TMPDIR="$RUNNER_TEMP" bash tools/test-controller-environment.sh
           TMPDIR="$RUNNER_TEMP" bash tools/test-run-ansible.sh
           TMPDIR="$RUNNER_TEMP" bash tools/test-ansible.sh
-      - name: Verify offline search evaluation
-        run: python3 -m unittest discover -s tools -p 'test_search_evaluation.py'
+      - name: Verify offline search evaluation and benchmark witnesses
+        run: uv run --no-project python -m unittest discover -s tools -p 'test_*.py'
       - name: Install pinned sqlc release
         run: |
           mkdir -p "$RUNNER_TEMP/mash-sqlc"
@@ -199,13 +202,25 @@ jobs:
       - name: Verify real embedding, reranking, hybrid search and parallel retrieval
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
-          -E 'test(real_models_index_and_run_hybrid_search) or test(real_models_mcp_fusion_overrides) or test(real_models_shared_context_failure) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
+          -E 'test(real_models_index_and_run_hybrid_search) or test(real_models_mcp_) or test(real_models_shared_context_failure) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
       - run: cargo test --doc
-      - name: Verify shared Qdrant publication and retrieval
+      - name: Verify local Qdrant public interfaces and inference recovery
+        run: >-
+          cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
+          -E 'test(exact_mcp_search_bypasses_model_permits) or test(sdk_search_pages_continue) or test(sdk_compact_and_extended_output) or test(sdk_decision_workflow) or test(exact_core_shared_and_fallback) or test(local_candidates_use_the_shared_query_vector) or test(local_rich_filters_apply_before) or test(local_message_candidates_intersect) or test(remote_core_index_needs_no_local_models) or test(failed_remote_bodies_never_publish_readiness) or test(lexical_views_rebuild_streams_mcp_progress)'
+      - name: Verify local and shared Qdrant publication and retrieval
         run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
         env:
           MASH_TEST_QDRANT_URL: http://localhost:6333
           MASH_TEST_QDRANT_GRPC_URL: http://localhost:6334
+      - name: Verify CLI Qdrant readiness, connector replay and archives
+        run: >-
+          cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
+          -E 'test(status_with_completed_embeddings) or test(current_views_readiness) or test(exact_status_uses_lexical_certification) or test(status_with_completed_context_only) or test(explicit_empty_index_reports_ready) or test(connector_records_become_searchable) or test(later_deliveries_refresh_gold) or test(scoped_refreshes_match_a_full_rebuild) or test(export_imports_history_offline) or test(users_only_cli_index) or test(lexical_only_cli_indexes) or test(index_without_pending_embeddings) or test(incomplete_index_progress) or test(rejected_source_preserves_cli) or test(init_configures_registers_and_indexes) or test(local_destination_never_publishes)'
+      - name: Verify local Qdrant search presentation and privacy
+        run: >-
+          cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
+          -E 'test(exact_cli_thread_excerpts) or test(cli_search_pages_partition) or test(exact_cli_search_needs_no_models) or test(empty_word_exact_search_explains_phrase_matching) or test(cli_masks_archived_credentials) or test(output_redaction_can_be_turned_off) or test(private_spans_never_reach_silver) or test(core_retrieves_native_cursor_threads)'
       - name: Verify Qdrant restart and snapshot restoration
         env:
           MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart

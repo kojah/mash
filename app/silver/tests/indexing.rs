@@ -272,11 +272,12 @@ fn oversized_jsonl_rolls_back_messages_and_checkpoint_then_recovers() {
             "{error:?}"
         );
         storage.commit_writer().unwrap();
-        assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
+        assert_eq!(
+            crate::storage::test_support::projections_with_text(&storage, "durable", None).len(),
+            1
+        );
         assert!(
-            storage
-                .search("uncommitted", 10, None, None)
-                .unwrap()
+            crate::storage::test_support::projections_with_text(&storage, "uncommitted", None)
                 .is_empty()
         );
         assert!(
@@ -291,13 +292,11 @@ fn oversized_jsonl_rolls_back_messages_and_checkpoint_then_recovers() {
         assert_eq!(index(&mut storage, &options).unwrap().changed_messages, 1);
         storage.commit_writer().unwrap();
         assert_eq!(
-            storage.search("recovered", 10, None, None).unwrap().len(),
+            crate::storage::test_support::projections_with_text(&storage, "recovered", None).len(),
             1
         );
         assert!(
-            storage
-                .search("durable", 10, None, None)
-                .unwrap()
+            crate::storage::test_support::projections_with_text(&storage, "durable", None)
                 .is_empty()
         );
     }
@@ -348,11 +347,12 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
     ));
     assert!(error.error.message.contains("history changed"));
     writer.commit_writer().unwrap();
-    assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&writer, "durable", None).len(),
+        1
+    );
     assert!(
-        writer
-            .search("uncommitted", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&writer, "uncommitted", None)
             .is_empty()
     );
     assert!(
@@ -372,10 +372,12 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
     assert_eq!(retry.changed_messages, 1);
     writer.commit_writer().unwrap();
     assert_eq!(
-        writer.search("uncommitted", 10, None, None).unwrap().len(),
+        crate::storage::test_support::projections_with_text(&writer, "uncommitted", None).len(),
         1
     );
-    assert!(writer.search("durable", 10, None, None).unwrap().is_empty());
+    assert!(
+        crate::storage::test_support::projections_with_text(&writer, "durable", None).is_empty()
+    );
 }
 
 #[test]
@@ -411,10 +413,10 @@ fn queued_jsonl_prefix_applies_once_and_later_appends_remain_pending() {
     writer.commit_writer().unwrap();
     assert_eq!(writer.counts().unwrap().messages, 1);
     assert_eq!(
-        writer.search("original", 10, None, None).unwrap()[0].id,
+        crate::storage::test_support::projections_with_text(&writer, "original", None)[0].id,
         original_id
     );
-    assert!(writer.search("later", 10, None, None).unwrap().is_empty());
+    assert!(crate::storage::test_support::projections_with_text(&writer, "later", None).is_empty());
     assert!(
         !writer
             .source_checkpoint_matches(
@@ -435,10 +437,13 @@ fn queued_jsonl_prefix_applies_once_and_later_appends_remain_pending() {
     writer.commit_writer().unwrap();
     assert_eq!(writer.counts().unwrap().messages, 2);
     assert_eq!(
-        writer.search("original", 10, None, None).unwrap()[0].id,
+        crate::storage::test_support::projections_with_text(&writer, "original", None)[0].id,
         original_id
     );
-    assert_eq!(writer.search("later", 10, None, None).unwrap().len(), 1);
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&writer, "later", None).len(),
+        1
+    );
     assert!(
         writer
             .source_checkpoint_matches(
@@ -493,14 +498,13 @@ fn queued_results_refresh_changed_sources_and_reject_removed_sources_before_writ
         writer.commit_writer().unwrap();
         assert_eq!(writer.counts().unwrap().messages, u64::from(!remove));
         assert!(
-            writer
-                .search("sentinel", 10, None, None)
-                .unwrap()
+            crate::storage::test_support::projections_with_text(&writer, "sentinel", None)
                 .is_empty()
         );
         if !remove {
             assert_eq!(
-                writer.search("replacement", 10, None, None).unwrap().len(),
+                crate::storage::test_support::projections_with_text(&writer, "replacement", None)
+                    .len(),
                 1
             );
             assert!(
@@ -775,28 +779,25 @@ fn authoritative_roots_index_only_the_two_concrete_formats() {
     assert_eq!(writer.counts().expect("counts").conversations, 2);
     writer.commit_writer().expect("commit configured index");
     assert_eq!(
-        writer
-            .search(
-                "claude",
-                10,
-                Some(crate::provider::Provider::ClaudeCode),
-                None
-            )
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "claude",
+            Some(crate::provider::Provider::ClaudeCode)
+        )
+        .len(),
         1
     );
     assert_eq!(
-        writer
-            .search("codex", 10, Some(crate::provider::Provider::Codex), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "codex",
+            Some(crate::provider::Provider::Codex)
+        )
+        .len(),
         1
     );
     assert!(
-        writer
-            .search("unsupported", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&writer, "unsupported", None)
             .is_empty()
     );
 }
@@ -852,10 +853,7 @@ fn missing_builtin_root_is_nonfatal_but_never_authorizes_purge() {
     assert_eq!(refresh.purged_conversations, 0);
     assert_eq!(writer.counts().expect("counts").conversations, 1);
     assert_eq!(
-        writer
-            .search("durable", 10, None, None)
-            .expect("preserved search row")
-            .len(),
+        crate::storage::test_support::projections_with_text(&writer, "durable", None).len(),
         1
     );
     drop(writer);
@@ -907,7 +905,10 @@ fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
     assert_eq!(writer.counts().expect("counts").conversations, 1);
     writer.commit_writer().expect("commit unchanged state");
-    assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&writer, "durable", None).len(),
+        1
+    );
 }
 
 #[test]
@@ -937,16 +938,6 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
             &crate::silver::SourceStamp::file(10, 20),
         )
         .expect("seed checkpoint");
-    writer
-        .replace_embeddings(
-            "test-generation",
-            &[crate::storage::EmbeddingWrite {
-                message_id: "existing-message",
-                vector: &[127],
-                norm: 127.0,
-            }],
-        )
-        .expect("seed embedding");
     writer.commit_writer().expect("commit seed");
     drop(writer);
     let mut storage = Storage::open(&database).expect("forget storage");
@@ -981,7 +972,6 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
     assert_eq!(summary.committed_batches, 0);
     assert_eq!(writer.counts().expect("counts").conversations, 1);
-    assert_eq!(writer.embedding_count("test-generation").unwrap(), 1);
     assert!(
         writer
             .source_checkpoint_matches(
@@ -991,11 +981,12 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
             )
             .unwrap()
     );
-    assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&writer, "durable", None).len(),
+        1
+    );
     assert!(
-        writer
-            .search("uncommitted", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&writer, "uncommitted", None)
             .is_empty()
     );
     let tombstone = writer
@@ -1043,8 +1034,11 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
     assert_eq!(writer.counts().expect("bounded counts").conversations, 1);
     assert_eq!(writer.counts().expect("bounded counts").messages, 2);
     writer.commit_writer().expect("commit bounded index");
-    assert_eq!(writer.search("complete", 10, None, None).unwrap().len(), 1);
-    assert!(writer.search("old", 10, None, None).unwrap().is_empty());
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&writer, "complete", None).len(),
+        1
+    );
+    assert!(crate::storage::test_support::projections_with_text(&writer, "old", None).is_empty());
     drop(writer);
 
     let all_history = IndexOptions {
@@ -1058,17 +1052,6 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
         writer.counts().expect("all-history counts").conversations,
         2
     );
-    let old_message_id = stable_id("claude-message", &["old-session", "old-session-m1"]);
-    writer
-        .replace_embeddings(
-            "old-generation",
-            &[crate::storage::EmbeddingWrite {
-                message_id: &old_message_id,
-                vector: &[127],
-                norm: 127.0,
-            }],
-        )
-        .expect("old embedding");
     let old_stamp = source_stamp(&old_path).expect("old source stamp");
     writer.commit_writer().expect("commit all-history index");
     drop(writer);
@@ -1084,7 +1067,6 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
 
     assert_eq!(refresh.purged_conversations, 1);
     assert_eq!(writer.counts().expect("counts").conversations, 1);
-    assert_eq!(writer.embedding_count("old-generation").unwrap(), 1);
     assert!(
         writer
             .source_checkpoint_matches(
@@ -1095,8 +1077,13 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
             .expect("old checkpoint")
     );
     writer.commit_writer().expect("commit bounded refresh");
-    assert_eq!(writer.search("old", 10, None, None).unwrap().len(), 1);
-    assert!(writer.search("recent", 10, None, None).unwrap().is_empty());
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&writer, "old", None).len(),
+        1
+    );
+    assert!(
+        crate::storage::test_support::projections_with_text(&writer, "recent", None).is_empty()
+    );
 }
 
 #[test]
@@ -1135,16 +1122,6 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
             &crate::silver::SourceStamp::file(10, 20),
         )
         .expect("Claude checkpoint");
-    writer
-        .replace_embeddings(
-            "claude-generation",
-            &[crate::storage::EmbeddingWrite {
-                message_id: "claude-session-message",
-                vector: &[127],
-                norm: 127.0,
-            }],
-        )
-        .expect("Claude embedding");
     writer.commit_writer().expect("commit seed");
     drop(writer);
     let mut storage = Storage::open(&database).expect("tombstone storage");
@@ -1168,7 +1145,6 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
 
     assert_eq!(summary.purged_conversations, 1);
     assert_eq!(writer.counts().expect("counts").conversations, 1);
-    assert_eq!(writer.embedding_count("claude-generation").unwrap(), 1);
     assert!(
         writer
             .source_checkpoint_matches(
@@ -1179,10 +1155,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
             .unwrap()
     );
     assert_eq!(
-        writer
-            .search("claude", 10, None, None)
-            .expect("Claude remains")
-            .len(),
+        crate::storage::test_support::projections_with_text(&writer, "claude", None).len(),
         1
     );
     let tombstone = writer

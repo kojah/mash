@@ -52,9 +52,7 @@ fn oversized_current_and_fragmented_legacy_sessions_preserve_index_and_checkpoin
                 .unwrap()
         );
         assert!(
-            !writer
-                .search("cbioportal", 10, None, None)
-                .unwrap()
+            !crate::storage::test_support::projections_with_text(&writer, "cbioportal", None)
                 .is_empty()
         );
         drop(writer);

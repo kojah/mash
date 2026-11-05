@@ -39,6 +39,7 @@ fn presentation_bytes(response: &CallToolResult) {
     clippy::too_many_lines,
     reason = "one SDK session checks presentation and canonical evidence"
 )]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("silver.sqlite3");
@@ -80,10 +81,9 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
         .unwrap();
     writer.finish_silver_scan(Provider::Codex, true).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
+    let (gold, url) = crate::views::local::test_support::lexical(&database, &config).await;
     let server = Mash {
         runtime: None,
         paths: Arc::new(Paths {
@@ -228,4 +228,5 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     assert_eq!(invalid.is_error, Some(true));
     client.cancel().await.unwrap();
     service.cancel().await.unwrap();
+    crate::views::local::test_support::cleanup(&gold, &url).await;
 }

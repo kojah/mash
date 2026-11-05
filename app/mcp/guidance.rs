@@ -230,7 +230,7 @@ fn contract() -> Result<Value, serde_json::Error> {
         examples()?,
         WORKFLOW,
         crate::storage::schema::SCHEMA_VERSION,
-        crate::storage::schema::VIEWS_VERSION,
+        crate::views::qdrant::SCHEMA_VERSION,
         include_str!("../templates/history_skill.md"),
         [
             Topic::Discovery.guidance(),
@@ -259,7 +259,7 @@ pub(super) fn instructions() -> String {
 struct Runtime {
     build_revision: &'static str,
     silver_schema: i64,
-    views_schema: i64,
+    views_schema: u32,
     contract_fingerprint: String,
     contract_matches: Option<bool>,
     recommended_action: Option<&'static str>,
@@ -278,7 +278,7 @@ fn runtime(expected: Option<&str>) -> Result<Runtime, serde_json::Error> {
     Ok(Runtime {
         build_revision: env!("MASH_BUILD_REVISION"),
         silver_schema: crate::storage::schema::SCHEMA_VERSION,
-        views_schema: crate::storage::schema::VIEWS_VERSION,
+        views_schema: crate::views::qdrant::SCHEMA_VERSION,
         contract_fingerprint,
         contract_matches,
         recommended_action,

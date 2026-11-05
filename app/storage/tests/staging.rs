@@ -2,22 +2,11 @@ use super::*;
 use crate::silver::messages::Messages;
 
 #[test]
-fn staged_refresh_preserves_vectors_and_reconciles_removed_and_moved_messages() {
+fn staged_refresh_reconciles_removed_and_moved_messages() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let original = conversation_with_messages(&[("a", "alpha"), ("b", "beta"), ("c", "gamma")]);
     storage.replace_conversation(&original).unwrap();
-    let embeddings = original
-        .messages
-        .inline()
-        .iter()
-        .map(|message| EmbeddingWrite {
-            message_id: &message.id,
-            vector: &[127],
-            norm: 127.0,
-        })
-        .collect::<Vec<_>>();
-    storage.replace_embeddings("fixture", &embeddings).unwrap();
     storage.commit_and_continue_writer().unwrap();
     let mut refreshed = conversation_with_messages(&[
         ("c", "gamma"),
@@ -29,7 +18,6 @@ fn staged_refresh_preserves_vectors_and_reconciles_removed_and_moved_messages() 
     let changed = storage.replace_conversation(&refreshed).unwrap();
     assert_eq!(changed.changed_message_ids.len(), 3);
     assert_eq!(changed.removed_messages, 1);
-    assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
     assert!(storage.view("b", 0).unwrap().is_empty());
     assert_eq!(storage.view("c", 0).unwrap()[0].ordinal, 0);
     assert_eq!(storage.view("a", 0).unwrap()[0].ordinal, 1);
@@ -37,7 +25,6 @@ fn staged_refresh_preserves_vectors_and_reconciles_removed_and_moved_messages() 
         storage.view("a", 0).unwrap()[0].content,
         "changed canonical context"
     );
-    assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
     assert!(storage.replace_conversation(&refreshed).unwrap().unchanged);
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 3);

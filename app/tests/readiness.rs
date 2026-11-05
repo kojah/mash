@@ -228,6 +228,11 @@ fn status_reports_the_exact_resolved_local_configuration() {
             "attachments": {"allowed_roots": [], "share_files": false},
             "redaction": {"output": true, "publication": true, "remote_embeddings": true},
             "shared": null,
+            "qdrant": {
+                "url": "http://127.0.0.1:6333", "grpc_url": "http://127.0.0.1:6334",
+                "api_key_env": null, "memory": "durable",
+                "vector_search": {"algorithm": "hnsw", "ef_runtime": 200}
+            },
             "views": {"build": {"embedding_text": "dialogue"}, "query": {
                 "intent": "related-discussion", "unit": "chats", "limit": 20,
                 "fusion": {"rank_constant": 60, "lexical_weight": 1, "recency_weight": 50, "semantic_weight": 1},
@@ -364,10 +369,11 @@ fn status_with_missing_embeddings_recommends_index() {
 }
 
 #[test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 fn status_with_completed_embeddings_reports_hybrid_readiness() {
-    let fixture = NodeFixture::new();
+    let mut fixture = NodeFixture::new();
+    fixture.models = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
     fixture.seed(None);
-    fixture.insert_embedding();
     fixture.complete_index();
     let status = fixture.status();
     assert_eq!(status["ready"], true);
@@ -377,17 +383,21 @@ fn status_with_completed_embeddings_reports_hybrid_readiness() {
         status["local_artifacts"],
         serde_json::json!({"metadata":"ready","lexical":"ready","dense":"ready"})
     );
+    cleanup_local_gold(&fixture.database, "local");
 }
 
 #[test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 fn current_views_readiness_does_not_require_query_model_assets() {
-    let fixture = NodeFixture::new();
+    let mut fixture = NodeFixture::new();
+    fixture.models = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
     fixture.seed(None);
-    fixture.insert_embedding();
     fixture.complete_index();
     let missing_models = fixture.database.with_extension("missing-models");
     let before = std::fs::read(&fixture.database).unwrap();
     let status = run_json(&[
+        "--config",
+        fixture.config.to_str().unwrap(),
         "--db",
         fixture.database.to_str().unwrap(),
         "--models-dir",
@@ -402,13 +412,15 @@ fn current_views_readiness_does_not_require_query_model_assets() {
     );
     assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
     assert!(!missing_models.exists());
+    cleanup_local_gold(&fixture.database, "local");
 }
 
 #[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 fn exact_status_uses_lexical_certification_without_models_or_dense_coverage() {
     let fixture = NodeFixture::new();
-    let config = fixture.database.with_extension("toml");
-    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nembedding_text='title-and-dialogue'\n[views.query]\nintent='exact-mention'\n").unwrap();
+    let config = fixture.config.clone();
+    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nembedding_text='title-and-dialogue'\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let missing_models = fixture.database.with_extension("missing-models");
     let status = || {
         run_json(&[
@@ -438,25 +450,27 @@ fn exact_status_uses_lexical_certification_without_models_or_dense_coverage() {
     assert_eq!(complete["embeddings"], 0);
     assert_eq!(
         complete["local_artifacts"],
-        serde_json::json!({"metadata":"ready","lexical":"ready","dense":"stale"})
+        serde_json::json!({"metadata":"ready","lexical":"ready","dense":"disabled"})
     );
     assert!(complete["recommended_action"].is_null());
     assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
-    let connection = open_index(&fixture.database);
+    let connection = open_silver(&fixture.database);
     connection
-        .execute_batch("UPDATE derived_state SET search_dirty=1 WHERE singleton=1")
+        .execute_batch("UPDATE silver_scans SET state=0 WHERE provider=\'codex\'")
         .unwrap();
     let dirty = status();
     assert_eq!(dirty["ready"], false);
     assert_eq!(dirty["local_artifacts"]["lexical"], "stale");
-    connection.execute_batch("UPDATE derived_state SET search_dirty=0 WHERE singleton=1; UPDATE silver_state SET revision=revision+1 WHERE singleton=1").unwrap();
+    connection.execute_batch("UPDATE silver_scans SET state=1 WHERE provider=\'codex\'; UPDATE silver_state SET revision=revision+1 WHERE singleton=1").unwrap();
     let advanced = status();
     assert_eq!(advanced["ready"], false);
     assert_eq!(advanced["local_artifacts"]["lexical"], "stale");
     assert!(!missing_models.exists());
+    cleanup_local_gold(&fixture.database, "local");
 }
 
 #[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 fn status_with_completed_context_only_index_needs_no_embeddings() {
     let fixture = NodeFixture::new();
     fixture.seed(Some(""));
@@ -468,15 +482,18 @@ fn status_with_completed_context_only_index_needs_no_embeddings() {
     assert_eq!(status["ready"], true);
     assert_eq!(status["realized_mode"], "hybrid");
     assert!(status["recommended_action"].is_null());
+    cleanup_local_gold(&fixture.database, "local");
 }
 
 #[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 fn explicit_empty_index_reports_ready_without_loading_models() {
     let directory = tempfile::tempdir().unwrap();
     let models = directory.path().join("models");
     create_valid_model_marker(&models);
     let config = directory.path().join("config.toml");
     std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    configure_qdrant(&config);
     let database = directory.path().join("empty.sqlite3");
     let mut args = vec![
         "--config",
@@ -495,6 +512,7 @@ fn explicit_empty_index_reports_ready_without_loading_models() {
     assert_eq!(status["messages"], 0);
     assert_eq!(status["ready"], true);
     assert!(status["recommended_action"].is_null());
+    cleanup_local_gold(&database, "local");
 }
 
 /// An index from another release is reported with upgrade instructions and

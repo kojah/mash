@@ -20,22 +20,22 @@ mod skill;
 mod workflows;
 
 #[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("index.sqlite3");
     let mut writer = crate::storage::Storage::open_writer(&database).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
     let certificate = writer.silver_certificate().unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let config = directory.path().join("config.toml");
     std::fs::write(
         &config,
-        "version=1\nproviders={}\n[views.query]\nintent='exact-mention'\n",
+        "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
+    let (gold, url) = crate::views::local::test_support::lexical(&database, &config).await;
     let server = Mash {
         runtime: None,
         paths: Arc::new(Paths {
@@ -102,12 +102,13 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     assert_eq!(stages[1]["items_out"], 0);
     assert_eq!(stages[1]["filters_before_limit"], false);
     assert_eq!(
-        crate::storage::Storage::open_catalog(&database)
+        crate::storage::Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap(),
         certificate
     );
+    crate::views::local::test_support::cleanup(&gold, &url).await;
 }
 
 #[tokio::test]

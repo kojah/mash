@@ -164,59 +164,6 @@ impl Build {
         Ok(())
     }
 
-    pub(crate) fn generation(&self, model: &str) -> String {
-        // The context title prefix is part of the embedding input. Version it
-        // independently so every title-bearing recipe rejects old vectors.
-        if self.embedding_text == EmbeddingText::TitleAndDialogue {
-            let mut base = self.clone();
-            base.embedding_text = EmbeddingText::Dialogue;
-            return format!("views-chat-title-v2:{}", base.generation(model));
-        }
-        if !self.dense_enabled() {
-            return "views-lexical-v1".into();
-        }
-        if self.retrieval_unit == RetrievalUnit::ParentAndMessage {
-            let mut anchor = self.clone();
-            anchor.retrieval_unit = RetrievalUnit::Message;
-            return format!("views-parent-unit-v1:{}", anchor.generation(model));
-        }
-        if self.users_only() {
-            let text = match self.embedding_text {
-                EmbeddingText::Dialogue => "dialogue",
-                EmbeddingText::TitleAndDialogue => "title-and-dialogue",
-            };
-            let preparation = match self.text_preparation {
-                TextPreparation::Preserve => "preserve",
-                TextPreparation::CollapseWhitespace => "collapse-whitespace",
-            };
-            return format!(
-                "views-users-v1:{text}:{preparation}:{}:{model}",
-                self.max_embedding_chars.map_or(0, |b| b.0)
-            );
-        }
-        if self.text_preparation == TextPreparation::CollapseWhitespace {
-            let recipe = match self.embedding_text {
-                EmbeddingText::Dialogue => "dialogue",
-                EmbeddingText::TitleAndDialogue => "title-and-dialogue",
-            };
-            return format!(
-                "views-whitespace-v1:{recipe}:{}:{model}",
-                self.max_embedding_chars.map_or(0, |b| b.0)
-            );
-        }
-        if let Some(budget) = self.max_embedding_chars {
-            let recipe = match self.embedding_text {
-                EmbeddingText::Dialogue => "dialogue",
-                EmbeddingText::TitleAndDialogue => "title-and-dialogue",
-            };
-            format!("views-text-budget-v1:{recipe}:{}:{model}", budget.0)
-        } else if self == &Self::default() {
-            model.to_owned()
-        } else {
-            format!("views-chat-title-v2:{model}")
-        }
-    }
-
     pub(crate) fn prepare(&self, dialogue: String, title: Option<&str>) -> String {
         let prepared = match (
             self.embedding_text,
@@ -442,7 +389,7 @@ mod tests {
         config.validate().unwrap();
         assert!(!config.build.dense_enabled());
         assert_eq!(config.build.expected_embeddings(100), 0);
-        assert_eq!(config.build.generation("unused-model"), "views-lexical-v1");
+        assert!(!config.build.dense_enabled());
         assert!(
             config
                 .build
@@ -467,8 +414,8 @@ mod tests {
         assert_eq!(fused.query.ranking, Ranking::Fusion);
         assert_eq!(defaults.build, fused.build);
         assert_eq!(
-            defaults.build.generation("model"),
-            fused.build.generation("model")
+            serde_json::to_string(&defaults.build).unwrap(),
+            serde_json::to_string(&fused.build).unwrap()
         );
         for text in [
             "[query]\nranking='unknown'",
@@ -498,8 +445,8 @@ mod tests {
             assert!(Build::default().includes_dense(&role, "visible"));
         }
         assert_ne!(
-            recipe.generation("model"),
-            Build::default().generation("model")
+            serde_json::to_string(&recipe).unwrap(),
+            serde_json::to_string(&Build::default()).unwrap()
         );
         assert!(toml::from_str::<Build>("dense_content='assistant'").is_err());
         assert!(toml::from_str::<Build>("dense_content=true").is_err());
@@ -523,7 +470,7 @@ mod tests {
                     recipe.text_preparation = preparation;
                     recipe.embedding_text = text;
                     recipe.max_embedding_chars = budget;
-                    assert!(identities.insert(recipe.generation("model")));
+                    assert!(identities.insert(serde_json::to_string(&recipe).unwrap()));
                     assert_eq!(
                         serde_json::from_str::<Build>(&serde_json::to_string(&recipe).unwrap())
                             .unwrap(),
@@ -549,7 +496,6 @@ mod tests {
     #[test]
     fn embedding_text_budgets_are_strict_unicode_safe_and_versioned() {
         let default = Build::default();
-        assert_eq!(default.generation("model"), "model");
         assert_eq!(
             serde_json::to_string(&default).unwrap(),
             r#"{"embedding_text":"dialogue"}"#
@@ -557,17 +503,20 @@ mod tests {
         let mut limited: Build = toml::from_str("max_embedding_chars=256").unwrap();
         let source = format!("  {} trailing evidence", "é".repeat(300));
         assert_eq!(limited.prepare(source.clone(), None), "é".repeat(256));
-        assert_ne!(limited.generation("model"), default.generation("model"));
-        let identity = limited.generation("model");
+        assert_ne!(
+            serde_json::to_string(&limited).unwrap(),
+            serde_json::to_string(&default).unwrap()
+        );
+        let identity = serde_json::to_string(&limited).unwrap();
         limited.embedding_text = EmbeddingText::TitleAndDialogue;
-        assert_ne!(limited.generation("model"), identity);
+        assert_ne!(serde_json::to_string(&limited).unwrap(), identity);
         let prepared = limited.prepare(source, Some(&"title".repeat(100)));
         assert_eq!(prepared.chars().count(), 256);
         assert!(prepared.contains('é'));
         assert!(prepared.starts_with("Chat: "));
         assert_eq!(limited.prepare(String::new(), Some("secret")), "");
         limited.max_embedding_chars = Some(512_u32.try_into().unwrap());
-        assert_ne!(limited.generation("model"), identity);
+        assert_ne!(serde_json::to_string(&limited).unwrap(), identity);
         assert_eq!(
             serde_json::from_str::<Build>(&serde_json::to_string(&limited).unwrap()).unwrap(),
             limited
@@ -583,7 +532,7 @@ mod tests {
     }
 
     #[test]
-    fn renamed_chat_title_invalidates_all_previous_title_embedding_recipes() {
+    fn renamed_chat_title_changes_every_title_embedding_input() {
         for options in [
             "",
             "dense_content='user-messages'",
@@ -593,10 +542,9 @@ mod tests {
         ] {
             let recipe: Build =
                 toml::from_str(&format!("embedding_text='title-and-dialogue'\n{options}")).unwrap();
-            assert!(
-                recipe
-                    .generation("model")
-                    .starts_with("views-chat-title-v2:")
+            assert_ne!(
+                recipe.prepare("body".into(), Some("title")),
+                recipe.prepare("body".into(), Some("renamed"))
             );
             assert!(
                 recipe
@@ -604,7 +552,6 @@ mod tests {
                     .starts_with("Chat: title")
             );
         }
-        assert_eq!(Build::default().generation("model"), "model");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+#[ignore = "requires disposable Qdrant and explicitly installed models"]
 async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project_filters() {
     use crate::core::{IndexRequest, Operation, Paths, Request, Response};
     for format in [Format::Agent, Format::Ide] {
@@ -21,8 +21,9 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
         assert!(path.exists());
         let config = dir.path().join("config.toml");
         std::fs::write(&config,toml::to_string(&toml::toml!{version=1 providers={cursor={roots=[(dir.path().to_str().unwrap())]}} index={all_history=true}}).unwrap()).unwrap();
+        let url = crate::views::local::test_support::configure(&config);
         let paths = Paths {
-            config: Some(config),
+            config: Some(config.clone()),
             db: Some(dir.path().join("index.sqlite3")),
             models_dir: Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into()),
         };
@@ -87,5 +88,10 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
                 }
             }
         }
+        let configuration = crate::config::load(Some(&config)).unwrap();
+        let local = crate::views::local::Local::open(paths.db.as_ref().unwrap(), &configuration)
+            .await
+            .unwrap();
+        crate::views::local::test_support::cleanup(&local, &url).await;
     }
 }

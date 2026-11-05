@@ -256,10 +256,15 @@ async fn run_inner(
             )
             .await;
         }
-        let database = database.to_path_buf();
-        return crate::blocking(move || {
-            local_exact(&database, &literal, query, (page, unit), &filters, output)
-        })
+        return local_exact(
+            database,
+            configuration,
+            &literal,
+            query,
+            (page, unit),
+            &filters,
+            output,
+        )
         .await;
     }
     if use_shared || (!use_local && configuration.shared.is_some()) {
@@ -274,21 +279,14 @@ async fn run_inner(
         )
         .await
     } else {
-        let database = database.to_path_buf();
-        let models = models.to_path_buf();
-        let embeddings = configuration.embeddings.clone();
-        let build = configuration.views.build.clone();
-        crate::blocking(move || {
-            local_search(
-                &database,
-                &models,
-                embeddings,
-                query,
-                (options, page),
-                &filters,
-                &build,
-            )
-        })
+        local_search(
+            database,
+            models,
+            configuration,
+            query,
+            (options, page),
+            &filters,
+        )
         .await
     }
 }
@@ -309,7 +307,7 @@ async fn shared_hybrid(
         context_error,
     } = shared::search(
         required_shared(configuration)?,
-        database.map(|database| (database, &configuration.views.build)),
+        database.map(|database| (database, configuration)),
         models,
         configuration.embeddings.as_ref(),
         &query,
@@ -350,7 +348,7 @@ async fn shared_exact(
 ) -> Result<SearchResponse, AppError> {
     let (hits, shared_error) = shared::search_exact(
         required_shared(configuration)?,
-        database,
+        database.map(|database| (database, configuration)),
         &query,
         unit,
         filters,
@@ -373,8 +371,9 @@ async fn shared_exact(
     })
 }
 
-fn local_exact(
+async fn local_exact(
     database: &Path,
+    configuration: &ResolvedConfig,
     literal: &crate::views::exact::Literal,
     query: String,
     (page, unit): (
@@ -384,15 +383,19 @@ fn local_exact(
     filters: &crate::search_filter::Scope,
     output: crate::redaction::Policy,
 ) -> Result<SearchResponse, AppError> {
-    let hits = crate::observability::retrieval::measure_vec(
-        crate::observability::retrieval::Stage::LocalExact,
-        None,
-        || {
-            Storage::open_lexical(database)?
-                .with_output_redaction(output)
-                .search_exact(literal, unit.candidate_limit(), filters)
-        },
-    )?;
+    let local = crate::views::local::Local::open_exact(database, configuration).await?;
+    let input = local_request(
+        &local,
+        &query,
+        unit,
+        filters,
+        crate::views::exact::Intent::ExactMention,
+        vec![],
+    );
+    let mut hits = local.candidates(input).await?.lexical;
+    for hit in &mut hits {
+        hit.node_id = None;
+    }
     let hits = crate::views::exact::rank(hits, unit);
     let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
     Ok(SearchResponse {
@@ -411,33 +414,69 @@ fn local_exact(
 }
 
 #[tracing::instrument(name = "local_search", skip_all)]
-fn local_search(
+async fn local_search(
     database_path: &Path,
     models_dir: &Path,
-    embeddings_config: Option<semantic::remote::Configuration>,
+    configuration: &ResolvedConfig,
     query: String,
     (options, page): (crate::views::config::Options, crate::search_results::Page),
     filters: &crate::search_filter::Scope,
-    build: &crate::views::config::Build,
 ) -> Result<SearchResponse, AppError> {
-    let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
-    models.require_search(options.ranking)?;
-    let generation = build.generation(&models.generation());
-    let storage = Storage::open_search(database_path, &generation)?
-        .with_output_redaction(options.output_redaction);
-    storage.require_views_build(build, &models.generation())?;
-    let mut backend = models
-        .load_search(options.ranking)?
-        .ok_or_else(AppError::models_missing)?;
-    let results = semantic::hybrid_search_filtered(
-        &generation,
-        &storage,
-        &mut backend,
+    let models =
+        Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
+    // Check assets/configuration before database or backend access, but defer
+    // loading models and inference until gold has passed its freshness guard.
+    let models = crate::blocking(move || {
+        models.require_search(options.ranking)?;
+        Ok(models)
+    })
+    .await?;
+    let local = crate::views::local::Local::open(database_path, configuration).await?;
+    if local.current().await?.is_none() {
+        return Err(AppError::search_not_ready(
+            "local gold is not current; run mash index",
+        ));
+    }
+    let text = query.clone();
+    let (mut backend, vector) = crate::blocking(move || {
+        let mut backend = models
+            .load_search(options.ranking)?
+            .ok_or_else(AppError::models_missing)?;
+        let vector = semantic::shared_query_vector(&mut backend, &text)?;
+        Ok((backend, vector))
+    })
+    .await?;
+    let input = local_request(
+        &local,
         &query,
-        options,
-        (None, None),
-        Some(filters),
-    )?;
+        options.unit,
+        filters,
+        crate::views::exact::Intent::RelatedDiscussion,
+        vector,
+    );
+    let mut candidates = local.candidates(input).await?;
+    for hit in candidates
+        .lexical
+        .iter_mut()
+        .chain(&mut candidates.semantic)
+    {
+        hit.node_id = None;
+    }
+    let database = database_path.to_path_buf();
+    let text = query.clone();
+    let results = crate::blocking(move || {
+        let storage =
+            Storage::open_silver(&database)?.with_output_redaction(options.output_redaction);
+        semantic::finish_hybrid(
+            &storage,
+            &mut backend,
+            &text,
+            options,
+            candidates.lexical,
+            candidates.semantic,
+        )
+    })
+    .await?;
     let collected = crate::search_results::collect(
         results,
         options.unit,
@@ -458,6 +497,29 @@ fn local_search(
         shared_error: None,
         shared_context_error: None,
     })
+}
+
+fn local_request(
+    local: &crate::views::local::Local,
+    query: &str,
+    unit: crate::search_results::SearchUnit,
+    filters: &crate::search_filter::Scope,
+    intent: crate::views::exact::Intent,
+    vector: Vec<f64>,
+) -> crate::views::retrieval::Search {
+    crate::views::retrieval::Search {
+        query: query.into(),
+        unit,
+        intent,
+        vector,
+        generation: local.scope.generation.clone(),
+        match_mode: filters.match_mode,
+        vector_policy: None,
+        provider: None,
+        days: None,
+        exclude_self: false,
+        filter: Some(filters.filter.clone()),
+    }
 }
 
 /// This node's ID, or `local` without a shared configuration.

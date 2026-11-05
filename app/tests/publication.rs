@@ -22,6 +22,7 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
         group_id = (group.as_str()),node_id = "cli-node",api_url = (server.url.as_str()),token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
         }
     }).expect("TOML")).expect("config");
+    configure_qdrant(&config);
     let invoke = |args: &[&str], online: bool| {
         let mut command = Command::cargo_bin("mash").expect("binary");
         command.args([
@@ -107,6 +108,7 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
         &[] as &[serde_json::Value]
     );
     shared_server::cleanup_group(&group);
+    cleanup_local_gold(&database, "cli-node");
 }
 
 #[test]
@@ -121,7 +123,7 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     seed_readiness_database(&database, Some(""));
     // Local journal revisions can be much larger than the server's newly
     // assigned baseline revisions. Never report the former as a receipt.
-    open_index(&database)
+    open_silver(&database)
         .execute("UPDATE shared_publication SET revision=5000000", [])
         .expect("advance local journal");
     let models = dir.path().join("models");
@@ -144,6 +146,7 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
         .expect("TOML"),
     )
     .expect("config");
+    configure_qdrant(&config);
 
     let output = Command::cargo_bin("mash")
         .expect("binary")
@@ -237,6 +240,7 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
         "server assigns its own baseline revisions"
     );
     shared_server::cleanup_group(&group);
+    cleanup_local_gold(&database, "cli-node");
 }
 
 #[test]
@@ -357,6 +361,7 @@ fn write_client_config(path: &Path, group: &str, api_url: &str) {
         .unwrap(),
     )
     .unwrap();
+    configure_qdrant(path);
 }
 
 #[test]
@@ -446,6 +451,7 @@ fn a_server_crash_after_silver_commit_converges_after_restart() {
     let _ = second.kill();
     let _ = second.wait();
     shared_server::cleanup_group(&group);
+    cleanup_local_gold(&database, "cli-node");
 }
 
 /// A large first publication picks the baseline strategy without a flag.
@@ -475,6 +481,7 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
         .expect("TOML"),
     )
     .expect("config");
+    configure_qdrant(&config);
 
     let output = Command::cargo_bin("mash")
         .expect("binary")
@@ -508,7 +515,7 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
         .expect("open transfer catalog");
     let (state, total): (String, i64) = catalog
         .query_row(
-            "SELECT state, total_conversations FROM backfills WHERE backfill_id LIKE '%]auto'",
+            "SELECT state, total_conversations FROM backfills WHERE backfill_id LIKE '%]auto-%'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -516,6 +523,7 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
     assert_eq!(state, "complete");
     assert!(total >= 1);
     shared_server::cleanup_group(&group);
+    cleanup_local_gold(&database, "cli-node");
 }
 
 /// A crash after the server published but before the client acknowledged leaves
@@ -546,6 +554,7 @@ fn a_crash_before_acknowledgement_recovers_without_republishing() {
         .expect("TOML"),
     )
     .expect("config");
+    configure_qdrant(&config);
     let invoke = |crash: Option<&str>| {
         let mut command = Command::cargo_bin("mash").expect("binary");
         command
@@ -588,6 +597,7 @@ fn a_crash_before_acknowledgement_recovers_without_republishing() {
         "{freshness}"
     );
     shared_server::cleanup_group(&group);
+    cleanup_local_gold(&database, "cli-node");
 }
 
 fn service_status(config: &Path, database: &Path, models: &Path) -> Value {

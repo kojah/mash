@@ -71,7 +71,7 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
         serde_json::to_vec(&storage.view(&parsed.messages.inline()[0].id, 10).unwrap()).unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
-    let stored = Storage::open_catalog(&local).unwrap();
+    let stored = Storage::open_silver(&local).unwrap();
     assert_eq!(
         stored.conversation_enrichment(&parsed.id).unwrap(),
         Some(expected())

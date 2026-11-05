@@ -41,6 +41,7 @@ impl Snapshot<'_> {
             .map_err(AppError::database)
     }
 
+    #[cfg(test)]
     pub(crate) fn visit_changed(
         &self,
         kind: BatchKind,
@@ -50,6 +51,7 @@ impl Snapshot<'_> {
         self.visit_selected(kind, false, Some(after), accept)
     }
     /// Bound each network batch without materializing the complete local history.
+    #[cfg(test)]
     pub(crate) fn visit(
         &self,
         kind: BatchKind,
@@ -58,6 +60,7 @@ impl Snapshot<'_> {
         self.visit_ordered(kind, false, accept)
     }
 
+    #[cfg(test)]
     fn visit_ordered(
         &self,
         kind: BatchKind,
@@ -88,8 +91,8 @@ impl Snapshot<'_> {
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent, m.attachments, m.metadata
-                FROM objects m LEFT JOIN message_embeddings e ON e.message_id = m.id
+                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments, m.metadata
+                FROM objects m
                 WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.id"
             }
             BatchKind::Tombstones => {
@@ -182,13 +185,13 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
     let (id, table, indexed) = match kind {
         BatchKind::Conversations => (
             "c.id",
-            "FROM objects c ",
-            "FROM objects c INDEXED BY objects_native_container ",
+            "FROM objects c",
+            "FROM objects c INDEXED BY objects_native_container",
         ),
         BatchKind::Messages => (
             "m.conversation_id",
-            "FROM objects m ",
-            "FROM objects m INDEXED BY objects_conversation ",
+            "FROM objects m",
+            "FROM objects m INDEXED BY objects_conversation",
         ),
         BatchKind::Tombstones => ("conversation_id", "", ""),
     };
@@ -213,25 +216,6 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
 }
 
 fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
-    let local_generation = row
-        .get::<_, Option<String>>(7)
-        .map_err(AppError::database)?;
-    let generation = (local_generation.as_deref() == Some(crate::semantic::embedding_generation()))
-        .then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned())
-        .or_else(|| {
-            local_generation.filter(|g| {
-                g.starts_with("remote:") || g == crate::semantic::SHARED_EMBEDDING_GENERATION
-            })
-        });
-    let vector = row
-        .get::<_, Option<Vec<u8>>>(8)
-        .map_err(AppError::database)?
-        .map(|bytes| {
-            bytes
-                .into_iter()
-                .map(|v| f64::from(v.cast_signed()))
-                .collect::<Vec<_>>()
-        });
     Ok(MessageRecord {
         attachments: serde_json::from_str(
             &row.get::<_, String>("attachments")
@@ -250,8 +234,8 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
         content: row.get::<_, String>(4).map_err(AppError::database)?,
         projection: row.get::<_, String>(5).map_err(AppError::database)?,
         created_at: row.get::<_, Option<i64>>(6).map_err(AppError::database)?,
-        generation,
-        vector,
+        generation: None,
+        vector: None,
         tools: crate::tools::Activity::decode(
             row.get::<_, Option<String>>("metadata")
                 .map_err(AppError::database)?

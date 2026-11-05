@@ -1,6 +1,7 @@
 use super::*;
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("claude");
@@ -18,6 +19,7 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
     let config = directory.path().join("config.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
     let database = directory.path().join("index.sqlite3");
+    configure_qdrant(&config);
     let models = directory.path().join("missing-models");
     let base = [
         "--config",
@@ -86,11 +88,13 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
             .unwrap()
             .contains("private-filter-canary")
     );
-    assert_eq!(std::fs::read(database).unwrap(), before);
+    assert_eq!(std::fs::read(&database).unwrap(), before);
     assert!(!models.exists());
+    cleanup_local_gold(&database, "local");
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn cli_search_pages_partition_one_ranked_list() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("claude");
@@ -119,6 +123,7 @@ fn cli_search_pages_partition_one_ranked_list() {
     let config = directory.path().join("config.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
     let database = directory.path().join("index.sqlite3");
+    configure_qdrant(&config);
     let models = directory.path().join("missing-models");
     let base = [
         "--config",
@@ -188,6 +193,7 @@ fn cli_search_pages_partition_one_ranked_list() {
         assert_eq!(empty["results"], serde_json::json!([]));
         assert_eq!(empty["next_offset"], Value::Null);
     }
+    cleanup_local_gold(&database, "local");
 }
 
 #[test]
@@ -224,12 +230,14 @@ fn cli_search_pages_outside_the_ranked_window_are_usage_errors() {
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("models");
     std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    configure_qdrant(&config);
     create_valid_model_marker(&models);
     let base = [
         "--config",
@@ -257,11 +265,13 @@ fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index()
         "version=1\nproviders={}\n[views.query]\nintent='exact-mention'\nunit='messages'\nlimit=3\n",
     )
     .unwrap();
+    configure_qdrant(&config);
     let result = run_json(&[base.as_slice(), &["search", "for", "--local"]].concat());
     assert_eq!(result["unit"], "messages");
     assert_eq!(result["intent"], "exact-mention");
     assert_eq!(std::fs::read(&database).unwrap(), before);
     assert!(!models.exists());
+    cleanup_local_gold(&database, "local");
 }
 
 #[test]
@@ -394,10 +404,14 @@ fn unsupported_language_is_explained_before_model_or_index_access() {
 #[test]
 fn search_without_models_fails_before_database_access() {
     let directory = tempfile::tempdir().expect("temporary directory");
+    let config = directory.path().join("node.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
     let models = directory.path().join("models");
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
         .args([
+            "--config",
+            config.to_str().unwrap(),
             "--db",
             directory.path().join("missing.sqlite3").to_str().unwrap(),
             "--models-dir",
@@ -494,12 +508,16 @@ token_env = "MASH_TEST_UNSET_INDEX_READINESS_TOKEN"
 #[test]
 fn invalid_installed_assets_fail_without_lexical_results() {
     let directory = tempfile::tempdir().expect("temporary directory");
+    let config = directory.path().join("node.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
     let models = directory.path().join("models");
     std::fs::create_dir_all(&models).expect("model root");
     std::fs::write(models.join("installed.json"), "not-json").expect("broken marker");
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
         .args([
+            "--config",
+            config.to_str().unwrap(),
             "--db",
             directory.path().join("mash.sqlite3").to_str().unwrap(),
             "--models-dir",
@@ -520,12 +538,16 @@ fn invalid_installed_assets_fail_without_lexical_results() {
 #[test]
 fn missing_listed_model_asset_is_a_typed_model_error() {
     let directory = tempfile::tempdir().expect("temporary directory");
+    let config = directory.path().join("node.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
     let models = directory.path().join("models");
     create_valid_model_marker(&models);
     std::fs::remove_file(models.join("dummy-model")).expect("remove listed model asset");
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
         .args([
+            "--config",
+            config.to_str().unwrap(),
             "--db",
             directory.path().join("mash.sqlite3").to_str().unwrap(),
             "--models-dir",
@@ -559,6 +581,7 @@ fn view_returns_context_only_canonical_content_without_models() {
 }
 
 #[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 fn empty_word_exact_search_explains_phrase_matching() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("claude");
@@ -574,6 +597,7 @@ fn empty_word_exact_search_explains_phrase_matching() {
     .unwrap();
     let config = directory.path().join("config.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
+    configure_qdrant(&config);
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("missing-models");
     let base = [
@@ -599,4 +623,5 @@ fn empty_word_exact_search_explains_phrase_matching() {
         assert!(notice.contains("message text"), "{query}: {notice}");
         assert!(!notice.contains("one phrase"), "{query}: {notice}");
     }
+    cleanup_local_gold(&database, "local");
 }

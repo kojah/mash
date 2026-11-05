@@ -33,7 +33,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         publication_revision: base,
         redaction: crate::redaction::Policy::ON,
     };
-    let source = capture(&database, &target, true).unwrap();
+    let source = capture(&database, &target, Selection::Delta { journal_base: base }).unwrap();
     assert_eq!(source.conversations.keys().collect::<Vec<_>>(), vec!["a"]);
     let events: Vec<Event> = std::fs::read_to_string(source.file.path())
         .unwrap()
@@ -45,6 +45,29 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
     };
     assert!(!start.snapshot);
     assert_eq!(start.base_revision, Some(base));
+    // Baselines can give the server a different revision sequence. Select
+    // changed local rows from the mapped journal base, but send its server head.
+    let mut mapped = target.clone();
+    mapped.publication_revision = base - 1;
+    let mapped_source =
+        capture(&database, &mapped, Selection::Delta { journal_base: base }).unwrap();
+    assert_eq!(
+        mapped_source.conversations.keys().collect::<Vec<_>>(),
+        vec!["a"]
+    );
+    let first: Event = serde_json::from_str(
+        std::fs::read_to_string(mapped_source.file.path())
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    let Event::Start(mapped_start) = first else {
+        panic!("expected start")
+    };
+    assert_eq!(mapped_start.base_revision, Some(base - 1));
+    assert!(!mapped_start.snapshot);
     assert!(
         events
             .iter()
@@ -80,7 +103,7 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
         publication_revision: 0,
         redaction: crate::redaction::Policy::ON,
     };
-    let source = capture(&database, &target, false).unwrap();
+    let source = capture(&database, &target, Selection::Replace).unwrap();
     let stream = std::fs::read_to_string(source.file.path()).unwrap();
     assert!(!stream.contains("hunter2") && !stream.contains("rosebud"));
     let canonical: String = connection
@@ -133,7 +156,7 @@ fn seed(directory: &Path) -> std::path::PathBuf {
 async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and_threads() {
     let directory = tempfile::tempdir().unwrap();
     let database = seed(directory.path());
-    let silver = Storage::open_catalog(&database)
+    let silver = Storage::open_silver(&database)
         .unwrap()
         .silver_certificate()
         .unwrap();
@@ -148,7 +171,7 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
         publication_revision: 0,
         redaction: crate::redaction::Policy::ON,
     };
-    let source = capture(&database, &target, false).unwrap();
+    let source = capture(&database, &target, Selection::Replace).unwrap();
     let mut reader =
         Reader::new(source.file.reopen().unwrap(), crate::redaction::Policy::ON).unwrap();
     let mut inputs = BTreeMap::new();
@@ -185,7 +208,7 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
     );
     assert_eq!(inputs.len(), 29);
     assert_eq!(
-        Storage::open_catalog(&database)
+        Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap(),

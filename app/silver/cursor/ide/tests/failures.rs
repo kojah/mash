@@ -62,10 +62,12 @@ fn incomplete_or_invalid_records_preserve_previous_index_and_checkpoint() {
                 .unwrap()
         );
         assert_eq!(
-            storage
-                .search("cbioportal", 10, Some(Provider::Cursor), None)
-                .unwrap()
-                .len(),
+            crate::storage::test_support::projections_with_text(
+                &storage,
+                "cbioportal",
+                Some(Provider::Cursor)
+            )
+            .len(),
             2
         );
     }

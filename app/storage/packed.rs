@@ -1,7 +1,7 @@
 //! Large silver text stored compressed. A packed value is a zstd frame stored
 //! as a BLOB; every other value stays TEXT, so readers tell them apart by type.
 //! SQL reads through `silver_text(value)` and writes through `silver_pack(text)`,
-//! which keeps generated row types, FTS copies and predicates on plain text.
+//! which keeps generated row types and predicates on plain text.
 //! Packed values are never empty, so `<> ''` searchability predicates and the
 //! partial indexes that repeat them hold for both forms.
 use rusqlite::Connection;

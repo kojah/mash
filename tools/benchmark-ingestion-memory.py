@@ -2,17 +2,29 @@
 """Fixed Linux whole-index ancestry-heavy control; sampled peaks are lower bounds."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import platform
-import sqlite3
 import subprocess
 import time
+from typing import TypedDict
+
+SPEC = importlib.util.spec_from_file_location('views_cost', Path(__file__).with_name('benchmark-views.py'))
+if SPEC is None or SPEC.loader is None:
+    raise ImportError('benchmark-views.py could not be loaded')
+COST = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(COST)
 
 
 CONTENT = 'Inspect metadata retention during indexing.'
 CASES = [(0, 1), (100_000, 1), (300_000, 1), (100_000, 2)]
+
+
+class SourceCapture(TypedDict):
+    sha256: str
+    bytes: int
 
 
 def digest(path):
@@ -20,10 +32,10 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def fixture(root, events, sources):
+def fixture(root: Path, events: int, sources: int, qdrant: str) -> tuple[Path, dict[str, SourceCapture]]:
     roots = root / 'claude'
     roots.mkdir()
-    hashes = {}
+    hashes: dict[str, SourceCapture] = {}
     for source in range(sources):
         path = roots / f'probe-{source}.jsonl'
         session = f'memory-probe-{source}'
@@ -42,8 +54,34 @@ def fixture(root, events, sources):
         hashes[path.name] = {'sha256': digest(path), 'bytes': path.stat().st_size}
     config = root / 'config.toml'
     config.write_text('version = 1\n[index]\nall_history = true\n'
-                      '[providers.claude-code]\nroots = ' + json.dumps([str(roots)]) + '\n')
+                      '[providers.claude-code]\nroots = ' + json.dumps([str(roots)]) + '\n' + qdrant)
     return config, hashes
+
+
+def stored_vectors(base: list[str]) -> int:
+    """Check the public readiness boundary instead of a removed local SQL cache."""
+    output = subprocess.run(base + ['status'], check=True, capture_output=True)
+    status = json.loads(output.stdout)
+    if not isinstance(status, dict) or status.get('ready') is not True:
+        raise ValueError('benchmark gold is not certified current')
+    count = status.get('embeddings')
+    if type(count) is not int or count < 0:
+        raise ValueError('invalid vector count in status')
+    return count
+
+
+def canonical_content(base: list[str], message_id: str) -> str:
+    # Let Mash decode packed silver rather than duplicating its codec here.
+    output = subprocess.run(base + ['view', message_id, '--context', '0'],
+                            check=True, capture_output=True)
+    value = json.loads(output.stdout)
+    messages = value.get('messages') if isinstance(value, dict) else None
+    if not isinstance(messages, list) or len(messages) != 1 or not isinstance(messages[0], dict):
+        raise ValueError('expected one canonical message')
+    content = messages[0].get('content')
+    if not isinstance(content, str):
+        raise ValueError('missing canonical message content')
+    return content
 
 
 def counters(path, names):
@@ -102,28 +140,29 @@ def run(args):
     if platform.system() != 'Linux':
         raise ValueError('requires Linux procfs and wait4')
     binary, models, output = args.binary.resolve(strict=True), args.models.resolve(strict=True), args.output.resolve()
+    qdrant = COST.qdrant_configuration(args.qdrant_url, args.qdrant_grpc_url)
     output.mkdir()
     binary_hash = digest(binary)
     results = []
     for events, sources in CASES:
         root = output / f'events-{events}-sources-{sources}'
         root.mkdir()
-        config, hashes = fixture(root, events, sources)
+        config, hashes = fixture(root, events, sources, qdrant)
         database = root / 'index.sqlite3'
-        measurement = measure([str(binary), '--config', str(config), '--db', str(database),
-                               '--models-dir', str(models), 'index'], binary, root)
+        base = [str(binary), '--config', str(config), '--db', str(database),
+                '--models-dir', str(models)]
+        measurement = measure(base + ['index'], binary, root)
         indexed = json.loads((root / 'stdout.json').read_text())
-        with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
-            rows = connection.execute(
-                "SELECT id,role,content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id"
+        with COST.connection(database) as connection:
+            identities = connection.execute(
+                "SELECT id,role FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id"
             ).fetchall()
             conversations = connection.execute(
                 "SELECT COUNT(*) FROM objects WHERE origin='provider' AND object_role='container'"
             ).fetchone()[0]
-        # Embeddings live in the paired views database beside silver.
-        views = database.with_name(database.name.removesuffix('.sqlite3') + '.views.sqlite3')
-        with sqlite3.connect(views.as_uri() + '?mode=ro', uri=True) as connection:
-            vectors = connection.execute('SELECT COUNT(*) FROM message_embeddings').fetchone()[0]
+        rows = [(message_id, role, canonical_content(base, message_id))
+                for message_id, role in identities]
+        vectors = stored_vectors(base)
         if (len(rows), vectors, conversations) != (sources, sources, sources):
             raise ValueError('canonical/vector counts do not match the complete fixture')
         if any(role != 'user' or content != CONTENT for _, role, content in rows):
@@ -150,6 +189,7 @@ def run(args):
             'fixed synthetic ancestry-heavy control, not representative corpus or fleet performance',
             'full local indexing with installed models, source processing, inference and persistence',
             'current-image RSS/PSS sampled maxima are lower bounds and exclude child processes/observer',
+            'Qdrant server RAM and CPU are outside the measured CLI process',
             'status RSS/HWM counters are approximate; smaps snapshots describe observation times',
             'wait4 highwater includes pre-exec lifetime; no peak subtraction or stage attribution',
             'tracing and procfs sampling can perturb timing; no ingestion throughput acceptance claim',
@@ -163,6 +203,8 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--models', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--qdrant-url', required=True)
+    parser.add_argument('--qdrant-grpc-url', required=True)
     run(parser.parse_args())
 
 

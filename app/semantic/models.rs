@@ -3,7 +3,6 @@ use super::embeddings::{EmbeddingPool, EmbeddingPoolBackend};
 use super::remote;
 use super::{
     EMBEDDING_MODEL, EMBEDDING_REPOSITORY, MARKER_NAME, RERANKER_MODEL, RERANKER_REPOSITORY,
-    embedding_generation, model_space,
 };
 use crate::AppError;
 use fastembed::{
@@ -114,13 +113,6 @@ impl Models {
         } else {
             self.require_installed()
         }
-    }
-
-    pub(crate) fn generation(&self) -> String {
-        self.remote.as_ref().map_or_else(
-            || embedding_generation().to_owned(),
-            |c| model_space(&c.model, c.dimensions),
-        )
     }
 
     pub(crate) fn is_installed(&self) -> bool {
@@ -474,8 +466,6 @@ const fn embedding_model_description() -> &'static str {
     }
 }
 
-#[cfg(test)]
-mod benchmarks;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

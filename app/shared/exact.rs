@@ -8,7 +8,7 @@ use crate::{
     config::SharedConfig,
     search_filter::Scope,
     search_results::SearchUnit,
-    storage::{SearchHit, Storage},
+    storage::SearchHit,
     views::exact::{self, Literal},
 };
 use std::path::Path;
@@ -18,7 +18,7 @@ mod tests;
 
 pub(crate) async fn search(
     config: &SharedConfig,
-    database: Option<&Path>,
+    database: Option<(&Path, &crate::config::ResolvedConfig)>,
     query: &str,
     unit: SearchUnit,
     filters: &Scope,
@@ -26,26 +26,33 @@ pub(crate) async fn search(
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
     let literal = Literal::with_mode(query, filters.match_mode)?;
     filters.filter.validate()?;
-    let database = database.map(Path::to_path_buf);
     let exclude_self = database.is_some();
-    let local_literal = literal.clone();
-    let local_filters = filters.clone();
-    let local = crate::blocking(move || {
-        database.map_or_else(
-            || Ok(vec![]),
-            |path| {
-                crate::observability::retrieval::measure_vec(
-                    crate::observability::retrieval::Stage::LocalExact,
-                    None,
-                    || {
-                        Storage::open_lexical(&path)?
-                            .with_output_redaction(output_redaction)
-                            .search_exact(&local_literal, unit.candidate_limit(), &local_filters)
-                    },
-                )
-            },
-        )
-    });
+    let local = async {
+        let Some((path, configuration)) = database else {
+            return Ok(vec![]);
+        };
+        let local = crate::views::local::Local::open_exact(path, configuration).await?;
+        let mut hits = local
+            .candidates(protocol::Search {
+                match_mode: filters.match_mode,
+                intent: exact::Intent::ExactMention,
+                vector_policy: None,
+                query: query.into(),
+                unit,
+                vector: vec![],
+                generation: local.scope.generation.clone(),
+                provider: None,
+                days: None,
+                filter: Some(filters.filter.clone()),
+                exclude_self: false,
+            })
+            .await?
+            .lexical;
+        for hit in &mut hits {
+            hit.node_id = None;
+        }
+        Ok(hits)
+    };
     let remote = async {
         let mut measured = crate::observability::retrieval::Guard::begin(
             crate::observability::retrieval::Stage::SharedCandidates,

@@ -1,57 +1,18 @@
 //! Hybrid candidates, reciprocal rank fusion, reranking, and exact vector scoring.
-use super::embeddings::embedding_generation;
 use super::models::Backend;
 use super::remote;
 use crate::AppError;
-use crate::observability::retrieval::{self as measurements, Guard, Stage};
+use crate::observability::retrieval::{Guard, Stage};
 use crate::search_results::{HitKey, hit_key};
-use crate::storage::{SearchHit, SemanticChunks, Storage};
+use crate::storage::{SearchHit, Storage};
 use crate::views::config::{Fusion, Options};
 use std::collections::HashMap;
 
-#[cfg(test)]
-mod benchmarks;
-
 pub(super) struct QuantizedVector {
     pub(super) values: Vec<u8>,
-    pub(super) norm: f32,
 }
 
-#[tracing::instrument(name = "hybrid_search", skip_all)]
-pub(crate) fn hybrid_search_filtered(
-    generation: &str,
-    storage: &Storage,
-    backend: &mut Backend,
-    query: &str,
-    options: Options,
-    legacy: (Option<crate::provider::Provider>, Option<u32>),
-    filters: Option<&crate::search_filter::Scope>,
-) -> Result<Vec<SearchHit>, AppError> {
-    let (provider, days) = legacy;
-    let candidate_limit = options.unit.candidate_limit();
-    let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {
-        tracing::info_span!("lexical_candidates")
-            .in_scope(|| storage.search_filtered(query, candidate_limit, provider, days, filters))
-    })?;
-    let query_vector = backend
-        .embed(&[query])?
-        .pop()
-        .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
-    let query_vector = quantize_vector(&query_vector);
-    let mut dense_stage = Guard::begin(Stage::LocalDense);
-    let (semantic_hits, scanned) = dense_candidates(
-        storage,
-        generation,
-        &query_vector,
-        (provider, days, filters),
-        candidate_limit,
-    )?;
-    dense_stage.complete(Some(scanned), Some(semantic_hits.len()));
-    drop(dense_stage);
-    finish_hybrid(storage, backend, query, options, lexical, semantic_hits)
-}
-
-fn finish_hybrid(
+pub(crate) fn finish_hybrid(
     storage: &Storage,
     backend: &mut Backend,
     query: &str,
@@ -96,7 +57,7 @@ fn finish_hybrid(
 }
 
 /// Model-space identity shared by the CPU ONNX and Apple Core ML executions.
-/// Unlike the local storage generation, batching and chunk layout do not affect it.
+/// Batching and storage layout do not affect model-space identity.
 pub(crate) fn model_space(model: &str, dimensions: usize) -> String {
     if model == "sentence-transformers/all-MiniLM-L6-v2" && dimensions == 384 {
         SHARED_EMBEDDING_GENERATION.to_owned()
@@ -107,7 +68,7 @@ pub(crate) fn model_space(model: &str, dimensions: usize) -> String {
 
 pub(crate) fn configured_generation(config: Option<&remote::Configuration>) -> String {
     config.map_or_else(
-        || embedding_generation().to_owned(),
+        || SHARED_EMBEDDING_GENERATION.to_owned(),
         |c| model_space(&c.model, c.dimensions),
     )
 }
@@ -127,158 +88,6 @@ pub(crate) fn shared_query_vector(
         .into_iter()
         .map(|value| f64::from(value.cast_signed()))
         .collect())
-}
-
-// Shared query vectors contain bounded, quantized integers; conversion is exact.
-#[allow(clippy::cast_possible_truncation)]
-#[tracing::instrument(name = "vector_candidates", skip_all)]
-pub(crate) fn local_candidates(
-    storage: &Storage,
-    generation: &str,
-    query: &str,
-    vector: &[f64],
-    selection: (
-        Option<crate::provider::Provider>,
-        Option<u32>,
-        crate::search_results::SearchUnit,
-    ),
-    filters: Option<&crate::search_filter::Scope>,
-    fusion: Fusion,
-) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
-    let (provider, days, unit) = selection;
-    let candidate_limit = unit.candidate_limit();
-    let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {
-        storage.search_filtered(query, candidate_limit, provider, days, filters)
-    })?;
-    let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
-    let mut dense_stage = Guard::begin(Stage::LocalDense);
-    let (semantic, scanned) = dense_candidates(
-        storage,
-        generation,
-        &quantize_vector(&vector),
-        (provider, days, filters),
-        candidate_limit,
-    )?;
-    dense_stage.complete(Some(scanned), Some(semantic.len()));
-    drop(dense_stage);
-    let fused = fuse(lexical, semantic, unit, fusion);
-    let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
-    let documents = storage.search_documents(&ids)?;
-    Ok((fused, documents))
-}
-
-/// Native and connector vectors scored against one query, best first.
-/// Returns the hits and the number of vectors admitted by the filters.
-fn dense_candidates(
-    storage: &Storage,
-    generation: &str,
-    query: &QuantizedVector,
-    (provider, days, filters): (
-        Option<crate::provider::Provider>,
-        Option<u32>,
-        Option<&crate::search_filter::Scope>,
-    ),
-    limit: usize,
-) -> Result<(Vec<SearchHit>, usize), AppError> {
-    let native_chunks = tracing::info_span!("load_vectors")
-        .in_scope(|| storage.semantic_chunks_filtered(generation, provider, days, filters))?;
-    let native = tracing::info_span!("score_vectors")
-        .in_scope(|| rank_quantized(query, &native_chunks, limit));
-    let mut scanned = eligible_vectors(&native_chunks);
-    // A provider selection names native history only.
-    let connector = if provider.is_none() {
-        let chunks = tracing::info_span!("load_connector_vectors").in_scope(|| {
-            Ok::<_, AppError>(connector_chunks(
-                storage.connector_vectors(
-                    generation,
-                    crate::storage::cutoff_timestamp(days)?,
-                    filters,
-                )?,
-                query.values.len(),
-            ))
-        })?;
-        scanned += eligible_vectors(&chunks);
-        rank_quantized(query, &chunks, limit)
-    } else {
-        Vec::new()
-    };
-    let mut ranked = native
-        .into_iter()
-        .map(|(id, score)| (false, id, score))
-        .chain(connector.into_iter().map(|(id, score)| (true, id, score)))
-        .collect::<Vec<_>>();
-    ranked.sort_by(|left, right| {
-        right
-            .2
-            .total_cmp(&left.2)
-            .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
-    });
-    ranked.truncate(limit);
-    Ok((hydrate_ranked(storage, ranked)?, scanned))
-}
-
-fn hydrate_ranked(
-    storage: &Storage,
-    ranked: Vec<(bool, i64, f32)>,
-) -> Result<Vec<SearchHit>, AppError> {
-    // Hydrate connector hits together: they share per-container positions.
-    let connector_ids = ranked
-        .iter()
-        .filter(|(connector, _, _)| *connector)
-        .map(|(_, id, _)| *id)
-        .collect::<Vec<_>>();
-    let mut connector_hits =
-        tracing::info_span!("hydrate_connector_hits", hits = connector_ids.len())
-            .in_scope(|| storage.connector_hits(&connector_ids))?
-            .into_iter();
-    let mut hits = Vec::with_capacity(ranked.len());
-    for (connector, id, score) in ranked {
-        let mut hit = if connector {
-            connector_hits.next()
-        } else {
-            storage.search_hits(&[id])?.pop()
-        }
-        .ok_or_else(|| AppError::database_data("semantic index references a missing record"))?;
-        hit.semantic_score = Some(score);
-        hits.push(hit);
-    }
-    Ok(hits)
-}
-
-fn eligible_vectors(chunks: &SemanticChunks) -> usize {
-    chunks
-        .chunks
-        .iter()
-        .map(|chunk| chunk.eligible.iter().filter(|eligible| **eligible).count())
-        .sum()
-}
-
-/// One chunk of connector vectors, shaped like native chunks for shared scoring.
-fn connector_chunks(vectors: Vec<(i64, f32, Vec<u8>)>, dimensions: usize) -> SemanticChunks {
-    let mut chunk = crate::storage::SemanticChunk {
-        message_rowids: Vec::with_capacity(vectors.len()),
-        values: Vec::with_capacity(vectors.len() * dimensions),
-        norms: Vec::with_capacity(vectors.len()),
-        eligible: Vec::with_capacity(vectors.len()),
-        dimensions,
-    };
-    for (id, norm, vector) in vectors {
-        // A vector of another width belongs to a stale generation; skip it.
-        if vector.len() == dimensions {
-            chunk.message_rowids.push(id);
-            chunk.values.extend_from_slice(&vector);
-            chunk.norms.push(norm);
-            chunk.eligible.push(true);
-        }
-    }
-    SemanticChunks {
-        chunks: if chunk.message_rowids.is_empty() {
-            Vec::new()
-        } else {
-            vec![chunk]
-        },
-        dimensions,
-    }
 }
 
 pub(crate) fn fuse(
@@ -346,41 +155,17 @@ pub(super) fn quantize_vector(vector: &[f32]) -> QuantizedVector {
     if max_abs <= f32::EPSILON {
         return QuantizedVector {
             values: vec![0; vector.len()],
-            norm: 0.0,
         };
     }
     let scale = 127.0 / max_abs;
-    let mut norm_squared = 0_i32;
     let values = vector
         .iter()
         .map(|value| {
             let quantized = quantize_component(*value, scale);
-            let quantized_i32 = i32::from(quantized);
-            norm_squared += quantized_i32 * quantized_i32;
             quantized.cast_unsigned()
         })
         .collect();
-    QuantizedVector {
-        values,
-        norm: dot_to_f32(norm_squared).sqrt(),
-    }
-}
-
-pub(super) fn quantized_cosine(left: &QuantizedVector, right: &[u8], right_norm: f32) -> f32 {
-    if left.values.len() != right.len() || left.values.is_empty() {
-        return 0.0;
-    }
-    let denominator = left.norm * right_norm;
-    if denominator <= f32::EPSILON {
-        return 0.0;
-    }
-    let product = left
-        .values
-        .iter()
-        .zip(right)
-        .map(|(&left, &right)| i32::from(left.cast_signed()) * i32::from(right.cast_signed()))
-        .sum::<i32>();
-    (dot_to_f32(product) / denominator).clamp(-1.0, 1.0)
+    QuantizedVector { values }
 }
 
 fn quantize_component(value: f32, scale: f32) -> i8 {
@@ -390,54 +175,4 @@ fn quantize_component(value: f32, scale: f32) -> i8 {
     {
         rounded as i8
     }
-}
-
-fn dot_to_f32(value: i32) -> f32 {
-    // Larger configured embedding spaces can exceed f32's exact-integer range.
-    // Cosine scores are f32 approximations; rounding here must not panic merely
-    // because a valid model has more dimensions than the original local model.
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f32
-    }
-}
-
-pub(super) fn rank_quantized(
-    query: &QuantizedVector,
-    vectors: &SemanticChunks,
-    limit: usize,
-) -> Vec<(i64, f32)> {
-    if limit == 0 || vectors.dimensions == 0 || query.values.len() != vectors.dimensions {
-        return Vec::new();
-    }
-    let mut ranked = Vec::new();
-    for chunk in &vectors.chunks {
-        if chunk.dimensions != vectors.dimensions
-            || chunk.norms.len() != chunk.message_rowids.len()
-            || chunk.eligible.len() != chunk.message_rowids.len()
-            || chunk.values.len() != chunk.message_rowids.len().saturating_mul(chunk.dimensions)
-        {
-            return Vec::new();
-        }
-        for (index, vector) in chunk.values.chunks_exact(chunk.dimensions).enumerate() {
-            if chunk.eligible[index] {
-                ranked.push((
-                    chunk.message_rowids[index],
-                    quantized_cosine(query, vector, chunk.norms[index]),
-                ));
-            }
-        }
-    }
-    let compare = |left: &(i64, f32), right: &(i64, f32)| {
-        right
-            .1
-            .total_cmp(&left.1)
-            .then_with(|| left.0.cmp(&right.0))
-    };
-    if ranked.len() > limit {
-        ranked.select_nth_unstable_by(limit, compare);
-        ranked.truncate(limit);
-    }
-    ranked.sort_unstable_by(compare);
-    ranked
 }

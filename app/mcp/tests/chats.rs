@@ -1,7 +1,11 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "keep the MCP index/discovery/search journey and owned-backend cleanup together"
+)]
 async fn real_models_thread_discovery_and_scoped_messages() {
     let models = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap();
     let directory = tempfile::tempdir().unwrap();
@@ -19,6 +23,8 @@ async fn real_models_thread_discovery_and_scoped_messages() {
         ),
     )
     .unwrap();
+    let qdrant_url = crate::views::local::test_support::configure(&config);
+    let configuration = crate::config::load(Some(&config)).unwrap();
     let server = Mash {
         runtime: None,
         paths: Arc::new(Paths {
@@ -102,6 +108,10 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     assert_eq!(std::fs::read(&database).unwrap(), before);
     client.cancel().await.unwrap();
     server.cancel().await.unwrap();
+    let local = crate::views::local::Local::open(&database, &configuration)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &qdrant_url).await;
 }
 
 #[tokio::test]

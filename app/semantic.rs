@@ -11,21 +11,17 @@ mod retrieval;
 mod tests;
 
 use fastembed::{EmbeddingModel, RerankerModel};
-use std::time::Duration;
 
 #[cfg(test)]
 pub(crate) use embeddings::EmbeddingPool;
 
-pub(crate) use embeddings::{
-    EmbeddingProgress, EmbeddingSummary, embed_connector_units, embedding_generation,
-    rebuild_embeddings, rebuild_with_build,
-};
+pub(crate) use embeddings::{EmbeddingProgress, EmbeddingSummary};
 pub(crate) use models::indexer;
 pub(crate) use models::indexer::LoadedIndexer;
 pub(crate) use models::{Backend, InstallSummary, LoadedBackend, Models};
 pub(crate) use retrieval::{
-    SHARED_EMBEDDING_GENERATION, configured_generation, fuse, hybrid_search_filtered,
-    local_candidates, model_space, shared_query_vector,
+    SHARED_EMBEDDING_GENERATION, configured_generation, finish_hybrid, fuse, model_space,
+    shared_query_vector,
 };
 
 const EMBEDDING_MODEL: EmbeddingModel = EmbeddingModel::AllMiniLML6V2Q;
@@ -36,12 +32,10 @@ const RERANKER_REPOSITORY: &str = "models--jinaai--jina-reranker-v1-turbo-en";
 const EMBEDDING_BATCH_SIZE: usize = 8;
 const EMBEDDING_WORKERS: usize = 8;
 const EMBEDDING_THREADS_PER_WORKER: usize = 2;
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-const EMBEDDING_WAVE_SIZE: usize = EMBEDDING_BATCH_SIZE * EMBEDDING_WORKERS;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const COREML_BATCH_SIZE: usize = 32;
+#[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 const COREML_SEQUENCE_LENGTH: usize = 512;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const COREML_MODEL_FILE: &str = "onnx/model.onnx";
 const COREML_CACHE_DIRECTORY: &str = "coreml-cache";
-const EMBEDDING_CHECKPOINT_ROWS: u64 = 4_096;
-const EMBEDDING_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);

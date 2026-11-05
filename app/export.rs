@@ -140,7 +140,6 @@ pub(crate) fn load(
     let blobs = attachments::directory(database);
     ensure_absent(&blobs)?;
     // Stale views could pair with a database that keeps its identity.
-    ensure_absent(&storage::schema::views_path(database))?;
     let parent = parent(database);
     fs::create_dir_all(parent).map_err(AppError::io)?;
     let mut builder = tempfile::Builder::new();

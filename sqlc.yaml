@@ -8,7 +8,6 @@ sql:
   - engine: sqlite
     schema:
       - app/storage/silver.sql
-      - app/storage/views.sql
     queries: queries/sqlite/index.sql
     codegen:
       - plugin: rust

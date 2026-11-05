@@ -6,7 +6,7 @@ use crate::config::SharedConfig;
 use crate::search_results::SearchUnit;
 use crate::semantic::{self, Models};
 use crate::silver::{Conversation, NormalizedMessage};
-use crate::storage::{EmbeddingWrite, Message, SearchHit, Storage};
+use crate::storage::{Message, SearchHit, Storage};
 use crate::views::readiness::{Artifacts, State};
 use std::path::Path;
 use std::time::Duration;
@@ -143,7 +143,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
         })
         .collect::<Vec<_>>();
     let started = Instant::now();
-    let (documents, error) = context_documents(&config, None, "test".into(), "cache", &hits)
+    let (documents, error) = context_documents(&config, None, "cache", &hits)
         .await
         .unwrap();
     assert!(started.elapsed() < CONTEXT_DEADLINE + Duration::from_secs(1));
@@ -214,7 +214,7 @@ async fn publication_freshness() -> Json<serde_json::Value> {
         "group_id": "test",
         "group_views": {
             "version": "group",
-            "build": crate::views::config::Build::default(),
+            "build": crate::views::config::Build { representations: crate::views::config::Representations::LexicalOnly, ..Default::default() },
             "generation": semantic::SHARED_EMBEDDING_GENERATION,
             "dimensions": 2,
         },
@@ -575,7 +575,7 @@ async fn websocket_publication_streams_a_complete_snapshot_before_acknowledging(
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked() {
     use axum::Router;
     use tokio::sync::mpsc;
@@ -584,19 +584,18 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         .map(std::path::PathBuf::from)
         .expect("explicit model directory");
     let models = Models::new(models_dir.clone());
-    let generation = models.generation();
     // Warm inference before applying the database lock: the test measures
     // retrieval ordering, independently of model startup time.
     drop(crate::blocking(move || models.load()).await.unwrap());
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("local.sqlite3");
-    seed_ready(&path, &generation);
+    let gold = seed_ready(&path).await;
     // Readiness is checked before inference/HTTP; hold the lock only for the
     // subsequent candidate retrieval stage whose concurrency is under test.
     let prepared = prepare_search(
-        Some((&path, &crate::views::config::Build::default())),
+        Some((&path, &gold.configuration)),
         &models_dir,
-        None,
+        gold.configuration.embeddings.as_ref(),
         "hello",
         crate::views::config::Ranking::default(),
     )
@@ -659,9 +658,9 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     config.token_env = "MASH_TEST_UNCONFIGURED_TOKEN_71B9".into();
     let fallback = search(
         &config,
-        Some((&path, &crate::views::config::Build::default())),
+        Some((&path, &gold.configuration)),
         &models_dir,
-        None,
+        gold.configuration.embeddings.as_ref(),
         "hello",
         options,
         &filters,
@@ -678,6 +677,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
             .await
             .is_err()
     );
+    gold.cleanup().await;
     server.abort();
 }
 
@@ -693,38 +693,22 @@ async fn capture_search_request(
     })
 }
 
-fn seed_ready(path: &Path, generation: &str) {
+async fn seed_ready(path: &Path) -> crate::views::local::test_support::Fixture {
+    seed_certified(path);
+    crate::views::local::test_support::Fixture::new(path, "local-node").await
+}
+
+fn seed_certified(path: &Path) {
     drop(seed(path));
-    let mut storage = Storage::open_writer(path).unwrap();
-    storage.rebuild_derived_search_state().unwrap();
-    storage
-        .replace_embeddings(
-            generation,
-            &[EmbeddingWrite {
-                message_id: "searchable",
-                vector: &[127; 384],
-                norm: 127.0 * 384_f32.sqrt(),
-            }],
-        )
-        .unwrap();
-    storage.mark_semantic_index_ready(generation).unwrap();
-    storage
+    let mut writer = Storage::open_writer(path).unwrap();
+    writer
         .begin_silver_scan(crate::provider::Provider::Codex)
         .unwrap();
-    storage
+    writer
         .finish_silver_scan(crate::provider::Provider::Codex, true)
         .unwrap();
-    storage.finish_silver_ingestion().unwrap();
-    storage.mark_semantic_index_ready(generation).unwrap();
-    storage.publish_lexical_manifest().unwrap();
-    storage
-        .publish_views_manifest(&crate::views::manifest::Manifest::new(
-            crate::views::config::Build::default(),
-            generation.to_owned(),
-            storage.silver_certificate().unwrap(),
-        ))
-        .unwrap();
-    storage.commit_writer().unwrap();
+    writer.finish_silver_ingestion().unwrap();
+    writer.commit_writer().unwrap();
 }
 
 #[tokio::test]
@@ -879,61 +863,42 @@ fn seed(path: &Path) -> Storage {
             .into(),
         })
         .expect("conversation");
-    storage
-        .replace_embeddings(
-            semantic::embedding_generation(),
-            &[EmbeddingWrite {
-                message_id: "searchable",
-                vector: &[127, 0],
-                norm: 127.0,
-            }],
-        )
-        .expect("embedding");
     storage.commit_writer().expect("commit");
     storage
 }
 
-#[test]
-fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search() {
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+async fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search() {
     let dir = tempfile::tempdir().unwrap();
-    let storage = seed(&dir.path().join("local.sqlite3"));
-    let (hits, documents) = semantic::local_candidates(
-        &storage,
-        semantic::embedding_generation(),
-        "hello",
-        &[127.0, 0.0],
-        (None, None, SearchUnit::Messages),
-        None,
-        crate::views::config::Fusion::default(),
-    )
-    .unwrap();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].id, "searchable");
-    assert_eq!(hits[0].node_id, None);
-    assert!(hits[0].semantic_score.unwrap() > 0.99);
-    assert_eq!(documents, ["hello shared history"]);
+    let path = dir.path().join("local.sqlite3");
+    let gold = seed_ready(&path).await;
+    let candidates = gold.candidates("hello", vec![127.0, 0.0], None).await;
+    assert_eq!(candidates.semantic.len(), 1);
+    assert_eq!(candidates.semantic[0].id, "searchable");
+    assert!(candidates.semantic[0].semantic_score.unwrap() > 0.99);
     assert!(
-        semantic::local_candidates(
-            &storage,
-            semantic::embedding_generation(),
-            "hello",
-            &[127.0, 0.0],
-            (
-                Some(crate::provider::Provider::ClaudeCode),
-                None,
-                SearchUnit::Messages
-            ),
-            None,
-            crate::views::config::Fusion::default(),
-        )
-        .unwrap()
-        .0
-        .is_empty()
+        candidates
+            .documents
+            .iter()
+            .all(|d| d.projection == "hello shared history")
     );
+    let filtered = gold
+        .candidates(
+            "hello",
+            vec![127.0, 0.0],
+            Some(crate::search_filter::Filter::Provider(vec![
+                crate::provider::Provider::ClaudeCode,
+            ])),
+        )
+        .await;
+    assert!(filtered.lexical.is_empty() && filtered.semantic.is_empty());
+    gold.cleanup().await;
 }
 
-#[test]
-fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+async fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("filters.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();
@@ -965,20 +930,9 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         });
     }
     storage.replace_conversation(&conversation).unwrap();
-    let embeddings = conversation
-        .messages
-        .inline()
-        .iter()
-        .map(|m| EmbeddingWrite {
-            message_id: &m.id,
-            vector: &[127, 0],
-            norm: 127.0,
-        })
-        .collect::<Vec<_>>();
-    storage
-        .replace_embeddings(semantic::embedding_generation(), &embeddings)
-        .unwrap();
     storage.commit_writer().unwrap();
+    drop(storage);
+    let gold = crate::views::local::test_support::Fixture::new(&path, "local-node").await;
     let filter = crate::search_filter::Filter::All(vec![
         crate::search_filter::Filter::Node(vec!["local-node".into()]),
         crate::search_filter::Filter::Role(vec!["assistant".into()]),
@@ -988,34 +942,24 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         crate::search_filter::Filter::Before(3),
     ]);
     filter.validate().unwrap();
-    let scope = crate::search_filter::Scope {
-        match_mode: crate::views::matching::Mode::Strict,
-        filter,
-        node: "local-node".into(),
-    };
-    let (hits, _) = semantic::local_candidates(
-        &storage,
-        semantic::embedding_generation(),
-        "hello",
-        &[127.0, 0.0],
-        (None, None, SearchUnit::Messages),
-        Some(&scope),
+    let candidates = gold
+        .candidates("hello", vec![127.0, 0.0], Some(filter))
+        .await;
+    assert_eq!(candidates.lexical.len(), 1);
+    assert_eq!(candidates.semantic.len(), 1);
+    let hits = semantic::fuse(
+        candidates.lexical,
+        candidates.semantic,
+        SearchUnit::Messages,
         crate::views::config::Fusion::default(),
-    )
-    .unwrap();
+    );
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "message-60");
     assert_eq!(hits[0].metadata.project.as_deref(), Some("/work/o'reilly"));
     assert_eq!(hits[0].metadata.repository.as_deref(), Some("repo://alpha"));
     assert_eq!(hits[0].created_at, Some(2000));
     assert!(hits[0].lexical_score.is_some() && hits[0].semantic_score.is_some());
-    assert_eq!(
-        storage
-            .search_filtered("hello", 1, None, None, Some(&scope))
-            .unwrap()[0]
-            .id,
-        "message-60"
-    );
+    gold.cleanup().await;
 }
 
 #[tokio::test]

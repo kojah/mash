@@ -184,10 +184,12 @@ fn wal_refresh_deletion_and_malformed_history_preserve_index_consistency() {
     drop(writer);
     let writer = Storage::open_writer(&local).unwrap();
     assert_eq!(
-        writer
-            .search("updated", 10, Some(Provider::Opencode), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &writer,
+            "updated",
+            Some(Provider::Opencode)
+        )
+        .len(),
         1
     );
     drop(writer);
@@ -278,9 +280,7 @@ fn session_horizon_and_attachments_do_not_promote_operational_text() {
     assert_eq!(summary.processed_bytes, sources[0].estimated_bytes.unwrap());
     assert_eq!(writer.counts().unwrap().conversations, 1);
     assert!(
-        writer
-            .search("attachmentmarker", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&writer, "attachmentmarker", None)
             .is_empty()
     );
 }

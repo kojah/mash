@@ -1,33 +1,18 @@
-//! Local views live in a separate, paired database that silver can always replay.
+//! SQLite stores canonical silver only; local and shared use the same schema.
 use super::*;
-use crate::storage::schema::views_path;
 
-fn indexed(path: &Path) {
+fn seed(path: &Path) {
     let mut storage = Storage::open_writer(path).unwrap();
     storage
         .replace_conversation(&conversation("durable needle"))
         .unwrap();
-    storage.rebuild_derived_search_state().unwrap();
-    storage
-        .replace_embeddings(
-            "fixture",
-            &[EmbeddingWrite {
-                message_id: "message-1",
-                vector: &[127, 0],
-                norm: 127.0,
-            }],
-        )
-        .unwrap();
-    storage.mark_semantic_index_ready("fixture").unwrap();
     storage.commit_writer().unwrap();
 }
 
-fn main_tables(path: &Path) -> Vec<String> {
-    let connection = Connection::open(path).unwrap();
-    let mut statement = connection
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-        .unwrap();
-    statement
+fn tables(connection: &Connection) -> Vec<String> {
+    connection
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .unwrap()
         .query_map([], |row| row.get(0))
         .unwrap()
         .collect::<Result<_, _>>()
@@ -38,21 +23,22 @@ fn main_tables(path: &Path) -> Vec<String> {
 fn canonical_silver_reader_never_opens_or_synthesizes_gold() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    let views = views_path(&path);
-    crate::storage::schema::remove_views(&views).unwrap();
-    std::fs::write(&views, b"unreadable gold fixture").unwrap();
+    seed(&path);
+    let old_gold = directory.path().join("index.views.sqlite3");
+    std::fs::write(&old_gold, b"unreadable retired gold").unwrap();
     let reader = Storage::open_silver(&path).unwrap();
     assert_eq!(reader.silver_counts().unwrap().messages, 1);
     assert_eq!(
         reader.view("message-1", 0).unwrap()[0].content,
         "durable needle"
     );
-    let mut statement = reader.connection.prepare("PRAGMA database_list").unwrap();
-    let databases: Vec<String> = statement
-        .query_map([], |row| row.get(1))
+    let databases = reader
+        .connection
+        .prepare("PRAGMA database_list")
         .unwrap()
-        .collect::<Result<_, _>>()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(databases, ["main"]);
     assert!(
@@ -61,145 +47,59 @@ fn canonical_silver_reader_never_opens_or_synthesizes_gold() {
             .execute("DELETE FROM objects", [])
             .is_err()
     );
-    assert_eq!(std::fs::read(&views).unwrap(), b"unreadable gold fixture");
+    assert_eq!(
+        std::fs::read(&old_gold).unwrap(),
+        b"unreadable retired gold"
+    );
 }
 
 #[test]
-fn silver_holds_no_views_and_views_holds_no_history() {
+fn local_and_shared_silver_have_one_schema_without_gold_tables() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    assert_eq!(
-        views_path(&path),
-        directory.path().join("index.views.sqlite3")
-    );
-    let silver = main_tables(&path);
+    seed(&path);
+    let local = Storage::open_silver(&path).unwrap();
+    let server = Connection::open_in_memory().unwrap();
+    crate::storage::schema::initialize_silver(&server).unwrap();
+    let local_tables = tables(&local.connection);
+    assert_eq!(local_tables, tables(&server));
     for table in [
         "message_embeddings",
         "message_fts",
         "views_manifest",
         "derived_state",
+        "connector_units",
+        "connector_embeddings",
+        "semantic_chunks",
+        "pending_embeddings",
     ] {
         assert!(
-            !silver.iter().any(|name| name == table),
+            !local_tables.iter().any(|name| name == table),
             "{table} in silver"
         );
     }
-    let views = main_tables(&views_path(&path));
-    for table in [
-        "objects",
-        "native_chats",
-        "native_messages",
-        "tombstones",
-        "source_checkpoints",
-    ] {
-        assert!(!views.iter().any(|name| name == table), "{table} in views");
-    }
-    // The same silver schema serves the shared server, with no views beside it.
-    let server = Connection::open(directory.path().join("server.sqlite3")).unwrap();
-    crate::storage::schema::initialize_silver(&server).unwrap();
-    let mut server_tables = main_tables(&directory.path().join("server.sqlite3"));
-    server_tables.retain(|name| name != "sqlite_sequence");
-    let mut local_tables = silver;
-    local_tables.retain(|name| name != "sqlite_sequence");
-    assert_eq!(server_tables, local_tables);
+    assert!(!directory.path().join("index.views.sqlite3").exists());
 }
 
 #[test]
-fn missing_views_reads_as_unready_and_writers_recreate_it_pending() {
+fn deleting_silver_journals_the_canonical_change() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    crate::storage::schema::remove_views(&views_path(&path)).unwrap();
-    let reader = Storage::open_catalog(&path).unwrap();
-    assert_eq!(reader.counts().unwrap().messages, 1);
-    assert_eq!(reader.counts().unwrap().embeddings, 0);
-    assert!(reader.derived_search_is_dirty().unwrap());
-    drop(reader);
-    assert!(!views_path(&path).exists(), "readers never create views");
-    let writer = Storage::open_writer(&path).unwrap();
-    assert!(views_path(&path).exists());
-    assert_eq!(writer.embedding_count("fixture").unwrap(), 0);
-    assert!(writer.derived_search_is_dirty().unwrap());
-    let pending: i64 = writer
-        .connection
-        .query_row("SELECT count(*) FROM pending_embeddings", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    assert_eq!(pending, 1);
-}
-
-#[test]
-fn views_from_another_silver_is_never_used() {
-    let directory = tempfile::tempdir().unwrap();
-    let first = directory.path().join("first.sqlite3");
-    let second = directory.path().join("second.sqlite3");
-    indexed(&first);
-    drop(Storage::open(&second).unwrap());
-    crate::storage::schema::remove_views(&views_path(&second)).unwrap();
-    std::fs::copy(views_path(&first), views_path(&second)).unwrap();
-    let reader = Storage::open_catalog(&second).unwrap();
-    assert_eq!(reader.counts().unwrap().embeddings, 0);
-    drop(reader);
-    let writer = Storage::open_writer(&second).unwrap();
-    assert_eq!(writer.counts().unwrap().embeddings, 0);
-    assert!(writer.derived_search_is_dirty().unwrap());
-}
-
-#[test]
-fn deleting_silver_removes_its_views_and_journals_the_change() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    let revision = |storage: &Storage| -> i64 {
+    seed(&path);
+    let storage = Storage::open_writer(&path).unwrap();
+    let revision = |storage: &Storage| {
         storage
             .connection
             .query_row("SELECT revision FROM shared_publication", [], |row| {
-                row.get(0)
+                row.get::<_, i64>(0)
             })
             .unwrap()
     };
-    let storage = Storage::open_writer(&path).unwrap();
     let before = revision(&storage);
     storage
         .connection
-        .execute("DELETE FROM objects WHERE origin = 'provider'", [])
+        .execute("DELETE FROM objects WHERE origin='provider'", [])
         .unwrap();
-    assert_eq!(storage.counts().unwrap().embeddings, 0);
     assert!(revision(&storage) > before);
-}
-
-#[test]
-fn discarding_views_replays_from_unchanged_silver() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    let mut storage = Storage::open_writer(&path).unwrap();
-    let silver = storage.silver_certificate().unwrap();
-    storage.discard_views().unwrap();
-    assert_eq!(storage.counts().unwrap().embeddings, 0);
-    assert!(storage.derived_search_is_dirty().unwrap());
-    assert!(storage.views_manifest().unwrap().is_none());
-    assert!(storage.lexical_manifest().unwrap().is_none());
-    assert!(!storage.semantic_generation_is_published("fixture").unwrap());
-    assert_eq!(storage.silver_certificate().unwrap(), silver);
-    storage.commit_writer().unwrap();
-}
-
-#[cfg(unix)]
-#[test]
-fn recreated_views_is_no_more_visible_than_silver() {
-    use std::os::unix::fs::PermissionsExt;
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-    crate::storage::schema::remove_views(&views_path(&path)).unwrap();
-    drop(Storage::open_writer(&path).unwrap());
-    let mode = std::fs::metadata(views_path(&path))
-        .unwrap()
-        .permissions()
-        .mode();
-    assert_eq!(mode & 0o777, 0o600);
+    assert_eq!(storage.counts().unwrap().messages, 0);
 }

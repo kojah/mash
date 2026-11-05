@@ -14,6 +14,10 @@ async fn contract() {
     .await
     .unwrap();
     let config_path = paths.config.as_deref().unwrap();
+    let local_config = crate::config::load(Some(config_path)).unwrap();
+    let local = crate::views::local::Local::open(paths.db.as_deref().unwrap(), &local_config)
+        .await
+        .unwrap();
     let mut document: toml::Table =
         toml::from_str(&std::fs::read_to_string(config_path).unwrap()).unwrap();
     document.insert(
@@ -31,12 +35,20 @@ async fn contract() {
         .shared
         .unwrap();
     assert!(
-        !crate::shared::publish(paths.db.as_deref().unwrap(), &config, None)
-            .await
-            .is_pending()
+        !crate::shared::publish(
+            paths.db.as_deref().unwrap(),
+            &config,
+            Some(crate::shared::Inference {
+                models_dir: paths.models_dir.as_deref().unwrap(),
+                embeddings: local_config.embeddings.as_ref(),
+            })
+        )
+        .await
+        .is_pending()
     );
     let failures = evaluation::evaluate(&paths, true).await;
     service.cleanup().await;
+    crate::views::local::test_support::cleanup(&local, &local_config.qdrant.url).await;
     assert_eq!(
         failures,
         Vec::<String>::new(),

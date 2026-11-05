@@ -180,14 +180,13 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
 #[test]
 fn unit_contract_is_bounded_unicode_safe_versioned_and_strict() {
     let default = Build::default();
-    assert_eq!(default.generation("model"), "model");
     assert!(
         !serde_json::to_string(&default)
             .unwrap()
             .contains("retrieval_unit")
     );
     let build: Build = toml::from_str("retrieval_unit='parent-and-message'").unwrap();
-    assert_ne!(default.generation("model"), build.generation("model"));
+    assert_ne!(default, build);
     assert!(toml::from_str::<Build>("retrieval_unit='chat'").is_err());
     assert!(toml::from_str::<Build>("retrieval_unit=true").is_err());
     assert!(

@@ -223,7 +223,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
 fn catalog_opens_only_existing_current_schemas_without_migration_or_writes() {
     let (directory, storage) = catalog();
     let path = directory.path().join("index.sqlite3");
-    let reader = Storage::open_catalog(&path).unwrap();
+    let reader = Storage::open_silver(&path).unwrap();
     assert!(
         reader
             .connection
@@ -233,7 +233,7 @@ fn catalog_opens_only_existing_current_schemas_without_migration_or_writes() {
     assert_eq!(reader.counts().unwrap().conversations, 5);
     drop(reader);
     let absent = directory.path().join("missing.sqlite3");
-    assert!(Storage::open_catalog(&absent).is_err());
+    assert!(Storage::open_silver(&absent).is_err());
     assert!(!absent.exists());
     storage
         .connection
@@ -244,7 +244,7 @@ fn catalog_opens_only_existing_current_schemas_without_migration_or_writes() {
             .connection
             .pragma_update(None, "user_version", version)
             .unwrap();
-        assert!(Storage::open_catalog(&path).is_err());
+        assert!(Storage::open_silver(&path).is_err());
         assert_eq!(
             storage
                 .connection

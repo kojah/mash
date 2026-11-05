@@ -10,10 +10,12 @@ fn corrupt_native_updates_preserve_prior_checkpoint_and_search() {
     index(&mut storage, &opts).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(
-        storage
-            .search("cbioportal", 20, Some(Provider::Antigravity), None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(
+            &storage,
+            "cbioportal",
+            Some(Provider::Antigravity)
+        )
+        .len(),
         9
     );
     let checkpoint = crate::silver::discovered_sources(
@@ -36,10 +38,12 @@ fn corrupt_native_updates_preserve_prior_checkpoint_and_search() {
         assert!(index(&mut storage, &opts).is_err());
         storage.commit_writer().unwrap();
         assert_eq!(
-            storage
-                .search("cbioportal", 20, Some(Provider::Antigravity), None)
-                .unwrap()
-                .len(),
+            crate::storage::test_support::projections_with_text(
+                &storage,
+                "cbioportal",
+                Some(Provider::Antigravity)
+            )
+            .len(),
             9
         );
         assert!(

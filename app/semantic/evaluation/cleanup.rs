@@ -182,7 +182,7 @@ fn benchmark_paired_embedding_cleanup() {
     let report = Report {
         version: 1,
         corpus_fingerprint: blake3::hash(&bytes).to_hex().to_string(),
-        generation: models.generation(),
+        generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
         documents: corpus.documents.len(),
         changed_documents: corpus
             .documents

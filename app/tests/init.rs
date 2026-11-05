@@ -73,10 +73,11 @@ fn init(env: &[(&str, String)], arguments: &[&str]) -> Value {
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn init_configures_registers_and_indexes_detected_history() {
     let (root, env) = fixture(false);
     let home = root.path();
-    let value = init(&env, &[]);
+    let value = init(&env, &["--no-index"]);
     let config = home.join(".config/mash/config.toml");
     assert_eq!(value["config"]["written"], true, "{value}");
     assert_eq!(value["config"]["search"], "exact-mention");
@@ -85,7 +86,9 @@ fn init_configures_registers_and_indexes_detected_history() {
         home.join(".claude/projects").display().to_string()
     );
     assert!(value["config"]["providers"].get("codex").is_none());
-    assert_eq!(value["index"]["indexed_messages"], 1, "{value}");
+    configure_qdrant(&config);
+    let indexed = init(&env, &["--no-agents"]);
+    assert_eq!(indexed["index"]["indexed_messages"], 1, "{indexed}");
     for agent in &value["agents"].as_array().unwrap()[..] {
         assert_eq!(agent["mcp"]["state"], "done", "{value}");
         assert_eq!(agent["plugin"]["state"], "done", "{value}");
@@ -157,6 +160,7 @@ fn init_configures_registers_and_indexes_detected_history() {
             .display()
             .to_string()
     );
+    cleanup_local_gold(&home.join(".local/share/mash/mash.sqlite3"), "local");
 }
 
 #[test]

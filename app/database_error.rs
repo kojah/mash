@@ -11,7 +11,6 @@ pub(crate) enum Operation {
     OpenCatalog,
     InspectCatalog,
     InspectStatus,
-    AttachViews,
     ConfigureWriter,
     BeginWriter,
 }
@@ -23,7 +22,6 @@ impl Operation {
             Self::OpenCatalog => "open read-only history database",
             Self::InspectCatalog => "inspect history catalog",
             Self::InspectStatus => "inspect local index status",
-            Self::AttachViews => "attach paired views database",
             Self::ConfigureWriter => "configure database writer",
             Self::BeginWriter => "begin index writer transaction",
         }

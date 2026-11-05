@@ -57,11 +57,9 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
 
 mod chats;
 mod connectors;
-mod exact;
 mod indexing;
 mod publication;
 mod schema;
-mod semantic;
 mod staging;
 mod views_database;
 
@@ -69,19 +67,13 @@ mod views_database;
 fn writers_commit_without_an_fsync_per_transaction() {
     let directory = tempfile::tempdir().unwrap();
     let storage = Storage::open(&directory.path().join("index.sqlite3")).unwrap();
-    for schema in ["main", "views"] {
-        let mode: String = storage
-            .connection
-            .query_row(&format!("PRAGMA {schema}.journal_mode"), [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        let sync: i64 = storage
-            .connection
-            .query_row(&format!("PRAGMA {schema}.synchronous"), [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!((mode.as_str(), sync), ("wal", 1), "{schema}");
-    }
+    let mode: String = storage
+        .connection
+        .query_row("PRAGMA main.journal_mode", [], |row| row.get(0))
+        .unwrap();
+    let sync: i64 = storage
+        .connection
+        .query_row("PRAGMA main.synchronous", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!((mode.as_str(), sync), ("wal", 1));
 }

@@ -501,7 +501,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly refresh/index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_views to build only local retrieval state from certified stored silver, offline and without provider reads (with full, all local views are discarded and replayed from silver). The rebuild is incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly refresh/index configured agent histories into local SQLite silver and Qdrant views, and optionally publish to the shared index, applying provider allowlists. Local indexing requires the configured Qdrant service, without a local Mash HTTP server. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_views to rebuild local Qdrant retrieval state from certified stored silver without provider reads (with full, replay all local views). The rebuild is incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,

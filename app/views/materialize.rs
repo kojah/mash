@@ -8,6 +8,33 @@ use crate::AppError;
 use crate::semantic::{LoadedIndexer, remote};
 use std::path::Path;
 
+pub(crate) fn connector_point(
+    unit: &crate::storage::connector_views::Unit,
+    evidence: &crate::storage::connector_views::Evidence,
+    vector: Option<Vec<f64>>,
+) -> super::qdrant::ConnectorPoint {
+    let (group_created_at, group_updated_at) = evidence.group_times();
+    super::qdrant::ConnectorPoint {
+        source_id: unit.source_id.clone(),
+        object: unit.object.clone(),
+        group_anchor: unit.group_anchor.clone(),
+        created_at: unit.created_at,
+        unit: super::qdrant::ConnectorUnit {
+            anchor: unit.anchor.clone(),
+            text: unit.text.clone(),
+            content: evidence.content().to_owned(),
+            title: evidence.title().map(str::to_owned),
+            author_kind: evidence.author(),
+            sequence: unit.sequence,
+            chat_created_at: group_created_at,
+            chat_updated_at: group_updated_at,
+            ancestors: evidence.ancestors(&unit.source_id),
+            generation: None,
+        },
+        vector,
+    }
+}
+
 pub(crate) struct NativeWriter<'a> {
     store: &'a Store,
     scope: &'a Scope,
@@ -16,6 +43,17 @@ pub(crate) struct NativeWriter<'a> {
     pool: Option<LoadedIndexer>,
     build: Build,
     documents: Documents,
+}
+
+/// Reuse must preserve all stored evidence, not only the embedding text.
+pub(crate) fn connector_digest(
+    unit: &crate::storage::connector_views::Unit,
+    evidence: &crate::storage::connector_views::Evidence,
+) -> Result<String, AppError> {
+    let point = connector_point(unit, evidence, None);
+    let bytes = serde_json::to_vec(&point)
+        .map_err(|_| AppError::internal("encode connector projection fingerprint"))?;
+    Ok(blake3::hash(&bytes).to_hex().to_string())
 }
 
 pub(crate) struct ChatBuild {
@@ -92,6 +130,7 @@ impl<'a> NativeWriter<'a> {
             if vectors.len() != texts.len() {
                 return Err(AppError::model("missing materialized embedding"));
             }
+            self.build.embeddings.model_inferences += texts.len() as u64;
             for (mut message, unit) in rows.into_iter().zip(prepared) {
                 if unit.is_some() {
                     expected += 1;

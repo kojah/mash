@@ -89,6 +89,7 @@ enum Completeness {
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repair() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");
@@ -100,6 +101,7 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
     let corrupt = "\n{\"sessionId\":[\"PRIVATE-CLI-RECORD-CANARY\"]}\n";
     std::fs::write(&malformed, corrupt).unwrap();
     write_config(&config, &claude, &codex);
+    configure_qdrant(&config);
     let models = directory.path().join("models");
     create_valid_model_marker(&models);
     let database = directory.path().join("index.sqlite3");
@@ -173,6 +175,7 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
             std::fs::write(&malformed, corrupt).unwrap();
         }
     }
+    cleanup_local_gold(&database, "local");
 }
 
 fn assert_readiness(
@@ -206,6 +209,7 @@ fn assert_readiness(
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn rejected_source_preserves_cli_search_and_offline_views_rebuild() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("provider");
@@ -224,6 +228,7 @@ fn rejected_source_preserves_cli_search_and_offline_views_rebuild() {
         toml::Value::String(root.to_str().unwrap().into()),
     )).unwrap();
     let database = directory.path().join("index.sqlite3");
+    configure_qdrant(&config);
     let models = directory.path().join("absent-models");
     let base = [
         "--config",
@@ -267,4 +272,5 @@ fn rejected_source_preserves_cli_search_and_offline_views_rebuild() {
         std::fs::remove_file(&healthy).ok();
     }
     assert!(!models.exists());
+    cleanup_local_gold(&database, "local");
 }

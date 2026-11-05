@@ -1,8 +1,8 @@
 # Real-backend audit of interrupted connector synchronization and recovery.
-examine_globs = ["app/shared/server/store/connectors.rs", "app/views/qdrant/views.rs"]
-examine_re = ["in Store::sync_connectors", "replace Store::sync_connectors", "replace Store::retain_connector_points"]
+examine_globs = ["app/shared/server/store/connectors.rs", "app/views/qdrant/views.rs", "app/views/materialize.rs"]
+examine_re = ["in Store::sync_connectors", "replace Store::sync_connectors", "replace Store::retain_connector_points", "replace connector_digest ->"]
 test_package = ["mash"]
 test_tool = "nextest"
 cap_lints = true
 additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
-additional_cargo_test_args = ["--run-ignored", "only", "-E", "test(connector_sequences) | test(qdrant_native_cleanup) | test(qdrant_publication_http_authorization)", "--no-tests", "fail", "--test-threads", "1"]
+additional_cargo_test_args = ["--run-ignored", "only", "-E", "test(connector_sequences) | test(connector_metadata_only) | test(qdrant_native_cleanup) | test(qdrant_publication_http_authorization)", "--no-tests", "fail", "--test-threads", "1"]

@@ -44,10 +44,12 @@ fn missing_corrupt_oversized_and_malformed_blobs_preserve_previous_index() {
                 .unwrap()
         );
         assert_eq!(
-            storage
-                .search("cbioportal", 10, Some(Provider::Cursor), None)
-                .unwrap()
-                .len(),
+            crate::storage::test_support::projections_with_text(
+                &storage,
+                "cbioportal",
+                Some(Provider::Cursor)
+            )
+            .len(),
             2
         );
     }

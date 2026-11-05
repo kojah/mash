@@ -612,6 +612,11 @@ impl Client {
             .await
             .map_err(|_| failure())?;
         tracing::Span::current().record("status", response.status().as_u16());
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(AppError::search_not_ready(
+                "Qdrant views are missing; rebuild views from silver before searching",
+            ));
+        }
         if !response.status().is_success() {
             return Err(failure());
         }

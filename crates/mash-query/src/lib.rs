@@ -39,25 +39,6 @@ pub fn is_stop_word(word: &str) -> bool {
         .any(|candidate| word.eq_ignore_ascii_case(candidate))
 }
 
-/// Quote every unquoted term and preserve explicitly quoted phrases. Splitting
-/// punctuation separates literal words and prevents URL, hyphen,
-/// question mark, and reserved-operator input from becoming FTS syntax.
-#[must_use]
-pub fn sqlite(query: &str) -> String {
-    let mut clauses = Vec::new();
-    for (index, segment) in query.split('"').enumerate() {
-        let words = terms(segment).collect::<Vec<_>>();
-        if index % 2 == 1 {
-            if !words.is_empty() {
-                clauses.push(format!("\"{}\"", words.join(" ")));
-            }
-        } else {
-            clauses.extend(words.into_iter().map(|word| format!("\"{word}\"")));
-        }
-    }
-    clauses.join(" AND ")
-}
-
 fn terms(text: &str) -> impl Iterator<Item = &str> {
     text.split(|c: char| !c.is_alphanumeric())
         .filter(|term| !term.is_empty())
@@ -261,24 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn literal_terms_cannot_turn_into_database_syntax() {
-        for (query, expected) in [
-            ("voyage-code-4", "\"voyage\" AND \"code\" AND \"4\""),
-            ("why Redis?", "\"why\" AND \"Redis\""),
-            (
-                "https://github.com/a/b/pull/180",
-                "\"https\" AND \"github\" AND \"com\" AND \"a\" AND \"b\" AND \"pull\" AND \"180\"",
-            ),
-            ("\"shared index\" nodes", "\"shared index\" AND \"nodes\""),
-            (
-                "AND OR NOT NEAR *",
-                "\"AND\" AND \"OR\" AND \"NOT\" AND \"NEAR\"",
-            ),
-            ("日本語の検索", "\"日本語の検索\""),
-            ("!!!", ""),
-        ] {
-            assert_eq!(sqlite(query), expected);
-        }
+    fn terms_require_letters_or_numbers() {
         assert!(!has_terms("!!!"));
         assert!(has_terms("日本語"));
     }

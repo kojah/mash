@@ -5,20 +5,13 @@ use std::path::Path;
 use rusqlite::{OptionalExtension, params};
 
 use super::generated as sql;
-use super::semantic_chunks::{SEMANTIC_CHUNK_ROWS, rebuild_semantic_chunk};
-use super::{ConversationChange, FtsRefreshStrategy, SearchUpdates, Storage};
+use super::{ConversationChange, Storage};
 use crate::AppError;
 use crate::silver::Conversation;
-
-const FTS_BULK_REBUILD_PERCENT: u64 = 90;
-
-#[cfg(test)]
-mod memory;
 
 struct MessageState {
     fingerprint: String,
     ordinal: i64,
-    search_text_hash: blake3::Hash,
 }
 
 impl Storage {
@@ -40,220 +33,6 @@ impl Storage {
             .execute_batch(
                 "ROLLBACK TO mash_provider_scan;
                  RELEASE mash_provider_scan;",
-            )
-            .map_err(AppError::database)
-    }
-
-    /// The larger of the current and pre-transaction native message counts.
-    pub(super) fn measured_fts_bulk_threshold(&self) -> Result<u64, AppError> {
-        let current = self.message_count()?;
-        let (inserted, deleted): (i64, i64) = self
-            .connection
-            .query_row(
-                "SELECT inserted, deleted FROM transaction_entry_delta WHERE singleton = 1",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(AppError::database)?;
-        let removed = u64::try_from(deleted.saturating_sub(inserted)).unwrap_or(0);
-        let messages = current.saturating_add(removed);
-        Ok(messages
-            .saturating_mul(FTS_BULK_REBUILD_PERCENT)
-            .saturating_add(99)
-            / 100)
-    }
-
-    pub(super) fn message_count(&self) -> Result<u64, AppError> {
-        let messages = sql::NativeMessageCount
-            .query_one(&self.connection)
-            .map_err(AppError::database)?
-            .messages;
-        u64::try_from(messages).map_err(|_| AppError::internal("negative message count"))
-    }
-
-    /// Apply queued FTS changes, measuring the archive only when some are queued.
-    pub(super) fn refresh_pending_fts(&mut self) -> Result<FtsRefreshStrategy, AppError> {
-        self.require_writer()?;
-        if self.search_updates != SearchUpdates::Immediate {
-            return Ok(FtsRefreshStrategy::Deferred);
-        }
-        if self.pending_fts_count()? == 0 {
-            return Ok(FtsRefreshStrategy::None);
-        }
-        let threshold = self.measured_fts_bulk_threshold()?;
-        self.finalize_pending_fts_updates(threshold)
-    }
-
-    fn pending_fts_count(&self) -> Result<u64, AppError> {
-        let changed: i64 = self
-            .connection
-            .query_row("SELECT count(*) FROM pending_fts_messages", [], |row| {
-                row.get(0)
-            })
-            .map_err(AppError::database)?;
-        u64::try_from(changed).map_err(|_| AppError::internal("negative pending FTS message count"))
-    }
-
-    pub(super) fn finalize_pending_fts_updates(
-        &mut self,
-        bulk_rebuild_threshold: u64,
-    ) -> Result<FtsRefreshStrategy, AppError> {
-        self.require_writer()?;
-        if self.search_updates != SearchUpdates::Immediate {
-            return Ok(FtsRefreshStrategy::Deferred);
-        }
-        let changed = self.pending_fts_count()?;
-        if changed == 0 {
-            return Ok(FtsRefreshStrategy::None);
-        }
-        let strategy = if changed >= bulk_rebuild_threshold.max(1) {
-            self.rebuild_fts(false)?;
-            FtsRefreshStrategy::Bulk
-        } else {
-            // The queue drives the insert: planned from the origin index, it
-            // would visit every native row to find a few changed ones.
-            self.connection
-                .execute_batch(
-                    "DELETE FROM message_fts
-                      WHERE message_id IN (SELECT message_id FROM pending_fts_messages);
-                     INSERT INTO message_fts(content, message_id, conversation_id)
-                     SELECT COALESCE(m.search_projection, m.content), m.id, m.conversation_id
-                       FROM pending_fts_messages p
-                      CROSS JOIN objects m
-                         ON m.origin = 'provider' AND m.object_role = 'entry' AND m.id = p.message_id
-                      WHERE COALESCE(m.search_projection, m.content) <> '';
-                     DELETE FROM pending_fts_messages;",
-                )
-                .map_err(AppError::database)?;
-            FtsRefreshStrategy::Incremental
-        };
-        Ok(strategy)
-    }
-
-    fn stage_semantic_message(
-        &self,
-        message_id: &str,
-        generation: Option<&str>,
-    ) -> Result<(), AppError> {
-        self.connection
-            .execute(
-                "INSERT INTO dirty_semantic_chunks(chunk_id, generation)
-                 SELECT (m.rowid - 1) / ?2, COALESCE(?3, e.generation)
-                   FROM objects m
-                   LEFT JOIN message_embeddings e ON e.message_id = m.id
-                  WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1
-                 ON CONFLICT(chunk_id) DO UPDATE SET
-                    generation = COALESCE(excluded.generation, generation)",
-                params![message_id, SEMANTIC_CHUNK_ROWS, generation],
-            )
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    fn stage_semantic_conversation(&self, conversation_id: &str) -> Result<(), AppError> {
-        self.connection
-            .execute(
-                "INSERT INTO dirty_semantic_chunks(chunk_id, generation)
-                 SELECT (m.rowid - 1) / ?2, min(e.generation)
-                   FROM objects m
-                   LEFT JOIN message_embeddings e ON e.message_id = m.id
-                  WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
-                  GROUP BY (m.rowid - 1) / ?2
-                 ON CONFLICT(chunk_id) DO UPDATE SET
-                    generation = COALESCE(excluded.generation, generation)",
-                params![conversation_id, SEMANTIC_CHUNK_ROWS],
-            )
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    pub(super) fn finalize_semantic_chunks(&self) -> Result<(), AppError> {
-        if self.search_updates != SearchUpdates::Immediate {
-            return Ok(());
-        }
-        let mut statement = self
-            .connection
-            .prepare("SELECT chunk_id, generation FROM dirty_semantic_chunks ORDER BY chunk_id")
-            .map_err(AppError::database)?;
-        let dirty = statement
-            .query_map([], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
-            })
-            .map_err(AppError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(AppError::database)?;
-        drop(statement);
-        for (chunk_id, generation) in dirty {
-            rebuild_semantic_chunk(&self.connection, chunk_id, generation.as_deref())?;
-        }
-        self.connection
-            .execute("DELETE FROM dirty_semantic_chunks", [])
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    pub(crate) fn defer_search_updates(&mut self) -> Result<(), AppError> {
-        self.require_writer()?;
-        self.search_updates = SearchUpdates::FullRebuild;
-        Ok(())
-    }
-
-    /// Keep delta invalidation atomic with canonical writes, but build views
-    /// only in the views stage. A persisted dirty marker makes lost temporary
-    /// delta queues recoverable through a full rebuild after failure/restart.
-    pub(crate) fn defer_derived_updates(&mut self) -> Result<(), AppError> {
-        self.require_writer()?;
-        if self.search_updates == SearchUpdates::Immediate {
-            self.search_updates = SearchUpdates::Deferred;
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(name = "refresh_search", skip_all)]
-    pub(crate) fn refresh_derived_search_state(&mut self) -> Result<(), AppError> {
-        self.require_writer()?;
-        if self.search_updates == SearchUpdates::Deferred {
-            self.search_updates = SearchUpdates::Immediate;
-            self.refresh_pending_fts()?;
-            self.finalize_semantic_chunks()?;
-            self.connection
-                .execute(
-                    "UPDATE derived_state SET search_dirty = 0 WHERE singleton = 1",
-                    [],
-                )
-                .map_err(AppError::database)?;
-        } else if self.derived_search_is_dirty()? {
-            self.rebuild_derived_search_state()?;
-        } else {
-            self.search_updates = SearchUpdates::Immediate;
-        }
-        // Connector commits bypass native invalidation; their digests decide.
-        self.sync_connector_units()
-    }
-
-    /// Replace all local views with empty, unready views; silver is untouched.
-    pub(crate) fn discard_views(&self) -> Result<(), AppError> {
-        self.require_writer()?;
-        super::schema::discard_views(&self.connection)
-    }
-
-    pub(crate) fn mark_derived_search_dirty(&self) -> Result<(), AppError> {
-        self.require_writer()?;
-        self.connection
-            .execute(
-                "UPDATE derived_state SET search_dirty = 1 WHERE singleton = 1",
-                [],
-            )
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    pub(crate) fn derived_search_is_dirty(&self) -> Result<bool, AppError> {
-        self.connection
-            .query_row(
-                "SELECT search_dirty FROM derived_state WHERE singleton = 1",
-                [],
-                |row| row.get::<_, bool>(0),
             )
             .map_err(AppError::database)
     }
@@ -309,13 +88,6 @@ impl Storage {
                 ..ConversationChange::default()
             });
         }
-        if existing_source_fingerprint.is_some()
-            && self.search_updates != SearchUpdates::FullRebuild
-        {
-            self.stage_semantic_conversation(&conversation.id)?;
-            self.mark_semantic_index_incomplete()?;
-        }
-
         let existing_messages = self.message_states(&conversation.id)?;
         let title = conversation.title.clone().map(|mut title| {
             crate::redaction::private_text(&mut title);
@@ -350,14 +122,6 @@ impl Storage {
             self.reconcile_messages(conversation, &existing_messages)?;
         if !changed_message_ids.is_empty() || removed_messages != 0 {
             super::turns::derive(&self.connection, &conversation.id)?;
-        }
-        if !changed_message_ids.is_empty() {
-            self.mark_semantic_index_incomplete()?;
-        }
-        if self.search_updates != SearchUpdates::Immediate
-            && (!changed_message_ids.is_empty() || removed_messages != 0)
-        {
-            self.mark_derived_search_dirty()?;
         }
         Ok(ConversationChange {
             changed_message_ids,
@@ -460,22 +224,6 @@ impl Storage {
             .connection
             .prepare_cached(sql::UpsertNativeMessageFingerprint::QUERY)
             .map_err(AppError::database)?;
-        let mut stage_fts = self
-            .connection
-            .prepare_cached("INSERT OR IGNORE INTO pending_fts_messages(message_id) VALUES (?1)")
-            .map_err(AppError::database)?;
-        let mut delete_embedding = self
-            .connection
-            .prepare_cached("DELETE FROM message_embeddings WHERE message_id = ?1")
-            .map_err(AppError::database)?;
-        let mut queue_embedding = self
-            .connection
-            .prepare_cached("INSERT OR IGNORE INTO pending_embeddings(message_id) VALUES (?1)")
-            .map_err(AppError::database)?;
-        let mut unqueue_embedding = self
-            .connection
-            .prepare_cached("DELETE FROM pending_embeddings WHERE message_id = ?1")
-            .map_err(AppError::database)?;
         let removed = self.remove_missing_messages(conversation, existing_messages)?;
         self.park_moved_ordinals(conversation, existing_messages)?;
 
@@ -489,9 +237,6 @@ impl Storage {
                 == Some(&fingerprint)
             {
                 continue;
-            }
-            if self.search_updates != SearchUpdates::FullRebuild {
-                self.stage_semantic_message(&message.id, None)?;
             }
             let attachments = serde_json::to_string(&self.retain_attachments(&message)?)
                 .map_err(|_| AppError::internal("serialize attachments"))?;
@@ -518,30 +263,6 @@ impl Storage {
             upsert_fingerprint
                 .execute(stored.as_params())
                 .map_err(AppError::database)?;
-            if self.search_updates != SearchUpdates::FullRebuild {
-                stage_fts
-                    .execute([&message.id])
-                    .map_err(AppError::database)?;
-                if existing_messages
-                    .get(&message.id)
-                    .map(|state| state.search_text_hash)
-                    != Some(blake3::hash(message_search_text(&message).as_bytes()))
-                {
-                    delete_embedding
-                        .execute([&message.id])
-                        .map_err(AppError::database)?;
-                    if message_search_text(&message).is_empty() {
-                        unqueue_embedding
-                            .execute([&message.id])
-                            .map_err(AppError::database)?;
-                    } else {
-                        queue_embedding
-                            .execute([&message.id])
-                            .map_err(AppError::database)?;
-                    }
-                }
-                self.stage_semantic_message(&message.id, None)?;
-            }
             changed.push(message.id.clone());
         }
         Ok((changed, removed))
@@ -561,68 +282,12 @@ impl Storage {
             .connection
             .prepare_cached(sql::DeleteNativeMessage::QUERY)
             .map_err(AppError::database)?;
-        let mut stage = self
-            .connection
-            .prepare_cached("INSERT OR IGNORE INTO pending_fts_messages(message_id) VALUES (?1)")
-            .map_err(AppError::database)?;
         let mut removed = 0_u64;
         for id in existing.keys().filter(|id| !incoming.contains(id.as_str())) {
-            if self.search_updates != SearchUpdates::FullRebuild {
-                stage.execute([id]).map_err(AppError::database)?;
-                self.stage_semantic_message(id, None)?;
-            }
             delete.execute([id]).map_err(AppError::database)?;
             removed += 1;
         }
         Ok(removed)
-    }
-
-    pub(crate) fn rebuild_derived_search_state(&mut self) -> Result<(), AppError> {
-        // Every connector unit is rebuilt below, so a scope no longer applies.
-        self.connector_scope = None;
-        self.rebuild_fts(true)?;
-        self.connection
-            .execute_batch(
-                "DELETE FROM connector_embeddings;
-                 DELETE FROM connector_fts;
-                 DELETE FROM connector_units;
-                 DELETE FROM message_embeddings;
-                 DELETE FROM semantic_chunks;
-                 DELETE FROM dirty_semantic_chunks;
-                 DELETE FROM pending_embeddings;
-                 INSERT INTO pending_embeddings(message_id)
-                    SELECT id FROM objects
-                     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
-                 UPDATE derived_state
-                    SET search_dirty = 0,
-                        semantic_ready_generation = NULL
-                  WHERE singleton = 1;",
-            )
-            .map_err(AppError::database)?;
-        self.search_updates = SearchUpdates::Immediate;
-        Ok(())
-    }
-
-    fn rebuild_fts(&mut self, optimize: bool) -> Result<(), AppError> {
-        self.connection
-            .execute_batch(
-                "DELETE FROM message_fts;
-                 INSERT INTO message_fts(content, message_id, conversation_id)
-                 SELECT COALESCE(search_projection, content), id, conversation_id
-                   FROM objects
-                  WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
-                 DELETE FROM pending_fts_messages;",
-            )
-            .map_err(AppError::database)?;
-        if optimize {
-            self.connection
-                .execute(
-                    "INSERT INTO message_fts(message_fts) VALUES ('optimize')",
-                    [],
-                )
-                .map_err(AppError::database)?;
-        }
-        Ok(())
     }
 
     pub(crate) fn purge_missing_sources(
@@ -670,15 +335,7 @@ impl Storage {
             {
                 continue;
             }
-            if self.search_updates != SearchUpdates::FullRebuild {
-                self.stage_conversation_fts(&id)?;
-                self.stage_semantic_conversation(&id)?;
-                self.mark_semantic_index_incomplete()?;
-            }
             self.delete_native_chat(&id)?;
-            if self.search_updates != SearchUpdates::Immediate {
-                self.mark_derived_search_dirty()?;
-            }
             removed += 1;
         }
         let mut statement = self
@@ -747,14 +404,6 @@ impl Storage {
     }
 
     pub(super) fn remove_canonical_conversation(&mut self, id: &str) -> Result<bool, AppError> {
-        if self.search_updates != SearchUpdates::FullRebuild {
-            self.stage_conversation_fts(id)?;
-            self.stage_semantic_conversation(id)?;
-            self.mark_semantic_index_incomplete()?;
-        }
-        if self.search_updates != SearchUpdates::Immediate {
-            self.mark_derived_search_dirty()?;
-        }
         self.delete_native_chat(id)?;
         Ok(true)
     }
@@ -768,37 +417,11 @@ impl Storage {
         Ok(())
     }
 
-    fn stage_conversation_fts(&self, conversation_id: &str) -> Result<(), AppError> {
-        self.connection
-            .execute(
-                "INSERT OR IGNORE INTO pending_fts_messages(message_id)
-                 SELECT id FROM objects WHERE origin = 'provider' AND object_role = 'entry' AND conversation_id = ?1",
-                [conversation_id],
-            )
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
     pub(crate) fn forget(&mut self, id: &str) -> Result<bool, AppError> {
         let transaction = self
             .connection
             .unchecked_transaction()
             .map_err(AppError::database)?;
-        let silver = self.silver_certificate()?;
-        let lexical_clean = !self.derived_search_is_dirty()?;
-        let searchable_messages = self.counts()?.searchable_messages;
-        let lexical = self
-            .lexical_manifest()?
-            .filter(|m| lexical_clean && m.matches(&silver, searchable_messages));
-        let mut manifest = self
-            .views_manifest()?
-            .filter(|m| m.matches(&m.build, &m.model_generation, &silver));
-        if let Some(m) = &manifest
-            && m.build.dense_enabled()
-            && !self.semantic_index_is_ready(&m.build.generation(&m.model_generation))?
-        {
-            manifest = None;
-        }
         let provider = sql::NativeChatProvider::builder()
             .id(id)
             .build()
@@ -810,25 +433,6 @@ impl Storage {
             transaction.commit().map_err(AppError::database)?;
             return Ok(false);
         };
-        let semantic_generation = transaction
-            .query_row(
-                "SELECT semantic_ready_generation FROM derived_state WHERE singleton = 1",
-                [],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .map_err(AppError::database)?;
-        let mut statement = transaction
-            .prepare(
-                "SELECT DISTINCT (storage_id - 1) / ?2
-                   FROM objects WHERE origin = 'provider' AND object_role = 'entry' AND conversation_id = ?1 ORDER BY 1",
-            )
-            .map_err(AppError::database)?;
-        let semantic_chunk_ids = statement
-            .query_map(params![id, SEMANTIC_CHUNK_ROWS], |row| row.get(0))
-            .map_err(AppError::database)?
-            .collect::<Result<Vec<i64>, _>>()
-            .map_err(AppError::database)?;
-        drop(statement);
         transaction
             .execute(
                 "INSERT INTO tombstones(provider, conversation_id, forgotten_at)
@@ -836,9 +440,6 @@ impl Storage {
                  ON CONFLICT(provider, conversation_id) DO NOTHING",
                 params![provider, id],
             )
-            .map_err(AppError::database)?;
-        transaction
-            .execute("DELETE FROM message_fts WHERE conversation_id = ?1", [id])
             .map_err(AppError::database)?;
         let removed = sql::DeleteNativeChat::builder()
             .id(id)
@@ -850,32 +451,6 @@ impl Storage {
             .build()
             .execute(&transaction)
             .map_err(AppError::database)?;
-        for chunk_id in semantic_chunk_ids {
-            rebuild_semantic_chunk(&transaction, chunk_id, semantic_generation.as_deref())?;
-        }
-        if let Some(mut manifest) = manifest {
-            // This was a certified, fully covered build. Deletion maintains
-            // FTS and packed vectors above and cannot introduce missing vectors.
-            // Advance its revision atomically with the deletion.
-            let revision: i64 = transaction
-                .query_row(
-                    "SELECT revision FROM silver_state WHERE singleton=1",
-                    [],
-                    |r| r.get(0),
-                )
-                .map_err(AppError::database)?;
-            manifest.silver.revision = u64::try_from(revision)
-                .map_err(|_| AppError::database_data("invalid silver revision"))?;
-            let json = serde_json::to_string(&manifest)
-                .map_err(|_| AppError::internal("serialize views build manifest"))?;
-            transaction
-                .execute(
-                    "UPDATE views_manifest SET manifest=?1 WHERE singleton=1",
-                    [json],
-                )
-                .map_err(AppError::database)?;
-        }
-        advance_lexical_after_forget(&transaction, lexical)?;
         transaction.commit().map_err(AppError::database)?;
         Ok(removed > 0)
     }
@@ -943,52 +518,16 @@ impl Storage {
             .map_err(AppError::database)?
             .map(|row| {
                 let row = row.map_err(AppError::database)?;
-                let search_text = super::required(row.search_text, "content")?;
                 Ok((
                     row.id,
                     MessageState {
                         fingerprint: row.fingerprint,
                         ordinal: super::required(row.ordinal, "ordinal")?,
-                        search_text_hash: blake3::hash(search_text.as_bytes()),
                     },
                 ))
             })
             .collect()
     }
-}
-
-fn advance_lexical_after_forget(
-    connection: &rusqlite::Connection,
-    manifest: Option<crate::views::lexical_manifest::Manifest>,
-) -> Result<(), AppError> {
-    let Some(mut manifest) = manifest else {
-        return Ok(());
-    };
-    let revision: i64 = connection
-        .query_row(
-            "SELECT revision FROM silver_state WHERE singleton=1",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(AppError::database)?;
-    manifest.silver.revision =
-        u64::try_from(revision).map_err(|_| AppError::database_data("invalid silver revision"))?;
-    manifest.searchable_messages = u64::try_from(
-        sql::Counts
-            .query_one(connection)
-            .map_err(AppError::database)?
-            .searchable_messages,
-    )
-    .map_err(|_| AppError::database_data("invalid searchable message count"))?;
-    let json = serde_json::to_string(&manifest)
-        .map_err(|_| AppError::internal("serialize lexical build manifest"))?;
-    connection
-        .execute(
-            "UPDATE lexical_manifest SET manifest=?1 WHERE singleton=1",
-            [json],
-        )
-        .map_err(AppError::database)?;
-    Ok(())
 }
 
 pub(super) fn source_is_in_reconciliation_scope(
@@ -1079,10 +618,6 @@ fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
         &message.created_at.unwrap_or_default().to_string(),
     );
     hasher.finalize().to_hex().to_string()
-}
-
-fn message_search_text(message: &crate::silver::NormalizedMessage) -> &str {
-    message.dialogue()
 }
 
 fn update_hash(hasher: &mut blake3::Hasher, value: &str) {

@@ -1,9 +1,11 @@
 use super::*;
 use crate::core::{self, Operation, Paths, Request, Response};
 use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post};
+use std::io::Write;
 
 struct Fixture {
     _root: tempfile::TempDir,
+    gold: crate::views::local::test_support::Fixture,
     request: Request,
     database: std::path::PathBuf,
     server: tokio::task::JoinHandle<()>,
@@ -73,12 +75,11 @@ async fn fixture() -> Fixture {
     );
     let root = tempfile::tempdir().unwrap();
     let database = root.path().join("local.sqlite3");
-    let generation = Models::new(models_dir.clone()).generation();
-    seed_ready(&database, &generation);
-    let mut remote = Storage::open_search(&database, &generation)
-        .unwrap()
-        .search_filtered("hello", 10, None, None, None)
-        .unwrap()
+    let gold = seed_ready(&database).await;
+    let mut remote = gold
+        .candidates("hello", vec![127.0, 0.0], None)
+        .await
+        .lexical
         .remove(0);
     remote.id = "peer-message".into();
     remote.conversation_id = "peer-thread".into();
@@ -97,9 +98,16 @@ async fn fixture() -> Fixture {
         .route(
             "/v1/freshness",
             axum::routing::get(|| async {
-                Json(crate::test_support::vector::freshness(
-                    &serde_json::to_value(crate::views::config::Build::default()).unwrap(),
-                ))
+                Json(serde_json::json!({
+                    "group_id": "group",
+                    "group_views": {
+                        "version": "group",
+                        "build": crate::views::config::Build::default(),
+                        "generation": crate::semantic::model_space("fixture", 2),
+                        "dimensions": 2,
+                    },
+                    "nodes": [],
+                }))
             }),
         )
         .route(
@@ -118,6 +126,18 @@ async fn fixture() -> Fixture {
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='local-node'\napi_url={url:?}\ntoken_env='HOME'\n")).unwrap();
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&config)
+        .unwrap();
+    writeln!(
+        file,
+        "\n[qdrant]\nurl={:?}\ngrpc_url={:?}\n[embeddings]\n{}",
+        gold.configuration.qdrant.url,
+        gold.configuration.qdrant.grpc_url,
+        toml::to_string(gold.configuration.embeddings.as_ref().unwrap()).unwrap()
+    )
+    .unwrap();
     let request = Request {
         paths: Paths {
             config: Some(config),
@@ -141,6 +161,7 @@ async fn fixture() -> Fixture {
     };
     Fixture {
         _root: root,
+        gold,
         request,
         database,
         server,
@@ -193,7 +214,7 @@ fn assert_measured_sources(
 }
 
 #[tokio::test]
-#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn real_models_shared_context_failure_preserves_measured_retrieval_sources() {
     let fixture = fixture().await;
     let before = std::fs::read(&fixture.database).unwrap();
@@ -229,5 +250,6 @@ async fn real_models_shared_context_failure_preserves_measured_retrieval_sources
             assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
         }
     }
+    fixture.gold.cleanup().await;
     fixture.server.abort();
 }

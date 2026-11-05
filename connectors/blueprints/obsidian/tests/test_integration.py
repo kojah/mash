@@ -60,10 +60,16 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     def notes(self) -> list[tuple[str, str, str]]:
         with sqlite3.connect(self.database) as connection:
-            return connection.execute(
-                "SELECT id,title,content FROM objects WHERE origin='connector' "
+            rows = connection.execute(
+                "SELECT id,title,record FROM objects WHERE origin='connector' "
                 "AND kind='obsidian:note' ORDER BY id"
             ).fetchall()
+        # The submitted connector record remains canonical JSON. Reading it
+        # avoids duplicating the packed-text codec or interpreting view excerpts.
+        return [
+            (record_id, title, orjson.loads(record)["content"])
+            for record_id, title, record in rows
+        ]
 
     def source_id(self, prefix: str) -> str:
         """The one connector source this test delivered; keys may append a

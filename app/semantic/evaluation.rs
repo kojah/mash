@@ -83,6 +83,7 @@ pub(crate) fn fixture() -> (tempfile::TempDir, Paths) {
         .unwrap(),
     )
     .unwrap();
+    crate::views::local::test_support::configure(&config);
     let paths = Paths {
         config: Some(config),
         db: Some(root.path().join("index.sqlite3")),
@@ -126,7 +127,7 @@ fn regressions(query: &Query, ids: &[&str], unit: SearchUnit) -> Vec<String> {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application_core() {
     let (_root, paths) = fixture();
     crate::core::execute(Request {
@@ -135,11 +136,13 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
     })
     .await
     .unwrap();
-    assert_eq!(
-        evaluate(&paths, false).await,
-        Vec::<String>::new(),
-        "relevance regressions"
-    );
+    let failures = evaluate(&paths, false).await;
+    let config = crate::config::load(paths.config.as_deref()).unwrap();
+    let local = crate::views::local::Local::open(paths.db.as_deref().unwrap(), &config)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &config.qdrant.url).await;
+    assert_eq!(failures, Vec::<String>::new(), "relevance regressions");
 }
 
 pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {

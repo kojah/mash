@@ -60,8 +60,6 @@ pub(super) fn decision_history(root: &std::path::Path) -> Paths {
         .unwrap();
     writer.finish_silver_scan(Provider::Codex, true).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
     writer.commit_writer().unwrap();
     Paths {
         config: Some(config),
@@ -71,11 +69,15 @@ pub(super) fn decision_history(root: &std::path::Path) -> Paths {
 }
 
 #[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn sdk_decision_workflow_discovers_scopes_and_reads_user_approval_in_four_calls() {
     let root = tempfile::tempdir().unwrap();
     let paths = decision_history(root.path());
     let database = paths.db.clone().unwrap();
-    let before = crate::storage::Storage::open_catalog(&database)
+    let (gold, url) =
+        crate::views::local::test_support::lexical(&database, paths.config.as_deref().unwrap())
+            .await;
+    let before = crate::storage::Storage::open_silver(&database)
         .unwrap()
         .silver_certificate()
         .unwrap();
@@ -148,11 +150,12 @@ async fn sdk_decision_workflow_discovers_scopes_and_reads_user_approval_in_four_
         bytes < 14_000,
         "bounded discovery and evidence: {bytes} bytes"
     );
-    let after = crate::storage::Storage::open_catalog(&database)
+    let after = crate::storage::Storage::open_silver(&database)
         .unwrap()
         .silver_certificate()
         .unwrap();
     assert_eq!(before, after, "read workflows must not ingest");
     client.cancel().await.unwrap();
     service.cancel().await.unwrap();
+    crate::views::local::test_support::cleanup(&gold, &url).await;
 }

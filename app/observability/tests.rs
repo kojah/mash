@@ -19,7 +19,7 @@ async fn partial_index_result_is_traced_as_incomplete_without_source_text() {
     let (bytes, dispatcher) = test_support::capture();
     let result = crate::core::execute(crate::core::Request {
         paths: crate::core::Paths {
-            config: Some(config),
+            config: Some(config.clone()),
             db: Some(directory.path().join("index.sqlite3")),
             models_dir: Some(models),
         },
@@ -83,7 +83,7 @@ async fn failed_core_request_does_not_record_query_filters_paths_or_error_text()
     let subscriber = subscriber(move || capture.clone());
     let request = crate::core::Request {
         paths: crate::core::Paths {
-            config: Some(config),
+            config: Some(config.clone()),
             db: Some(directory.path().join("path-canary")),
             models_dir: None,
         },
@@ -155,7 +155,7 @@ fn parser_threads_inherit_request_context_without_recording_source_content() {
 }
 
 #[tokio::test]
-#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn real_model_index_traces_planning_inference_and_storage_under_one_request() {
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("path-canary.jsonl");
@@ -166,6 +166,7 @@ async fn real_model_index_traces_planning_inference_and_storage_under_one_reques
         toml::to_string(&toml::toml! {
             version=1
             providers={claude-code={roots=[(source.to_str().unwrap())]}}
+            qdrant=(toml::Value::try_from(crate::views::local::test_support::qdrant_configuration()).unwrap())
         })
         .unwrap(),
     )
@@ -175,7 +176,7 @@ async fn real_model_index_traces_planning_inference_and_storage_under_one_reques
     let subscriber = subscriber(move || capture.clone());
     let response = crate::core::execute(crate::core::Request {
         paths: crate::core::Paths {
-            config: Some(config),
+            config: Some(config.clone()),
             db: Some(directory.path().join("index.sqlite3")),
             models_dir: Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into()),
         },
@@ -191,9 +192,12 @@ async fn real_model_index_traces_planning_inference_and_storage_under_one_reques
     let storage =
         crate::storage::Storage::open_existing(&directory.path().join("index.sqlite3")).unwrap();
     assert_eq!(storage.counts().unwrap().messages, 1);
-    let models =
-        crate::semantic::Models::new(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into());
-    assert_eq!(storage.embedding_count(&models.generation()).unwrap(), 1);
+    let resolved = crate::config::load(Some(&config)).unwrap();
+    let local =
+        crate::views::local::Local::open(&directory.path().join("index.sqlite3"), &resolved)
+            .await
+            .unwrap();
+    assert_eq!(local.current().await.unwrap().unwrap().embeddings(), 1);
     let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
     assert!(!output.contains("path-canary"));
     assert!(!output.contains("history-canary"));
@@ -204,7 +208,7 @@ async fn real_model_index_traces_planning_inference_and_storage_under_one_reques
             stages.insert(name.to_owned());
             if matches!(
                 name,
-                "cpu_embedding_batch" | "coreml_embedding_batch" | "write_embeddings"
+                "cpu_embedding_batch" | "coreml_embedding_batch" | "qdrant_native_upsert"
             ) {
                 assert_eq!(event["spans"][0]["name"], "request");
                 assert!(event["spans"][0]["request_id"].is_u64());
@@ -218,10 +222,8 @@ async fn real_model_index_traces_planning_inference_and_storage_under_one_reques
         "parse_source",
         "queue_parsed_source",
         "apply_source",
-        "plan_embeddings",
-        "read_embedding_wave",
         "embedding_wave",
-        "write_embeddings",
+        "qdrant_native_upsert",
         "commit_writer",
     ] {
         assert!(stages.contains(stage), "missing stage {stage}");
@@ -232,4 +234,5 @@ async fn real_model_index_traces_planning_inference_and_storage_under_one_reques
         "cpu_embedding_batch"
     };
     assert!(stages.contains(inference));
+    crate::views::local::test_support::cleanup(&local, &resolved.qdrant.url).await;
 }

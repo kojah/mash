@@ -8,6 +8,7 @@ fn built_in_views_rebuild_wire_key_replaces_gold_without_aliases() {
 }
 
 #[tokio::test]
+#[ignore = "requires disposable Qdrant"]
 async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_shared_service() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("index.sqlite3");
@@ -28,10 +29,11 @@ async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_sh
     let config = directory.path().join("config.toml");
     let missing = directory.path().join("missing-sources");
     std::fs::write(&config, format!("version=1\nproviders={{codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_VIEWS_REBUILD_NO_TOKEN'\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", missing.to_str().unwrap())).unwrap();
+    let url = crate::views::local::test_support::configure(&config);
     let server = Mash {
         runtime: None,
         paths: Arc::new(Paths {
-            config: Some(config),
+            config: Some(config.clone()),
             db: Some(database.clone()),
             models_dir: Some(models),
         }),
@@ -87,7 +89,7 @@ async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_sh
     );
     assert!(!missing.exists());
     assert_eq!(
-        crate::storage::Storage::open_catalog(&database)
+        crate::storage::Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap(),
@@ -96,4 +98,9 @@ async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_sh
     drop(write);
     drop(read);
     server.cancel().await.unwrap();
+    let configuration = crate::config::load(Some(&config)).unwrap();
+    let local = crate::views::local::Local::open(&database, &configuration)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &url).await;
 }

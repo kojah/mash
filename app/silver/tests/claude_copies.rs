@@ -66,8 +66,8 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
             for index in if reverse { [1, 0] } else { [0, 1] } {
                 storage.replace_conversation(&parsed[index]).unwrap();
             }
-            storage.rebuild_derived_search_state().unwrap();
-            let hits = storage.search("sentinel", 10, None, None).unwrap();
+            let hits =
+                crate::storage::test_support::projections_with_text(&storage, "sentinel", None);
             assert_eq!(hits.len(), 1 + usize::from(tails.0) + usize::from(tails.1));
             for hit in &hits {
                 if hit.id != common {
@@ -76,16 +76,6 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
                     assert_eq!(context.len(), 2, "sibling branch must not become context");
                 }
             }
-            let writes = hits
-                .iter()
-                .map(|hit| crate::storage::EmbeddingWrite {
-                    message_id: &hit.id,
-                    vector: &[127],
-                    norm: 127.0,
-                })
-                .collect::<Vec<_>>();
-            storage.replace_embeddings("fixture", &writes).unwrap();
-            storage.mark_semantic_index_ready("fixture").unwrap();
             storage.commit_writer().unwrap();
             drop(storage);
             let mut storage = Storage::open_writer(&database).unwrap();
@@ -98,11 +88,6 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
             storage.commit_writer().unwrap();
             let remaining = 1 + usize::from([tails.0, tails.1][1 - first]);
             assert_eq!(storage.counts().unwrap().messages, remaining as u64);
-            assert_eq!(
-                storage.embedding_count("fixture").unwrap(),
-                remaining as u64,
-                "unchanged surviving vectors must be reused"
-            );
             assert_eq!(
                 storage.view(&common, 0).unwrap()[0].content,
                 "common sentinel"
@@ -117,7 +102,6 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
             storage.commit_writer().unwrap();
             assert_eq!(storage.counts().unwrap().messages, 0);
             assert_eq!(storage.counts().unwrap().conversations, 0);
-            assert_eq!(storage.embedding_count("fixture").unwrap(), 0);
         }
     }
 }
@@ -147,7 +131,10 @@ fn claude_checkpointed_survivor_is_retained_after_owner_deletion_and_restart() {
         assert_eq!(summary.checkpoint_skipped_sources, 1);
         storage.commit_writer().unwrap();
         assert_eq!(storage.counts().unwrap().conversations, 1);
-        assert_eq!(storage.search("common", 10, None, None).unwrap().len(), 1);
+        assert_eq!(
+            crate::storage::test_support::projections_with_text(&storage, "common", None).len(),
+            1
+        );
     }
 }
 
@@ -228,11 +215,12 @@ fn claude_conflicting_copy_rolls_back_and_can_retry_without_poisoning_checkpoint
     let error = index(&mut storage, &options(&root)).err().unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
     storage.commit_writer().unwrap();
-    assert_eq!(storage.search("common", 10, None, None).unwrap().len(), 1);
+    assert_eq!(
+        crate::storage::test_support::projections_with_text(&storage, "common", None).len(),
+        1
+    );
     assert!(
-        storage
-            .search("conflicting", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&storage, "conflicting", None)
             .is_empty()
     );
     assert!(

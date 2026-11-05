@@ -401,7 +401,7 @@ async fn dispatch(
         )
         .await
         .map(Response::Installation),
-        Operation::Forget { id } => maintenance::forget(database, configuration, id)
+        Operation::Forget { id } => maintenance::forget(database, models, configuration, id)
             .await
             .map(Response::Forget),
         Operation::ModelsInstall => {

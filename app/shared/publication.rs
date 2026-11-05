@@ -1,6 +1,6 @@
 //! Durable publication state and streaming uploads.
 use super::client::Endpoint;
-use super::protocol::{self, Event, Start};
+use super::protocol::{self, Event};
 use super::{Publication, PublicationState};
 use crate::{AppError, config::SharedConfig, storage::Storage};
 use std::{
@@ -10,6 +10,7 @@ use std::{
 };
 mod snapshot;
 
+#[derive(Clone, Copy)]
 pub(crate) struct Inference<'a> {
     pub(crate) models_dir: &'a Path,
     pub(crate) embeddings: Option<&'a crate::semantic::remote::Configuration>,
@@ -237,7 +238,7 @@ pub(crate) async fn publish(
     // A failed probe must not block publication; fall back to the normal
     // strategy and let it report the actionable error.
     if let Ok(true) = should_auto_backfill(path, config).await {
-        return publish_baseline_now(path, config, AUTO_BACKFILL).await;
+        return publish_baseline_now(path, config, AUTO_BACKFILL, inference).await;
     }
     let publication = publish_with_wait(path, config, inference, PUBLISH_LOCK_WAIT).await;
     // One atomic publication cannot exceed the decoded-size limit; a node that
@@ -247,13 +248,18 @@ pub(crate) async fn publish(
         publication.error.as_deref(),
         Some(super::sync::wire::BATCH_TOO_LARGE | VIEWS_INCOMPLETE)
     ) {
-        return publish_baseline_now(path, config, AUTO_BACKFILL).await;
+        return publish_baseline_now(path, config, AUTO_BACKFILL, inference).await;
     }
     publication
 }
 
-async fn publish_baseline_now(path: &Path, config: &SharedConfig, id: &str) -> Publication {
-    match publish_backfill(path, config, id).await {
+async fn publish_baseline_now(
+    path: &Path,
+    config: &SharedConfig,
+    id: &str,
+    inference: Option<Inference<'_>>,
+) -> Publication {
+    match publish_backfill(path, config, id, inference).await {
         Ok(_) => Publication::published(),
         Err(error) => {
             let mut pending = Publication::pending();
@@ -372,90 +378,16 @@ async fn publish_result(
     }
     // Changed recipes/models require complete replacement, even with a journal.
     let allow_delta = target.publication_revision > 0 && delta_applies(&freshness, config, &target);
-    if target.build != crate::views::config::Build::default() {
-        let (file, revision, preparation) =
-            snapshot::prepare(path, &target, inference, started, allow_delta).await?;
-        upload(config, &file).await?;
-        crash_point("after_publish_before_ack");
-        acknowledge(path, config, revision).await?;
-        return Ok(preparation);
-    }
-    // The server numbers revisions itself after a backfill; the local journal
-    // is read from the local revision acknowledged at that server revision.
-    let journal_base = local_base(path, &self::target(config), target.publication_revision);
-    // Parse and spool before starting a remote transaction. Temporary files contain
-    // only the outgoing data, have restrictive permissions, and are deleted on drop.
-    let db = path.to_path_buf();
-    let (file, revision, forwarded_embeddings) = crate::blocking(move || {
-        crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
-            let mut file = tempfile::NamedTempFile::new()
-                .map_err(|_| AppError::internal("create index upload"))?;
-            let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
-            let mut forwarded_embeddings = 0;
-            let revision = Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
-                snapshot::validate_owner(snapshot, &target)?;
-                let base = snapshot.delta_base(
-                    target.instance.as_deref(),
-                    journal_base.unwrap_or(target.publication_revision),
-                )?;
-                // The server accepts a delta only on top of its own head and
-                // only toward a later revision.
-                let base =
-                    base.filter(|_| allow_delta && snapshot.revision > target.publication_revision);
-                write_event(
-                    &mut writer,
-                    &Event::Start(Start {
-                        views_build: Some(target.build.clone()),
-                        source_silver: Some(snapshot.source_silver.clone()),
-                        instance: snapshot.instance.clone(),
-                        revision: Some(snapshot.revision),
-                        base_revision: base.map(|_| target.publication_revision),
-                        snapshot: base.is_none(),
-                        forgets: Vec::new(),
-                    }),
-                    target.redaction,
-                )?;
-                if let Some(base) = base {
-                    for id in snapshot.removed_threads(base)? {
-                        write_event(&mut writer, &Event::Remove { id }, target.redaction)?;
-                    }
-                }
-                for kind in [
-                    protocol::BatchKind::Tombstones,
-                    protocol::BatchKind::Conversations,
-                    protocol::BatchKind::Messages,
-                ] {
-                    let accept = |batch| {
-                        if let protocol::Batch::Messages { records } = &batch {
-                            forwarded_embeddings +=
-                                records.iter().filter(|m| m.vector.is_some()).count() as u64;
-                        }
-                        write_event(&mut writer, &Event::Batch(batch), target.redaction)
-                    };
-                    if let Some(base) = base {
-                        snapshot.visit_changed(kind, base, accept)?;
-                    } else {
-                        snapshot.visit(kind, accept)?;
-                    }
-                }
-                write_event(&mut writer, &Event::Finish, target.redaction)
-            })?;
-            writer
-                .flush()
-                .map_err(|_| AppError::internal("flush index upload"))?;
-            drop(writer);
-            Ok((file, revision, forwarded_embeddings))
-        })
-    })
-    .await?;
-    let preparation = SnapshotWork {
-        forwarded_embeddings,
-        model_inferences: 0,
-        model_load_milliseconds: 0,
-        embedding_milliseconds: 0,
-        preparation_milliseconds: crate::progress::milliseconds(started),
-        upload_bytes: file.as_file().metadata().map_err(AppError::io)?.len(),
+    let selection = if allow_delta {
+        snapshot::Selection::Delta {
+            journal_base: local_base(path, &self::target(config), target.publication_revision)
+                .unwrap_or(target.publication_revision),
+        }
+    } else {
+        snapshot::Selection::Replace
     };
+    let (file, revision, preparation) =
+        snapshot::prepare(path, &target, inference, started, selection).await?;
     let indexed = upload(config, &file).await?;
     crash_point("after_publish_before_ack");
     acknowledge(path, config, revision).await?;
@@ -586,6 +518,7 @@ pub(crate) async fn publish_backfill(
     path: &Path,
     config: &SharedConfig,
     backfill_id: &str,
+    inference: Option<Inference<'_>>,
 ) -> Result<i64, AppError> {
     if backfill_id.is_empty() || backfill_id.len() > 4096 {
         return Err(AppError::usage("backfill identity is required"));
@@ -602,7 +535,14 @@ pub(crate) async fn publish_backfill(
             "backfill requires the default views recipe; publish normally to switch recipes",
         ));
     }
-    let (file, revision) = prepare_backfill(path, &target).await?;
+    let (file, revision, _) = snapshot::prepare(
+        path,
+        &target,
+        inference,
+        std::time::Instant::now(),
+        snapshot::Selection::Backfill,
+    )
+    .await?;
     // An identity names one baseline: automatic catch-ups take the revision
     // they freeze, so a later one is new while a retry of this one resumes.
     let requested = if requested == AUTO_BACKFILL {
@@ -658,53 +598,6 @@ fn destination_scoped(config: &SharedConfig, id: &str) -> String {
 
 /// Spool the node's complete history as a non-snapshot batch frozen at the next
 /// local revision. The server merges it with per-conversation ordering.
-async fn prepare_backfill(
-    path: &Path,
-    target: &super::reuse::Target,
-) -> Result<(tempfile::NamedTempFile, i64), AppError> {
-    let db = path.to_path_buf();
-    let metadata = target.clone();
-    crate::blocking(move || {
-        crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
-            let mut file = tempfile::NamedTempFile::new()
-                .map_err(|_| AppError::internal("create backfill upload"))?;
-            let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
-            let revision = Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
-                snapshot::validate_owner(snapshot, &metadata)?;
-                write_event(
-                    &mut writer,
-                    &Event::Start(Start {
-                        views_build: Some(metadata.build.clone()),
-                        source_silver: Some(snapshot.source_silver.clone()),
-                        instance: snapshot.instance.clone(),
-                        revision: Some(snapshot.revision),
-                        base_revision: Some(snapshot.revision.saturating_sub(1)),
-                        snapshot: false,
-                        forgets: Vec::new(),
-                    }),
-                    metadata.redaction,
-                )?;
-                for kind in [
-                    protocol::BatchKind::Tombstones,
-                    protocol::BatchKind::Conversations,
-                    protocol::BatchKind::Messages,
-                ] {
-                    snapshot.visit(kind, |batch| {
-                        write_event(&mut writer, &Event::Batch(batch), metadata.redaction)
-                    })?;
-                }
-                write_event(&mut writer, &Event::Finish, metadata.redaction)
-            })?;
-            writer
-                .flush()
-                .map_err(|_| AppError::internal("flush backfill upload"))?;
-            drop(writer);
-            Ok((file, revision))
-        })
-    })
-    .await
-}
-
 /// Recover a lost acknowledgement without reading or uploading canonical bodies.
 /// Readiness is read twice around the local check: a concurrent publication,
 /// forget or settings change falls back to a normal publication.

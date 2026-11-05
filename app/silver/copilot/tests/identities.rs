@@ -54,10 +54,7 @@ fn late_operational_duplicate_preserves_snapshot_and_checkpoint_until_repair() {
             .unwrap()
     );
     assert!(
-        !storage
-            .search("importer", 10, None, None)
-            .unwrap()
-            .is_empty()
+        !crate::storage::test_support::projections_with_text(&storage, "importer", None).is_empty()
     );
     drop(storage);
 

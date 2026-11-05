@@ -10,6 +10,7 @@ use std::path::Path;
 
 pub(super) async fn forget(
     database: &Path,
+    models: &Path,
     configuration: &ResolvedConfig,
     id: String,
 ) -> Result<ForgetResponse, AppError> {
@@ -17,8 +18,25 @@ pub(super) async fn forget(
     let db = database.to_path_buf();
     let local_id = id.clone();
     let mut result = crate::blocking(move || local_forget(&db, local_id)).await?;
+    if result.forgotten
+        && let Err(error) = crate::views::local::build(database, models, configuration, false).await
+    {
+        // Silver and its tombstone are already committed. A later index retries
+        // projection; readers reject the old gold certificate in the meantime.
+        result.local_views_error = Some(error.error.message);
+    }
     if let Some(config) = publication_config(configuration) {
-        result.shared = Some(shared::publish(database, config, None).await);
+        result.shared = Some(
+            shared::publish(
+                database,
+                config,
+                Some(shared::publication::Inference {
+                    models_dir: models,
+                    embeddings: configuration.embeddings.as_ref(),
+                }),
+            )
+            .await,
+        );
     }
     Ok(result)
 }
@@ -52,6 +70,7 @@ fn local_forget(database_path: &Path, id: String) -> Result<ForgetResponse, AppE
     Ok(ForgetResponse {
         id,
         forgotten,
+        local_views_error: None,
         shared: None,
     })
 }

@@ -79,7 +79,10 @@ fn remote_install_preserves_valid_local_readiness_without_claiming_missing_embed
             }));
         assert_eq!(local.is_installed(), state == State::Complete, "{state:?}");
         assert!(remote.is_installed(), "{state:?}");
-        assert_ne!(local.generation(), remote.generation());
+        assert_ne!(
+            crate::semantic::configured_generation(local.remote.as_ref()),
+            crate::semantic::configured_generation(remote.remote.as_ref())
+        );
     }
 }
 

@@ -21,7 +21,6 @@ pub(crate) fn ingest(
     options: &silver::IndexOptions,
 ) -> Result<Ingestion, AppError> {
     let started = Instant::now();
-    storage.defer_derived_updates()?;
     let summary = silver::index(storage, options)?;
     let certificate = storage.silver_certificate()?;
     // Publish canonical changes and invalidation together, before building views.

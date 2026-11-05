@@ -1,15 +1,3 @@
--- name: Counts :one
--- Every count reads only an index, never message bodies: see NativeMessageCount.
-SELECT (SELECT count(*) FROM objects INDEXED BY objects_native_container
-        WHERE origin='provider' AND object_role='container') AS conversations,
-CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
-        WHERE origin='provider' AND object_role<>'container')
-    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
-        WHERE object_role IN ('segment','document') AND origin='provider') AS INTEGER) AS messages,
-(SELECT count(*) FROM objects INDEXED BY objects_searchable_role
-        WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'') AS searchable_messages,
-(SELECT count(*) FROM message_embeddings) AS embeddings;
-
 -- name: ListChats :many
 -- Activity filters apply to recorded thread updated_at, not individual messages.
 -- Null sort keys are always last; identity breaks ties in either direction.
@@ -44,7 +32,7 @@ c.source COLLATE BINARY ASC,c.id COLLATE BINARY ASC
 LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 
 -- name: ConversationMessageState :many
-SELECT m.id,COALESCE(n.fingerprint,'') AS fingerprint,m.ordinal,COALESCE(m.search_projection,m.content) AS search_text
+SELECT m.id,COALESCE(n.fingerprint,'') AS fingerprint,m.ordinal
 FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
 WHERE m.origin='provider' AND m.object_role='entry' AND m.conversation_id=sqlc.arg(conversation_id);
 
@@ -109,16 +97,6 @@ SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role
 UPDATE objects SET ordinal=sqlc.arg(ordinal)
 WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
 
--- name: SearchHit :one
-SELECT m.id,m.conversation_id,c.source AS provider,m.role,COALESCE(m.search_projection,m.content) AS content,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment,
-m.kind,m.parent_storage_id
-FROM objects m JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
-LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id WHERE m.storage_id=?1;
-
--- name: SearchDocument :one
-SELECT COALESCE(search_projection,content) AS content FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
-
 -- name: Anchor :one
 SELECT conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
 
@@ -161,12 +139,6 @@ FROM silver_state s WHERE s.singleton=1;
 -- name: SilverRejections :many
 SELECT source_key,source_path,modified_ns FROM silver_rejections
 WHERE provider=sqlc.arg(provider) ORDER BY source_key;
-
--- name: ViewManifest :one
-SELECT manifest FROM views_manifest WHERE singleton=1;
-
--- name: LexicalManifest :one
-SELECT manifest FROM lexical_manifest WHERE singleton=1;
 
 -- name: SourceEnrichment :many
 SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at
@@ -267,9 +239,6 @@ VALUES(sqlc.arg(source_id),sqlc.arg(batch_id),sqlc.arg(fingerprint),sqlc.arg(rec
 -- name: ConnectorAllObjects :many
 SELECT source AS source_id,id,object_role AS role,parent_id FROM objects WHERE origin='connector' ORDER BY source,id;
 
--- name: ConnectorUnitDigests :many
-SELECT anchor, id, digest FROM connector_units;
-
 -- name: ConnectorSilverObjects :many
 SELECT source AS source_id, id, object_role AS role, parent_id, record FROM objects
 WHERE origin = 'connector' ORDER BY source, id;
@@ -278,9 +247,6 @@ WHERE origin = 'connector' ORDER BY source, id;
 -- Everything grouped under one conversation root (a container or document).
 SELECT id, object_role AS role, parent_id, record FROM objects INDEXED BY objects_conversation
 WHERE conversation_id = sqlc.arg(conversation_id) AND origin = 'connector' AND source = sqlc.arg(source_id);
-
--- name: ConnectorUnitGroups :many
-SELECT anchor, id, digest, source_id, record_id, group_anchor FROM connector_units;
 
 -- name: ConnectorConversation :one
 SELECT conversation_id FROM objects
@@ -299,63 +265,9 @@ SELECT id, created_at FROM objects INDEXED BY objects_conversation
 WHERE conversation_id = sqlc.arg(conversation_id) AND object_role = 'entry'
   AND origin = 'connector' AND source = sqlc.arg(source_id);
 
--- name: ConnectorInsertUnit :one
-INSERT INTO connector_units(anchor, role, label, source_id, record_id, group_anchor, created_at, digest)
-VALUES (sqlc.arg(anchor), sqlc.arg(role), sqlc.arg(label), sqlc.arg(source_id), sqlc.arg(record_id),
-        sqlc.arg(group_anchor), sqlc.narg(created_at), sqlc.arg(digest))
-RETURNING id;
-
--- name: ConnectorUpdateUnit :exec
-UPDATE connector_units
-   SET label = sqlc.arg(label), group_anchor = sqlc.arg(group_anchor),
-       created_at = sqlc.narg(created_at), digest = sqlc.arg(digest)
- WHERE id = sqlc.arg(id);
-
--- name: ConnectorDeleteUnit :exec
-DELETE FROM connector_units WHERE id = sqlc.arg(id);
-
--- name: ConnectorDeleteUnitEmbedding :exec
-DELETE FROM connector_embeddings WHERE unit_id = sqlc.arg(unit_id);
-
--- name: ConnectorUnit :one
-SELECT source_id, record_id FROM connector_units WHERE id = sqlc.arg(id);
-
--- name: ConnectorPendingEmbeddings :many
-SELECT u.id, u.source_id, u.record_id
-  FROM connector_units u
-  LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = sqlc.arg(generation)
- WHERE e.unit_id IS NULL
- ORDER BY u.id
- LIMIT sqlc.arg(page_size);
-
--- name: ConnectorPutEmbedding :exec
-INSERT INTO connector_embeddings(unit_id, generation, dimensions, norm, vector)
-VALUES (sqlc.arg(unit_id), sqlc.arg(generation), sqlc.arg(dimensions), sqlc.arg(norm), sqlc.arg(vector))
-ON CONFLICT(unit_id) DO UPDATE SET generation = excluded.generation,
-    dimensions = excluded.dimensions, norm = excluded.norm, vector = excluded.vector;
-
--- name: ConnectorEmbeddingsComplete :one
-SELECT CAST(NOT EXISTS(
-    SELECT 1 FROM connector_units u
-      LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = sqlc.arg(generation)
-     WHERE e.unit_id IS NULL) AS INTEGER) AS complete;
-
--- name: ConnectorClearEmbeddings :exec
-DELETE FROM connector_embeddings;
-
 -- name: ConnectorContainers :many
 SELECT source AS source_id, id, record FROM objects
 WHERE origin = 'connector' AND object_role = 'container';
-
--- name: NativeMessageCount :one
--- Entries are the native non-containers that are neither segments nor documents.
--- Counting a table predicate on object_role would read every row's body pages;
--- the native identity index and the few segment lookups are proportional to
--- the index, not the archive.
-SELECT CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
-        WHERE origin='provider' AND object_role<>'container')
-    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
-        WHERE object_role IN ('segment','document') AND origin='provider') AS INTEGER) AS messages;
 
 -- name: NativeSourceFingerprint :one
 SELECT source_fingerprint FROM native_chats WHERE conversation_id=sqlc.arg(id);

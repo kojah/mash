@@ -49,18 +49,6 @@ impl Provider {
             Self::Antigravity => "antigravity",
         }
     }
-
-    /// Stable storage identifiers; never renumber existing providers.
-    pub(crate) const fn storage_code(self) -> u8 {
-        match self {
-            Self::ClaudeCode => 1,
-            Self::Codex => 2,
-            Self::Opencode => 5,
-            Self::Copilot => 8,
-            Self::Cursor => 11,
-            Self::Antigravity => 13,
-        }
-    }
 }
 
 impl std::fmt::Display for Provider {
@@ -104,21 +92,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn supported_providers_keep_stable_storage_codes_and_round_trip() {
+    fn supported_providers_keep_stable_names_and_round_trip() {
         use clap::ValueEnum;
         let expected = [
-            (Provider::ClaudeCode, "claude-code", 1),
-            (Provider::Codex, "codex", 2),
-            (Provider::Opencode, "opencode", 5),
-            (Provider::Copilot, "copilot", 8),
-            (Provider::Cursor, "cursor", 11),
-            (Provider::Antigravity, "antigravity", 13),
+            (Provider::ClaudeCode, "claude-code"),
+            (Provider::Codex, "codex"),
+            (Provider::Opencode, "opencode"),
+            (Provider::Copilot, "copilot"),
+            (Provider::Cursor, "cursor"),
+            (Provider::Antigravity, "antigravity"),
         ];
         assert_eq!(Provider::ALL, Provider::value_variants());
         assert_eq!(Provider::ALL.len(), expected.len());
-        for (provider, name, code) in expected {
+        for (provider, name) in expected {
             assert_eq!(provider.as_str(), name);
-            assert_eq!(provider.storage_code(), code);
             assert_eq!(name.parse::<Provider>().unwrap(), provider);
             let json = serde_json::to_string(&provider).unwrap();
             assert_eq!(serde_json::from_str::<Provider>(&json).unwrap(), provider);

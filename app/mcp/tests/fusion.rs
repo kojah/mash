@@ -221,10 +221,21 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_mo
 }
 
 fn configuration(root: &std::path::Path, constant: u16, lexical: u16) -> String {
+    let qdrant = crate::views::local::test_support::qdrant_configuration();
     format!(
-        "version=1\n[providers.codex]\nroots=[{:?}]\n[views.query]\nunit='messages'\n[views.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n",
-        root.join("codex").to_str().unwrap()
+        "version=1\n[providers.codex]\nroots=[{:?}]\n[views.query]\nunit='messages'\n[views.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n[qdrant]\nurl={:?}\ngrpc_url={:?}\n",
+        root.join("codex").to_str().unwrap(),
+        qdrant.url,
+        qdrant.grpc_url
     )
+}
+
+async fn cleanup_fixture(root: &std::path::Path) {
+    let config = crate::config::load(Some(&root.join("node.toml"))).unwrap();
+    let local = crate::views::local::Local::open(&root.join("index.sqlite3"), &config)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &config.qdrant.url).await;
 }
 
 async fn indexed_fixture() -> (Mash, tempfile::TempDir) {
@@ -265,7 +276,7 @@ async fn indexed_fixture() -> (Mash, tempfile::TempDir) {
 }
 
 #[tokio::test]
-#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn real_models_mcp_thread_excerpts_preserve_projection_locations() {
     let (server, root) = indexed_fixture().await;
     let database = root.path().join("index.sqlite3");
@@ -301,10 +312,11 @@ async fn real_models_mcp_thread_excerpts_preserve_projection_locations() {
     assert_eq!(std::fs::read(database).unwrap(), before);
     client.cancel().await.unwrap();
     service.cancel().await.unwrap();
+    cleanup_fixture(root.path()).await;
 }
 
 #[tokio::test]
-#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn real_models_mcp_ranking_defaults_reload_without_indexing() {
     let (server, root) = indexed_fixture().await;
     let database = root.path().join("index.sqlite3");
@@ -349,10 +361,11 @@ async fn real_models_mcp_ranking_defaults_reload_without_indexing() {
     }
     client.cancel().await.unwrap();
     service.cancel().await.unwrap();
+    cleanup_fixture(root.path()).await;
 }
 
 #[tokio::test]
-#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_indexing() {
     let (server, root) = indexed_fixture().await;
     let database = root.path().join("index.sqlite3");
@@ -401,11 +414,14 @@ async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_inde
             );
             assert!(diagnostics["elapsed_ms"].is_u64());
             let stages = diagnostics["stages"].as_array().unwrap();
-            for name in ["local-lexical", "local-dense", "embed", "rerank", "fusion"] {
+            for name in ["local-candidates", "embed", "rerank", "fusion"] {
                 let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
                 assert_eq!(stage["calls"], 1);
                 assert_eq!(stage["completed_calls"], 1);
-                assert_eq!(stage["items_out"], 1);
+                assert_eq!(
+                    stage["items_out"],
+                    if name == "local-candidates" { 2 } else { 1 }
+                );
                 assert!(stage["total_us"].as_u64().unwrap() >= stage["max_us"].as_u64().unwrap());
             }
         } else {
@@ -415,4 +431,5 @@ async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_inde
     }
     client.cancel().await.unwrap();
     service.cancel().await.unwrap();
+    cleanup_fixture(root.path()).await;
 }

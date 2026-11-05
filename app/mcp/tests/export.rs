@@ -6,8 +6,6 @@ async fn sdk_export_import_is_model_free_and_keeps_the_sessions_database() {
     let db = root.path().join("original.sqlite3");
     let mut writer = crate::storage::Storage::open_writer(&db).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let config = root.path().join("node.toml");
@@ -66,8 +64,8 @@ async fn sdk_export_import_is_model_free_and_keeps_the_sessions_database() {
         .await
         .unwrap();
     assert_eq!(result.is_error, Some(true));
-    assert!(crate::storage::Storage::open_lexical(&db).is_ok());
-    assert!(crate::storage::Storage::open_lexical(&imported).is_err());
+    assert!(crate::storage::Storage::open_silver(&db).is_ok());
+    assert!(crate::storage::Storage::open_silver(&imported).is_ok());
     client.cancel().await.unwrap();
     server.waiting().await.unwrap();
 }

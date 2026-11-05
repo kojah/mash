@@ -130,6 +130,7 @@ async fn interrupted_body_is_retryable_and_error_is_sanitized() {
 }
 
 #[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn failed_remote_bodies_never_publish_readiness_and_indexing_can_resume() {
     for fault in [Fault::Oversized, Fault::Truncated] {
         let temp = tempfile::tempdir().unwrap();
@@ -150,6 +151,7 @@ async fn failed_remote_bodies_never_publish_readiness_and_indexing_can_resume() 
                 providers = {codex = {roots = [(history.to_str().unwrap())]}}
                 index = {all_history = true}
                 embeddings = (toml::Value::try_from(remote).unwrap())
+                qdrant = (toml::Value::try_from(crate::views::local::test_support::qdrant_configuration()).unwrap())
             };
             std::fs::write(
                 paths.config.as_ref().unwrap(),
@@ -168,11 +170,20 @@ async fn failed_remote_bodies_never_publish_readiness_and_indexing_can_resume() 
         assert_eq!(error.error.retryable, fault.retryable());
         assert_eq!(error.error.message, fault.message());
         task.await.unwrap();
-        let generation = crate::semantic::model_space("fault-contract", 2);
         {
-            let storage = Storage::open_existing(paths.db.as_ref().unwrap()).unwrap();
-            assert_eq!(storage.counts().unwrap().embeddings, 0);
-            assert!(!storage.semantic_index_is_ready(&generation).unwrap());
+            let config = crate::config::load(paths.config.as_deref()).unwrap();
+            let local = crate::views::local::Local::open(paths.db.as_ref().unwrap(), &config)
+                .await
+                .unwrap();
+            assert!(local.current().await.unwrap().is_none());
+            assert_eq!(
+                Storage::open_silver(paths.db.as_ref().unwrap())
+                    .unwrap()
+                    .counts()
+                    .unwrap()
+                    .messages,
+                1
+            );
         }
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let healthy = configuration(format!(
@@ -198,8 +209,12 @@ async fn failed_remote_bodies_never_publish_readiness_and_indexing_can_resume() 
         server.abort();
         let storage = Storage::open_existing(paths.db.as_ref().unwrap()).unwrap();
         assert_eq!(storage.counts().unwrap().messages, 1);
-        assert_eq!(storage.counts().unwrap().embeddings, 1);
-        assert!(storage.semantic_index_is_ready(&generation).unwrap());
+        let config = crate::config::load(paths.config.as_deref()).unwrap();
+        let local = crate::views::local::Local::open(paths.db.as_ref().unwrap(), &config)
+            .await
+            .unwrap();
+        assert_eq!(local.current().await.unwrap().unwrap().embeddings(), 1);
+        crate::views::local::test_support::cleanup(&local, &config.qdrant.url).await;
         assert!(!paths.models_dir.unwrap().exists());
     }
 }

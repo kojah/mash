@@ -67,7 +67,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     assert_eq!(storage.counts().unwrap().embeddings, 0);
     storage.commit_writer().unwrap();
     drop(storage);
-    let stored = Storage::open_catalog(&path).unwrap();
+    let stored = Storage::open_silver(&path).unwrap();
     assert_eq!(
         stored.conversation_enrichment(&id).unwrap(),
         Some(evidence.clone())

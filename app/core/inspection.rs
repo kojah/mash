@@ -3,7 +3,7 @@ use super::models::{ArtifactState, LocalArtifacts, ModelAvailability, StatusResp
 use super::{SearchMode, ViewResponse, publication_config, required_shared};
 use crate::AppError;
 use crate::config::ResolvedConfig;
-use crate::semantic::{self, Models};
+use crate::semantic::Models;
 use crate::shared;
 use crate::storage::Storage;
 use std::path::Path;
@@ -84,6 +84,12 @@ pub(super) async fn status(
     let models = models.to_path_buf();
     let config = configuration.clone();
     let mut response = crate::blocking(move || local_status(&db, &models, &config)).await?;
+    if response.silver.is_some() {
+        match local_gold_status(database, configuration, &mut response).await {
+            Ok(()) => {}
+            Err(error) => response.local_views_error = Some(error.error.message),
+        }
+    }
     if let Some(scope) = coverage {
         response.coverage = Some(super::coverage::local(database, configuration, scope).await?);
     }
@@ -103,6 +109,51 @@ pub(super) async fn status(
         }
     }
     Ok(response)
+}
+
+async fn local_gold_status(
+    database: &Path,
+    configuration: &ResolvedConfig,
+    response: &mut StatusResponse,
+) -> Result<(), AppError> {
+    let local = crate::views::local::Local::open_exact(database, configuration).await?;
+    if response.silver.as_ref() != Some(&local.certificate) {
+        response.local_views_error = Some("silver changed while reading status; retry".into());
+        return Ok(());
+    }
+    let Some(node) = local.current().await? else {
+        return Ok(());
+    };
+    let dense_current = node.build == configuration.views.build;
+    response.lexical = Some(crate::views::lexical_manifest::Manifest::new(
+        local.certificate.clone(),
+        response.searchable_messages,
+    ));
+    response.views = Some(crate::views::manifest::Manifest::new(
+        node.build.clone(),
+        local.scope.generation,
+        local.certificate,
+    ));
+    let embeddings = node.stored_vectors();
+    response.stored_embeddings = embeddings;
+    response.embeddings = if dense_current { embeddings } else { 0 };
+    response.local_artifacts.lexical = ArtifactState::publication(true, true);
+    if configuration.views.build.dense_enabled() && dense_current {
+        response.local_artifacts.dense = ArtifactState::publication(true, true);
+    }
+    let exact = configuration.views.query.intent == crate::views::exact::Intent::ExactMention;
+    response.ready = (exact || dense_current)
+        && !matches!(response.query_models, ModelAvailability::Unavailable);
+    if response.ready {
+        response.realized_mode =
+            if configuration.views.query.intent == crate::views::exact::Intent::ExactMention {
+                SearchMode::Lexical
+            } else {
+                SearchMode::Hybrid
+            };
+        response.recommended_action = None;
+    }
+    Ok(())
 }
 
 fn local_view(
@@ -140,15 +191,15 @@ fn local_status(
         Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
     let models_installed = models.is_installed();
     let dense_enabled = configuration.views.build.dense_enabled();
-    let exact = configuration.views.query.intent == crate::views::exact::Intent::ExactMention;
     let query_models = query_model_availability(&models, &configuration.views.query)?;
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            local_views_error: None,
             installation: super::installation::summary(),
             coverage: None,
             shared_error: None,
-            local_artifacts: local_artifacts(None, dense_enabled, false, false),
+            local_artifacts: local_artifacts(false, dense_enabled),
             lexical: None,
             views: None,
             silver: None,
@@ -180,63 +231,33 @@ fn local_status(
         });
     }
 
-    let model = semantic::configured_generation(configuration.embeddings.as_ref());
-    let snapshot =
-        Storage::status_snapshot(database_path, &configuration.views.build.generation(&model))?;
+    let snapshot = Storage::status_snapshot(database_path)?;
     let counts = &snapshot.counts;
-    let current_embeddings = snapshot.current_embeddings;
-    let manifest_matches = snapshot
-        .views
-        .as_ref()
-        .zip(snapshot.silver.as_ref())
-        .is_some_and(|(m, s)| m.matches(&configuration.views.build, &model, s));
-    let dense_current =
-        snapshot.derived_clean && snapshot.exact_semantic_coverage && manifest_matches;
-    let hybrid_ready = query_models_available && dense_current;
-    let lexical_ready = snapshot.derived_clean
-        && snapshot
-            .lexical
-            .as_ref()
-            .zip(snapshot.silver.as_ref())
-            .is_some_and(|(m, s)| m.matches(s, counts.searchable_messages));
-    let ready = if exact { lexical_ready } else { hybrid_ready };
     Ok(StatusResponse {
+        local_views_error: None,
         installation: super::installation::summary(),
         coverage: None,
         shared_error: None,
-        local_artifacts: local_artifacts(
-            Some(&snapshot),
-            dense_enabled,
-            lexical_ready,
-            dense_current,
-        ),
-        lexical: snapshot.lexical,
-        views: snapshot.views,
+        local_artifacts: local_artifacts(snapshot.silver.is_some(), dense_enabled),
+        lexical: None,
+        views: None,
         silver: snapshot.silver,
-        ready,
+        ready: false,
         database_path: Some(database_path.to_path_buf()),
         conversations: counts.conversations,
         messages: counts.messages,
         searchable_messages: counts.searchable_messages,
-        embeddings: current_embeddings,
+        embeddings: 0,
         stored_embeddings: counts.embeddings,
         models_installed,
         query_models,
         semantic_support: dense_enabled,
-        realized_mode: if ready && exact {
-            SearchMode::Lexical
-        } else if ready {
-            SearchMode::Hybrid
+        realized_mode: SearchMode::Unavailable,
+        recommended_action: Some(if query_models_available {
+            crate::Action::Index
         } else {
-            SearchMode::Unavailable
-        },
-        recommended_action: if !query_models_available {
-            Some(crate::Action::ModelsInstall)
-        } else if ready {
-            None
-        } else {
-            Some(crate::Action::Index)
-        },
+            crate::Action::ModelsInstall
+        }),
         configuration: configuration.status(),
         sources: [native_sources(configuration), snapshot.connectors].concat(),
         shared: shared::status(database_path, publication_config(configuration))?,
@@ -253,21 +274,12 @@ fn native_sources(configuration: &ResolvedConfig) -> Vec<crate::source::SourceSt
         .collect()
 }
 
-fn local_artifacts(
-    snapshot: Option<&crate::storage::StatusSnapshot>,
-    dense_enabled: bool,
-    lexical_current: bool,
-    dense_current: bool,
-) -> LocalArtifacts {
+fn local_artifacts(has_silver: bool, dense_enabled: bool) -> LocalArtifacts {
     LocalArtifacts {
-        // Current-schema metadata views need no complete provider-scan certificate.
-        metadata: ArtifactState::publication(snapshot.is_some_and(|s| s.silver.is_some()), true),
-        lexical: ArtifactState::publication(
-            snapshot.is_some_and(|s| s.lexical.is_some()),
-            lexical_current,
-        ),
+        metadata: ArtifactState::publication(has_silver, true),
+        lexical: ArtifactState::publication(has_silver, false),
         dense: if dense_enabled {
-            ArtifactState::publication(snapshot.is_some_and(|s| s.views.is_some()), dense_current)
+            ArtifactState::publication(has_silver, false)
         } else {
             ArtifactState::Disabled
         },
@@ -291,6 +303,34 @@ fn query_model_availability(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+    async fn qdrant_status_rejects_a_changed_silver_snapshot() {
+        let root = tempfile::tempdir().unwrap();
+        let database = root.path().join("silver.sqlite3");
+        let gold = crate::views::local::test_support::Fixture::new(&database, "local").await;
+        let mut configuration = gold.configuration.clone();
+        configuration.views.query.intent = crate::views::exact::Intent::ExactMention;
+        let models = root.path().join("missing-models");
+        let mut current = local_status(&database, &models, &configuration).unwrap();
+        local_gold_status(&database, &configuration, &mut current)
+            .await
+            .unwrap();
+        assert!(current.ready);
+        let mut stale = local_status(&database, &models, &configuration).unwrap();
+        crate::storage::test_support::write(
+            &database,
+            "UPDATE silver_state SET revision=revision+1 WHERE singleton=1",
+        );
+        local_gold_status(&database, &configuration, &mut stale)
+            .await
+            .unwrap();
+        assert!(!stale.ready);
+        assert!(stale.lexical.is_none() && stale.views.is_none());
+        assert!(stale.local_views_error.unwrap().contains("silver changed"));
+        gold.cleanup().await;
+    }
 
     #[test]
     fn status_distinguishes_remote_fusion_requirements_from_installed_assets() {

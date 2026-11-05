@@ -38,7 +38,7 @@ fn assert_diagnostics(response: &core::SearchResponse, scope: Scope, fallback: b
         s.stage,
         crate::observability::retrieval::Stage::Embed
             | crate::observability::retrieval::Stage::Rerank
-            | crate::observability::retrieval::Stage::LocalDense
+            | crate::observability::retrieval::Stage::LocalCandidates
     )));
     assert!(diagnostics.fusion.is_none());
     assert_eq!(
@@ -120,13 +120,12 @@ async fn reply(
 }
 
 #[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
     let root = tempfile::tempdir().unwrap();
     let database = root.path().join("local.sqlite3");
-    let mut writer = Storage::open_writer(&database).unwrap();
+    let mut writer = crate::storage::Storage::open_writer(&database).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let before = std::fs::read(&database).unwrap();
@@ -140,7 +139,8 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         axum::serve(listener, router).await.unwrap();
     });
     let config = root.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='self'\napi_url={url:?}\ntoken_env='HOME'\n[views.query]\nintent='exact-mention'\n")).unwrap();
+    std::fs::write(&config, format!("version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='self'\napi_url={url:?}\ntoken_env='HOME'\n[views.query]\nintent='exact-mention'\n")).unwrap();
+    let (gold, url) = crate::views::local::test_support::lexical(&database, &config).await;
     let request = Request {
         paths: Paths {
             config: Some(config),
@@ -208,6 +208,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
     assert!(response.shared);
     assert_diagnostics(&response, Scope::Shared, false, 1);
     assert_thread_projection(shared).await;
+    crate::views::local::test_support::cleanup(&gold, &url).await;
     server.abort();
     assert_eq!(std::fs::read(database).unwrap(), before);
     assert!(!root.path().join("missing-models").exists());

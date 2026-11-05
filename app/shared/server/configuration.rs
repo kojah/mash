@@ -342,14 +342,6 @@ mod tests {
             qdrant_index::VectorIndex::Exact {}
         );
         assert_eq!(default.build, exact.build);
-        assert_eq!(
-            default.build.generation("model"),
-            exact.build.generation("model")
-        );
-        assert_eq!(
-            default.build.generation("model"),
-            hnsw.build.generation("model")
-        );
         hnsw.query.vector_search.validate().unwrap();
         let omitted_ef: View = toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'").unwrap();
         assert_eq!(

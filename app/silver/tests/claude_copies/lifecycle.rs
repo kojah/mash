@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
+fn claude_renaming_a_contribution_preserves_native_ids_and_context() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("sources");
     fs::create_dir(&root).unwrap();
@@ -20,18 +20,6 @@ fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
     let database = directory.path().join("index.sqlite3");
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(&root)).unwrap();
-    let writes = parsed
-        .messages
-        .inline()
-        .iter()
-        .map(|message| crate::storage::EmbeddingWrite {
-            message_id: &message.id,
-            vector: &[127],
-            norm: 127.0,
-        })
-        .collect::<Vec<_>>();
-    storage.replace_embeddings("fixture", &writes).unwrap();
-    storage.mark_semantic_index_ready("fixture").unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
     fs::rename(&original, &moved).unwrap();
@@ -42,7 +30,6 @@ fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
         assert_eq!(summary.changed_messages, 0);
         storage.commit_writer().unwrap();
         assert_eq!(storage.counts().unwrap().messages, 2);
-        assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
         let context = storage.view(&parsed.messages.inline()[1].id, 1).unwrap();
         assert_eq!(context.len(), 2);
         assert_eq!(context[0].id, parsed.messages.inline()[0].id);
@@ -53,7 +40,6 @@ fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
     index(&mut storage, &options(&root)).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 1);
-    assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
     assert!(
         storage
             .view(&parsed.messages.inline()[1].id, 0)
@@ -198,7 +184,7 @@ fn claude_refresh_writes_only_changed_contribution_rows() {
     // Rewriting identical history changes neither rows nor the silver revision,
     // so certified views over it stay current.
     let revision = || {
-        Storage::open_catalog(&database)
+        Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap()
@@ -209,7 +195,7 @@ fn claude_refresh_writes_only_changed_contribution_rows() {
     refresh(&[("a", None, "first"), ("b", Some("a"), "second, edited")]);
     assert_eq!(writes(), Vec::<String>::new());
     assert_eq!(revision(), before);
-    let storage = Storage::open_catalog(&database).unwrap();
+    let storage = Storage::open_silver(&database).unwrap();
     assert_eq!(storage.counts().unwrap().messages, 2);
     let edited = stable_id("claude-message", &["copied-thread", "b"]);
     let context = storage.view(&edited, 1).unwrap();

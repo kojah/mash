@@ -499,6 +499,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
     async fn remote_core_index_needs_no_local_models_and_rebuilds_changed_spaces() {
         let (remote, mock, task) = mock().await;
         let temp = tempfile::tempdir().unwrap();
@@ -517,6 +518,7 @@ mod tests {
             providers = {codex = {roots = [(history.to_str().unwrap())]}}
             index = {all_history = true}
             embeddings = (toml::Value::try_from(&remote).unwrap())
+            qdrant = (toml::Value::try_from(crate::views::local::test_support::qdrant_configuration()).unwrap())
         };
         std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
         let request = crate::core::Request {
@@ -529,11 +531,11 @@ mod tests {
         };
         crate::core::execute(request.clone()).await.unwrap();
         assert!(!models.exists());
-        let generation = crate::semantic::model_space("voyage-4", 1024);
-        let storage = crate::storage::Storage::open_existing(&db).unwrap();
-        assert_eq!(storage.counts().unwrap().embeddings, 2);
-        assert!(storage.semantic_index_is_ready(&generation).unwrap());
-        drop(storage);
+        let resolved = crate::config::load(Some(&config)).unwrap();
+        let local = crate::views::local::Local::open(&db, &resolved)
+            .await
+            .unwrap();
+        assert_eq!(local.current().await.unwrap().unwrap().embeddings(), 2);
         assert_eq!(mock.requests.lock().unwrap().len(), 1);
         crate::core::execute(request.clone()).await.unwrap();
         assert_eq!(mock.requests.lock().unwrap().len(), 1);
@@ -546,12 +548,12 @@ mod tests {
         mock.failure.store(429, Ordering::Relaxed);
         let error = crate::core::execute(request).await.unwrap_err();
         assert_eq!(error.error.kind, crate::ErrorKind::RemoteInference);
-        assert!(
-            !crate::storage::Storage::open_existing(&db)
-                .unwrap()
-                .semantic_index_is_ready(&crate::semantic::model_space("voyage-4-lite", 1024))
-                .unwrap()
-        );
+        let resolved = crate::config::load(Some(&config)).unwrap();
+        let local = crate::views::local::Local::open(&db, &resolved)
+            .await
+            .unwrap();
+        assert!(local.current().await.unwrap().is_none());
+        crate::views::local::test_support::cleanup(&local, &resolved.qdrant.url).await;
         task.abort();
     }
 }

@@ -8,7 +8,6 @@ async fn qdrant_core_scoped_message_search_uses_thread_discovery() {
 }
 use crate::search_filter::Selection;
 use crate::search_results::{Results, SearchUnit};
-use crate::semantic::{self, Models};
 use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
 
 fn conversation(id: &str, provider: Provider) -> Conversation {
@@ -41,7 +40,6 @@ fn conversation(id: &str, provider: Provider) -> Conversation {
 
 async fn seed(paths: &Paths) {
     let database = paths.db.clone().unwrap();
-    let models = paths.models_dir.clone().unwrap();
     crate::blocking(move || {
         let mut storage = Storage::open_writer(&database)?;
         for number in 0..150 {
@@ -53,23 +51,11 @@ async fn seed(paths: &Paths) {
         for provider in [Provider::Opencode, Provider::Codex, Provider::ClaudeCode] {
             storage.replace_conversation(&conversation(provider.as_str(), provider))?;
         }
-        storage.rebuild_derived_search_state()?;
-        let models = Models::new(models);
-        let mut pool = models.load_indexer()?.unwrap();
-        semantic::rebuild_embeddings(&mut storage, &mut pool, &models.generation(), |_| {})?;
-        storage.mark_semantic_index_ready(&models.generation())?;
         for provider in [Provider::Opencode, Provider::Codex, Provider::ClaudeCode] {
             storage.begin_silver_scan(provider)?;
             storage.finish_silver_scan(provider, true)?;
         }
         storage.finish_silver_ingestion()?;
-        storage.mark_semantic_index_ready(&models.generation())?;
-        storage.publish_lexical_manifest()?;
-        storage.publish_views_manifest(&crate::views::manifest::Manifest::new(
-            crate::views::config::Build::default(),
-            models.generation(),
-            storage.silver_certificate()?,
-        ))?;
         storage.commit_writer()
     })
     .await
@@ -153,11 +139,21 @@ async fn assert_scoped(
     );
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one backend fixture verifies discovery, merged search and ranking overrides"
+)]
 async fn contract(service: Service) {
     let directory = tempfile::tempdir().unwrap();
     let mut paths = configuration(directory.path(), &service);
     let config_path = paths.config.as_ref().unwrap();
-    let configuration = std::fs::read_to_string(config_path).unwrap();
+    let qdrant = crate::views::local::test_support::qdrant_configuration();
+    let configuration = format!(
+        "{}\n[qdrant]\nurl={:?}\ngrpc_url={:?}\n",
+        std::fs::read_to_string(config_path).unwrap(),
+        qdrant.url,
+        qdrant.grpc_url
+    );
     std::fs::write(
         config_path,
         format!("{configuration}\n[views.query]\nunit = 'messages'\nlimit = 10\n"),
@@ -165,14 +161,33 @@ async fn contract(service: Service) {
     .unwrap();
     paths.models_dir = Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into());
     seed(&paths).await;
+    let resolved = crate::config::load(paths.config.as_deref()).unwrap();
+    crate::views::local::build(
+        paths.db.as_deref().unwrap(),
+        paths.models_dir.as_deref().unwrap(),
+        &resolved,
+        false,
+    )
+    .await
+    .unwrap();
+    let gold = crate::views::local::Local::open(paths.db.as_deref().unwrap(), &resolved)
+        .await
+        .unwrap();
     let config = crate::config::load(paths.config.as_deref())
         .unwrap()
         .shared
         .unwrap();
     assert!(
-        !crate::shared::publish(paths.db.as_deref().unwrap(), &config, None)
-            .await
-            .is_pending()
+        !crate::shared::publish(
+            paths.db.as_deref().unwrap(),
+            &config,
+            Some(crate::shared::Inference {
+                models_dir: paths.models_dir.as_deref().unwrap(),
+                embeddings: None
+            })
+        )
+        .await
+        .is_pending()
     );
     // The backend fixture permits explicit peer tokens without changing process environment.
     let mut snapshot = provider_snapshot(&vec![127.0; 384], 1);
@@ -249,5 +264,6 @@ async fn contract(service: Service) {
         assert_eq!(service.get("freshness", &token).await, shared_before);
     }
     assert_scoped(&paths, &["unknown".into()], &[], None, None).await;
+    crate::views::local::test_support::cleanup(&gold, &qdrant.url).await;
     service.cleanup().await;
 }

@@ -10,10 +10,10 @@ Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`,
 Mash with agent CLIs through their own commands, and indexes; it never downloads models.
 
 - Use Rusqlite as the sole SQLite library.
-- Use SQLite FTS5 for local lexical search.
+- Use the common Qdrant engine and collection schema for local and shared lexical/vector search.
 - Keep one silver schema (`app/storage/silver.sql`) for local indexes and for
-  each node's shared silver database on the server. Local views live in a separate,
-  paired SQLite database; neither views store may hold history that silver lacks,
+  each node's shared silver database on the server. Local views live in Qdrant;
+  neither views store may be certified against history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-views --full`,
   `serve --replay-views`).
 - Native and connector history share one silver object model: the `objects` table
@@ -34,7 +34,10 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   connectors deliver to each destination they choose (local and/or a node's shared silver)
   independently: node publication never carries connector records, and a node's shared
   connector records arrive only through direct ingress. Keep local operations
-  offline-capable. Only the HTTP service accesses Qdrant. Never restore SSH query fan-out.
+  offline-capable using a local Qdrant instance. Local CLI/MCP accesses Qdrant
+  directly without Axum; the authenticated HTTP service owns shared access.
+  Keep local writer admission across silver commits and gold certification.
+  Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;
   MCP must not construct CLI arguments or call CLI handlers.

@@ -29,6 +29,33 @@ fn native_accounting_accepts_optional_and_extensible_typed_response_fields() {
 }
 
 #[tokio::test]
+async fn missing_views_are_distinct_from_backend_authentication_failures() {
+    use axum::{Router, routing::get};
+    let router = Router::new()
+        .route("/missing", get(|| async { StatusCode::NOT_FOUND }))
+        .route("/denied", get(|| async { StatusCode::UNAUTHORIZED }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let client = Client::new(
+        &format!("http://{}", listener.local_addr().unwrap()),
+        None,
+        1024,
+    )
+    .unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    for (path, expected) in [
+        ("missing", crate::ErrorKind::SearchNotReady),
+        ("denied", crate::ErrorKind::SharedIndex),
+    ] {
+        let error = client
+            .call::<()>(Method::GET, path, None::<&()>)
+            .await
+            .unwrap_err();
+        assert_eq!(error.error.kind, expected);
+    }
+    server.abort();
+}
+
+#[tokio::test]
 async fn rest_reads_keep_their_bounded_deadline() {
     use axum::{Router, routing::post};
     let router = Router::new().route(

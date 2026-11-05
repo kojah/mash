@@ -189,17 +189,21 @@ fn indexing_refreshes_wal_catalog_and_transcript_with_atomic_retry() {
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().searchable_messages, 2);
     assert!(
-        !storage
-            .search("importer", 10, Some(Provider::Copilot), None)
-            .unwrap()
-            .is_empty()
+        !crate::storage::test_support::projections_with_text(
+            &storage,
+            "importer",
+            Some(Provider::Copilot)
+        )
+        .is_empty()
     );
     for text in [
         "privatetoolmarker",
         "privatefirstthought",
         "privatefuturemarker",
     ] {
-        assert!(storage.search(text, 10, None, None).unwrap().is_empty());
+        assert!(
+            crate::storage::test_support::projections_with_text(&storage, text, None).is_empty()
+        );
     }
     let source = f.sources().unwrap().remove(0);
     let stamp = source.stamp().unwrap();
@@ -224,10 +228,7 @@ fn indexing_refreshes_wal_catalog_and_transcript_with_atomic_retry() {
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, prior);
     assert!(
-        !storage
-            .search("importer", 10, None, None)
-            .unwrap()
-            .is_empty()
+        !crate::storage::test_support::projections_with_text(&storage, "importer", None).is_empty()
     );
     f.write(
         "jsonl",
@@ -241,15 +242,10 @@ fn indexing_refreshes_wal_catalog_and_transcript_with_atomic_retry() {
     index(&mut storage, &options).unwrap();
     storage.commit_writer().unwrap();
     assert!(
-        storage
-            .search("importer", 10, None, None)
-            .unwrap()
-            .is_empty()
+        crate::storage::test_support::projections_with_text(&storage, "importer", None).is_empty()
     );
     assert!(
-        !storage
-            .search("structural", 10, None, None)
-            .unwrap()
+        !crate::storage::test_support::projections_with_text(&storage, "structural", None)
             .is_empty()
     );
     storage

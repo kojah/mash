@@ -2,16 +2,15 @@
 //!
 //! Connector objects have no native message rowid, provider or role. Each unit
 //! is keyed by a namespaced anchor, indexed for lexical search, and embedded
-//! once per generation. Units are synchronized from silver incrementally by
-//! content digest, so unchanged records keep their FTS rows and vectors.
+//! once per generation. Coordinators synchronize the complete projection
+//! fingerprint, so unchanged records keep their Qdrant points and vectors.
+use super::Storage;
 use super::generated as sql;
-use super::{SearchHit, Storage};
 use crate::AppError;
 use crate::connectors::{AuthorKind, Object, Role};
 use crate::source::{Ancestor, ObjectType, Source};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::Connection;
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 /// Every connector anchor starts with this; native message IDs never do.
 pub(crate) const ANCHOR_PREFIX: &str = "connector#";
@@ -65,9 +64,6 @@ pub(crate) struct Unit {
     pub(crate) sequence: i64,
     /// What is indexed and embedded; its digest decides when to re-index.
     pub(crate) text: String,
-    /// Every ancestor's identity, kind and title, so renaming or moving an
-    /// enclosing object changes the unit's digest too.
-    pub(crate) ancestry: String,
 }
 
 fn decode(record: Option<&str>) -> Result<Object, AppError> {
@@ -178,9 +174,6 @@ pub(crate) fn evidence(
     Ok(Some(Evidence { object, ancestors }))
 }
 
-/// Conversation roots, by source and object ID, a scoped refresh covers.
-pub(crate) type Conversations = std::collections::BTreeSet<(String, String)>;
-
 struct Row {
     role: Role,
     parent: Option<String>,
@@ -213,55 +206,6 @@ pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppErro
     units(&objects, None)
 }
 
-/// The units of the given conversations only, identical to the units
-/// `silver_units` gives them: entries are ordered within their conversation,
-/// and a root's ancestors are loaded for ancestry but yield no units.
-pub(crate) fn conversation_units(
-    connection: &Connection,
-    conversations: &Conversations,
-) -> Result<Vec<Unit>, AppError> {
-    let mut objects = HashMap::new();
-    let mut emit = std::collections::HashSet::new();
-    for (source_id, root) in conversations {
-        for row in sql::ConnectorConversationObjects::builder()
-            .conversation_id(root)
-            .source_id(source_id)
-            .build()
-            .query_many(connection)
-            .map_err(AppError::database)?
-        {
-            emit.insert((source_id.clone(), row.id.clone()));
-            objects.insert(
-                (source_id.clone(), row.id),
-                Row::new(&row.role, row.parent_id, row.record.as_deref())?,
-            );
-        }
-        let mut current = objects
-            .get(&(source_id.clone(), root.clone()))
-            .and_then(|row| row.parent.clone());
-        while let Some(parent) = current.take() {
-            let key = (source_id.clone(), parent.clone());
-            if let Some(row) = objects.get(&key) {
-                current.clone_from(&row.parent);
-                continue;
-            }
-            let Some(row) = sql::ConnectorObject::builder()
-                .source_id(source_id)
-                .id(&parent)
-                .build()
-                .query_opt(connection)
-                .map_err(AppError::database)?
-            else {
-                break;
-            };
-            let row = Row::new(&row.role, row.parent_id, row.record.as_deref())?;
-            current.clone_from(&row.parent);
-            objects.insert(key, row);
-        }
-    }
-    units(&objects, Some(&emit))
-}
-
 fn units(
     objects: &HashMap<(String, String), Row>,
     emit: Option<&std::collections::HashSet<(String, String)>>,
@@ -275,23 +219,6 @@ fn units(
             (Role::Entry | Role::Document, Some(content)) if !content.trim().is_empty() => content,
             _ => continue,
         };
-        let mut ancestry = String::new();
-        let mut current = row.parent.clone();
-        while let Some(parent) = current.take() {
-            let Some(ancestor) = objects.get(&(source_id.clone(), parent.clone())) else {
-                break;
-            };
-            // Writing to a String cannot fail.
-            let _ = writeln!(
-                ancestry,
-                "{}\0{}\0{}\0{}",
-                role_name(ancestor.role),
-                parent,
-                ancestor.object.kind.as_str(),
-                ancestor.object.title.as_deref().unwrap_or_default()
-            );
-            current.clone_from(&ancestor.parent);
-        }
         let (group_anchor, title) = if row.role == Role::Entry {
             // Silver guarantees a container ancestor and no cycles.
             let mut current = row.parent.clone();
@@ -325,7 +252,6 @@ fn units(
             created_at: row.object.created_at,
             sequence: 0,
             text: unit_text(title, content),
-            ancestry,
         });
     }
     units.sort_by(|left, right| left.anchor.cmp(&right.anchor));
@@ -368,372 +294,6 @@ fn order_entries(units: &mut [Unit]) {
 }
 
 impl Storage {
-    /// The conversations a just-committed batch can have changed units in:
-    /// where its objects sit now and sat before (by their existing units), and
-    /// every container or document nested under one of them. `None` when only
-    /// a full comparison is safe: deletions and complete snapshots can remove
-    /// whole subtrees, including nested conversations.
-    pub(crate) fn connector_conversations_touched(
-        &self,
-        batch: &crate::connectors::Batch,
-    ) -> Result<Option<Conversations>, AppError> {
-        use crate::connectors::{Change, Trigger};
-        if matches!(batch.trigger, Some(Trigger::CompleteSnapshot))
-            || batch
-                .changes
-                .iter()
-                .any(|change| matches!(change, Change::DeleteObject { .. }))
-        {
-            return Ok(None);
-        }
-        let source = batch.source_id.as_str();
-        let ids: std::collections::HashSet<&str> = batch
-            .changes
-            .iter()
-            .filter_map(|change| match change {
-                Change::UpsertObject(object) => Some(object.id.as_str()),
-                _ => None,
-            })
-            .collect();
-        let mut touched = Conversations::new();
-        for id in &ids {
-            if let Some(row) = sql::ConnectorConversation::builder()
-                .source_id(source)
-                .id(id)
-                .build()
-                .query_opt(&self.connection)
-                .map_err(AppError::database)?
-            {
-                touched.insert((source.to_owned(), row.conversation_id));
-            }
-        }
-        // A moved object's units still sit in its previous conversation.
-        for row in sql::ConnectorUnitGroups
-            .query_many(&self.connection)
-            .map_err(AppError::database)?
-        {
-            if row.source_id == source
-                && ids.contains(row.record_id.as_str())
-                && let Some((_, unit_source, root)) = parse_anchor(&row.group_anchor)
-            {
-                touched.insert((unit_source.to_owned(), root.to_owned()));
-            }
-        }
-        // Renaming or moving an ancestor changes nested conversations' ancestry.
-        for root in sql::ConnectorRoots::builder()
-            .source_id(source)
-            .build()
-            .query_many(&self.connection)
-            .map_err(AppError::database)?
-        {
-            let mut current = root.parent_id;
-            while let Some(parent) = current.take() {
-                if ids.contains(parent.as_str()) {
-                    touched.insert((source.to_owned(), root.id.clone()));
-                    break;
-                }
-                current = sql::ConnectorObject::builder()
-                    .source_id(source)
-                    .id(&parent)
-                    .build()
-                    .query_opt(&self.connection)
-                    .map_err(AppError::database)?
-                    .and_then(|row| row.parent_id);
-            }
-        }
-        Ok(Some(touched))
-    }
-
-    /// Limit the next connector unit refresh to these conversations. The
-    /// caller vouches that nothing outside them changed since views were last
-    /// certified; without a scope every connector unit is compared.
-    pub(crate) fn scope_connector_refresh(&mut self, conversations: Conversations) {
-        self.connector_scope = Some(conversations);
-    }
-
-    /// Bring connector units, their FTS rows and vector invalidation in line
-    /// with connector silver. Runs inside the views build's writer.
-    pub(crate) fn sync_connector_units(&mut self) -> Result<(), AppError> {
-        self.require_writer()?;
-        let scope = self.connector_scope.take();
-        let mut known = HashMap::new();
-        for row in sql::ConnectorUnitGroups
-            .query_many(&self.connection)
-            .map_err(AppError::database)?
-        {
-            // A scoped refresh owns only the units of its conversations.
-            let owned = scope.as_ref().is_none_or(|scope| {
-                parse_anchor(&row.group_anchor).is_some_and(|(_, source, root)| {
-                    scope.contains(&(source.to_owned(), root.to_owned()))
-                })
-            });
-            if owned {
-                known.insert(row.anchor, (row.id, row.digest));
-            }
-        }
-        let units = match &scope {
-            Some(scope) => conversation_units(&self.connection, scope)?,
-            None => silver_units(&self.connection)?,
-        };
-        for unit in units {
-            let digest = blake3::hash(unit_digest_input(&unit).as_bytes())
-                .as_bytes()
-                .to_vec();
-            match known.remove(&unit.anchor) {
-                Some((_, previous)) if previous == digest => {}
-                Some((id, _)) => {
-                    // Positions and ancestry shift as a conversation grows;
-                    // the vector embeds only the text, so keep it when that
-                    // is unchanged instead of re-embedding the conversation.
-                    let text_changed = self.connector_text(id)?.as_deref() != Some(&unit.text);
-                    sql::ConnectorUpdateUnit::builder()
-                        .label(&unit.object.kind)
-                        .group_anchor(&unit.group_anchor)
-                        .created_at(unit.created_at)
-                        .digest(&digest)
-                        .id(id)
-                        .build()
-                        .execute(&self.connection)
-                        .map_err(AppError::database)?;
-                    if text_changed {
-                        self.delete_connector_text(id)?;
-                        self.insert_connector_text(id, &unit.text)?;
-                        sql::ConnectorDeleteUnitEmbedding::builder()
-                            .unit_id(id)
-                            .build()
-                            .execute(&self.connection)
-                            .map_err(AppError::database)?;
-                    }
-                }
-                None => {
-                    let id = sql::ConnectorInsertUnit::builder()
-                        .anchor(&unit.anchor)
-                        .role(role_name(unit.object.role))
-                        .label(&unit.object.kind)
-                        .source_id(&unit.source_id)
-                        .record_id(&unit.record_id)
-                        .group_anchor(&unit.group_anchor)
-                        .created_at(unit.created_at)
-                        .digest(&digest)
-                        .build()
-                        .query_one(&self.connection)
-                        .map_err(AppError::database)?
-                        .id;
-                    self.insert_connector_text(id, &unit.text)?;
-                }
-            }
-        }
-        for (_, (id, _)) in known {
-            self.delete_connector_text(id)?;
-            sql::ConnectorDeleteUnitEmbedding::builder()
-                .unit_id(id)
-                .build()
-                .execute(&self.connection)
-                .map_err(AppError::database)?;
-            sql::ConnectorDeleteUnit::builder()
-                .id(id)
-                .build()
-                .execute(&self.connection)
-                .map_err(AppError::database)?;
-        }
-        Ok(())
-    }
-
-    // sqlc cannot analyze FTS5 virtual tables; these statements stay handwritten.
-    fn insert_connector_text(&self, id: i64, text: &str) -> Result<(), AppError> {
-        self.connection
-            .execute(
-                "INSERT INTO connector_fts(rowid, content) VALUES (?1, ?2)",
-                params![id, text],
-            )
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    fn connector_text(&self, id: i64) -> Result<Option<String>, AppError> {
-        self.connection
-            .query_row(
-                "SELECT content FROM connector_fts WHERE rowid = ?1",
-                [id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(AppError::database)
-    }
-
-    fn delete_connector_text(&self, id: i64) -> Result<(), AppError> {
-        self.connection
-            .execute("DELETE FROM connector_fts WHERE rowid = ?1", [id])
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    /// Ranked unit IDs and BM25 scores for an FTS5 match expression. Handwritten:
-    /// sqlc cannot analyze FTS5, and the filter predicate is compiled at runtime.
-    pub(crate) fn search_connector_lexical(
-        &self,
-        query: &str,
-        limit: usize,
-        cutoff: Option<i64>,
-        filters: Option<&crate::search_filter::Scope>,
-    ) -> Result<Vec<(i64, f64)>, AppError> {
-        let predicate = filters.map_or_else(
-            || "TRUE".to_owned(),
-            |f| f.filter.connector_sql(Some(&f.node)),
-        );
-        let limit = i64::try_from(limit.min(1_000)).unwrap_or(1_000);
-        let mut statement = self
-            .connection
-            .prepare(&format!(
-                "SELECT u.id, bm25(connector_fts) AS score
-                   FROM connector_fts
-                   JOIN connector_units u ON u.id = connector_fts.rowid
-                  WHERE connector_fts MATCH ?1
-                    AND (?2 IS NULL OR u.created_at >= ?2)
-                    AND ({predicate})
-                  ORDER BY score, u.id
-                  LIMIT ?3"
-            ))
-            .map_err(AppError::database)?;
-        let rows = statement
-            .query_map(params![query, cutoff, limit], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
-            })
-            .map_err(AppError::database)?;
-        rows.collect::<Result<_, _>>().map_err(AppError::database)
-    }
-
-    /// Current-generation vectors of units the filters admit. Handwritten for the
-    /// runtime-compiled filter predicate.
-    pub(crate) fn connector_vectors(
-        &self,
-        generation: &str,
-        cutoff: Option<i64>,
-        filters: Option<&crate::search_filter::Scope>,
-    ) -> Result<Vec<(i64, f32, Vec<u8>)>, AppError> {
-        let predicate = filters.map_or_else(
-            || "TRUE".to_owned(),
-            |f| f.filter.connector_sql(Some(&f.node)),
-        );
-        let mut statement = self
-            .connection
-            .prepare(&format!(
-                "SELECT u.id, e.norm, e.vector
-                   FROM connector_embeddings e
-                   JOIN connector_units u ON u.id = e.unit_id
-                  WHERE e.generation = ?1
-                    AND (?2 IS NULL OR u.created_at >= ?2)
-                    AND ({predicate})"
-            ))
-            .map_err(AppError::database)?;
-        let rows = statement
-            .query_map(params![generation, cutoff], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, f64>(1)?,
-                    row.get::<_, Vec<u8>>(2)?,
-                ))
-            })
-            .map_err(AppError::database)?;
-        rows.map(|row| {
-            let (id, norm, vector) = row.map_err(AppError::database)?;
-            #[allow(clippy::cast_possible_truncation)]
-            Ok((id, norm as f32, vector))
-        })
-        .collect()
-    }
-
-    /// Search hits for unit IDs, in the given order.
-    pub(crate) fn connector_hits(&self, ids: &[i64]) -> Result<Vec<SearchHit>, AppError> {
-        let mut positions = Positions::default();
-        ids.iter()
-            .map(|id| {
-                let unit = sql::ConnectorUnit::builder()
-                    .id(*id)
-                    .build()
-                    .query_opt(&self.connection)
-                    .map_err(AppError::database)?
-                    .ok_or_else(|| {
-                        AppError::database_data("connector index references a missing unit")
-                    })?;
-                connector_hit(
-                    &self.connection,
-                    &unit.source_id,
-                    &unit.record_id,
-                    &mut positions,
-                )
-            })
-            .collect()
-    }
-
-    /// Up to `limit` units lacking a vector for this generation, with their text.
-    pub(crate) fn pending_connector_embeddings(
-        &self,
-        generation: &str,
-        limit: usize,
-    ) -> Result<Vec<(i64, String)>, AppError> {
-        sql::ConnectorPendingEmbeddings::builder()
-            .generation(generation)
-            .page_size(i64::try_from(limit).unwrap_or(i64::MAX))
-            .build()
-            .query_many(&self.connection)
-            .map_err(AppError::database)?
-            .into_iter()
-            .map(|row| {
-                let evidence = evidence(&self.connection, &row.source_id, &row.record_id)?
-                    .ok_or_else(|| {
-                        AppError::database_data("connector index references missing silver")
-                    })?;
-                Ok((row.id, evidence.text()))
-            })
-            .collect()
-    }
-
-    pub(crate) fn store_connector_embedding(
-        &self,
-        unit_id: i64,
-        generation: &str,
-        vector: &[u8],
-        norm: f32,
-    ) -> Result<(), AppError> {
-        self.require_writer()?;
-        sql::ConnectorPutEmbedding::builder()
-            .unit_id(unit_id)
-            .generation(generation)
-            .dimensions(
-                i64::try_from(vector.len())
-                    .map_err(|_| AppError::internal("embedding dimensions overflow"))?,
-            )
-            .norm(f64::from(norm))
-            .vector(vector)
-            .build()
-            .execute(&self.connection)
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-
-    /// Every unit has a vector of this generation.
-    pub(crate) fn connector_embeddings_complete(&self, generation: &str) -> Result<bool, AppError> {
-        Ok(sql::ConnectorEmbeddingsComplete::builder()
-            .generation(generation)
-            .build()
-            .query_one(&self.connection)
-            .map_err(AppError::database)?
-            .complete
-            != 0)
-    }
-}
-
-impl Storage {
-    /// The indexed text behind a connector anchor, for contextual reranking.
-    pub(crate) fn connector_document(&self, anchor: &str) -> Result<String, AppError> {
-        let (_, source_id, id) = parse_anchor(anchor)
-            .ok_or_else(|| AppError::database_data("invalid connector anchor"))?;
-        Ok(evidence(&self.connection, source_id, id)?
-            .ok_or_else(|| AppError::database_data("connector index references missing silver"))?
-            .text())
-    }
-
     pub(crate) fn connector_view(
         &self,
         anchor: &str,
@@ -742,19 +302,6 @@ impl Storage {
         view(&self.connection, anchor, context)
     }
 }
-
-/// The digest covers kind, group and ancestry too, so moves and renames re-index.
-pub(crate) fn unit_digest_input(unit: &Unit) -> String {
-    format!(
-        "{}\0{}\0{}\0{}\0{}",
-        unit.object.kind, unit.group_anchor, unit.ancestry, unit.text, unit.sequence
-    )
-}
-
-/// Each container's entry positions, computed once per search: the order
-/// `view` reads them in (creation time, then ID), from indexed columns only.
-#[derive(Default)]
-pub(crate) struct Positions(HashMap<(String, String), HashMap<String, i64>>);
 
 fn entry_order(
     connection: &Connection,
@@ -795,91 +342,6 @@ impl EntryOrders {
             Entry::Vacant(entry) => entry.insert(entry_order(connection, source_id, container)?),
         })
     }
-}
-
-impl Positions {
-    fn of(
-        &mut self,
-        connection: &Connection,
-        source_id: &str,
-        container: &str,
-        id: &str,
-    ) -> Result<Option<i64>, AppError> {
-        let key = (source_id.to_owned(), container.to_owned());
-        if !self.0.contains_key(&key) {
-            let entries = entry_order(connection, source_id, container)?;
-            let positions = entries
-                .into_iter()
-                .enumerate()
-                .map(|(position, entry)| (entry.id, i64::try_from(position).unwrap_or(i64::MAX)))
-                .collect();
-            self.0.insert(key.clone(), positions);
-        }
-        Ok(self
-            .0
-            .get(&key)
-            .and_then(|positions| positions.get(id))
-            .copied())
-    }
-}
-
-/// One connector object as a search hit with its ancestry.
-pub(crate) fn connector_hit(
-    connection: &Connection,
-    source_id: &str,
-    id: &str,
-    positions: &mut Positions,
-) -> Result<SearchHit, AppError> {
-    let evidence = evidence(connection, source_id, id)?
-        .ok_or_else(|| AppError::database_data("connector index references missing silver"))?;
-    let (group_created_at, group_updated_at) = evidence.group_times();
-    let own = anchor(evidence.object.role, source_id, id);
-    let group = if evidence.object.role == Role::Entry {
-        evidence
-            .ancestors
-            .iter()
-            .find(|(role, _)| *role == Role::Container)
-            .map_or_else(
-                || own.clone(),
-                |(_, container)| anchor(Role::Container, source_id, container.id.as_str()),
-            )
-    } else {
-        own.clone()
-    };
-    Ok(SearchHit {
-        lookup: None,
-        lexical_match: None,
-        id: own,
-        conversation_id: group,
-        source: Source::Connector(source_id.to_owned()),
-        object: evidence.object_type(),
-        ancestors: evidence.ancestors(source_id),
-        role: None,
-        author_kind: evidence.author(),
-        author: crate::source::author(None, evidence.author()),
-        sequence: match (evidence.object.role, evidence.group()) {
-            (Role::Entry, Some(container)) => {
-                positions.of(connection, source_id, container.id.as_str(), id)?
-            }
-            _ => None,
-        },
-        content: evidence.content().to_owned(),
-        created_at: evidence.object.created_at,
-        metadata: crate::search_results::ChatMetadata {
-            enrichment: None,
-            title: evidence.title().map(str::to_owned),
-            project: None,
-            repository: None,
-            created_at: group_created_at,
-            updated_at: group_updated_at.or(evidence.object.updated_at),
-        },
-        copies: Vec::new(),
-        lexical_score: None,
-        semantic_score: None,
-        fusion_score: 0.0,
-        rerank_score: None,
-        node_id: None,
-    })
 }
 
 /// An entry with up to `context` chronological neighbours among the entries of
@@ -1007,7 +469,6 @@ mod sequence_tests {
             created_at,
             sequence: 0,
             text: String::new(),
-            ancestry: String::new(),
         }
     }
 

@@ -164,7 +164,7 @@ fn explicit_references_cannot_be_replaced_by_nearby_issue_numbers() {
         wrong.rerank_score = Some(3.0);
         let mut correct = hit("correct", "correct-pr");
         correct.content = "https://github.com/cBioPortal/cbioportal-core/pull/180".into();
-        // Exact references remain evidence outside the reranking/FTS budget.
+        // Exact references remain evidence outside the reranking/candidate budget.
         correct.lexical_score = None;
         correct.rerank_score = None;
         match collect(vec![wrong, correct], unit, 5, "PR 180") {

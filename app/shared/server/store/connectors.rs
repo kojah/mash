@@ -2,7 +2,8 @@
 //! lock; certification brings the node's connector points in line with it.
 use super::{Identity, Store};
 use crate::storage::connector_views::{self, Evidence, Unit};
-use crate::views::qdrant::{ConnectorPoint, ConnectorUnit, Documents, NodeViews};
+use crate::views::materialize::{connector_digest as digest, connector_point as point};
+use crate::views::qdrant::{Documents, NodeViews};
 use crate::{
     AppError,
     connectors::{Batch, Receipt, silver},
@@ -22,13 +23,6 @@ pub(crate) struct Embedder {
 struct Units {
     digests: BTreeMap<String, String>,
     changed: Vec<(Unit, Evidence)>,
-}
-
-/// Covers what a point stores beyond the text: kind, group and ancestry.
-fn digest(unit: &Unit) -> String {
-    blake3::hash(connector_views::unit_digest_input(unit).as_bytes())
-        .to_hex()
-        .to_string()
 }
 
 impl Store {
@@ -145,14 +139,11 @@ impl Store {
                 let mut digests = BTreeMap::new();
                 let mut changed = Vec::new();
                 for unit in connector_views::silver_units(connection)? {
-                    let value = digest(&unit);
+                    let evidence =
+                        connector_views::evidence(connection, &unit.source_id, &unit.record_id)?
+                            .ok_or_else(|| AppError::internal("connector object disappeared"))?;
+                    let value = digest(&unit, &evidence)?;
                     if known.get(&unit.anchor) != Some(&value) {
-                        let evidence = connector_views::evidence(
-                            connection,
-                            &unit.source_id,
-                            &unit.record_id,
-                        )?
-                        .ok_or_else(|| AppError::internal("connector object disappeared"))?;
                         changed.push((unit.clone(), evidence));
                     }
                     digests.insert(unit.anchor, value);
@@ -222,34 +213,16 @@ impl Store {
         identity: &Identity,
     ) -> Result<BTreeMap<String, String>, AppError> {
         self.read(identity, |connection| {
-            Ok(connector_views::silver_units(connection)?
+            connector_views::silver_units(connection)?
                 .iter()
-                .map(|unit| (unit.anchor.clone(), digest(unit)))
-                .collect())
+                .map(|unit| {
+                    let evidence =
+                        connector_views::evidence(connection, &unit.source_id, &unit.record_id)?
+                            .ok_or_else(|| AppError::internal("connector object disappeared"))?;
+                    Ok((unit.anchor.clone(), digest(unit, &evidence)?))
+                })
+                .collect()
         })
         .await
-    }
-}
-
-fn point(unit: &Unit, evidence: &Evidence, vector: Option<Vec<f64>>) -> ConnectorPoint {
-    let (group_created_at, group_updated_at) = evidence.group_times();
-    ConnectorPoint {
-        source_id: unit.source_id.clone(),
-        object: unit.object.clone(),
-        group_anchor: unit.group_anchor.clone(),
-        created_at: unit.created_at,
-        unit: ConnectorUnit {
-            anchor: unit.anchor.clone(),
-            text: unit.text.clone(),
-            content: evidence.content().to_owned(),
-            title: evidence.title().map(str::to_owned),
-            author_kind: evidence.author(),
-            sequence: unit.sequence,
-            chat_created_at: group_created_at,
-            chat_updated_at: group_updated_at,
-            ancestors: evidence.ancestors(&unit.source_id),
-            generation: None,
-        },
-        vector,
     }
 }

@@ -335,15 +335,6 @@ fn seed_core(database: &std::path::Path) {
     writer.begin_silver_scan(Provider::Codex).unwrap();
     writer.finish_silver_scan(Provider::Codex, true).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
-    writer
-        .publish_views_manifest(&crate::views::manifest::Manifest::new(
-            crate::views::config::Build::default(),
-            "unavailable".into(),
-            writer.silver_certificate().unwrap(),
-        ))
-        .unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
 }
@@ -355,7 +346,8 @@ async fn verify_core(service: &Service) {
     seed_core(&database);
     let before = std::fs::read(&database).unwrap();
     let config = directory.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id={:?}\nnode_id='first'\napi_url={:?}\ntoken_env='HOME'\n", service.group, service.url)).unwrap();
+    std::fs::write(&config, format!("version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n[index]\ndestination='both'\n[shared]\ngroup_id={:?}\nnode_id='first'\napi_url={:?}\ntoken_env='HOME'\n", service.group, service.url)).unwrap();
+    let (gold, url) = crate::views::local::test_support::lexical(&database, &config).await;
     for unit in [SearchUnit::Messages, SearchUnit::Chats] {
         let response = core::execute(core::Request {
             paths: core::Paths {
@@ -413,6 +405,7 @@ async fn verify_core(service: &Service) {
     }
     assert_eq!(std::fs::read(&database).unwrap(), before);
     assert!(!directory.path().join("missing-models").exists());
+    crate::views::local::test_support::cleanup(&gold, &url).await;
 }
 
 #[tokio::test]

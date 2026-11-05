@@ -1,185 +1,330 @@
-//! Built-in views: rebuildable local retrieval state from stored silver history.
-use crate::AppError;
-use crate::progress::milliseconds as elapsed_milliseconds;
-use crate::semantic::{self, Models};
-use crate::storage::{Counts, SnapshotCoverage, Storage};
-use std::time::Instant;
+//! Direct local Qdrant projection from committed SQLite silver. No HTTP service.
+use super::{
+    manifest::Manifest,
+    qdrant::{NodeViews, Store, ViewChat},
+    scope::Scope,
+};
+use crate::{
+    AppError,
+    config::ResolvedConfig,
+    semantic,
+    storage::{Counts, Storage, gold_input::Input},
+};
+use std::{path::Path, sync::Arc, time::Instant};
+
+mod projection;
+
+#[cfg(test)]
+pub(crate) mod test_support;
+#[cfg(test)]
+mod tests;
 
 pub(crate) struct Build {
     pub(crate) counts: Counts,
     pub(crate) ready: bool,
+    pub(crate) manifest: Option<Manifest>,
     pub(crate) embeddings: semantic::EmbeddingSummary,
     pub(crate) model_load_milliseconds: u64,
     pub(crate) search_refresh_milliseconds: u64,
     pub(crate) embedding_milliseconds: u64,
 }
 
-#[tracing::instrument(name = "views_build", skip_all)]
-/// `connector_only` vouches that only connector silver changed since views
-/// were last certified, so native derived state needs no rebuild.
-pub(crate) fn build(
-    storage: &mut Storage,
-    models: &Models,
-    summary: &crate::silver::IndexSummary,
-    build: &crate::views::config::Build,
-    connector_only: bool,
-) -> Result<Build, AppError> {
-    let silver = storage.silver_certificate()?;
-    let views_allowed = silver.permits_views();
-    let model = models.generation();
-    let manifest = crate::views::manifest::Manifest::new(build.clone(), model.clone(), silver);
-    let previous = storage.views_manifest()?;
-    let representations_changed = previous
+pub(crate) struct Local {
+    database: std::path::PathBuf,
+    instance: String,
+    pub(crate) store: Store,
+    pub(crate) scope: Scope,
+    pub(crate) certificate: crate::silver::certificate::Certificate,
+}
+
+fn key(configuration: &ResolvedConfig) -> Result<Option<String>, AppError> {
+    configuration
+        .qdrant
+        .api_key_env
         .as_ref()
-        .is_some_and(|m| m.build.representations != build.representations);
-    // The published views were certified for this recipe, model and silver
-    // revision; silver revisions change with every canonical write.
-    let certified_unchanged = connector_only
-        || previous
+        .map(|name| {
+            std::env::var(name).map_err(|_| {
+                AppError::configuration(format!("set {name} to the local Qdrant API key"))
+            })
+        })
+        .transpose()
+}
+
+fn scope(instance: &str, configuration: &ResolvedConfig) -> Scope {
+    let node = configuration
+        .shared
+        .as_ref()
+        .map_or("local", |shared| shared.node_id.as_str());
+    let node_key = blake3::hash(node.as_bytes()).to_hex();
+    Scope {
+        group_id: format!("local-{instance}-{}", &node_key[..16]),
+        node_id: node.into(),
+        generation: semantic::configured_generation(configuration.embeddings.as_ref()),
+        dimensions: configuration
+            .embeddings
             .as_ref()
-            .is_some_and(|m| m.matches(build, &model, &manifest.silver));
-    if representations_changed
-        || (build != &crate::views::config::Build::default() && !certified_unchanged)
-    {
-        // Title changes are canonical metadata changes, so rebuild all affected
-        // representations conservatively until a finer dependency map exists.
-        // A recipe change must replace a deferred ingestion delta with a full
-        // rebuild; otherwise unchanged messages never enter the dense queue.
-        storage.defer_search_updates()?;
-        storage.mark_derived_search_dirty()?;
+            .map_or(384, |value| value.dimensions),
     }
-    let mut model_load_milliseconds = 0;
-    let search_started = Instant::now();
-    if storage.derived_search_is_dirty()? {
-        emit_index_phase(crate::progress::Phase::SearchRebuild, summary);
-        crate::progress::during(crate::progress::Phase::SearchRebuild, || {
-            storage.refresh_derived_search_state()
-        })?;
-    } else {
-        storage.refresh_derived_search_state()?;
+}
+
+fn revision(
+    certificate: &crate::silver::certificate::Certificate,
+) -> Result<crate::silver::revision::State, AppError> {
+    let bytes = serde_json::to_vec(certificate)
+        .map_err(|_| AppError::internal("encode local silver identity"))?;
+    crate::silver::revision::State::next(None, blake3::hash(&bytes).to_hex().to_string())
+}
+
+impl Local {
+    /// Readers verify existing collections and settings without creating them.
+    pub(crate) async fn open(
+        database: &Path,
+        configuration: &ResolvedConfig,
+    ) -> Result<Self, AppError> {
+        Self::open_inner(database, configuration, false).await
     }
-    let search_refresh_milliseconds = elapsed_milliseconds(search_started);
-    if views_allowed {
-        storage.publish_lexical_manifest()?;
+
+    pub(crate) async fn open_exact(
+        database: &Path,
+        configuration: &ResolvedConfig,
+    ) -> Result<Self, AppError> {
+        Self::open_inner(database, configuration, true).await
     }
-    if !build.dense_enabled() {
-        storage.clear_dense_views()?;
-        storage.publish_views_manifest(&manifest)?;
-        return Ok(Build {
-            counts: storage.counts()?,
-            ready: views_allowed,
-            embeddings: semantic::EmbeddingSummary::default(),
-            model_load_milliseconds: 0,
-            search_refresh_milliseconds,
-            embedding_milliseconds: 0,
-        });
-    }
-    emit_index_phase(crate::progress::Phase::SemanticEmbeddings, summary);
-    let embedding_started = Instant::now();
-    let generation = build.generation(&model);
-    storage.restrict_dense_queue(build)?;
-    resume_snapshot(storage, &generation, views_allowed, certified_unchanged)?;
-    let already_published = storage.semantic_generation_is_published(&generation)?
-        && !storage.has_pending_embeddings()?;
-    if !already_published {
-        storage.invalidate_embedding_generation(&generation)?;
-        storage.restrict_dense_queue(build)?;
-    }
-    let mut embeddings = if !already_published && storage.has_pending_embeddings()? {
-        storage.commit_and_continue_writer()?;
-        let model_started = Instant::now();
-        let mut embedding_pool =
-            crate::progress::during(crate::progress::Phase::ModelLoading, || {
-                models.load_indexer()
-            })?
-            .ok_or_else(AppError::models_missing)?;
-        model_load_milliseconds = elapsed_milliseconds(model_started);
-        let progress = |event| crate::progress::emit(&crate::progress::Event::embedding(&event));
-        if build == &crate::views::config::Build::default() {
-            semantic::rebuild_embeddings(storage, &mut embedding_pool, &generation, progress)?
-        } else {
-            semantic::rebuild_with_build(
-                storage,
-                &mut embedding_pool,
-                &generation,
-                build,
-                progress,
-            )?
+
+    async fn open_inner(
+        database: &Path,
+        configuration: &ResolvedConfig,
+        exact: bool,
+    ) -> Result<Self, AppError> {
+        let source = database.to_path_buf();
+        let database = source.clone();
+        let (instance, certificate) =
+            crate::blocking(move || Storage::open_silver(&database)?.local_gold_state(&database))
+                .await?;
+        let scope = scope(&instance, configuration);
+        let key = key(configuration)?;
+        let mut store = Store::open(
+            &configuration.qdrant.url,
+            key.as_deref(),
+            std::slice::from_ref(&scope.group_id),
+            scope.dimensions,
+            64 * 1024 * 1024,
+            configuration.qdrant.vector_search,
+            configuration.qdrant.memory,
+        )
+        .await?
+        .with_build(configuration.views.build.clone())
+        .with_response_redaction(configuration.redaction.output());
+        if exact {
+            store = store.with_lexical_build(&scope).await?;
         }
-    } else {
-        semantic::EmbeddingSummary::default()
-    };
-    embed_connectors(storage, models, &generation, &mut embeddings)?;
-    let embedding_milliseconds = elapsed_milliseconds(embedding_started);
-    let counts = storage.counts()?;
-    if !already_published && views_allowed {
-        crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
-            storage.mark_semantic_build_ready(&generation, build)
-        })?;
+        store.views_configuration(&scope).await?;
+        Ok(Self {
+            database: source,
+            instance,
+            store,
+            scope,
+            certificate,
+        })
     }
-    if views_allowed {
-        storage.publish_views_manifest(&manifest)?;
+
+    pub(crate) async fn current(&self) -> Result<Option<NodeViews>, AppError> {
+        let database = self.database.clone();
+        let (instance, current) =
+            crate::blocking(move || Storage::open_silver(&database)?.local_gold_state(&database))
+                .await?;
+        if instance != self.instance || current != self.certificate {
+            return Ok(None);
+        }
+        let state = revision(&self.certificate)?;
+        Ok(self.store.node_views(&self.scope).await?.filter(|node| {
+            self.certificate.permits_views() && node.current(&self.store, &self.scope, Some(&state))
+        }))
     }
+
+    pub(crate) async fn candidates(
+        &self,
+        input: super::retrieval::Search,
+    ) -> Result<super::retrieval::Candidates, AppError> {
+        use crate::observability::retrieval::{Guard, Stage};
+        let mut measured = Guard::begin(if input.intent == super::exact::Intent::ExactMention {
+            Stage::LocalExact
+        } else {
+            Stage::LocalCandidates
+        });
+        if self.current().await?.is_none() {
+            return Err(AppError::search_not_ready(
+                "local gold is not current; run mash index",
+            ));
+        }
+        let active = std::collections::BTreeSet::from([self.scope.node_id.clone()]);
+        let result = self.store.search(&self.scope, input, &active).await?;
+        if self.current().await?.is_none() {
+            return Err(AppError::search_not_ready(
+                "local silver changed during retrieval; retry after indexing",
+            ));
+        }
+        measured.complete(None, Some(result.lexical.len() + result.semantic.len()));
+        Ok(result)
+    }
+}
+
+/// Caller retains local writer admission from ingestion through certification.
+#[allow(
+    clippy::too_many_lines,
+    reason = "keep invalidation, awaited mutations and final certification in one coordinator"
+)]
+pub(crate) async fn build(
+    database: &Path,
+    models: &Path,
+    configuration: &ResolvedConfig,
+    full: bool,
+) -> Result<Build, AppError> {
+    let started = Instant::now();
+    crate::progress::emit(&crate::progress::Event::new(
+        crate::progress::Phase::SearchRebuild,
+        0,
+        None,
+    ));
+    let path = database.to_path_buf();
+    let input = Arc::new(crate::blocking(move || Input::capture(&path)).await?);
+    let scope = scope(&input.instance, configuration);
+    let key = key(configuration)?;
+    let store = Store::connect(
+        (&configuration.qdrant.url, &configuration.qdrant.grpc_url),
+        key.as_deref(),
+        std::slice::from_ref(&scope.group_id),
+        scope.dimensions,
+        64 * 1024 * 1024,
+        configuration.qdrant.vector_search,
+        super::qdrant::MemoryPolicy {
+            tier: configuration.qdrant.memory,
+            activate: true,
+        },
+    )
+    .await?
+    .with_build(configuration.views.build.clone());
+    let version = store.select_views(&scope, true).await?;
+    store.select_query(&scope, true).await?;
+    let previous = store
+        .node_views(&scope)
+        .await?
+        .filter(|node| node.compatible(&store, &scope) && node.certified && !full);
+    let state = revision(&input.certificate)?;
+    if input.certificate.permits_views()
+        && let Some(node) = &previous
+        && node.current(&store, &scope, Some(&state))
+    {
+        return Ok(unchanged(&input, &scope, configuration, node, started));
+    }
+    let mut node = NodeViews::empty(&store, &scope);
+    // Persist stale metadata before any document mutation, including deletions.
+    store.put_node_views(&scope, &node).await?;
+    store
+        .retain_node_conversations(&scope, input.chats.keys().cloned().collect())
+        .await?;
+    let mut work = Box::pin(projection::native(
+        &store,
+        &scope,
+        models,
+        configuration,
+        &input,
+        previous.as_ref(),
+        &mut node,
+    ))
+    .await?;
+    Box::pin(projection::connectors(
+        &store,
+        &scope,
+        (models, configuration),
+        &input,
+        previous.as_ref(),
+        &mut node,
+        &mut work,
+    ))
+    .await?;
+    let stored = node.stored_vectors();
+    emit_progress(stored, &work.embeddings, started);
+    store.settle(&scope).await?;
+    let path = database.to_path_buf();
+    let certificate =
+        crate::blocking(move || Storage::open_silver(&path)?.silver_certificate()).await?;
+    if certificate != input.certificate
+        || store.views_configuration(&scope).await?.version != version
+    {
+        return Err(AppError::search_not_ready(
+            "local silver or views settings changed during refresh; retry indexing",
+        ));
+    }
+    node.input = Some(
+        i64::try_from(certificate.revision)
+            .map_err(|_| AppError::database_data("silver revision overflow"))?,
+    );
+    let ready = certificate.permits_views() && node.chats.values().all(|chat| chat.complete);
+    node.certified = ready;
+    node.silver = ready.then_some(state);
+    store.put_node_views(&scope, &node).await?;
+    work.embeddings.stored_vectors = stored;
+    work.embeddings.reused_vectors = stored.saturating_sub(work.embeddings.model_inferences);
     Ok(Build {
-        counts,
-        ready: storage.semantic_index_is_ready(&generation)?,
-        embeddings,
-        model_load_milliseconds,
-        search_refresh_milliseconds,
-        embedding_milliseconds,
+        counts: input.counts.clone(),
+        ready,
+        manifest: ready.then(|| {
+            Manifest::new(
+                configuration.views.build.clone(),
+                scope.generation.clone(),
+                certificate,
+            )
+        }),
+        embeddings: work.embeddings,
+        model_load_milliseconds: work.model_load_milliseconds,
+        embedding_milliseconds: work.embedding_milliseconds,
+        search_refresh_milliseconds: crate::progress::milliseconds(started),
     })
 }
 
-/// Keep the ready snapshot from before this scan when silver did not change.
-fn resume_snapshot(
-    storage: &mut Storage,
-    generation: &str,
-    source_complete: bool,
-    certified_unchanged: bool,
-) -> Result<(), AppError> {
-    if source_complete && certified_unchanged {
-        // A scan that changed nothing keeps its certified snapshot instead of
-        // re-certifying every vector against unchanged silver.
-        storage.resume_unchanged_semantic_snapshot(generation, SnapshotCoverage::Certified)
-    } else if !source_complete {
-        storage.resume_unchanged_semantic_snapshot(generation, SnapshotCoverage::Recheck)
-    } else {
-        Ok(())
+fn unchanged(
+    input: &Input,
+    scope: &Scope,
+    configuration: &ResolvedConfig,
+    node: &NodeViews,
+    started: Instant,
+) -> Build {
+    let stored = node.stored_vectors();
+    Build {
+        counts: input.counts.clone(),
+        ready: true,
+        manifest: Some(Manifest::new(
+            configuration.views.build.clone(),
+            scope.generation.clone(),
+            input.certificate.clone(),
+        )),
+        embeddings: semantic::EmbeddingSummary {
+            stored_vectors: stored,
+            reused_vectors: stored,
+            ..Default::default()
+        },
+        model_load_milliseconds: 0,
+        embedding_milliseconds: 0,
+        search_refresh_milliseconds: crate::progress::milliseconds(started),
     }
 }
 
-/// Connector units carry their own vectors, independent of native recipes;
-/// they count toward the index summary like native vectors.
-fn embed_connectors(
-    storage: &mut Storage,
-    models: &Models,
-    generation: &str,
-    summary: &mut semantic::EmbeddingSummary,
-) -> Result<(), AppError> {
-    if storage.connector_embeddings_complete(generation)? {
-        return Ok(());
-    }
-    storage.commit_and_continue_writer()?;
-    let mut pool = models
-        .load_indexer()?
-        .ok_or_else(AppError::models_missing)?;
-    let stored = semantic::embed_connector_units(storage, &mut pool, generation)?;
-    summary.stored_vectors = summary.stored_vectors.saturating_add(stored);
-    summary.model_inferences = summary.model_inferences.saturating_add(stored);
-    Ok(())
-}
-
-#[cfg(test)]
-mod selection_tests;
-#[cfg(test)]
-mod tests;
-
-fn emit_index_phase(phase: crate::progress::Phase, summary: &crate::silver::IndexSummary) {
-    crate::progress::emit(&crate::progress::Event::files(
-        phase,
-        summary,
-        0,
-        None,
-        crate::progress::EtaScope::Phase,
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "throughput is approximate; vector counters retain their exact integers"
+)]
+fn emit_progress(stored: u64, embeddings: &semantic::EmbeddingSummary, started: Instant) {
+    crate::progress::emit(&crate::progress::Event::embedding(
+        &semantic::EmbeddingProgress {
+            stored_vectors: stored,
+            total_vectors: stored,
+            model_inferences: embeddings.model_inferences,
+            reused_vectors: stored.saturating_sub(embeddings.model_inferences),
+            elapsed_milliseconds: crate::progress::milliseconds(started),
+            stored_vectors_per_second: stored as f64
+                / started.elapsed().as_secs_f64().max(f64::EPSILON),
+            eta_seconds: Some(0),
+        },
     ));
 }

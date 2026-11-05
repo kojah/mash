@@ -12,8 +12,6 @@ use std::{
 #[repr(usize)]
 pub(crate) enum Stage {
     LocalExact,
-    LocalLexical,
-    LocalDense,
     SharedCandidates,
     Context,
     Embed,
@@ -22,8 +20,9 @@ pub(crate) enum Stage {
     LocalMetadata,
     SharedMetadata,
     MetadataMerge,
+    LocalCandidates,
 }
-const COUNT: usize = 11;
+const COUNT: usize = 10;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Measurement {
@@ -126,8 +125,7 @@ impl Drop for Guard {
                 filters_before_limit: matches!(
                     active.stage,
                     Stage::LocalExact
-                        | Stage::LocalLexical
-                        | Stage::LocalDense
+                        | Stage::LocalCandidates
                         | Stage::SharedCandidates
                         | Stage::LocalMetadata
                         | Stage::SharedMetadata

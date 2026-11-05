@@ -37,8 +37,6 @@ fn seed(database: &std::path::Path) {
         .unwrap();
     writer.finish_silver_scan(Provider::Codex, true).unwrap();
     writer.finish_silver_ingestion().unwrap();
-    writer.rebuild_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
     writer.commit_writer().unwrap();
 }
 
@@ -52,6 +50,7 @@ fn ids(page: &serde_json::Value) -> Vec<String> {
 }
 
 #[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn sdk_search_pages_continue_from_next_offset() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("silver.sqlite3");
@@ -62,6 +61,7 @@ async fn sdk_search_pages_continue_from_next_offset() {
     )
     .unwrap();
     seed(&database);
+    let (gold, url) = crate::views::local::test_support::lexical(&database, &config).await;
     let server = Mash {
         runtime: None,
         paths: Arc::new(Paths {
@@ -127,4 +127,5 @@ async fn sdk_search_pages_continue_from_next_offset() {
     }
     client.cancel().await.unwrap();
     service.cancel().await.unwrap();
+    crate::views::local::test_support::cleanup(&gold, &url).await;
 }

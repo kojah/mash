@@ -64,20 +64,12 @@ impl Literal {
     pub(crate) fn mode(&self) -> super::matching::Mode {
         self.mode
     }
-    pub(crate) fn text(&self) -> &str {
-        &self.text
-    }
-
     pub(crate) fn evidence(&self, content: &str) -> Option<super::matching::Evidence> {
         self.locate(content)
             .map(|(range, kind)| super::matching::Evidence {
                 kind,
                 matched: content[range].to_owned(),
             })
-    }
-
-    pub(crate) fn fts_query(&self) -> String {
-        format!("\"{}\"", self.text.replace('"', "\"\""))
     }
 
     pub(crate) fn matches(&self, content: &str) -> bool {
@@ -227,6 +219,6 @@ mod tests {
         assert!(Literal::new("if").unwrap().matches("if (x)"));
         assert!(Literal::new("\"\"").is_err());
         assert!(Literal::new(&"x".repeat(16_385)).is_err());
-        assert_eq!(Literal::new("a\"b").unwrap().fts_query(), "\"a\"\"b\"");
+        assert!(Literal::new("a\"b").unwrap().matches("a\"b"));
     }
 }

@@ -52,24 +52,13 @@ impl Storage {
 
     pub(crate) fn begin_silver_scan(&mut self, provider: Provider) -> Result<(), AppError> {
         self.require_writer()?;
-        // Retain only the identity of the previously published views snapshot.
-        // This cannot authorize a new build; views may resume it if silver and
-        // model identity are unchanged after a rejected source contributes nothing.
-        self.connection.execute(
-            "UPDATE derived_state SET resume_generation=semantic_ready_generation,
-                resume_silver_revision=(SELECT revision FROM silver_state WHERE singleton=1),
-                resume_interpretation_version=(SELECT interpretation_version FROM silver_state WHERE singleton=1)
-             WHERE singleton=1 AND semantic_ready_generation IS NOT NULL
-               AND (SELECT interpretation_version FROM silver_state WHERE singleton=1)=?1",
-            [INTERPRETATION_VERSION],
-        ).map_err(AppError::database)?;
         self.connection.execute(
             "INSERT INTO silver_scans(provider,interpretation_version,state) VALUES(?1,?2,?3)
              ON CONFLICT(provider) DO UPDATE SET interpretation_version=excluded.interpretation_version,state=excluded.state",
             params![provider, INTERPRETATION_VERSION, ScanState::Pending as i64],
         ).map_err(AppError::database)?;
-        // A checkpointed partial scan must not retain a published ready marker.
-        self.mark_semantic_index_incomplete()
+        // Pending silver certification makes all previous gold builds stale.
+        Ok(())
     }
 
     pub(crate) fn finish_silver_scan(

@@ -21,9 +21,9 @@ sequences and named regressions. Mutation audits remain explicit because they
 rebuild and retest each variant. On Xenia all Make targets use `agent-test` for
 heavy work. No check installs embedding models or uses production backend data.
 
-The backend generator varies connector writes, deletions and interruptions
+The backend generator varies connector content and timestamps, deletions and interruptions
 between actual point writes and persisted digest writes. It compares physical
-Qdrant records to independent expected content after successful recovery, then
+Qdrant records to independent expected content and timestamps after successful recovery, then
 shrinks a failing operation sequence. Its per-instance interruption hook is
 compiled only into tests. This simulates a durable boundary failure, not process
 termination or a remote request that continues after timing out.
@@ -77,62 +77,39 @@ concurrent tests, as the focused runner does. SQLite-heavy tests otherwise
 compete for disk access at host CPU-count concurrency and can exceed their
 existing deadlines even inside the per-job memory budget.
 
-## Local vector retrieval measurements
+## Direct local Qdrant acceptance
 
-The ignored `benchmark_local_filtered_vectors` benchmark reads an explicitly
-prepared local index and installed models. It records real quantized query
-vectors, SQL-admitted vector IDs and exact top-20 scores for native and connector
-history. It measures scoring with preloaded vectors separately from the existing
-dense retrieval path, which loads vectors and hydrates the selected hits.
-
-Run it on a frozen corpus copy, with an unused report filename outside Git:
+Local CLI/MCP calls Qdrant directly; it does not start an Axum service. Run the
+local lifecycle tests against one disposable Qdrant instance, with both
+`MASH_TEST_QDRANT_URL` (REST reads/setup) and `MASH_TEST_QDRANT_GRPC_URL`
+(point mutations) set to that instance:
 
 ```bash
 agent-test env TMPDIR=/home/james/scratch/achi-tmp \
   CARGO_TARGET_DIR=/home/james/scratch/achi-targets/integrated \
-  CARGO_INCREMENTAL=0 RUSTC_WRAPPER= \
-  MASH_TEST_MODELS_DIR=/path/to/explicitly-installed/models \
-  MASH_TEST_SEARCH_DB=/path/to/frozen/index.sqlite3 \
-  MASH_TEST_VECTOR_REPORT=/home/james/scratch/mash-artifacts/vector-reference.json \
-  cargo nextest run --release --locked --jobs 4 --lib --run-ignored only \
-  -E 'test(benchmark_local_filtered_vectors)' --no-tests fail --nocapture
+  CARGO_INCREMENTAL=1 RUSTC_WRAPPER= \
+  cargo test-clif --locked --lib --run-ignored only \
+  -E 'test(local_qdrant) or test(qdrant_status_rejects)' \
+  --no-tests fail --test-threads 2
 ```
 
-The benchmark never installs models or writes the index. The report contains
-private identities and query embeddings; keep it private. Scopes exercise kind,
-date, union, negation and empty filters. Three repetitions per query/scope expose
-warm variation; they do not establish cold-cache latency or confidence intervals.
-All scope buffers stay resident during measurement, so peak benchmark memory is
-not the memory footprint of a normal search. Captured scope-load times include
-both filtering and vector loading. These measurements exclude lexical search,
-fusion, reranking and CLI startup, and do not certify end-to-end performance.
+These tests cover committed silver before replay, stale status, hidden/deleted
+records, failed inference, connector updates, and namespace isolation after
+copying or replacing silver. Public CLI/MCP acceptance adds first-run setup,
+readiness, pagination, evidence, privacy, and streamed rebuild progress. Tests
+using real embedding models require an explicit `MASH_TEST_MODELS_DIR`.
 
-`benchmark_local_ann_pipeline` replays private ANN candidate files through the
-same local hydration, fusion, diversification, contextual reranking and result
-collection functions. It uses the message/chat candidate limits (50/200),
-flexible lexical matching and a first page of 20 results. Supply the candidate
-JSON files as an OS path-separated `MASH_TEST_ANN_INPUTS` list, plus a new private
-`MASH_TEST_PIPELINE_REPORT` path and the same model/corpus variables above. Select
-`test(benchmark_local_ann_pipeline)` in the optimized nextest command. This
-ignored manual benchmark has a ten-minute bound.
-
-The replay records actual warm-process SQLite pipeline time and estimates ANN
-pipeline time by adding captured ANN retrieval, canonical vector rescoring and
-scope preparation to the measured shared pipeline work. The USearch estimate
-also includes measured SQLite ID prefiltering; the Edge payload path uses its
-indexed predicate. Index opening, process startup and publication/freshness
-machinery are outside this estimate. Keep candidate-generation source hashes and
-the frozen corpus with reports. Compare ordered result IDs and supporting IDs
-alongside timing; overlap measures agreement with the existing search, rather
-than human relevance. The small-set exhaustive adapter is a control and must
-preserve the exact pipeline's result identities and supporting evidence.
+The former SQLite vector scan and ANN replay benchmarks were removed with
+SQLite gold. Their historical captures do not describe the Qdrant implementation.
+Measure end-to-end indexing and search separately from transport benchmarks;
+transport byte counts and latency alone do not establish indexing throughput.
 
 ## Mutation audits
 
 [cargo-mutants](https://mutants.rs/) changes expressions or function bodies in
 an isolated copy and asks whether selected tests reject the changed behavior.
-The scope is silver revision validation, dense/lexical freshness manifests,
-and provider timestamp-provenance validation, with their corresponding tests
+The default scope is silver revision validation and provider
+timestamp-provenance validation, with their corresponding tests
 in `.cargo/mutants.toml`. The enrichment selection is limited to
 `Timestamps::is_current_for`; Codex paginated-history tests cover native metadata
 origins alongside the existing JSONL message-boundary evidence tests.
@@ -147,15 +124,17 @@ make mutation-check                  # Baseline first; then isolated mutations.
 For connector recovery, set `MASH_TEST_QDRANT_URL` to your disposable backend,
 review `bash tools/mutation-check.sh --list-connectors`, then run
 `PROPTEST_RNG_SEED=42 make mutation-connectors`. Its separate configuration
-selects connector synchronization and shared document-cleanup mutations, with
-generated recovery, node-isolation and HTTP publication tests. Review the list
+selects connector synchronization, the common complete-projection fingerprint,
+and shared document-cleanup mutations, with generated recovery, metadata-only
+updates on both destinations, node-isolation and HTTP publication tests. Review the list
 when changing either source file: field-deletion candidates can include adjacent
 cleanup helpers. Results describe that selected scope, not a coverage percentage.
 
 For native chat certification, set the disposable `MASH_TEST_QDRANT_URL`, review
 `bash tools/mutation-check.sh --list-certification`, and run
 `make mutation-certification`. Its separate scope covers `Store::certify` with
-real-backend coverage-merge, stale-head and parallel-baseline regressions. Set
+real-backend coverage-merge, stale-head and parallel-baseline regressions, plus
+common Qdrant freshness predicates and local reader identity checks. Set
 `MASH_MUTATION_DIFF` to an existing unified diff to bound any audit to changed
 hunks; the same filter applies to its list mode. Retain that diff with the
 results and check that the selected list is nonempty. This does not disable

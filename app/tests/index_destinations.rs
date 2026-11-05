@@ -61,6 +61,9 @@ impl Fixture {
             index = {destination = (destination)}
             shared = {group_id = (self.group.as_str()),node_id = (node),api_url = (self.server.as_ref().map_or("http://127.0.0.1:9",|s|s.url.as_str())),token_env = "MASH_TEST_ROUTING_TOKEN"}
         }).unwrap()).unwrap();
+        if self.server.is_some() {
+            configure_qdrant(&self.config);
+        }
     }
 
     fn run(&self, arguments: &[&str], online: bool) -> std::process::Output {
@@ -113,6 +116,12 @@ impl Fixture {
     }
     fn cleanup(&self) {
         shared_server::cleanup_group(&self.group);
+        let config: toml::Value =
+            toml::from_str(&std::fs::read_to_string(&self.config).unwrap()).unwrap();
+        cleanup_local_gold(
+            &self.database,
+            config["shared"]["node_id"].as_str().unwrap(),
+        );
     }
 }
 
@@ -234,6 +243,7 @@ fn claude_copy_reconciliation() {
 }
 
 #[test]
+#[ignore = "requires disposable Qdrant"]
 fn local_destination_never_publishes() {
     let fixture = Fixture::new();
     fixture.configure("local", "local");
@@ -241,6 +251,7 @@ fn local_destination_never_publishes() {
     assert_eq!(response["indexed_conversations"], 2);
     assert!(response.get("shared").is_none());
     assert!(fixture.json(&["status"], false).get("shared").is_none());
+    fixture.cleanup();
 }
 
 #[test]

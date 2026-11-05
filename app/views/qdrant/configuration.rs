@@ -3,7 +3,7 @@ use super::{AppError, PointKind, Scope, Store, api, collection, failure, point_i
 use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u32 = 4;
+pub(crate) const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +48,18 @@ fn version() -> Result<String, AppError> {
 }
 
 impl Store {
+    /// Exact retrieval uses the persisted recipe, without activating requested
+    /// dense-only changes. Its node must still certify the current silver.
+    pub(crate) async fn with_lexical_build(mut self, identity: &Scope) -> Result<Self, AppError> {
+        let configuration = self.group_configuration(identity).await?.ok_or_else(|| {
+            AppError::search_not_ready("Qdrant views configuration is missing; rebuild views")
+        })?;
+        self.build = configuration.build;
+        // Keep the model-space/schema guard; this only decouples dense recipes.
+        self.active_configuration(identity).await?;
+        Ok(self)
+    }
+
     pub(crate) fn with_query(mut self, query: super::VectorIndex) -> Self {
         self.vector_index = query;
         self
@@ -176,11 +188,11 @@ impl Store {
         identity: &Scope,
     ) -> Result<Configuration, AppError> {
         let current = self.group_configuration(identity).await?.ok_or_else(|| {
-            super::conflict("shared group views configuration is missing; restart the API")
+            super::conflict("Qdrant views configuration is missing; rebuild views from silver")
         })?;
         if !current.matches(self, identity) {
             return Err(super::conflict(
-                "shared group views configuration changed; restart this API with the active settings",
+                "Qdrant views configuration changed; reopen with the active settings or explicitly rebuild views",
             ));
         }
         Ok(current)

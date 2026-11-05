@@ -6,7 +6,9 @@ use super::{
 use crate::AppError;
 use crate::config::{self, ResolvedConfig};
 use crate::provider::Provider;
-use crate::semantic::{self, Models};
+#[cfg(test)]
+use crate::semantic;
+use crate::semantic::Models;
 use crate::storage::Storage;
 use crate::{shared, silver as history};
 #[cfg(test)]
@@ -42,22 +44,16 @@ pub(super) async fn run(
     let local_options = options.clone();
     let _progress = crate::progress::Session;
     let db = database.to_path_buf();
-    let root = models.to_path_buf();
-    let embeddings = configuration.embeddings.clone();
-    let build = configuration.views.build.clone();
     let all_sources = options.clone();
     let attachments = configuration.attachments.clone();
-    let mut result = crate::blocking(move || {
-        history::validate_output_path(&db, &all_sources)?;
-        index(
-            &db,
-            &root,
-            embeddings,
-            full,
-            LocalInput::ProviderFiles(local_options, attachments),
-            &build,
-        )
-    })
+    crate::blocking(move || history::validate_output_path(&db, &all_sources)).await?;
+    let mut result = index(
+        database,
+        models,
+        configuration,
+        full,
+        LocalInput::ProviderFiles(local_options, attachments),
+    )
     .await?;
     if let Some(backfill_id) = request.backfill.clone() {
         let Some(config) = publication_config(configuration) else {
@@ -70,7 +66,13 @@ pub(super) async fn run(
             emit_finished(&result);
             return Ok(result);
         };
-        match shared::publication::publish_backfill(database, config, &backfill_id).await {
+        let inference = shared::publication::Inference {
+            models_dir: models,
+            embeddings: configuration.embeddings.as_ref(),
+        };
+        match shared::publication::publish_backfill(database, config, &backfill_id, Some(inference))
+            .await
+        {
             Ok(revision) => {
                 result.shared = Some(shared::Publication::published());
                 result.backfill = Some(crate::core::BackfillSummary {
@@ -163,86 +165,95 @@ async fn rebuild_local(
         ));
     }
     let _progress = crate::progress::Session;
-    let db = database.to_path_buf();
-    let root = models.to_path_buf();
-    let embeddings = configuration.embeddings.clone();
-    let build = configuration.views.build.clone();
-    let result = crate::blocking(move || {
-        index(
-            &db,
-            &root,
-            embeddings,
-            request.full,
-            LocalInput::StoredSilver,
-            &build,
-        )
-    })
+    let result = index(
+        database,
+        models,
+        configuration,
+        request.full,
+        LocalInput::StoredSilver,
+    )
     .await?;
     emit_finished(&result);
     Ok(result)
 }
 
 #[tracing::instrument(name = "local_index", skip_all)]
-fn index(
+#[allow(
+    clippy::too_many_lines,
+    reason = "one response assembles ingestion and projection metrics after the silver commit"
+)]
+async fn index(
     database_path: &Path,
     models_dir: &Path,
-    embeddings_config: Option<semantic::remote::Configuration>,
+    configuration: &ResolvedConfig,
     full: bool,
     input: LocalInput,
-    build: &crate::views::config::Build,
 ) -> Result<IndexResponse, AppError> {
     let total_started = Instant::now();
     let rebuild_local_views = matches!(input, LocalInput::StoredSilver);
-    if rebuild_local_views {
-        // Read-only preflight prevents schema migration or empty database
-        // creation from becoming an implicit bronze-to-silver operation.
-        require_certified_silver(&Storage::open_silver(database_path)?)?;
-    }
-    let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
-    if build.dense_enabled() && !build.users_only() {
-        models.require_indexer()?;
-    }
-    let storage_started = Instant::now();
-    let mut storage = Storage::open_writer(database_path)?;
-    if rebuild_local_views {
-        require_certified_silver(&storage)?;
-        if full {
-            // Replay: nothing from existing views is reused.
-            storage.discard_views()?;
-        }
-    }
-    if full || storage.derived_search_is_dirty()? {
-        storage.defer_search_updates()?;
-    }
-    if full {
-        storage.mark_derived_search_dirty()?;
-    }
-    let storage_setup_milliseconds = elapsed_milliseconds(storage_started);
-    let (summary, certificate, ingestion_milliseconds) = match input {
-        LocalInput::ProviderFiles(options, attachments) => {
-            storage.configure_attachments(attachments)?;
-            let source = silver::ingest(&mut storage, &options)?;
-            (source.summary, source.certificate, source.milliseconds)
-        }
-        LocalInput::StoredSilver => (
-            history::IndexSummary::default(),
-            storage.silver_certificate()?,
-            0,
-        ),
-    };
-    let views = views::build(&mut storage, &models, &summary, build, false)?;
+    let database = database_path.to_path_buf();
+    let root = models_dir.to_path_buf();
+    let embeddings_config = configuration.embeddings.clone();
+    let build = configuration.views.build.clone();
+    let (summary, certificate, storage_setup_milliseconds, ingestion_milliseconds) =
+        crate::blocking(move || {
+            let database_path = database.as_path();
+            if rebuild_local_views {
+                // Read-only preflight prevents schema migration or empty database
+                // creation from becoming an implicit bronze-to-silver operation.
+                require_certified_silver(&Storage::open_silver(database_path)?)?;
+            }
+            let models = Models::new(root).with_remote(embeddings_config);
+            if build.dense_enabled() && !build.users_only() {
+                models.require_indexer()?;
+            }
+            let storage_started = Instant::now();
+            let mut storage = Storage::open_writer(database_path)?;
+            if rebuild_local_views {
+                require_certified_silver(&storage)?;
+            }
+            let storage_setup_milliseconds = elapsed_milliseconds(storage_started);
+            let (summary, certificate, ingestion_milliseconds) = match input {
+                LocalInput::ProviderFiles(options, attachments) => {
+                    storage.configure_attachments(attachments)?;
+                    let source = silver::ingest(&mut storage, &options)?;
+                    (source.summary, source.certificate, source.milliseconds)
+                }
+                LocalInput::StoredSilver => (
+                    history::IndexSummary::default(),
+                    storage.silver_certificate()?,
+                    0,
+                ),
+            };
+            // Gold starts only after the canonical transaction has committed.
+            storage.commit_writer()?;
+            if full {
+                crate::progress::during(crate::progress::Phase::DatabaseCheckpoint, || {
+                    storage.truncate_wal()
+                })?;
+            }
+            Ok((
+                summary,
+                certificate,
+                storage_setup_milliseconds,
+                ingestion_milliseconds,
+            ))
+        })
+        .await?;
+    let build = &configuration.views.build;
+    let views = views::build(
+        database_path,
+        models_dir,
+        configuration,
+        full && rebuild_local_views,
+    )
+    .await?;
     let counts = views.counts;
     let embeddings = views.embeddings;
-    storage.commit_writer()?;
-    if full {
-        crate::progress::during(crate::progress::Phase::DatabaseCheckpoint, || {
-            storage.truncate_wal()
-        })?;
-    }
     emit_index_phase(crate::progress::Phase::LocalComplete, &summary);
     Ok(IndexResponse {
         backfill: None,
-        views: storage.views_manifest()?,
+        views: views.manifest,
         rebuild_local_views,
         silver: certificate,
         indexed_conversations: counts.conversations,

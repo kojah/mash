@@ -273,6 +273,8 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) local_views_error: Option<String>,
     pub(super) installation: super::installation::Summary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) coverage: Option<super::coverage::Report>,
@@ -319,6 +321,8 @@ pub(super) enum ModelAvailability {
 pub(crate) struct ForgetResponse {
     pub(super) id: String,
     pub(super) forgotten: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) local_views_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared: Option<shared::Publication>,
 }

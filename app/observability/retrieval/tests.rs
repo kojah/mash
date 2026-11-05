@@ -9,7 +9,7 @@ async fn request_measurements_propagate_to_blocking_work_and_remain_isolated() {
             .scope(async move {
                 let mut guard = Guard::begin(Stage::SharedCandidates);
                 crate::blocking(move || {
-                    measure_vec(Stage::LocalLexical, None, || Ok(vec![0; count]))
+                    measure_vec(Stage::LocalMetadata, None, || Ok(vec![0; count]))
                 })
                 .await
                 .unwrap();

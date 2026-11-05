@@ -19,20 +19,6 @@ fn options(root: &Path) -> IndexOptions {
     }
 }
 
-fn seed_vectors(storage: &mut Storage, message_ids: &[&str]) {
-    let vectors: Vec<_> = message_ids
-        .iter()
-        .map(|message_id| crate::storage::EmbeddingWrite {
-            message_id,
-            vector: &[127],
-            norm: 127.0,
-        })
-        .collect();
-    storage.replace_embeddings("fixture", &vectors).unwrap();
-    storage.mark_semantic_index_ready("fixture").unwrap();
-    storage.commit_and_continue_writer().unwrap();
-}
-
 fn index_with_slow_progress_and_safe_traces(
     storage: &mut Storage,
     options: &IndexOptions,
@@ -55,8 +41,7 @@ fn index_with_slow_progress_and_safe_traces(
 }
 
 #[test]
-fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_other_sources_advance()
-{
+fn malformed_refresh_retains_canonical_messages_and_checkpoint_while_other_sources_advance() {
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("session.jsonl");
     let original = format!(
@@ -71,7 +56,7 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
     let checkpoint = source_stamp(&source).unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     index(&mut storage, &options(directory.path())).unwrap();
-    seed_vectors(&mut storage, &[&first, &second]);
+    storage.commit_and_continue_writer().unwrap();
 
     fs::write(
         &source,
@@ -102,15 +87,14 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
         storage.view(&second, 0).unwrap()[0].content,
         "retained second sentinel"
     );
-    assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
     for query in ["damaged fragment", "uncommitted third"] {
-        assert_eq!(storage.search(query, 10, None, None).unwrap().len(), 0);
+        assert_eq!(
+            crate::storage::test_support::projections_with_text(&storage, query, None).len(),
+            0
+        );
     }
     assert_eq!(
-        storage
-            .search("healthy source", 10, None, None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(&storage, "healthy source", None).len(),
         1
     );
     let identity = SourceIdentity::file(&source);
@@ -144,10 +128,7 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
     assert_eq!(repaired.changed_messages, 1);
     assert_eq!(storage.counts().unwrap().messages, 4);
     assert_eq!(
-        storage
-            .search("repaired third", 10, None, None)
-            .unwrap()
-            .len(),
+        crate::storage::test_support::projections_with_text(&storage, "repaired third", None).len(),
         1
     );
     assert!(
@@ -234,9 +215,7 @@ fn check_initial_source_retry(provider: Provider) {
     assert_eq!(repaired.malformed_records, 0);
     assert_eq!(repaired.changed_messages, 1);
     assert_eq!(
-        storage
-            .search("initial repaired", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&storage, "initial repaired", None)
             .len(),
         1
     );

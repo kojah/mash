@@ -7,7 +7,7 @@
 -- An object has a core role (container, segment, entry, document), its source's
 -- kind label and a parent. Native-only columns are NULL for connector objects.
 CREATE TABLE IF NOT EXISTS objects (
-    -- Stable integer address for views vectors; never exported.
+    -- Internal relational address; never exported.
     storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
     origin TEXT NOT NULL CHECK (origin IN ('provider', 'connector')),
     -- The provider name, or the connector's source ID.
@@ -194,6 +194,14 @@ CREATE TABLE IF NOT EXISTS attachment_policy (
     singleton INTEGER PRIMARY KEY CHECK (singleton=1),
     fingerprint TEXT NOT NULL
 );
+-- Physical database identity is deliberately excluded from portable archives.
+-- Import creates a new identity even when retaining node publication identity.
+CREATE TABLE IF NOT EXISTS local_database_identity (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    instance TEXT NOT NULL
+);
+INSERT OR IGNORE INTO local_database_identity(singleton, instance)
+VALUES (1, lower(hex(randomblob(16))));
 -- Node-side publication journal.
 CREATE TABLE IF NOT EXISTS shared_publication (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),

@@ -24,8 +24,9 @@ fn batch(step: usize, value: u8) -> connectors::Batch {
             author: None,
             reply_to: None,
             url: None,
-            created_at: None,
-            updated_at: None,
+            // Repeated content still changes projected metadata on each delivery.
+            created_at: Some(i64::try_from(step).unwrap()),
+            updated_at: Some(i64::try_from(step).unwrap()),
             metadata: None,
             attachments: Vec::new(),
         })
@@ -43,6 +44,48 @@ fn batch(step: usize, value: u8) -> connectors::Batch {
 
 async fn exercise(sequence: &[Operation]) -> Result<(), TestCaseError> {
     exercise_mode(sequence, false).await
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_connector_metadata_only_updates_refresh_search_evidence() {
+    let fixture = fixture(false).await;
+    let mut observed = Vec::new();
+    for (revision, timestamp) in [(0, 100), (1, 200)] {
+        let mut input = batch(revision, 1);
+        let Change::UpsertObject(object) = &mut input.changes[0] else {
+            unreachable!()
+        };
+        object.created_at = Some(timestamp);
+        object.updated_at = Some(timestamp + 1);
+        assert!(
+            fixture
+                .server
+                .ingest_connector(&fixture.identity, input)
+                .await
+                .unwrap()
+                .views_ready
+        );
+        let points = fixture
+            .store
+            .api
+            .retrieve::<ConnectorDocument>(
+                &collection(&fixture.identity.group_id, false),
+                &[connector_id(
+                    &fixture.identity.node_id,
+                    "connector#document#notes#note",
+                )],
+            )
+            .await
+            .unwrap();
+        assert_eq!(points.len(), 1);
+        observed.push((
+            points[0].payload.created_at,
+            points[0].payload.unit.chat_updated_at,
+        ));
+    }
+    fixture.cleanup().await;
+    assert_eq!(observed, [(Some(100), Some(101)), (Some(200), Some(201))]);
 }
 
 async fn fixture(dense: bool) -> Fixture {
@@ -121,8 +164,15 @@ async fn exercise_mode(sequence: &[Operation], dense: bool) -> Result<(), TestCa
             )
             .await
             .unwrap();
-        let expected = (operation.value != 0).then(|| format!("needle value-{}", operation.value));
-        let actual = points.first().map(|p| p.payload.unit.content.clone());
+        let expected = (operation.value != 0).then(|| {
+            (
+                format!("needle value-{}", operation.value),
+                Some(i64::try_from(step).unwrap()),
+            )
+        });
+        let actual = points
+            .first()
+            .map(|p| (p.payload.unit.content.clone(), p.payload.created_at));
         let current = fixture
             .server
             .freshness(&fixture.identity)

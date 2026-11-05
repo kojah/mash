@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR and disposable Qdrant REST/gRPC endpoints"]
 fn real_models_index_and_run_hybrid_search() {
     let models = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(std::path::PathBuf::from)
@@ -26,6 +26,7 @@ fn real_models_index_and_run_hybrid_search() {
     let database = directory.path().join("mash.sqlite3");
     let config = directory.path().join("config.toml");
     write_config(&config, &claude, &codex);
+    configure_qdrant(&config);
     let model_arg = models.to_str().unwrap();
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
@@ -81,6 +82,7 @@ fn real_models_index_and_run_hybrid_search() {
     assert_views_query_defaults(&config, &database, model_arg);
     assert_views_ranking_defaults(&config, &database, model_arg);
     assert_source_independent_views_rebuild(&config, &database, &claude, &codex, model_arg);
+    cleanup_local_gold(&database, "local");
 }
 
 fn assert_exact_search_without_models(config: &Path, database: &Path) {
@@ -90,9 +92,22 @@ fn assert_exact_search_without_models(config: &Path, database: &Path) {
     // Dense recipe staleness must not disable unchanged lexical artifacts.
     std::fs::write(
         config,
-        format!("{original_config}\n[views.build]\nembedding_text='title-and-dialogue'\n"),
+        format!("{original_config}\n[views.build]\nembedding_text='title-and-dialogue'\n[views.query]\nintent='exact-mention'\n"),
     )
     .unwrap();
+    let status = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        missing_models.to_str().unwrap(),
+        "status",
+    ]);
+    assert_eq!(status["ready"], true);
+    assert_eq!(status["local_artifacts"]["lexical"], "ready");
+    assert_eq!(status["local_artifacts"]["dense"], "stale");
+    assert_eq!(status["views"]["build"]["embedding_text"], "dialogue");
     let mut durations = Vec::new();
     for unit in ["chats", "messages"] {
         for query in ["login token", "private-output-marker"] {
@@ -142,7 +157,7 @@ fn assert_source_independent_views_rebuild(
     codex: &Path,
     models: &str,
 ) {
-    let connection = open_index(database);
+    let connection = open_silver(database);
     let silver_tables = [
         "conversation_enrichment",
         "objects",
@@ -166,7 +181,8 @@ fn assert_source_independent_views_rebuild(
     std::fs::remove_dir_all(claude).unwrap();
     std::fs::remove_dir_all(codex).unwrap();
     let original = std::fs::read_to_string(config).unwrap();
-    std::fs::write(config, format!("version=1\nproviders={{claude-code={{roots=[{:?}]}},codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_VIEWS_REBUILD_NO_TOKEN'\n",claude.to_str().unwrap(),codex.to_str().unwrap())).unwrap();
+    std::fs::write(config, format!("version=1\nproviders={{claude-code={{roots=[{:?}]}},codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='local'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_VIEWS_REBUILD_NO_TOKEN'\n",claude.to_str().unwrap(),codex.to_str().unwrap())).unwrap();
+    configure_qdrant(config);
     for full in [false, true] {
         let mut command = Command::cargo_bin("mash").unwrap();
         command.args([
@@ -285,7 +301,7 @@ fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
         }
     }
     std::fs::write(config, &build_config).unwrap();
-    let migrated = run_json(&[
+    let unchanged = run_json(&[
         "--config",
         config.to_str().unwrap(),
         "--db",
@@ -295,10 +311,14 @@ fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
         "index",
         "--rebuild-local-views",
     ]);
-    assert_eq!(migrated["views"]["schema_version"], 1);
-    assert_eq!(migrated["views"]["build"]["embedding_text"], "dialogue");
-    assert_eq!(migrated["model_inferences"], 0);
-    assert_eq!(migrated["scanned_files"], 0);
+    // The last recipe is already the default; removing its explicit TOML
+    // spelling must preserve both certified vectors without new inference.
+    assert_eq!(unchanged["views"]["schema_version"], 1);
+    assert_eq!(unchanged["views"]["build"]["embedding_text"], "dialogue");
+    assert_eq!(unchanged["model_inferences"], 0);
+    assert_eq!(unchanged["embeddings"], 2);
+    assert_eq!(unchanged["reused_embeddings"], 2);
+    assert_eq!(unchanged["scanned_files"], 0);
 }
 
 fn assert_views_rebuild_recovers_without_sources(config: &Path, database: &Path, models: &str) {
@@ -321,15 +341,20 @@ fn assert_views_rebuild_recovers_without_sources(config: &Path, database: &Path,
         .unwrap();
     assert!(!failed.status.success());
     assert_eq!(failed.stdout, [] as [u8; 0]);
-    let connection = open_index(database);
-    let ready: Option<String> = connection
-        .query_row(
-            "SELECT semantic_ready_generation FROM derived_state WHERE singleton=1",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert!(ready.is_none(), "failed replacement must remain unready");
+    let status = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models,
+        "status",
+    ]);
+    assert_eq!(
+        status["ready"], false,
+        "failed replacement must remain unready"
+    );
+    assert_ne!(status["local_artifacts"]["dense"], "ready");
     let recovered = run_json(&[
         "--config",
         config.to_str().unwrap(),
@@ -411,12 +436,16 @@ fn assert_views_query_defaults(config: &Path, database: &Path, models: &str) {
             assert!(diagnostics["elapsed_ms"].is_u64());
             let stages = diagnostics["stages"].as_array().unwrap();
             assert!(stages.len() <= 8);
-            for name in ["local-lexical", "local-dense", "embed", "rerank", "fusion"] {
+            for name in ["local-candidates", "embed", "rerank", "fusion"] {
                 let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
                 assert_eq!(stage["calls"], stage["completed_calls"]);
                 assert!(stage["items_out"].is_u64());
-                if name == "local-dense" {
-                    assert_eq!(stage["items_in"], 2, "count vectors, not storage chunks");
+                if name == "local-candidates" {
+                    assert!(
+                        stage["items_in"].is_null(),
+                        "Qdrant does not report vectors examined"
+                    );
+                    assert_eq!(stage["filters_before_limit"], true);
                 }
             }
         } else {

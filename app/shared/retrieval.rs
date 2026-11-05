@@ -45,7 +45,7 @@ pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError>
 #[tracing::instrument(name = "combined_search", skip_all)]
 pub(crate) async fn search(
     config: &SharedConfig,
-    local_database: Option<(&Path, &crate::views::config::Build)>,
+    local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
@@ -61,6 +61,7 @@ pub(crate) async fn search(
         query,
         options.ranking,
     )
+    .boxed()
     .await?;
     search_prepared(
         config,
@@ -70,19 +71,20 @@ pub(crate) async fn search(
         filters,
         prepared,
     )
+    .boxed()
     .await
 }
 
 pub(super) struct PreparedSearch {
     backend: semantic::LoadedBackend,
     vector: Vec<f64>,
-    local_generation: String,
+    local: Option<crate::views::local::Local>,
     generation: String,
 }
 
 #[tracing::instrument(name = "prepare_search", skip_all)]
 pub(super) async fn prepare_search(
-    local_database: Option<(&Path, &crate::views::config::Build)>,
+    local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
@@ -91,8 +93,18 @@ pub(super) async fn prepare_search(
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
     let embeddings = embeddings.cloned();
-    let readiness_database =
-        local_database.map(|(path, build)| (path.to_path_buf(), build.clone()));
+    let local = match local_database {
+        Some((path, configuration)) => {
+            let local = crate::views::local::Local::open(path, configuration).await?;
+            if local.current().await?.is_none() {
+                return Err(AppError::search_not_ready(
+                    "local gold is not current; run mash index",
+                ));
+            }
+            Some(local)
+        }
+        None => None,
+    };
     let generation = embeddings.as_ref().map_or_else(
         || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
         |c| semantic::model_space(&c.model, c.dimensions),
@@ -100,15 +112,6 @@ pub(super) async fn prepare_search(
     crate::blocking(move || {
         let models = Models::new(root).with_remote(embeddings);
         models.require_search(ranking)?;
-        let local_build = readiness_database
-            .as_ref()
-            .map(|(_, build)| build)
-            .cloned()
-            .unwrap_or_default();
-        if let Some((database, build)) = readiness_database {
-            Storage::open_search(&database, &build.generation(&models.generation()))?
-                .require_views_build(&build, &models.generation())?;
-        }
         let mut backend = models
             .load_search(ranking)?
             .ok_or_else(|| AppError::model("run `mash models install`"))?;
@@ -116,7 +119,7 @@ pub(super) async fn prepare_search(
         Ok(PreparedSearch {
             backend,
             vector,
-            local_generation: local_build.generation(&models.generation()),
+            local,
             generation,
         })
     })
@@ -135,7 +138,7 @@ pub(super) async fn search_prepared(
     let PreparedSearch {
         mut backend,
         vector,
-        local_generation,
+        local,
         generation,
     } = prepared;
     let Options {
@@ -148,20 +151,19 @@ pub(super) async fn search_prepared(
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
     let context_database = local_database.clone();
-    let context_generation = local_generation.clone();
     let exclude_self = local_database.is_some();
     let local_query = query.to_owned();
     let local_vector = vector.clone();
-    let local = crate::blocking(move || {
+    let local = async move {
         retrieve_local_candidates(
-            local_database.as_deref(),
-            &local_generation,
+            local.as_ref(),
             &local_query,
             &local_vector,
             &local_filters,
             options,
         )
-    });
+        .await
+    };
     let request = protocol::Search {
         match_mode: filters.match_mode,
         vector_policy: shared_vector_search,
@@ -213,7 +215,6 @@ pub(super) async fn search_prepared(
     let (context, context_error) = measured_context_documents(
         config,
         context_database,
-        context_generation,
         &query,
         &selection.hits[..selection.count],
     )
@@ -268,14 +269,13 @@ async fn finish_fused(
 async fn measured_context_documents(
     config: &SharedConfig,
     database: Option<std::path::PathBuf>,
-    generation: String,
     query: &str,
     hits: &[SearchHit],
 ) -> Result<(HashMap<(String, String), String>, Option<String>), AppError> {
     let mut stage = crate::observability::retrieval::Guard::begin(
         crate::observability::retrieval::Stage::Context,
     );
-    let result = context_documents(config, database, generation, query, hits).await?;
+    let result = context_documents(config, database, query, hits).await?;
     if result.1.is_none() {
         stage.complete(Some(hits.len()), Some(result.0.len()));
     }
@@ -351,7 +351,6 @@ fn apply_projections<'a>(
 pub(super) async fn context_documents(
     config: &SharedConfig,
     database: Option<std::path::PathBuf>,
-    generation: String,
     query: &str,
     hits: &[SearchHit],
 ) -> Result<(HashMap<(String, String), String>, Option<String>), AppError> {
@@ -363,7 +362,7 @@ pub(super) async fn context_documents(
     let local = crate::blocking(move || {
         let mut contexts = HashMap::new();
         if let Some(database) = database.filter(|_| !local_ids.is_empty()) {
-            let storage = Storage::open_search(&database, &generation)?;
+            let storage = Storage::open_silver(&database)?;
             for id in local_ids {
                 contexts.insert(
                     (String::new(), id.clone()),
@@ -410,28 +409,46 @@ pub(super) async fn context_documents(
 }
 
 #[tracing::instrument(name = "local_candidates", skip_all)]
-fn retrieve_local_candidates(
-    database: Option<&Path>,
-    generation: &str,
+async fn retrieve_local_candidates(
+    local: Option<&crate::views::local::Local>,
     query: &str,
     vector: &[f64],
     filters: &crate::search_filter::Scope,
     options: Options,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
-    let Some(database) = database else {
+    let Some(local) = local else {
         return Ok((Vec::new(), Vec::new()));
     };
-    let storage =
-        Storage::open_search(database, generation)?.with_output_redaction(options.output_redaction);
-    semantic::local_candidates(
-        &storage,
-        generation,
-        query,
-        vector,
-        (None, None, options.unit),
-        Some(filters),
+    let mut candidates = local
+        .candidates(protocol::Search {
+            match_mode: filters.match_mode,
+            vector_policy: None,
+            intent: crate::views::exact::Intent::RelatedDiscussion,
+            query: query.into(),
+            unit: options.unit,
+            generation: local.scope.generation.clone(),
+            vector: vector.to_vec(),
+            provider: None,
+            days: None,
+            exclude_self: false,
+            filter: Some(filters.filter.clone()),
+        })
+        .await?;
+    for hit in candidates
+        .lexical
+        .iter_mut()
+        .chain(&mut candidates.semantic)
+    {
+        hit.node_id = None;
+    }
+    let hits = semantic::fuse(
+        candidates.lexical,
+        candidates.semantic,
+        options.unit,
         options.fusion,
-    )
+    );
+    let documents = hits.iter().map(|hit| hit.content.clone()).collect();
+    Ok((hits, documents))
 }
 
 #[tracing::instrument(name = "rerank", skip_all)]

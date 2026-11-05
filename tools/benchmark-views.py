@@ -6,8 +6,12 @@ changes the live index or calls remote inference. Captures contain private data;
 keep the output outside Git. Process-cold CLI timings are not filesystem-cold
 or resident-worker timings. The source sample is biased toward supported files
 under 8 MiB, stratified by provider and source size, not a fleet-wide workload.
+Requires explicit disposable local Qdrant endpoints. Storage measurements cover
+SQLite silver only; Qdrant disk usage and server memory are not measured.
 """
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -20,13 +24,16 @@ import statistics
 import subprocess
 import threading
 import time
+from urllib.parse import urlsplit
 
 
 BINS = ((1024, 64 * 1024), (64 * 1024, 512 * 1024),
         (512 * 1024, 2 * 1024**2), (2 * 1024**2, 8 * 1024**2))
-SILVER = ('conversations', 'messages', 'conversation_enrichment',
+SILVER = ('objects', 'native_chats', 'native_messages', 'conversation_enrichment',
           'source_checkpoints', 'claude_sources', 'claude_source_messages',
-          'silver_state', 'silver_scans', 'silver_rejections', 'tombstones')
+          'silver_state', 'silver_scans', 'silver_rejections', 'tombstones',
+          'connector_sources', 'connector_activity', 'connector_schemas',
+          'connector_receipts', 'attachment_policy')
 QUERIES = ('cbioportal', 'rust', 'qdrant', 'search', 'embedding', 'configuration')
 
 
@@ -72,31 +79,58 @@ def snapshot(output, count):
     return selected
 
 
-def config(output, representation):
+def qdrant_configuration(url: str, grpc_url: str) -> str:
+    """Require explicit loopback backends; never infer a remote publication target."""
+    for endpoint in (url, grpc_url):
+        parsed = urlsplit(endpoint)
+        if (parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', 'localhost', '::1')
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or parsed.path not in ('', '/') or parsed.port is None):
+            raise ValueError('benchmarks require explicit disposable loopback HTTP endpoints')
+    return f'\n[qdrant]\nurl={json.dumps(url)}\ngrpc_url={json.dumps(grpc_url)}\n'
+
+
+def config(output: Path, representation: str, qdrant: str) -> Path:
     path = output / f'{representation}.toml'
     path.write_text('version=1\n[index]\nall_history=true\n' + ''.join(
         f'[providers.{provider}]\nroots={json.dumps([str(output / "corpus" / provider)])}\n'
         for provider in ('codex', 'claude-code')) +
         f'[views.build]\nrepresentations="{representation}"\n' +
-        '[views.query]\nintent="exact-mention"\n')
+        '[views.query]\nintent="exact-mention"\n' + qdrant)
     return path
 
 
-def connection(database):
-    return sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)
+@contextmanager
+def connection(database: Path) -> Iterator[sqlite3.Connection]:
+    db = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-def silver_digest(database):
+def packed_digest(value: object) -> dict[str, str]:
+    """Fingerprint stored bytes without decoding generated silver_text columns."""
+    if not isinstance(value, bytes):
+        raise TypeError('unexpected SQLite value')
+    return {'packed_sha256': hashlib.sha256(value).hexdigest()}
+
+
+def silver_digest(database: Path) -> str:
     digest = hashlib.sha256()
     with connection(database) as db:
+        db.execute('BEGIN')
         for table in SILVER:
             columns = [row[1] for row in db.execute(f'PRAGMA table_info({table})')]
             if not columns:
                 raise ValueError('missing canonical table ' + table)
             digest.update(json.dumps([table, columns]).encode())
             order = ','.join('"' + name + '"' for name in columns)
-            for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
-                digest.update(json.dumps(row, ensure_ascii=False, allow_nan=False).encode())
+            # table_info omits virtual generated text; use the packed canonical
+            # columns explicitly so this dependency-free tool needs no codec.
+            for row in db.execute(f'SELECT {order} FROM {table} ORDER BY {order}'):
+                digest.update(json.dumps(row, ensure_ascii=False, allow_nan=False,
+                                         default=packed_digest).encode())
                 digest.update(b'\n')
     return digest.hexdigest()
 
@@ -110,9 +144,9 @@ def storage(database):
                   for name, allocated, payload in db.execute(
                       'SELECT name,sum(pgsize),sum(payload) FROM dbstat GROUP BY name')}
         counts = {table: db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]
-                  for table in ('conversations', 'messages', 'message_embeddings')}
+                  for table in ('objects', 'native_chats', 'native_messages')}
     wal = database.with_name(database.name + '-wal')
-    return {'database_file_bytes': database.stat().st_size,
+    return {'scope': 'sqlite-silver-only', 'database_file_bytes': database.stat().st_size,
             'wal_file_bytes': wal.stat().st_size if wal.exists() else 0,
             'logical_database_bytes': page * pages, 'free_page_bytes': page * free,
             'tables': tables, 'counts': counts}
@@ -154,14 +188,18 @@ def measure(command, binary, directory):
             thread.join()
         if process.returncode:
             raise RuntimeError(f'command failed; inspect private logs in {directory}')
+    memory_keys = ('VmRSS', 'VmHWM', 'Rss', 'Pss')
+    if usage.ru_maxrss <= 0 or any(not any(key in sample for sample in samples)
+                                 for key in memory_keys):
+        raise RuntimeError(f'process memory measurement unavailable; inspect {directory}')
     result = json.loads((directory / 'stdout.json').read_text())
     measurement = {'wall_seconds': elapsed, 'cpu_user_seconds': usage.ru_utime,
                    'cpu_system_seconds': usage.ru_stime,
                    'wait4_maxrss_kib': usage.ru_maxrss, 'sample_interval_ms': 20,
                    'sample_count': len(samples),
                    'current_image_sampled_maximum_kib': {
-                       key: max((s[key] for s in samples if key in s), default=None)
-                       for key in ('VmRSS', 'VmHWM', 'Rss', 'Pss')}}
+                       key: max(s[key] for s in samples if key in s)
+                       for key in memory_keys}}
     write_json(directory / 'measurement.json', measurement)
     return result, measurement
 
@@ -172,11 +210,12 @@ def run(args):
     binary = args.binary.resolve(strict=True)
     models = args.models.resolve(strict=True)
     output = args.output.resolve()
+    qdrant = qdrant_configuration(args.qdrant_url, args.qdrant_grpc_url)
     if output.is_relative_to(Path(__file__).resolve().parent.parent):
         raise ValueError('private output must be outside the repository')
     output.mkdir(mode=0o700)
     selected = snapshot(output, args.per_bin)
-    configs = {r: config(output, r) for r in ('lexical-only', 'lexical-and-dense')}
+    configs = {r: config(output, r, qdrant) for r in ('lexical-only', 'lexical-and-dense')}
     database = output / 'index.sqlite3'
     binary_hash = sha(binary)
     base = [str(binary), '--db', str(database), '--models-dir', str(models)]
@@ -239,7 +278,8 @@ def run(args):
                                '20ms current-image RSS/PSS sampled maxima are lower bounds',
                                'wait4 maxrss may include pre-exec peaks; do not subtract peaks',
                                'monitor overhead is included in wall time; child CPU excludes monitor',
-                               'no worker, HTTP/shared backend, edits/deletes or quality evaluation']}
+                               'Qdrant server RAM/disk and CPU are not included in process/storage metrics',
+                               'no Mash HTTP/shared backend, edits/deletes or quality evaluation']}
     write_json(output / 'capture.json', capture)
     print(json.dumps({'source_files': len(selected), 'counts': stages[0]['storage']['counts'],
                       'build_seconds': build_seconds,
@@ -251,6 +291,8 @@ if __name__ == '__main__':
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--models', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--qdrant-url', required=True)
+    parser.add_argument('--qdrant-grpc-url', required=True)
     parser.add_argument('--per-bin', type=int, default=4)
     parser.add_argument('--repetitions', type=int, default=3)
     run(parser.parse_args())

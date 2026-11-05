@@ -189,7 +189,7 @@ fn real_parser_and_index_preserve_history_across_large_lifecycle_envelopes() {
             .unwrap()
     );
     assert_eq!(
-        storage.search("cbioportal", 10, None, None).unwrap().len(),
+        crate::storage::test_support::projections_with_text(&storage, "cbioportal", None).len(),
         1
     );
     file.set_len(valid_length).unwrap();

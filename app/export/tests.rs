@@ -134,11 +134,6 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',3);
          INSERT INTO silver_scans VALUES('codex',3,1);
          INSERT INTO attachment_policy VALUES(1,'policy-fingerprint');
-         INSERT INTO message_embeddings VALUES('message','old-model',1,1,X'01');
-         UPDATE views_manifest SET manifest='{}';
-         UPDATE lexical_manifest SET manifest='{}';
-         INSERT INTO message_fts VALUES('visible evidence','message','thread');
-         UPDATE derived_state SET search_dirty=0,semantic_ready_generation='old-model';
          UPDATE shared_publication SET acknowledged=revision,target='old-service';
          UPDATE silver_state SET revision=77,interpretation_version=3;
          UPDATE sqlite_sequence SET seq=42 WHERE name='objects';"
@@ -264,7 +259,7 @@ fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {
 /// Upgrades export with the old release and import with the new one; the
 /// node keeps publishing as itself, starting from a full snapshot.
 #[test]
-fn upgrade_import_keeps_the_node_identity_and_refuses_stale_views() {
+fn upgrade_import_keeps_publication_identity_and_ignores_retired_sqlite_gold() {
     let root = tempfile::tempdir().unwrap();
     let (database, writer) = fixture(root.path());
     let identity = |connection: &Connection| -> (String, i64, i64, String) {
@@ -280,12 +275,10 @@ fn upgrade_import_keeps_the_node_identity_and_refuses_stale_views() {
     let export = root.path().join("export");
     write(&database, &export, Some("source-node".into())).unwrap();
     let destination = root.path().join("upgraded.sqlite3");
-    let views = crate::storage::schema::views_path(&destination);
+    let views = root.path().join("upgraded.views.sqlite3");
     std::fs::write(&views, b"stale views").unwrap();
-    assert!(load(&export, &destination, true).is_err());
-    assert!(!destination.exists());
-    std::fs::remove_file(&views).unwrap();
     load(&export, &destination, true).unwrap();
+    assert_eq!(std::fs::read(&views).unwrap(), b"stale views");
     let imported = crate::storage::test_support::connect(&destination);
     assert_eq!(identity(&imported), (instance, revision, 0, String::new()));
     let floor: i64 = imported
@@ -304,7 +297,7 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
     writer
         .execute_batch("BEGIN IMMEDIATE; UPDATE objects SET title='not committed';")
         .unwrap();
-    let before = Storage::open_catalog(&database)
+    let before = Storage::open_silver(&database)
         .unwrap()
         .silver_certificate()
         .unwrap();
@@ -348,10 +341,9 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
         })
         .unwrap();
     assert_ne!(old_instance, new_instance);
-    let history = Storage::open_catalog(&destination).unwrap();
+    let history = Storage::open_silver(&destination).unwrap();
     storage::export::validate(&history).unwrap();
-    assert!(Storage::open_lexical(&destination).is_err());
-    assert!(Storage::open_search(&destination, "old-model").is_err());
+    assert!(!root.path().join("imported.views.sqlite3").exists());
     let attachment = history
         .list_attachments("message")
         .unwrap()
@@ -395,7 +387,7 @@ fn pending_ingestion_is_preserved_instead_of_becoming_search_ready() {
     assert!(matches!(result.recommended_action, NextStep::RepairSilver));
     assert_eq!(
         result.silver,
-        Storage::open_catalog(&database)
+        Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap()
@@ -468,14 +460,14 @@ fn existing_destinations_and_sidecars_are_never_overwritten() {
     let original = fs::read(export.join(MANIFEST)).unwrap();
     assert!(write(&database, &export, None).is_err());
     assert_eq!(original, fs::read(export.join(MANIFEST)).unwrap());
-    let before = Storage::open_catalog(&database)
+    let before = Storage::open_silver(&database)
         .unwrap()
         .silver_certificate()
         .unwrap();
     assert!(load(&export, &database, false).is_err());
     assert_eq!(
         before,
-        Storage::open_catalog(&database)
+        Storage::open_silver(&database)
             .unwrap()
             .silver_certificate()
             .unwrap()

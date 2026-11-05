@@ -4,44 +4,6 @@ use crate::silver::SourceStamp;
 use std::collections::BTreeSet;
 
 #[test]
-fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_projection_edits() {
-    let directory = tempfile::tempdir().unwrap();
-    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    let mut value = conversation("canonical context and visible sentinel");
-    value.messages.inline_mut()[0].dialogue_text = Some("visible sentinel".into());
-    storage.replace_conversation(&value).unwrap();
-    storage
-        .replace_embeddings(
-            "fixture",
-            &[EmbeddingWrite {
-                message_id: "message-1",
-                vector: &[127],
-                norm: 127.0,
-            }],
-        )
-        .unwrap();
-    value.messages.inline_mut()[0].content = "changed canonical context".into();
-    value.messages.inline_mut()[0].created_at = Some(123);
-    storage.replace_conversation(&value).unwrap();
-    assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
-    assert!(storage.messages_needing_embeddings().unwrap().is_empty());
-    assert_eq!(
-        storage.view("message-1", 0).unwrap()[0].content,
-        "changed canonical context"
-    );
-    value.messages.inline_mut()[0].dialogue_text = Some("different visible evidence".into());
-    storage.replace_conversation(&value).unwrap();
-    assert_eq!(storage.embedding_count("fixture").unwrap(), 0);
-    assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
-    value.messages.inline_mut()[0].dialogue_text = Some(String::new());
-    storage.replace_conversation(&value).unwrap();
-    assert!(storage.messages_needing_embeddings().unwrap().is_empty());
-    value.messages.inline_mut()[0].dialogue_text = None;
-    storage.replace_conversation(&value).unwrap();
-    assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
-}
-
-#[test]
 fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     use crate::provider::Provider;
     use crate::silver::SourceIdentity;
@@ -111,14 +73,15 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
         1
     );
     storage.commit_writer().unwrap();
-    assert!(
-        storage
-            .search("deleted", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(storage.view("deleted-message", 0).unwrap().is_empty());
     for session in ["keep", "archived", "outside"] {
-        assert_eq!(storage.search(session, 10, None, None).unwrap().len(), 1);
+        assert_eq!(
+            storage
+                .view(&format!("{session}-message"), 0)
+                .unwrap()
+                .len(),
+            1
+        );
     }
     assert!(
         !storage
@@ -135,57 +98,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     assert!(storage.remove_source(Provider::Codex, &sources[0]).unwrap());
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().conversations, 2);
-    assert_eq!(storage.search("archived", 10, None, None).unwrap().len(), 1);
-}
-
-#[test]
-fn literal_search_handles_urls_hyphens_questions_and_phrases() {
-    let directory = tempfile::tempdir().unwrap();
-    let mut storage = Storage::open_writer(&directory.path().join("mash.sqlite3")).unwrap();
-    storage
-        .replace_conversation(&conversation_with_messages(&[
-            (
-                "url",
-                "https://github.com/cBioPortal/cbioportal-core/pull/180",
-            ),
-            ("model", "use voyage-code-4"),
-            ("question", "why is Redis faster than PostgreSQL"),
-            ("phrase", "one shared index per node group"),
-            ("separated", "one shared separate index per node group"),
-        ]))
-        .unwrap();
-    storage.commit_writer().unwrap();
-    for (query, expected) in [
-        (
-            "https://github.com/cBioPortal/cbioportal-core/pull/180",
-            "url",
-        ),
-        ("voyage-code-4", "model"),
-        ("why is Redis faster than PostgreSQL?", "question"),
-        ("\"shared index\"", "phrase"),
-        ("\"shared index", "phrase"),
-    ] {
-        let hits = storage.search(query, 10, None, None).unwrap();
-        assert_eq!(hits.len(), 1, "query {query}");
-        assert_eq!(hits[0].id, expected);
-    }
-    assert!(storage.search("!!!", 10, None, None).is_err());
-}
-
-#[test]
-fn full_rebuild_is_idempotent() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let mut storage = Storage::open(&directory.path().join("mash.sqlite3")).expect("open database");
-    storage
-        .rebuild_derived_search_state()
-        .expect("first rebuild");
-    storage
-        .rebuild_derived_search_state()
-        .expect("second rebuild");
-    let counts = storage.counts().expect("counts");
-    assert_eq!(counts.conversations, 0);
-    assert_eq!(counts.messages, 0);
-    assert_eq!(counts.embeddings, 0);
+    assert_eq!(storage.view("archived-message", 0).unwrap().len(), 1);
 }
 
 #[test]
@@ -214,11 +127,8 @@ fn writer_checkpoint_survives_a_later_rollback() {
 
     let storage = Storage::open_existing(&path).expect("reopen database");
     assert_eq!(
-        storage
-            .search("durable", 10, None, None)
-            .expect("search committed batch")
-            .len(),
-        1
+        storage.view("message-1", 0).expect("read committed batch")[0].content,
+        "durable needle"
     );
     assert!(
         storage
@@ -228,535 +138,6 @@ fn writer_checkpoint_survives_a_later_rollback() {
                 &SourceStamp::file(100, 200)
             )
             .expect("read checkpoint")
-    );
-}
-
-#[test]
-fn incremental_fts_and_canonical_changes_roll_back_together() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("mash.sqlite3");
-    let mut writer = Storage::open_writer(&path).expect("writer");
-    writer
-        .replace_conversation(&conversation("durable old term"))
-        .expect("seed conversation");
-    writer.commit_writer().expect("commit seed");
-    drop(writer);
-
-    let mut writer = Storage::open_writer(&path).expect("replacement writer");
-    writer
-        .replace_conversation(&conversation("uncommitted new term"))
-        .expect("replace conversation");
-    assert_eq!(
-        writer
-            .finalize_pending_fts_updates(u64::MAX)
-            .expect("incremental FTS finalization"),
-        FtsRefreshStrategy::Incremental
-    );
-    assert_eq!(
-        writer.search("uncommitted", 10, None, None).unwrap().len(),
-        1
-    );
-    drop(writer);
-
-    let storage = Storage::open_existing(&path).expect("reopen database");
-    assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
-    assert!(
-        storage
-            .search("uncommitted", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
-    assert_eq!(
-        storage.view("message-1", 0).unwrap()[0].content,
-        "durable old term"
-    );
-}
-
-#[test]
-fn bulk_fts_and_canonical_changes_roll_back_together() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("mash.sqlite3");
-    let mut writer = Storage::open_writer(&path).expect("writer");
-    writer
-        .replace_conversation(&conversation("durable bulk term"))
-        .expect("seed conversation");
-    writer.commit_writer().expect("commit seed");
-    drop(writer);
-
-    let mut writer = Storage::open_writer(&path).expect("replacement writer");
-    writer
-        .replace_conversation(&conversation("uncommitted bulk replacement"))
-        .expect("replace conversation");
-    assert_eq!(
-        writer
-            .finalize_pending_fts_updates(1)
-            .expect("bulk FTS finalization"),
-        FtsRefreshStrategy::Bulk
-    );
-    assert_eq!(
-        writer.search("replacement", 10, None, None).unwrap().len(),
-        1
-    );
-    drop(writer);
-
-    let storage = Storage::open_existing(&path).expect("reopen database");
-    assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
-    assert!(
-        storage
-            .search("replacement", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
-    assert_eq!(
-        storage.view("message-1", 0).unwrap()[0].content,
-        "durable bulk term"
-    );
-}
-
-#[test]
-fn fts_strategy_switches_at_the_declared_boundary() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    for (changed, expected) in [
-        (8_usize, FtsRefreshStrategy::Incremental),
-        (9, FtsRefreshStrategy::Bulk),
-    ] {
-        let path = directory.path().join(format!("changed-{changed}.sqlite3"));
-        let original = (0..10)
-            .map(|index| (format!("message-{index}"), format!("original {index}")))
-            .collect::<Vec<_>>();
-        let original_refs = original
-            .iter()
-            .map(|(id, content)| (id.as_str(), content.as_str()))
-            .collect::<Vec<_>>();
-        let mut writer = Storage::open_writer(&path).expect("writer");
-        writer
-            .replace_conversation(&conversation_with_messages(&original_refs))
-            .expect("seed messages");
-        writer.commit_writer().expect("commit seed");
-        drop(writer);
-
-        let replacement = original
-            .iter()
-            .enumerate()
-            .map(|(index, (id, content))| {
-                let content = if index < changed {
-                    format!("changed {index}")
-                } else {
-                    content.clone()
-                };
-                (id.clone(), content)
-            })
-            .collect::<Vec<_>>();
-        let replacement_refs = replacement
-            .iter()
-            .map(|(id, content)| (id.as_str(), content.as_str()))
-            .collect::<Vec<_>>();
-        let mut writer = Storage::open_writer(&path).expect("replacement writer");
-        writer
-            .replace_conversation(&conversation_with_messages(&replacement_refs))
-            .expect("replace messages");
-        let threshold = writer.measured_fts_bulk_threshold().unwrap();
-        assert_eq!(threshold, 9);
-        assert_eq!(
-            writer.finalize_pending_fts_updates(threshold).unwrap(),
-            expected,
-            "changed messages: {changed}"
-        );
-    }
-
-    let deletion_path = directory.path().join("deletion.sqlite3");
-    let original = (0..10)
-        .map(|index| (format!("message-{index}"), format!("original {index}")))
-        .collect::<Vec<_>>();
-    let original_refs = original
-        .iter()
-        .map(|(id, content)| (id.as_str(), content.as_str()))
-        .collect::<Vec<_>>();
-    let mut writer = Storage::open_writer(&deletion_path).expect("deletion writer");
-    writer
-        .replace_conversation(&conversation_with_messages(&original_refs))
-        .expect("seed deletion corpus");
-    writer.commit_writer().expect("commit deletion corpus");
-    drop(writer);
-    let retained_refs = original_refs[..5].to_vec();
-    let mut writer = Storage::open_writer(&deletion_path).expect("deletion writer");
-    writer
-        .replace_conversation(&conversation_with_messages(&retained_refs))
-        .expect("delete half the messages");
-    let threshold = writer.measured_fts_bulk_threshold().unwrap();
-    assert_eq!(threshold, 9, "deletions use the pre-transaction corpus");
-    assert_eq!(
-        writer.finalize_pending_fts_updates(threshold).unwrap(),
-        FtsRefreshStrategy::Incremental
-    );
-}
-
-#[test]
-fn incremental_and_bulk_fts_produce_equivalent_results() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let incremental_path = directory.path().join("incremental.sqlite3");
-    let bulk_path = directory.path().join("bulk.sqlite3");
-    for (path, cutoff) in [(&incremental_path, u64::MAX), (&bulk_path, 1)] {
-        let mut writer = Storage::open_writer(path).expect("writer");
-        writer
-            .replace_conversation(&conversation_with_messages(&[
-                ("message-1", "alpha shared"),
-                ("message-2", "beta shared"),
-                ("message-3", "removed sentinel"),
-            ]))
-            .expect("seed messages");
-        writer
-            .finalize_pending_fts_updates(cutoff)
-            .expect("seed FTS");
-        writer
-            .replace_conversation(&conversation_with_messages(&[
-                ("message-1", "gamma shared"),
-                ("message-4", "delta shared"),
-            ]))
-            .expect("replace messages");
-        writer
-            .finalize_pending_fts_updates(cutoff)
-            .expect("refresh FTS");
-        writer.commit_writer().expect("commit corpus");
-    }
-
-    let incremental = Storage::open_existing(&incremental_path).unwrap();
-    let bulk = Storage::open_existing(&bulk_path).unwrap();
-    for (query, limit, provider, days) in [
-        ("shared", 10, None, None),
-        ("shared", 1, Some(crate::provider::Provider::Codex), None),
-        (
-            "shared",
-            10,
-            Some(crate::provider::Provider::Codex),
-            Some(1),
-        ),
-        ("gamma", 10, Some(crate::provider::Provider::Codex), None),
-        ("removed", 10, None, None),
-    ] {
-        let ids = |storage: &Storage| {
-            storage
-                .search(query, limit, provider, days)
-                .unwrap()
-                .into_iter()
-                .map(|hit| hit.id)
-                .collect::<Vec<_>>()
-        };
-        let incremental_ids = ids(&incremental);
-        let bulk_ids = ids(&bulk);
-        assert_eq!(incremental_ids, bulk_ids, "query {query}");
-        if days.is_some() {
-            assert!(
-                !incremental_ids.is_empty(),
-                "recency-filter equivalence must exercise matching rows"
-            );
-        }
-    }
-    assert!(
-        incremental
-            .search("alpha", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        incremental
-            .search("beta", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        incremental
-            .search("removed", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
-}
-
-#[test]
-fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("mash.sqlite3");
-    let mut corpus = conversation_with_messages(&[
-        ("tool-only", "private tool payload"),
-        ("mixed", "visible request\nprivate mixed payload"),
-        ("ordinary", "ordinary searchable text"),
-    ]);
-    corpus.messages.inline_mut()[0].dialogue_text = Some(String::new());
-    corpus.messages.inline_mut()[1].dialogue_text = Some("visible request".to_owned());
-
-    let mut writer = Storage::open_writer(&path).expect("writer");
-    writer
-        .replace_conversation(&corpus)
-        .expect("store projected messages");
-    let pending = writer
-        .messages_needing_embeddings()
-        .expect("embedding selection");
-    assert_eq!(
-        pending
-            .iter()
-            .map(|message| (message.id.as_str(), message.content.as_str()))
-            .collect::<Vec<_>>(),
-        vec![
-            ("mixed", "visible request"),
-            ("ordinary", "ordinary searchable text")
-        ]
-    );
-    writer
-        .replace_embeddings(
-            "generation",
-            &[
-                EmbeddingWrite {
-                    message_id: "tool-only",
-                    vector: &[127],
-                    norm: 127.0,
-                },
-                EmbeddingWrite {
-                    message_id: "mixed",
-                    vector: &[126],
-                    norm: 126.0,
-                },
-                EmbeddingWrite {
-                    message_id: "ordinary",
-                    vector: &[125],
-                    norm: 125.0,
-                },
-            ],
-        )
-        .expect("seed semantic vectors");
-    writer.commit_writer().expect("commit projected messages");
-
-    let storage = Storage::open_existing(&path).expect("open projected corpus");
-    let counts = storage.counts().expect("counts");
-    assert_eq!(counts.messages, 3);
-    assert_eq!(counts.searchable_messages, 2);
-    assert!(
-        storage
-            .search("private", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
-    assert_eq!(storage.search("visible", 10, None, None).unwrap().len(), 1);
-    assert_eq!(storage.search("ordinary", 10, None, None).unwrap().len(), 1);
-
-    let vectors = storage
-        .semantic_chunks("generation", None, None)
-        .expect("semantic vectors");
-    assert_eq!(vectors.chunks.len(), 1);
-    assert_eq!(vectors.chunks[0].message_rowids, [3, 4]);
-    storage
-        .connection
-        .execute(
-            "DELETE FROM message_embeddings WHERE message_id = 'ordinary'",
-            [],
-        )
-        .expect("remove one searchable vector");
-    assert_eq!(storage.embedding_count("generation").unwrap(), 2);
-    assert_eq!(counts.searchable_messages, 2);
-    assert!(
-        !storage
-            .semantic_coverage_is_complete("generation")
-            .expect("exact semantic coverage")
-    );
-    assert_eq!(
-        storage
-            .search_documents(&["ordinary", "mixed"])
-            .expect("rerank documents"),
-        vec![
-            "ordinary searchable text".to_owned(),
-            "visible request".to_owned()
-        ]
-    );
-    let context = storage.view("mixed", 1).expect("canonical view");
-    assert_eq!(context[0].content, "private tool payload");
-    assert_eq!(context[1].content, "visible request\nprivate mixed payload");
-}
-
-#[test]
-fn bulk_fts_refresh_preserves_unchanged_embeddings() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("mash.sqlite3");
-    let mut writer = Storage::open_writer(&path).expect("writer");
-    writer
-        .replace_conversation(&conversation_with_messages(&[
-            ("message-1", "first"),
-            ("message-2", "second"),
-        ]))
-        .expect("seed messages");
-    writer
-        .replace_embeddings(
-            "generation-a",
-            &[
-                EmbeddingWrite {
-                    message_id: "message-1",
-                    vector: &[127],
-                    norm: 127.0,
-                },
-                EmbeddingWrite {
-                    message_id: "message-2",
-                    vector: &[127],
-                    norm: 127.0,
-                },
-            ],
-        )
-        .expect("seed embeddings");
-    writer
-        .finalize_pending_fts_updates(1)
-        .expect("seed bulk FTS");
-
-    writer
-        .replace_conversation(&conversation_with_messages(&[
-            ("message-1", "changed first"),
-            ("message-2", "second"),
-        ]))
-        .expect("change one message");
-    assert_eq!(
-        writer.finalize_pending_fts_updates(1).unwrap(),
-        FtsRefreshStrategy::Bulk
-    );
-    assert_eq!(writer.embedding_count("generation-a").unwrap(), 1);
-    assert_eq!(
-        writer
-            .messages_needing_embeddings()
-            .unwrap()
-            .into_iter()
-            .map(|message| message.id)
-            .collect::<Vec<_>>(),
-        ["message-1"]
-    );
-}
-
-#[ignore = "manual FTS crossover benchmark"]
-#[test]
-fn benchmark_fts_refresh_crossover() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let benchmark_path = directory.path().join("benchmark.sqlite3");
-    if let Some(source) = std::env::var_os("MASH_FTS_BENCH_DB") {
-        let source = Connection::open(PathBuf::from(source)).expect("open benchmark source");
-        source
-            .execute(
-                "VACUUM INTO ?1",
-                [benchmark_path.to_string_lossy().as_ref()],
-            )
-            .expect("copy benchmark database");
-    } else {
-        let mut writer = Storage::open_writer(&benchmark_path).expect("writer");
-        let messages = (0..25_000)
-            .map(|index| crate::silver::NormalizedMessage {
-                attachments: Vec::new(),
-                id: format!("message-{index:05}"),
-                ordinal: i64::from(index),
-                context: crate::message_context::MessageContext::Linear,
-                role: crate::role::Role::User,
-                content: format!("representative searchable text number {index}"),
-                dialogue_text: None,
-                created_at: Some(1),
-                tools: crate::tools::Activity::default(),
-            })
-            .collect();
-        let mut corpus = conversation("");
-        corpus.messages = messages;
-        writer
-            .replace_conversation(&corpus)
-            .expect("seed benchmark corpus");
-        writer.commit_writer().expect("commit benchmark corpus");
-    }
-
-    let reader = Storage::open_existing(&benchmark_path).expect("benchmark reader");
-    let total = reader.counts().expect("benchmark counts").messages;
-    drop(reader);
-    let mut deltas = vec![
-        1,
-        10,
-        100,
-        1_000,
-        10_000,
-        total / 10,
-        total / 2,
-        total.saturating_mul(75) / 100,
-        total.saturating_mul(85) / 100,
-        total.saturating_mul(90) / 100,
-        total.saturating_mul(95) / 100,
-        total,
-    ];
-    deltas.retain(|delta| *delta > 0 && *delta <= total);
-    deltas.sort_unstable();
-    deltas.dedup();
-
-    eprintln!("fts benchmark corpus_messages={total}");
-    for delta in deltas {
-        let mut incremental = Vec::new();
-        let mut bulk = Vec::new();
-        for repetition in 0..3 {
-            let order = if repetition % 2 == 0 {
-                [(u64::MAX, &mut incremental), (1, &mut bulk)]
-            } else {
-                [(1, &mut bulk), (u64::MAX, &mut incremental)]
-            };
-            for (cutoff, timings) in order {
-                let mut writer = Storage::open_writer(&benchmark_path).expect("benchmark writer");
-                writer
-                    .connection
-                    .execute(
-                        "INSERT INTO pending_fts_messages(message_id)
-                         SELECT id FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id LIMIT ?1",
-                        [i64::try_from(delta).expect("delta")],
-                    )
-                    .expect("stage benchmark messages");
-                writer
-                    .connection
-                    .execute(
-                        "UPDATE objects SET content_packed = content || ' changed'
-                          WHERE id IN (SELECT message_id FROM pending_fts_messages)",
-                        [],
-                    )
-                    .expect("mutate benchmark messages");
-                let started = std::time::Instant::now();
-                writer
-                    .finalize_pending_fts_updates(cutoff)
-                    .expect("benchmark FTS finalization");
-                timings.push(started.elapsed());
-                drop(writer);
-            }
-        }
-        incremental.sort_unstable();
-        bulk.sort_unstable();
-        eprintln!(
-            "delta={delta} incremental_ms={:.3} bulk_ms={:.3}",
-            incremental[1].as_secs_f64() * 1_000.0,
-            bulk[1].as_secs_f64() * 1_000.0
-        );
-    }
-}
-
-#[test]
-fn full_rebuild_defers_per_message_search_writes() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("mash.sqlite3");
-    let mut storage = Storage::open_writer(&path).expect("writer");
-    storage
-        .defer_search_updates()
-        .expect("defer derived writes");
-    storage
-        .replace_conversation(&conversation("deferred needle"))
-        .expect("insert conversation");
-    assert_eq!(
-        storage
-            .connection
-            .query_row("SELECT count(*) FROM message_fts", [], |row| row
-                .get::<_, i64>(0))
-            .expect("FTS count before rebuild"),
-        0
-    );
-
-    storage
-        .rebuild_derived_search_state()
-        .expect("bulk rebuild");
-    assert_eq!(
-        storage
-            .search("needle", 10, None, None)
-            .expect("search rebuilt FTS")
-            .len(),
-        1
     );
 }
 
@@ -782,40 +163,18 @@ fn conversation_reconciliation_writes_only_changed_messages() {
         .replace_conversation(&conversation("first"))
         .expect("initial insert");
     assert_eq!(first.changed_message_ids, ["message-1"]);
-    storage
-        .replace_embeddings(
-            "generation-a",
-            &[EmbeddingWrite {
-                message_id: "message-1",
-                vector: &[127, 0],
-                norm: 127.0,
-            }],
-        )
-        .expect("seed embedding");
     let unchanged = storage
         .replace_conversation(&conversation("first"))
         .expect("unchanged refresh");
     assert!(unchanged.unchanged);
     assert_eq!(unchanged.changed_message_ids, Vec::<String>::new());
-    assert!(
-        storage
-            .messages_needing_embeddings()
-            .expect("embedding selection")
-            .is_empty()
-    );
+    let unchanged_revision = storage.silver_certificate().unwrap().revision;
     let changed = storage
         .replace_conversation(&conversation("second"))
         .expect("changed refresh");
     assert_eq!(changed.changed_message_ids, ["message-1"]);
-    assert_eq!(
-        storage
-            .messages_needing_embeddings()
-            .expect("embedding selection")
-            .iter()
-            .map(|message| message.id.as_str())
-            .collect::<Vec<_>>(),
-        ["message-1"]
-    );
+    assert!(storage.silver_certificate().unwrap().revision > unchanged_revision);
+    assert_eq!(storage.view("message-1", 0).unwrap()[0].content, "second");
 }
 
 #[test]
@@ -837,11 +196,8 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
     assert_eq!(change.removed_messages, 1);
     assert_eq!(storage.counts().expect("counts").messages, 1);
     storage.commit_writer().expect("commit replacement");
-    assert!(storage.search("first", 10, None, None).unwrap().is_empty());
-    assert_eq!(
-        storage.search("second", 10, None, None).unwrap()[0].id,
-        "message-2"
-    );
+    assert!(storage.view("message-1", 0).unwrap().is_empty());
+    assert_eq!(storage.view("message-2", 0).unwrap()[0].id, "message-2");
 }
 
 #[test]
@@ -900,12 +256,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     storage.replace_conversation(&original).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 2);
-    assert!(
-        storage
-            .search("recovered", 5, None, None)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(storage.view("inserted", 0).unwrap().is_empty());
     assert_eq!(storage.view("reply", 0).unwrap()[0].ordinal, 1);
 
     // A later failure must not commit temporary ordinals or partial context.
@@ -923,7 +274,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
 }
 
 #[test]
-fn purging_a_conversation_removes_its_staged_fts_rows() {
+fn purging_a_conversation_removes_its_canonical_entries() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
@@ -946,12 +297,7 @@ fn purging_a_conversation_removes_its_staged_fts_rows() {
         1
     );
     writer.commit_writer().expect("commit purge");
-    assert!(
-        writer
-            .search("disappearing", 10, None, None)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(writer.view("message-1", 0).unwrap().is_empty());
     assert_eq!(writer.counts().unwrap().messages, 0);
 }
 
@@ -993,64 +339,5 @@ fn ordinary_writer_commits_leave_wal_checkpointing_to_sqlite() {
     assert!(
         std::fs::metadata(wal_path).is_ok_and(|metadata| metadata.len() > 0),
         "a small commit must not force a blocking WAL truncation"
-    );
-}
-
-#[test]
-fn fts_threshold_counts_entries_cascaded_with_their_conversation() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("cascade.sqlite3");
-    let messages = (0..5)
-        .map(|index| (format!("kept-{index}"), format!("kept {index}")))
-        .collect::<Vec<_>>();
-    let refs = messages
-        .iter()
-        .map(|(id, content)| (id.as_str(), content.as_str()))
-        .collect::<Vec<_>>();
-    let kept = conversation_with_messages(&refs);
-    let messages = (0..5)
-        .map(|index| (format!("removed-{index}"), format!("removed {index}")))
-        .collect::<Vec<_>>();
-    let refs = messages
-        .iter()
-        .map(|(id, content)| (id.as_str(), content.as_str()))
-        .collect::<Vec<_>>();
-    let mut removed = conversation_with_messages(&refs);
-    removed.id = "session-2".to_owned();
-    removed.source = crate::silver::SourceIdentity::file(PathBuf::from("/tmp/session-2.jsonl"));
-    let mut writer = Storage::open_writer(&path).expect("writer");
-    writer.replace_conversation(&kept).expect("seed kept");
-    writer.replace_conversation(&removed).expect("seed removed");
-    writer.commit_writer().expect("commit seed");
-    drop(writer);
-
-    let mut writer = Storage::open_writer(&path).expect("removal writer");
-    // Its entries leave through the container's foreign-key cascade.
-    writer
-        .remove_canonical_conversation("session-2")
-        .expect("remove conversation");
-    assert_eq!(writer.message_count().unwrap(), 5);
-    assert_eq!(
-        writer.measured_fts_bulk_threshold().unwrap(),
-        9,
-        "cascaded deletions use the pre-transaction corpus"
-    );
-    // A savepoint rollback restores the corpus and its delta together.
-    writer.begin_provider_scan().unwrap();
-    writer
-        .remove_canonical_conversation("session-1")
-        .expect("remove kept conversation");
-    assert_eq!(writer.message_count().unwrap(), 0);
-    writer.rollback_provider_scan().unwrap();
-    assert_eq!(writer.message_count().unwrap(), 5);
-    assert_eq!(writer.measured_fts_bulk_threshold().unwrap(), 9);
-    writer.commit_writer().expect("commit removal");
-    drop(writer);
-
-    let writer = Storage::open_writer(&path).expect("next writer");
-    assert_eq!(
-        writer.measured_fts_bulk_threshold().unwrap(),
-        5,
-        "each transaction measures from its own start"
     );
 }

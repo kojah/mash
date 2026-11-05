@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication BackfillOrdering BackfillReceipts CoverageMerge Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade LocalWriter RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify)
+models=(Publication BackfillOrdering BackfillReceipts CoverageMerge Coherence ConnectorReceipts SharedViews NativeSilver RetryViews ConnectorViews LocalUpgrade LocalWriter LocalGold RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|BackfillOrdering|BackfillReceipts|CoverageMerge|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|LocalWriter|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify) ;;
+            Publication|BackfillOrdering|BackfillReceipts|CoverageMerge|Coherence|ConnectorReceipts|SharedViews|NativeSilver|RetryViews|ConnectorViews|LocalUpgrade|LocalWriter|LocalGold|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -125,6 +125,8 @@ if $self_test; then
     check MutationAdmission MutationAdmissionUnfair FairOrder
     check LocalWriter LocalWriterCancelledWorker WorkOwnsLock
     check LocalWriter LocalWriterEarlyRelease WorkOwnsLock
+    check LocalGold LocalGoldClearFirst CurrentMatchesSilver
+    check LocalGold LocalGoldEarlyCertify CurrentMatchesSilver
     # Concurrency regressions found by running four baseline lanes for one node.
     check BackfillOrdering BackfillOrderingSequential
     check BackfillOrdering BackfillOrderingRebaseBug OrderedRevisions

@@ -11,7 +11,7 @@ mod views;
 use crate::AppError;
 use crate::views::scope::Scope;
 pub(crate) use api::endpoint;
-pub(crate) use configuration::Settings;
+pub(crate) use configuration::{SCHEMA_VERSION, Settings};
 use serde::{Deserialize, Serialize};
 
 pub(crate) use read::validate_search;
@@ -116,7 +116,7 @@ struct ConnectorDocument {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ConnectorUnit {
     pub(crate) anchor: String,
-    /// Indexed and embedded text; the digest of record for synchronization.
+    /// Indexed and embedded text; synchronization also fingerprints the evidence.
     pub(crate) text: String,
     pub(crate) content: String,
     pub(crate) title: Option<String>,

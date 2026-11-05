@@ -206,22 +206,6 @@ impl Plan {
         Ok(Self { groups })
     }
 
-    pub(crate) fn sqlite(&self) -> String {
-        self.groups
-            .iter()
-            .map(|group| {
-                format!(
-                    "({})",
-                    group
-                        .iter()
-                        .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
-                        .collect::<Vec<_>>()
-                        .join(" OR ")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(" AND ")
-    }
     pub(crate) fn sparse_text(&self) -> String {
         self.groups
             .iter()
@@ -249,7 +233,6 @@ mod tests {
     fn plans_bound_expansion_and_keep_exact_evidence_distinct() {
         let words = vec!["idempotency".to_owned(), "idempotent".to_owned()];
         let plan = Plan::new("idemp", Mode::Flexible, &words).unwrap();
-        assert!(plan.sqlite().contains("idempotency"));
         assert_eq!(
             plan.evidence("idempotency", Mode::Flexible).unwrap().kind,
             Kind::Prefix

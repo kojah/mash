@@ -8,18 +8,20 @@ mash (Multi-Agent Search History) searches Claude Code, Codex, Copilot, Cursor,
 OpenCode, and Antigravity histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
 keep a local index and optionally publish it to a shared service over HTTP.
-SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
+Qdrant lexical/vector retrieval, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
 The service keeps shared silver (published canonical history) in SQLite and derived
-shared views (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
+shared views (search documents and vectors) in Qdrant. Local silver also stays in
+SQLite. Local and shared gold use one Qdrant engine and collection schema, with
+HNSW retrieval by default and explicit exact cosine search available.
 
-Local gold (derived search views) uses SQLite FTS5 and exact cosine vector
-retrieval. SQLite is the chosen local backend following evaluation of USearch
-and Qdrant Edge: the additional snapshot, freshness, filtering and recovery
-complexity is not justified by the demonstrated end-to-end benefit. Local ANN
-adoption is out of scope; the shared service continues to use Qdrant.
+Local CLI/MCP connects directly to Qdrant; it needs no local Axum service.
+The shared Axum service still owns authentication, canonical shared ingestion,
+and shared coordination. Point publication uses gRPC for both destinations;
+REST handles Qdrant reads and collection setup. A local Qdrant instance keeps
+local indexing and search independent of the internet and shared service.
 
 ## Quick start
 
@@ -72,7 +74,27 @@ runners. Windows identifies the installed executable by size and modification
 time, so a same-size replacement within one timestamp tick would not be noticed
 as an upgrade. WSL works like Linux.
 
-Then set it up:
+Start Qdrant 1.19+ with persistent storage before indexing or searching. For example:
+
+```bash
+docker run --name mash-local-qdrant --memory 2g \
+  -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 \
+  -v mash-local-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
+```
+
+Mash neither installs nor manages this service. Both ports must address the
+same instance. The defaults above need no node configuration; custom endpoints
+go in strict TOML:
+
+```toml
+[qdrant]
+url = "http://127.0.0.1:6333"
+grpc_url = "http://127.0.0.1:6334"
+# api_key_env = "MASH_LOCAL_QDRANT_KEY"
+memory = "durable"
+```
+
+Then set Mash up:
 
 ```bash
 mash init
@@ -142,8 +164,8 @@ To regenerate as part of a build, install these versions and run
 `make build CODEGEN=1` (add `CARGO_ARGS='--release --locked'` for release).
 `make generate-queries` regenerates without compiling; `make check-generated`
 checks for stale output. Generation reads the same SQLite schema SQL used at runtime.
-CI checks regeneration against committed output. Dynamic predicates and FTS ranking
-reuse the generated projection and decoder; migrations and writes remain explicit.
+CI checks regeneration against committed output. Dynamic canonical predicates
+reuse the generated projection and decoder; schema initialization and writes remain explicit.
 
 ```text
 mash init [--force] [--no-agents] [--no-index] [--marketplace SOURCE]
@@ -157,7 +179,7 @@ mash forget <chat-id>
 mash export <new-directory>
 mash import <export-directory> --into <new-database> [--keep-identity]
 mash models install
-mash mcp [--watch [--debounce-ms N]]
+mash mcp
 mash serve --server-config PATH
 ```
 
@@ -180,8 +202,8 @@ turn (`codex:turn`, a prompt with the answers that follow it, derived from
 silver) and then its chat. Chat-level results group under an
 entry's nearest container, or a document on its own. Native messages keep
 `role`; connector entries carry `author_kind` (`human`, `bot` or `unknown`)
-instead, and documents carry neither. The local views schema is now version 4 and
-silver version 55: existing local views are rebuilt from silver by the next
+instead, and documents carry neither. Local and shared Qdrant use views schema 4;
+silver uses schema 57. Local views are rebuilt from silver by the next
 `mash index`, and silver from an earlier release crosses over through export and
 `import --keep-identity`.
 
@@ -501,7 +523,7 @@ Search is semantic by default. A `lexical-only` views build supports
 `exact-mention`; semantic `related-discussion` requires `lexical-and-dense`.
 Lexical retrieval defaults to `--match-mode flexible` (`match_mode: "flexible"`
 in MCP/HTTP): prefixes of at least three characters and conservative typo
-corrections work in both SQLite and Qdrant. Use `strict`, `prefix`, or `typo`
+corrections use the common Qdrant engine locally and on the server. Use `strict`, `prefix`, or `typo`
 to select a narrower mode. Quoted whole queries retain exact spelling, and
 numbers are never expanded or corrected. Expanded results include
 `lexical_match` with the matched source term. Vocabulary expansion is scoped by
@@ -542,20 +564,22 @@ sent to Qdrant when a process dies.
 
 Canonical operations—`view`, `list-chats`, attachment reads and silver export—
 read silver directly. They do not open or repair gold, and remain available when
-its files are missing or corrupt. Import reconstructs silver alone; retrieval
+Qdrant is unavailable or its collections are missing. Import reconstructs silver alone; retrieval
 views require an explicit rebuild afterward.
 
 Local indexing separates durable canonical ingestion (silver) from rebuilding
 built-in retrieval views, reusing the existing stored history. Lexical indexes,
 dense embeddings and connector search units are built-in views: derived from
-silver, certified against it and replayable from it. They are two SQLite
-files: `mash.sqlite3` holds silver and the paired `mash.views.sqlite3` beside it
-holds embeddings, the full-text index and readiness. Silver uses the same schema
-as each node's history on the shared server. Views never hold history that
-silver lacks: if it is deleted, damaged or belongs to another silver database,
-mash replaces it with empty, unready views. `mash index --rebuild-local-views`
-rebuilds it from stored silver offline, reusing valid vectors; add `--full` to
-discard all local views and replay it from silver.
+silver, certified against it and replayable from it. `mash.sqlite3` holds silver;
+Qdrant holds search documents, vectors and certification. Silver uses the same
+schema as each node's history on the shared server. Local Qdrant namespaces
+include the database's instance identity, canonical path, and node identity, so
+copies at another path and imports do not inherit another database's gold.
+Readers fail closed when gold is missing, stale, or incompatible.
+`mash index --rebuild-local-views` replays retained silver using local Qdrant,
+reusing compatible unchanged chat projections. Add `--full` to rebuild every
+projection. Silver commits before gold mutation; a failed refresh preserves
+canonical history and leaves gold unready until a successful retry.
 
 The built-in views rename is a breaking change. Replace `[gold.build]` and
 `[gold.query]` with `[views.build]` and `[views.query]` in node and server TOML.
@@ -563,10 +587,9 @@ The commands now use `--rebuild-local-views`, `--activate-views` and
 `--replay-views`; MCP uses `rebuild_local_views`, and the development MCP refresh
 mode is `local-views`. Receipts expose `views_ready` and status uses `views`
 fields. Old keys and flags are rejected; reconnect MCP clients after installing.
-The paired database is now `.views.sqlite3` and shared Qdrant collections use
-the `mash_views_` prefix. Rebuild local views from retained silver and replay
+Local and shared Qdrant collections use the `mash_views_` prefix. Rebuild local views from retained silver and replay
 shared views with `serve --replay-views` before checking readiness. Retired
-`.gold.sqlite3` files and `mash_gold_` collections are not read or converted;
+`.gold.sqlite3` and `.views.sqlite3` files and `mash_gold_` collections are not read or converted;
 they can be removed after verifying the rebuilt views.
 Silver schema 53 stores the renamed live connector receipts. Use the existing
 export/import upgrade for local schema 52 indexes. Portable archive version 1
@@ -639,12 +662,18 @@ The final command response stays JSON on stdout. Watching remains opt-in with
 `index --watch` in a separate process.
 
 No other command downloads models. Indexing fingerprints sources and messages,
-skips unchanged input, updates FTS incrementally for small changes, embeds only
-new or changed searchable messages, and excludes tool commands, raw tool output,
-reasoning blocks, and unknown roles from FTS and
+skips unchanged input, reuses compatible unchanged chat projections, and embeds
+changed chats in bounded batches. It excludes tool commands, raw tool output,
+reasoning blocks, and unknown roles from lexical retrieval and
 embeddings while preserving it for `view`. `--full` rebuilds derived search
 state. The default source horizon is 90 days; `--since-days N` overrides it and
 `--all-history` removes it for one run.
+
+Local and shared destinations use the same Qdrant schema and materialization
+code, with separate certification and namespaces. A first publication to both
+destinations currently computes their embeddings independently; it does not
+forward vectors from a local SQLite cache. Transport benchmarks measure only
+publication requests, not this end-to-end indexing cost.
 
 Claude Code and Codex JSONL records are limited to 8 MiB of UTF-8 payload per
 line, excluding LF/CRLF. Oversized Codex completed `FileChange` and
@@ -661,11 +690,6 @@ and tool-result items can exceed the JSONL limit. The 65,536-node structural JSO
 limit still applies, and large normalized histories spill to disk. Tool bodies
 remain canonical context rather than searchable dialogue.
 
-Upgrading an existing index to schema 18 requires an explicit `mash index`.
-The migration retains canonical history and existing vectors, preserves recorded
-project/repository metadata, and invalidates source checkpoints and search
-readiness so projections are refreshed before searching.
-
 On Apple Silicon, indexing runs the FP32 embedding model through Core ML and
 quantizes only the resulting vectors for storage. Batches select a 64-, 128-,
 256-, or 512-token session using the model's tokenizer, retaining the 512-token
@@ -681,10 +705,11 @@ it only after successful model construction. Loaded sessions retain their old
 cache until they finish; retired caches are cleaned up when no reader uses them.
 Indexing reports model-loading progress while waiting or compiling.
 
-Embedding planning uses a temporary SQLite file to deduplicate and sort pending
-texts, loading one inference wave at a time. Duplicate message IDs are written
-in bounded pages. Large rebuilds therefore avoid retaining all pending texts in
-memory; the model workspaces and parsed conversations have separate memory costs.
+Local gold captures a consistent silver snapshot and spools native messages to a
+private temporary file. It materializes one chat at a time with bounded inference
+and Qdrant mutation batches. Chat metadata and connector projections remain in
+memory; this is not a process-memory ceiling. There is no SQL embedding queue or
+packed-vector cache.
 
 Parser admission limits concurrent estimated retention to a 128 MiB reservation
 budget, keeping reservations through queued delivery and SQLite application.
@@ -959,9 +984,9 @@ cross-version validation gates. These limits do not establish aggregate RSS.
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
-reranking follows the same rule on SQLite and Qdrant. Linear histories
-keep their existing ordinal neighbourhoods. SQLite migrations preserve existing
-messages and vectors. Update the shared service before
+reranking follows the same rule for local and shared search. Linear histories
+keep their existing ordinal neighbourhoods. Cross-release schema changes use
+silver export/import and a gold rebuild. Update the shared service before
 publishing Copilot, Cursor or Antigravity histories from upgraded nodes.
 
 Codex paginated history is read from an explicitly configured
@@ -1084,7 +1109,7 @@ Shared-only configurations are rejected. Both mode publishes exactly the local
 index; the former per-destination `[index.local]` and `[index.shared]` provider
 filters are rejected. Disable a provider entirely to keep it off the node.
 
-Omit the top-level `shared` for a fully local installation. Search defaults to SQLite plus other nodes in the shared group when shared settings exist; otherwise it uses SQLite. Configure the same
+Omit the top-level `shared` for a fully local installation. Search uses local Qdrant plus other nodes in the shared group when shared settings exist; otherwise it uses local Qdrant. Configure the same
 group ID and API URL on every member, with a distinct node ID and token for each
 publisher. The service authorizes each token for a fixed group and node. Group IDs select
 separate Qdrant collections; every node within a group contributes to one joint
@@ -1251,7 +1276,7 @@ An MCP request can select either repository while excluding tool messages:
 
 The CLI accepts the same expression through `--filter '...JSON...'`. Convenience
 flags and the structured expression are combined with AND. Filters apply before
-lexical/semantic candidate limits on SQLite and Qdrant, then the
+lexical/semantic candidate limits in local and shared Qdrant, then the
 combined results are reranked. Raw SQL, regular expressions, and glob patterns
 are not supported. Limits are eight levels of nesting, 128 expressions, and 100
 values per field list.
@@ -1267,8 +1292,8 @@ embeddings and invalidate local ingestion checkpoints, allowing the next
 
 ## Shared index
 
-Nodes access the shared index through an authenticated Axum HTTP service. Only
-that service connects to Qdrant. There is one
+Nodes access the shared index through an authenticated Axum HTTP service. That
+service owns access to shared Qdrant; local CLI/MCP accesses its local Qdrant directly. There is one
 joint index per group, with node ownership enforced by the service.
 
 `POST /v1/chats` lists chat metadata without model inference, message bodies
@@ -1425,7 +1450,7 @@ recreated database must use a new node ID. Stale snapshots cannot replace newer
 accepted revisions.
 
 
-Default search queries SQLite and shared records belonging to other nodes. The
+Default search queries local Qdrant and shared records belonging to other nodes. The
 shared service excludes the authenticated node before candidate limits and
 embedding-readiness checks. After computing one query embedding, local candidate
 retrieval and the shared HTTP request run concurrently. Both sources use independent
@@ -1457,7 +1482,7 @@ never truncated.
 Local lexical search treats query text as literal words, including URLs, dotted
 names and hyphenated identifiers; double quotes require contiguous literal words
 in each returned message or excerpt. Punctuation
-does not become SQLite FTS syntax. Queries must contain a letter or number and
+is treated as literal input. Queries must contain a letter or number and
 fit within 16,384 bytes. Explicit PR/issue references require that exact reference
 in each returned excerpt/message, so `PR 180` cannot be replaced by `PR 183`
 or an incidental numeric value of 180. PR and issue references remain distinct;
@@ -1566,7 +1591,7 @@ Other platforms retain atomic activation without these Unix flush barriers.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
-exact retrieval scores the matching shared vectors. Qdrant also supports opt-in HNSW.
+Qdrant uses HNSW retrieval by default, with explicit exact vector search available.
 The API spools each upload to a private temporary file and applies it to shared
 silver in one SQLite transaction; temporary disk must hold concurrent uploads.
 View synchronization then reads the committed upload and writes Qdrant documents
@@ -1637,9 +1662,10 @@ local-only and exact-mention requests reject them. Omitting the override uses
 the current persisted group default.
 
 ```bash
-docker run --name mash-qdrant -p 127.0.0.1:6333:6333 \
+docker run --name mash-qdrant --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 \
   -v mash-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
 export MASH_QDRANT_URL='http://127.0.0.1:6333/'
+export MASH_QDRANT_GRPC_URL='http://127.0.0.1:6334/'
 # Set MASH_XENIA_TOKEN to the node's existing API token.
 mash serve --server-config /absolute/path/to/qdrant-server.toml
 ```
@@ -1661,7 +1687,8 @@ switch, while compatible metadata and lexical queries remain available.
 
 Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
-are not forwarded elsewhere. Qdrant credentials belong only on the HTTP server.
+are not forwarded elsewhere. Shared Qdrant credentials belong on the HTTP server;
+local Qdrant credentials are resolved from the node's `qdrant.api_key_env`.
 Populating a new shared group requires an explicit `mash index` from each publishing node.
 `qdrant_memory` selects a durable Qdrant 1.19+ storage profile. The default,
 `durable`, pins HNSW and sparse indexes in RAM, preloads dense vectors into the
@@ -1701,8 +1728,8 @@ views configuration and each node's views certificate. Canonical history,
 checkpoints, tombstones and chat catalogs live in shared silver. Lexical retrieval uses
 lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
 and a fixed 256-token length reference; exact token predicates prevent hash
-collisions from producing false lexical matches. This is a backend-specific
-lexical ranking function; it differs from SQLite FTS5 ranking.
+collisions from producing false lexical matches. Local and shared retrieval use
+this same lexical ranking function.
 The existing application core still fuses, reranks, and groups message candidates.
 All expressive filters apply inside Qdrant before candidate limits. HNSW is
 approximate; exact mode stays available without rebuilding the collection.
@@ -2049,7 +2076,7 @@ For shared operations, provide the configured node token environment variable to
 `shared` boolean, a `unit` of `chats` (default) or `messages`, and `limit`/`offset` paging with `next_offset` in the response; `view` accepts a `shared` publishing node ID. Search, view, and
 status and `list_chats` are annotated read-only. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
-service-side Qdrant I/O uses async HTTP. SQLite, parsing, and local FastEmbed inference run on blocking
+local and service-side Qdrant I/O uses async gRPC for publication and HTTP for reads/setup. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status
 and view may run concurrently, while model-heavy operations use a single permit
 to bound memory and CPU use. Remote embeddings use the same node configuration
@@ -2167,7 +2194,7 @@ shared-backend checks as completion gates. See the
 [measured workflow](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
 
 CI also runs the [labeled hybrid relevance matrix](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-shared-relevance.md)
-with explicitly installed models against local SQLite and shared Qdrant. The
+with explicitly installed models against local and shared Qdrant. The
 report retains historical measurements of the removed backends.
 The shared tests require their disposable backend endpoint and
 `MASH_TEST_MODELS_DIR`. To run these checks together with those variables set:
@@ -2241,23 +2268,24 @@ coverage, so assess uncovered behavior as well as the aggregate percentage.
 Coverage needs LLVM instrumentation; regular development continues to use
 Cranelift. On the affected nightly, use `RUSTFLAGS=-Znext-solver=no make coverage`.
 
-To compare inference thread counts and reranking batch sizes on your own corpus,
-use an explicitly refreshed, isolated index and installed models:
+For bounded local build and CLI search measurements, use installed models and
+a dedicated disposable Qdrant instance. The script copies a bounded sample of
+provider histories; captures contain private history and must stay outside Git:
 
 ```bash
-MASH_TEST_MODELS_DIR=/path/to/installed/models \
-MASH_TEST_SEARCH_DB=/path/to/refreshed/index.sqlite3 \
-  cargo test-clif --release --run-ignored all -j 1 \
-  -E 'test(benchmark_real_search)' --success-output immediate
+agent-test uv run --no-project python tools/benchmark-views.py \
+  --binary /path/to/mash --models /path/to/installed/models \
+  --qdrant-url http://127.0.0.1:6333 \
+  --qdrant-grpc-url http://127.0.0.1:6334 \
+  --output /home/james/scratch/mash-artifacts/local-views-measurement
 ```
 
-These manual diagnostics open the index read-only, warm models, and emit JSON
-timings for seven queries in message and chat modes. They compare ordered
-message IDs and chat excerpt IDs against the default inference configuration;
-the batch comparison also checks scores. Ranking changes fail the diagnostic.
-Repeated settings help reveal timing noise. Measurements exclude CLI startup,
-shared search, and do not establish relevance by themselves.
-Use these alongside end-to-end measurements before changing production defaults.
+The script compares lexical/dense replay and search timings while checking that
+replay preserves canonical silver. Timings include CLI startup. Process memory
+and CPU exclude the Qdrant server; SQLite size reports cover silver only.
+Missing memory measurements fail the capture. These measurements do not establish
+relevance or fleet performance. The former SQLite scan and ANN replay benchmarks
+were removed with SQLite gold.
 
 CPU indexing reserves two workers for long embedding batches and allows short
 batches to use all eight workers. It preserves the dynamically quantized model's

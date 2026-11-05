@@ -109,10 +109,6 @@ fn views_fusion_policy_is_query_only_and_strictly_bounded() {
     .unwrap()
     .views;
     assert_eq!(changed.build, defaults.build);
-    assert_eq!(
-        changed.build.generation("model"),
-        defaults.build.generation("model")
-    );
     assert_eq!(changed.query.fusion.rank_constant, 10);
     assert_eq!(changed.query.fusion.lexical_weight, 4);
     assert_eq!(changed.query.fusion.semantic_weight, 2);

@@ -29,8 +29,8 @@ pub(crate) struct NodeViews {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) input: Option<i64>,
     pub(crate) chats: BTreeMap<String, ViewChat>,
-    /// Connector unit anchor to the hex digest of its indexed text, for every
-    /// connector point written from this node's shared silver.
+    /// Connector anchor to the complete projected evidence fingerprint, for
+    /// every connector point written from this node's silver.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) connectors: BTreeMap<String, String>,
 }
@@ -80,6 +80,15 @@ impl NodeViews {
 
     pub(crate) fn embeddings(&self) -> u64 {
         self.chats.values().map(|chat| chat.embeddings).sum()
+    }
+
+    pub(crate) fn stored_vectors(&self) -> u64 {
+        self.embeddings()
+            + if self.build.dense_enabled() {
+                self.connectors.len() as u64
+            } else {
+                0
+            }
     }
 }
 
@@ -344,6 +353,7 @@ impl Documents {
 }
 
 /// One connector unit ready to write.
+#[derive(Clone, serde::Serialize)]
 pub(crate) struct ConnectorPoint {
     pub(crate) source_id: String,
     pub(crate) object: crate::source::ObjectType,

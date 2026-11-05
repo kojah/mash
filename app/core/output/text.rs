@@ -365,6 +365,12 @@ pub(crate) fn render(
                     value.forgotten
                 ),
             );
+            if let Some(error) = &value.local_views_error {
+                line(
+                    &mut out,
+                    &format!("Local search refresh pending: {}", safe(error)),
+                );
+            }
             if let Some(shared) = &value.shared {
                 operations::publication(&mut out, shared)?;
             }

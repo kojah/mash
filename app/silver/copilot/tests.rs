@@ -229,10 +229,12 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
     assert_eq!(storage.counts().unwrap().messages, 10);
     assert_eq!(storage.counts().unwrap().searchable_messages, 3);
     let conversation = parse(&history).unwrap().conversation.unwrap();
-    let followup = storage
-        .search("structural", 10, Some(Provider::Copilot), None)
-        .unwrap()
-        .remove(0);
+    let followup = crate::storage::test_support::projections_with_text(
+        &storage,
+        "structural",
+        Some(Provider::Copilot),
+    )
+    .remove(0);
     let context = storage.view(&followup.id, 10).unwrap();
     assert!(context.iter().any(|m| m.content.contains("cBioPortal")));
     assert!(!context.iter().any(|m| m.content.contains("subagent")));
@@ -241,7 +243,9 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
         "privateskillmarker",
         "privateautopilotmarker",
     ] {
-        assert!(storage.search(marker, 10, None, None).unwrap().is_empty());
+        assert!(
+            crate::storage::test_support::projections_with_text(&storage, marker, None).is_empty()
+        );
     }
     storage
         .with_publication_snapshot(|snapshot| {
@@ -272,9 +276,7 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
     assert_eq!(summary.removed_messages, 8);
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert!(
-        storage
-            .search("structural", 10, None, None)
-            .unwrap()
+        crate::storage::test_support::projections_with_text(&storage, "structural", None)
             .is_empty()
     );
 }

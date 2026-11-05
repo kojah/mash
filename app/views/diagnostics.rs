@@ -107,10 +107,7 @@ impl Diagnostics {
     pub(crate) fn record(&mut self, stages: Vec<crate::observability::retrieval::Measurement>) {
         use crate::observability::retrieval::Stage;
         let local = stages.iter().any(|s| {
-            matches!(
-                s.stage,
-                Stage::LocalExact | Stage::LocalLexical | Stage::LocalDense
-            ) && s.completed_calls > 0
+            matches!(s.stage, Stage::LocalExact | Stage::LocalCandidates) && s.completed_calls > 0
         });
         let shared = stages
             .iter()

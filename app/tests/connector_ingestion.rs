@@ -148,6 +148,7 @@ fn run(database: &Path, config: &Path, models: &Path, arguments: &[&str]) -> Val
 }
 
 #[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path();
@@ -158,6 +159,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
          [views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
+    configure_qdrant(&config);
     let database = root.join("silver.sqlite3");
     let models = root.join("models");
     let input = root.join("batch.json");
@@ -216,10 +218,12 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
         "github:installation"
     );
     assert!(!models.exists());
+    cleanup_local_gold(&database, "local");
 }
 
 #[test]
-fn later_deliveries_are_searchable_at_once_and_never_take_search_down() {
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+fn later_deliveries_refresh_gold_before_reporting_ready() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path();
     let config = root.join("config.toml");
@@ -229,6 +233,7 @@ fn later_deliveries_are_searchable_at_once_and_never_take_search_down() {
          [views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
+    configure_qdrant(&config);
     let database = root.join("silver.sqlite3");
     let models = root.join("models");
     let input = root.join("batch.json");
@@ -277,22 +282,11 @@ fn later_deliveries_are_searchable_at_once_and_never_take_search_down() {
         "connector#entry#github:installation#review:1"
     );
     assert!(!models.exists());
-}
-
-/// Each connector unit's anchor and digest, as views hold them.
-fn connector_units(root: &Path) -> Vec<(String, Vec<u8>)> {
-    let views = Connection::open(root.join("silver.views.sqlite3")).unwrap();
-    let mut statement = views
-        .prepare("SELECT anchor, digest FROM connector_units ORDER BY anchor")
-        .unwrap();
-    statement
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap()
+    cleanup_local_gold(&database, "local");
 }
 
 #[test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 fn scoped_refreshes_match_a_full_rebuild_through_renames_moves_and_nesting() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path();
@@ -303,6 +297,7 @@ fn scoped_refreshes_match_a_full_rebuild_through_renames_moves_and_nesting() {
          [views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
+    configure_qdrant(&config);
     let database = root.join("silver.sqlite3");
     let models = root.join("models");
     let input = root.join("batch.json");
@@ -370,13 +365,18 @@ fn scoped_refreshes_match_a_full_rebuild_through_renames_moves_and_nesting() {
     for (revision, changes) in steps.into_iter().enumerate() {
         let revision = u64::try_from(revision).unwrap() + 1;
         assert!(deliver(&format!("step-{revision}"), revision, changes));
-        let scoped = connector_units(root);
+        let scoped = local_gold_points(&database, "local");
         run(
             &database,
             &config,
             &models,
             &["index", "--rebuild-local-views", "--full"],
         );
-        assert_eq!(scoped, connector_units(root), "after step {revision}");
+        assert_eq!(
+            scoped,
+            local_gold_points(&database, "local"),
+            "after step {revision}"
+        );
     }
+    cleanup_local_gold(&database, "local");
 }
