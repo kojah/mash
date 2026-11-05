@@ -275,34 +275,33 @@ impl Documents {
         message.tools = crate::tools::Activity::default();
         let words = tokens(&message.projection);
         let embedded = u64::from(message.vector.is_some());
-        self.batch
-            .push(
-                &store.api,
-                &self.name,
-                api::Point {
-                    id: document_id(&identity.node_id, &message.id),
-                    vector: api::Vectors {
-                        dense: message
-                            .vector
-                            .clone()
-                            .map(|v| (store.dense_name(identity).into(), v)),
-                        lexical: (!words.is_empty()).then(|| sparse(&message.projection, false)),
-                    },
-                    payload: Document {
-                        node_id: identity.node_id.clone(),
-                        provider: conversation.provider,
-                        role: message.role.clone(),
-                        conversation_id: conversation.id.clone(),
-                        project: conversation.project.clone(),
-                        repository: conversation.repository.clone(),
-                        created_at: message.created_at,
-                        tokens: words,
-                        conversation: conversation.clone(),
-                        message,
-                    },
+        let vector = Self::vectors(
+            store,
+            identity,
+            &message.projection,
+            &words,
+            message.vector.clone(),
+        );
+        self.push_point(
+            store,
+            api::Point {
+                id: document_id(&identity.node_id, &message.id),
+                vector,
+                payload: Document {
+                    node_id: identity.node_id.clone(),
+                    provider: conversation.provider,
+                    role: message.role.clone(),
+                    conversation_id: conversation.id.clone(),
+                    project: conversation.project.clone(),
+                    repository: conversation.repository.clone(),
+                    created_at: message.created_at,
+                    tokens: words,
+                    conversation: conversation.clone(),
+                    message,
                 },
-            )
-            .await?;
+            },
+        )
+        .await?;
         Ok(embedded)
     }
 
@@ -323,28 +322,46 @@ impl Documents {
         } = point;
         let words = tokens(&unit.text);
         unit.generation = vector.as_ref().map(|_| identity.generation.clone());
-        self.batch
-            .push(
-                &store.api,
-                &self.name,
-                api::Point {
-                    id: connector_id(&identity.node_id, &unit.anchor),
-                    vector: api::Vectors {
-                        dense: vector.map(|v| (store.dense_name(identity).into(), v)),
-                        lexical: (!words.is_empty()).then(|| sparse(&unit.text, false)),
-                    },
-                    payload: ConnectorDocument {
-                        node_id: identity.node_id.clone(),
-                        source_id,
-                        object,
-                        conversation_id: group_anchor,
-                        created_at,
-                        tokens: words,
-                        unit,
-                    },
+        let vector = Self::vectors(store, identity, &unit.text, &words, vector);
+        self.push_point(
+            store,
+            api::Point {
+                id: connector_id(&identity.node_id, &unit.anchor),
+                vector,
+                payload: ConnectorDocument {
+                    node_id: identity.node_id.clone(),
+                    source_id,
+                    object,
+                    conversation_id: group_anchor,
+                    created_at,
+                    tokens: words,
+                    unit,
                 },
-            )
-            .await
+            },
+        )
+        .await
+    }
+
+    fn vectors(
+        store: &Store,
+        identity: &Scope,
+        text: &str,
+        words: &[String],
+        dense: Option<Vec<f64>>,
+    ) -> api::Vectors {
+        api::Vectors {
+            dense: dense.map(|v| (store.dense_name(identity).into(), v)),
+            lexical: (!words.is_empty()).then(|| sparse(text, false)),
+        }
+    }
+
+    /// All source projections share the same bounded, completion-checked writer.
+    async fn push_point<P: Serialize>(
+        &mut self,
+        store: &Store,
+        point: api::Point<P>,
+    ) -> Result<(), AppError> {
+        self.batch.push(&store.api, &self.name, point).await
     }
 
     pub(crate) async fn finish(mut self, store: &Store) -> Result<(), AppError> {
