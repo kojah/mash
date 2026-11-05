@@ -2640,6 +2640,48 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
     service.cleanup().await;
 }
 
+/// Canonical acceptance does not certify a dense projection with missing vectors.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_certification_requires_vectors_for_every_eligible_native_unit() {
+    let service = Service::qdrant(384).await;
+    let identity = service.first.clone();
+    let mut partial = snapshot(1);
+    partial[2]["records"][0]["vector"] = json!(null);
+    partial[2]["records"][0]["generation"] = json!(null);
+    service
+        .upload(FIRST, &partial)
+        .await
+        .error_for_status()
+        .unwrap();
+    let freshness = service.store.freshness(&identity).await.unwrap();
+    assert_eq!(freshness.nodes.len(), 1);
+    assert!(freshness.nodes[0].lexical_current);
+    assert!(!freshness.nodes[0].views_current);
+    assert!(!service.store.views_current(&identity).await.unwrap());
+    let retained = service.store.state(&identity).await.unwrap();
+    assert!(retained.silver_revision.is_some());
+
+    // Re-supplying the same canonical history with its missing vector repairs
+    // the derived views without requiring a different silver revision.
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    assert!(service.store.views_current(&identity).await.unwrap());
+    assert_eq!(
+        service
+            .store
+            .state(&identity)
+            .await
+            .unwrap()
+            .silver_revision,
+        retained.silver_revision
+    );
+    service.cleanup().await;
+}
+
 /// A delayed partial marker for unchanged content must not downgrade a later
 /// complete marker, even though both fingerprints match canonical silver.
 #[tokio::test]
