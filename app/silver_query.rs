@@ -21,7 +21,7 @@ const MAX_SQL_BYTES: usize = 64 * 1024;
 const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 const ROW_OVERHEAD_BYTES: usize = 8;
 
-/// A typed, declarative query over the stable views. Every value is bound as a
+/// A typed, declarative query over canonical agent history. Every value is bound as a
 /// parameter and every identifier comes from an enum, so callers cannot name a
 /// table, column or SQL fragment. This is the shape a remote shared-silver
 /// query can accept without parsing arbitrary SQL.
@@ -49,16 +49,16 @@ fn default_request_limit() -> usize {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Target {
     Messages,
-    Conversations,
-    Documents,
+    Sessions,
+    Turns,
 }
 
 #[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum GroupBy {
-    Source,
+    Provider,
     Role,
-    Conversation,
+    Session,
 }
 
 #[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
@@ -72,9 +72,9 @@ pub(crate) enum Order {
 #[derive(Clone, Debug, Default, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct Filter {
-    pub source: Option<String>,
-    pub conversation: Option<String>,
-    pub role: Option<String>,
+    pub provider: Option<crate::provider::Provider>,
+    pub session: Option<String>,
+    pub role: Option<crate::role::Role>,
     /// Inclusive lower bound in Unix milliseconds.
     pub since: Option<i64>,
     /// Exclusive upper bound in Unix milliseconds.
@@ -84,42 +84,47 @@ pub(crate) struct Filter {
 }
 
 impl Target {
-    fn view(self) -> &'static str {
+    fn relation(self) -> &'static str {
         match self {
-            Self::Messages => "messages",
-            Self::Conversations => "conversations",
-            Self::Documents => "documents",
+            Self::Messages => {
+                "(SELECT m.*,s.provider FROM messages m JOIN sessions s ON s.id=m.conversation_id)"
+            }
+            Self::Sessions => "sessions",
+            Self::Turns => {
+                "(SELECT t.*,s.provider FROM turns t JOIN sessions s ON s.id=t.conversation_id)"
+            }
         }
     }
 
     fn columns(self) -> &'static str {
         match self {
             Self::Messages => {
-                "id, conversation_id, source, role, ordinal, created_at, updated_at, content"
+                "id, conversation_id, turn_id, provider, role, ordinal, created_at, content"
             }
-            Self::Conversations => {
-                "id, source, kind, title, project, repository, created_at, updated_at, metadata"
-            }
-            Self::Documents => {
-                "id, source, kind, title, content, created_at, updated_at, parent_id, url"
+            Self::Sessions => "id, provider, title, project, repository, created_at, updated_at",
+            Self::Turns => {
+                "id, conversation_id, provider, revision, boundary, closed, created_at, updated_at"
             }
         }
     }
 
-    fn text_column(self) -> &'static str {
+    fn text_column(self) -> Result<&'static str, AppError> {
         match self {
-            Self::Messages | Self::Documents => "content",
-            Self::Conversations => "title",
+            Self::Messages => Ok("content"),
+            Self::Sessions => Ok("title"),
+            Self::Turns => Err(AppError::usage(
+                "turns have no text column; query their messages",
+            )),
         }
     }
 
     fn group_column(self, group: GroupBy) -> Result<&'static str, AppError> {
         match (self, group) {
-            (_, GroupBy::Source) => Ok("source"),
+            (_, GroupBy::Provider) => Ok("provider"),
             (Self::Messages, GroupBy::Role) => Ok("role"),
-            (Self::Messages, GroupBy::Conversation) => Ok("conversation_id"),
+            (Self::Messages | Self::Turns, GroupBy::Session) => Ok("conversation_id"),
             _ => Err(AppError::usage(
-                "this target cannot group by role or conversation",
+                "this target cannot group by role or session",
             )),
         }
     }
@@ -140,17 +145,25 @@ fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>
     use rusqlite::types::Value;
     let mut where_clauses: Vec<String> = Vec::new();
     let mut params = Vec::new();
-    if let Some(source) = &request.filter.source {
-        where_clauses.push("source = ?".to_owned());
-        params.push(Value::Text(source.clone()));
+    if let Some(provider) = &request.filter.provider {
+        where_clauses.push("provider = ?".to_owned());
+        params.push(Value::Text(provider.as_str().to_owned()));
     }
-    if let Some(conversation) = &request.filter.conversation {
-        where_clauses.push("conversation_id = ?".to_owned());
+    if let Some(conversation) = &request.filter.session {
+        let column = if matches!(request.target, Target::Sessions) {
+            "id"
+        } else {
+            "conversation_id"
+        };
+        where_clauses.push(format!("{column} = ?"));
         params.push(Value::Text(conversation.clone()));
     }
     if let Some(role) = &request.filter.role {
+        if !matches!(request.target, Target::Messages) {
+            return Err(AppError::usage("role filters apply only to messages"));
+        }
         where_clauses.push("role = ?".to_owned());
-        params.push(Value::Text(role.clone()));
+        params.push(Value::Text(role.as_str().to_owned()));
     }
     if let Some(since) = request.filter.since {
         where_clauses.push("created_at >= ?".to_owned());
@@ -163,7 +176,7 @@ fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>
     if let Some(text) = &request.filter.text {
         where_clauses.push(format!(
             "instr(lower(coalesce({}, '')), lower(?)) > 0",
-            request.target.text_column()
+            request.target.text_column()?
         ));
         params.push(Value::Text(text.clone()));
     }
@@ -183,6 +196,12 @@ fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>
         }
         None => (request.target.columns().to_owned(), String::new(), "id"),
     };
+    if matches!(
+        (request.target, request.order),
+        (Target::Messages, Some(Order::UpdatedAt))
+    ) {
+        return Err(AppError::usage("messages have created_at, not updated_at"));
+    }
     let order = request.order.map_or(default_order, |order| order.column());
     let direction = if request.descending || (request.group_by.is_some() && request.order.is_none())
     {
@@ -193,7 +212,7 @@ fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>
     let limit = request.limit.clamp(1, MAX_ROWS);
     let sql = format!(
         "SELECT {select} FROM {}{where_sql}{group_sql} ORDER BY {order} {direction} LIMIT {limit}",
-        request.target.view()
+        request.target.relation()
     );
     Ok((sql, params))
 }
@@ -240,30 +259,6 @@ fn sql_error(error: &rusqlite::Error) -> AppError {
         AppError::usage(format!("query is not valid SQL: {error}"))
     }
 }
-
-/// Convenience views over the generic `objects` table, installed on every
-/// read-only connection. They are the stable names diagnostics and MCP callers
-/// can rely on while the underlying columns stay free to change.
-const STABLE_VIEWS: &str = "
-CREATE TEMP VIEW IF NOT EXISTS conversations AS
-SELECT origin, source, id, kind, title, project, repository,
-       created_at, updated_at, metadata
-FROM objects
-WHERE object_role = 'container';
-
-CREATE TEMP VIEW IF NOT EXISTS messages AS
-SELECT source, conversation_id, id, kind, object_role, ordinal, role, author,
-       content, search_projection, created_at, updated_at, reply_to,
-       attachments, metadata
-FROM objects
-WHERE object_role = 'entry';
-
-CREATE TEMP VIEW IF NOT EXISTS documents AS
-SELECT source, id, kind, title, content, created_at, updated_at,
-       parent_id, url, metadata
-FROM objects
-WHERE object_role = 'document';
-";
 
 fn json_value(value: rusqlite::types::ValueRef<'_>) -> Value {
     use rusqlite::types::ValueRef;
@@ -344,24 +339,24 @@ fn run_params(
     execute(&connection, sql, params, limit, byte_budget)
 }
 
-/// Install the stable views, pin the connection read-only and arm the time
+/// Pin the connection read-only and arm the time
 /// budget. Shared-silver reads call this on a server connection as well, so a
 /// typed query gets exactly the same guardrails as a local one.
 fn prepare_read_only(connection: &Connection, timeout: Duration) -> Result<(), AppError> {
+    let version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(AppError::database)?;
+    if version != crate::storage::schema::SCHEMA_VERSION {
+        return Err(crate::storage::schema::unsupported(version));
+    }
     crate::storage::packed::register(connection).map_err(AppError::database)?;
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(AppError::database)?;
-    // Views are installed by us before the connection is pinned read-only, so
-    // a statement can use them but can neither create nor alter one.
-    connection
-        .execute_batch(STABLE_VIEWS)
-        .map_err(AppError::database)?;
     connection
         .pragma_update(None, "query_only", true)
         .map_err(AppError::database)?;
-    // The authorizer runs after our own setup, so the stable views and
-    // query_only are installed while it is still absent.
+    // Install the authorizer after configuring the read-only connection.
     connection
         .authorizer(Some(authorize))
         .map_err(AppError::database)?;
@@ -466,32 +461,23 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("silver.sqlite3");
         let connection = Connection::open(&path).unwrap();
+        crate::storage::packed::register(&connection).unwrap();
+        connection
+            .execute_batch(crate::storage::schema::SILVER)
+            .unwrap();
         connection
             .execute_batch(
                 "CREATE TABLE t (id INTEGER, name TEXT);
-                 INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');
-                 CREATE TABLE objects (
-                   storage_id INTEGER PRIMARY KEY,
-                   origin TEXT, source TEXT, id TEXT, object_role TEXT,
-                   kind TEXT, parent_id TEXT, parent_storage_id INTEGER,
-                   reply_to TEXT, conversation_id TEXT, ordinal INTEGER,
-                   context_parent TEXT, role TEXT, author TEXT, title TEXT,
-                   content TEXT, search_projection TEXT, created_at INTEGER,
-                   updated_at INTEGER, project TEXT, repository TEXT, url TEXT,
-                   metadata TEXT, attachments TEXT DEFAULT '[]', record TEXT);
-                 INSERT INTO objects (origin, source, id, object_role, kind,
-                   conversation_id, title)
-                   VALUES ('provider', 'codex', 'chat-1', 'container',
-                           'codex:thread', 'chat-1', 'A chat');
-                 INSERT INTO objects (origin, source, id, object_role, kind,
-                   conversation_id, ordinal, role, content)
-                   VALUES ('provider', 'codex', 'message-1', 'entry',
-                           'codex:message', 'chat-1', 0, 'user', 'hello');
-                 INSERT INTO objects (origin, source, id, object_role, kind,
-                   conversation_id, title, content)
-                   VALUES ('connector', 'git:acme/app', 'commit-1', 'document',
-                           'git:commit', 'commit-1', 'fix', 'body');",
+             INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');
+             INSERT INTO sessions(id,provider,title) VALUES('chat-1','codex','A chat');
+             INSERT INTO turns(id,conversation_id,revision,boundary,closed)
+                VALUES('turn-1','chat-1','revision','start',0);
+             INSERT INTO messages(id,conversation_id,turn_id,ordinal,role,content_packed)
+                VALUES('message-1','chat-1','turn-1',0,'user',silver_pack('hello'));",
             )
+            .unwrap();
+        connection
+            .pragma_update(None, "user_version", crate::storage::schema::SCHEMA_VERSION)
             .unwrap();
         (directory, path)
     }
@@ -512,11 +498,11 @@ mod tests {
     }
 
     #[test]
-    fn stable_views_expose_containers_messages_and_documents() {
+    fn canonical_tables_expose_sessions_messages_and_turns() {
         let (_directory, path) = fixture();
         let chat = run(
             &path,
-            "SELECT id, title FROM conversations",
+            "SELECT id, title FROM sessions",
             10,
             Duration::from_secs(5),
         )
@@ -540,17 +526,14 @@ mod tests {
             }])
         );
 
-        let document = run(
+        let turn = run(
             &path,
-            "SELECT id, kind, content FROM documents",
+            "SELECT id, boundary FROM turns",
             10,
             Duration::from_secs(5),
         )
         .unwrap();
-        assert_eq!(
-            document["rows"],
-            json!([{"id": "commit-1", "kind": "git:commit", "content": "body"}])
-        );
+        assert_eq!(turn["rows"], json!([{"id": "turn-1", "boundary": "start"}]));
     }
 
     #[test]
@@ -623,24 +606,21 @@ mod tests {
     fn typed_requests_filter_group_and_bound_without_sql() {
         let (_directory, path) = fixture();
         let request: Request = serde_json::from_str(
-            r#"{"target":"messages","filter":{"source":"codex","text":"ELL"}}"#,
+            r#"{"target":"messages","filter":{"provider":"codex","text":"ELL"}}"#,
         )
         .unwrap();
         let value = run_request(&path, &request, Duration::from_secs(5)).unwrap();
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
 
         let grouped: Request =
-            serde_json::from_str(r#"{"target":"messages","group_by":"source"}"#).unwrap();
+            serde_json::from_str(r#"{"target":"messages","group_by":"provider"}"#).unwrap();
         let value = run_request(&path, &grouped, Duration::from_secs(5)).unwrap();
         assert_eq!(value["rows"], json!([{"group_key": "codex", "count": 1}]));
 
-        let documents: Request =
-            serde_json::from_str(r#"{"target":"documents","group_by":"source"}"#).unwrap();
-        let value = run_request(&path, &documents, Duration::from_secs(5)).unwrap();
-        assert_eq!(
-            value["rows"],
-            json!([{"group_key": "git:acme/app", "count": 1}])
-        );
+        let turns: Request =
+            serde_json::from_str(r#"{"target":"turns","group_by":"provider"}"#).unwrap();
+        let value = run_request(&path, &turns, Duration::from_secs(5)).unwrap();
+        assert_eq!(value["rows"], json!([{"group_key": "codex", "count": 1}]));
 
         // Zero is clamped to one row rather than returning nothing.
         let clamped: Request = serde_json::from_str(r#"{"target":"messages","limit":0}"#).unwrap();
@@ -653,7 +633,7 @@ mod tests {
         );
         // Role is not a conversation column.
         let invalid: Request =
-            serde_json::from_str(r#"{"target":"conversations","group_by":"role"}"#).unwrap();
+            serde_json::from_str(r#"{"target":"sessions","group_by":"role"}"#).unwrap();
         assert!(run_request(&path, &invalid, Duration::from_secs(5)).is_err());
     }
 
@@ -663,5 +643,59 @@ mod tests {
         assert!(run(&path, "  ", 10, Duration::from_secs(5)).is_err());
         let huge = "SELECT 1;".repeat(MAX_SQL_BYTES);
         assert!(run(&path, &huge, 10, Duration::from_secs(5)).is_err());
+    }
+
+    #[test]
+    fn queries_reject_foreign_schemas_without_modifying_them() {
+        let (_directory, path) = fixture();
+        for version in [0, crate::storage::schema::SCHEMA_VERSION + 1] {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .pragma_update(None, "user_version", version)
+                .unwrap();
+            assert!(run(&path, "SELECT 1", 10, Duration::from_secs(5)).is_err());
+            let retained: i64 = connection
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(retained, version);
+            let count: i64 = connection
+                .query_row("SELECT count(*) FROM messages", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(count, 1);
+        }
+    }
+
+    #[test]
+    fn agent_query_targets_validate_filters_and_reject_retired_documents() {
+        let (_directory, path) = fixture();
+        for target in ["sessions", "messages", "turns"] {
+            let request: Request = serde_json::from_value(json!({
+                "target": target, "filter": {"session": "chat-1", "provider": "codex"}
+            }))
+            .unwrap();
+            let result = run_request(&path, &request, Duration::from_secs(5)).unwrap();
+            assert_eq!(result["rows"].as_array().unwrap().len(), 1, "{target}");
+        }
+        for request in [
+            json!({"target":"sessions","filter":{"role":"user"}}),
+            json!({"target":"turns","filter":{"text":"hello"}}),
+            json!({"target":"messages","order":"updated_at"}),
+        ] {
+            assert!(
+                run_request(
+                    &path,
+                    &serde_json::from_value(request).unwrap(),
+                    Duration::from_secs(5)
+                )
+                .is_err()
+            );
+        }
+        assert!(serde_json::from_value::<Request>(json!({"target":"documents"})).is_err());
+        assert!(
+            serde_json::from_value::<Request>(
+                json!({"target":"messages","filter":{"source":"external"}})
+            )
+            .is_err()
+        );
     }
 }

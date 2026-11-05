@@ -11,10 +11,8 @@ pub(crate) fn projections_with_text(
     let mut statement = storage
         .connection
         .prepare(
-            "SELECT m.id FROM objects m JOIN objects c ON c.id=m.conversation_id
-         AND c.origin='provider' AND c.object_role='container'
-         WHERE m.origin='provider' AND m.object_role='entry'
-         AND (?2 IS NULL OR c.source=?2)
+            "SELECT m.id FROM messages m JOIN sessions c ON c.id=m.conversation_id
+         WHERE (?2 IS NULL OR c.provider=?2)
          AND instr(lower(COALESCE(m.search_projection,m.content)),lower(?1))>0
          ORDER BY m.id",
         )

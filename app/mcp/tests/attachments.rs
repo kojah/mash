@@ -24,7 +24,8 @@ fn assert_native_attachment(result: &CallToolResult, media_type: &str) {
 }
 
 #[tokio::test]
-async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_after_forget() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+async fn qdrant_sdk_attachments_survive_restart_and_source_removal_and_fail_closed_after_forget() {
     let root = tempfile::tempdir().unwrap();
     let chats = root.path().join("chats");
     std::fs::create_dir(&chats).unwrap();
@@ -36,6 +37,8 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
     ]}})).unwrap()).unwrap();
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", chats.display())).unwrap();
+    let qdrant_url = crate::views::local::test_support::configure(&config);
+    let configuration = crate::config::load(Some(&config)).unwrap();
     let db = root.path().join("index.sqlite3");
     let paths = Paths {
         config: Some(config),
@@ -51,11 +54,7 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
     assert!(!indexed.needs_retry());
     let id: String = rusqlite::Connection::open(&db)
         .unwrap()
-        .query_row(
-            "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT id FROM messages LIMIT 1", [], |r| r.get(0))
         .unwrap();
     std::fs::remove_file(source).unwrap();
     let mash = Mash {
@@ -119,4 +118,8 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
     assert_eq!(removed.is_error, Some(true));
     client.cancel().await.unwrap();
     server.waiting().await.unwrap();
+    let local = crate::views::local::Local::open(&db, &configuration)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &qdrant_url).await;
 }

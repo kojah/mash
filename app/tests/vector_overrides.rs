@@ -15,7 +15,9 @@ async fn cli_forwards_shared_vector_overrides_without_persisting_them() {
         "--models-dir",
         models.to_str().unwrap(),
     ];
-    run_json(&[base.as_slice(), &["index"]].concat());
+    // Shared-only queries need no local views. Seed canonical silver solely to
+    // verify that forwarding overrides leaves the local database untouched.
+    seed_readiness_database(&database, None);
     let before = std::fs::read(&database).unwrap();
     let mut service = test_support::vector::Service::new().await;
     std::fs::write(&config, service.configuration()).unwrap();

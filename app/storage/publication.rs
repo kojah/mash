@@ -33,7 +33,7 @@ impl Snapshot<'_> {
     }
 
     pub(crate) fn removed_threads(&self, after: i64) -> Result<Vec<String>, AppError> {
-        let mut statement = self.connection.prepare("SELECT j.conversation_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=j.conversation_id) ORDER BY j.conversation_id").map_err(AppError::database)?;
+        let mut statement = self.connection.prepare("SELECT j.conversation_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM sessions c WHERE c.id=j.conversation_id) ORDER BY j.conversation_id").map_err(AppError::database)?;
         statement
             .query_map([after], |row| row.get(0))
             .map_err(AppError::database)?
@@ -79,21 +79,20 @@ impl Snapshot<'_> {
     ) -> Result<(), AppError> {
         let sql = match kind {
             BatchKind::Conversations => {
-                "SELECT c.id,c.source,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
-                 FROM objects c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
-                 WHERE c.origin='provider' AND c.object_role='container' ORDER BY c.id"
+                "SELECT c.id,c.provider,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
+                 FROM sessions c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+                 ORDER BY c.id"
             }
             BatchKind::Messages if by_thread => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments, m.metadata
-                FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
-                ORDER BY m.conversation_id, m.ordinal, m.id"
+                COALESCE(m.search_projection, m.content), m.created_at, m.context_parent, m.attachments, m.metadata
+                FROM messages m ORDER BY m.conversation_id, m.ordinal, m.id"
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments, m.metadata
-                FROM objects m
-                WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.id"
+                COALESCE(m.search_projection, m.content), m.created_at, m.context_parent, m.attachments, m.metadata
+                FROM messages m
+                ORDER BY m.id"
             }
             BatchKind::Tombstones => {
                 "SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id"
@@ -180,18 +179,14 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
     let Some(after) = after else {
         return Ok(sql.to_owned());
     };
-    // A delta reads only changed threads. Name their indexes: SQLite would
-    // otherwise filter every native row through the low-selectivity origin index.
+    // A delta reads only changed sessions. Keep message selection on its
+    // session index rather than scanning canonical bodies.
     let (id, table, indexed) = match kind {
-        BatchKind::Conversations => (
-            "c.id",
-            "FROM objects c",
-            "FROM objects c INDEXED BY objects_native_container",
-        ),
+        BatchKind::Conversations => ("c.id", "FROM sessions c", "FROM sessions c"),
         BatchKind::Messages => (
             "m.conversation_id",
-            "FROM objects m",
-            "FROM objects m INDEXED BY objects_conversation",
+            "FROM messages m",
+            "FROM messages m INDEXED BY messages_conversation",
         ),
         BatchKind::Tombstones => ("conversation_id", "", ""),
     };

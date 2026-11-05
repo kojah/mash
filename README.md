@@ -128,9 +128,9 @@ guarantee that arbitrary or obfuscated secrets are absent.
 
 Text a person wraps in `<private>…</private>` (any case, closed in the same
 message) is replaced by `[PRIVATE]` before it is stored: in native message
-text, search projections, tool inputs and chat titles, and in connector titles,
-content and metadata. Every index, view, export and publication derives from
-silver, so none of them holds it, whatever the `[redaction]` settings. An
+text, search projections, tool inputs and chat titles. Every index, view, export
+and publication derives from silver, so none of them holds it, whatever the
+`[redaction]` settings. An
 unclosed tag masks nothing. Mash cannot change the provider's own history files,
 and retained text attachments are stored as submitted.
 
@@ -147,9 +147,9 @@ remote_embeddings = true  # text sent to a remote embedding API
 Turning `output` off shows canonical text, and lets search match inside
 credentials. Changing `publication` republishes this node's whole history on
 its next index, because masked and unmasked uploads must not mix. The shared
-server has its own `[redaction]` table with `responses` (HTTP read responses)
-and `remote_embeddings` (connector text it embeds remotely). Text attachments
-are masked when they are retained, so they stay masked regardless of these
+server has its own `[redaction]` table with `responses` for HTTP read responses
+and `remote_embeddings` for text sent to remote embedding APIs during replay.
+Text attachments are masked when they are retained, so they stay masked regardless of these
 settings. Existing deployments
 and stored shared history require an upgrade and explicit re-indexing; rebuilding
 alone does not delete previous publications. See the
@@ -196,11 +196,11 @@ for example `"provider": "codex"`. Messages and matching excerpts carry the agen
 `role` directly, including provider-defined roles. Messages and matching excerpts
 include `turn_id` when they belong to a derived turn; `chat_id` identifies their chat.
 Local and shared Qdrant use views schema 11; silver uses
-schema 60. Views are rebuilt from silver; silver from an earlier release crosses
+schema 61. Views are rebuilt from silver; silver from an earlier release crosses
 over through export and `import --keep-identity`.
 
 Silver compresses canonical text of at least 1 KiB with zstd when it saves space.
-This applies to native providers and connectors in `objects`, and to retained
+This applies to canonical text in `messages`, and to retained
 Claude source messages. Reads expose the original text through a generated
 `content` column; raw SQLite connections need Mash's silver codec functions.
 CLI, MCP and portable exports continue to return decoded canonical text.
@@ -297,10 +297,8 @@ Mash plugin/skill files, bundled hooks, hook trust records and the stdio MCP
 registration. Findings include the inspected path and a repair suggestion.
 The `resources` section checks the selected local database's schema, lists every
 supported provider with configured roots, root accessibility and recorded scan
-results, and lists locally committed connector delivery timestamps. Missing scan
-or delivery evidence is not a successful connection check. Connector credentials,
-live transport health and shared-only sources cannot be inferred from local
-receipts; use `status --shared` for shared readiness and `status --coverage` for
+results. Missing scan evidence is not a successful connection check.
+Use `status --shared` for shared readiness and `status --coverage` for
 retained provider coverage. Missing default history directories may simply mean
 that provider is not used on this machine.
 The report also includes `resources.silver` and flags pending, incomplete or
@@ -488,8 +486,8 @@ Qdrant is unavailable or its collections are missing. Import reconstructs silver
 views require an explicit rebuild afterward.
 
 Local indexing separates durable canonical ingestion (silver) from rebuilding
-built-in retrieval views, reusing the existing stored history. Lexical indexes,
-dense embeddings and connector search units are built-in views: derived from
+built-in retrieval views, reusing the existing stored history. Lexical indexes
+and dense embeddings are built-in views: derived from
 silver, certified against it and replayable from it. `mash.sqlite3` holds silver;
 Qdrant holds search documents, vectors and certification. Silver uses the same
 schema as each node's history on the shared server. Local Qdrant namespaces
@@ -511,12 +509,9 @@ Local and shared Qdrant collections use the `mash_views_` prefix. Rebuild local 
 shared views with `serve --replay-views` before checking readiness. Retired
 `.gold.sqlite3` and `.views.sqlite3` files and `mash_gold_` collections are not read or converted;
 they can be removed after verifying the rebuilt views.
-Silver schema 53 stores the renamed live connector receipts. Use the existing
-export/import upgrade for local schema 52 indexes. Portable archive version 1
-retains its original receipt encoding, including its historical `gold_ready`
-key, so exports from earlier releases remain importable; live receipts use
-`views_ready`.
-Update the history plugin to version 0.1.4 and reconnect Mash MCP after the
+Portable archive version 1 preserves its native history encoding. Upgrade local
+silver through export/import, then rebuild retrieval views.
+Update the history plugin and reconnect Mash MCP after the
 rollout. Older cached plugin instructions still use `list_threads` and
 `unit: "threads"`; the current protocol uses `list_chats` and `unit: "chats"`.
 Replacing the executable leaves already running MCP processes on their previous
@@ -627,7 +622,7 @@ Indexing reports model-loading progress while waiting or compiling.
 
 Local gold captures a consistent silver snapshot and spools native messages to a
 private temporary file. It materializes one chat at a time with bounded inference
-and Qdrant mutation batches. Chat metadata and connector projections remain in
+and Qdrant mutation batches. Chat metadata remains in
 memory; this is not a process-memory ceiling. There is no SQL embedding queue or
 packed-vector cache.
 
@@ -1081,11 +1076,7 @@ RFC3339 timestamps with an explicit offset.
 
 MCP exposes the same selection fields: `provider`, `chat`, `node`,
 `role`, `project` and `repository` are arrays, including for a single
-value. `provider` and `role` name native history, so they never match connector
-records; `source` names connector source IDs, so it never matches native history.
-`kind` names object kinds from either: `codex:message` for native messages, or a
-connector's own labels such as `slack:message`.
-Connector records have no project or repository.
+value.
 `after` and `before` use Unix seconds. Omitted or empty shortcut arrays impose
 no restriction; an empty list inside a structured predicate, such as
 `{"chat": []}`, matches nothing. Unknown chat IDs match nothing.
@@ -1266,11 +1257,10 @@ and forget through delta uploads. Requests use bearer credentials. `/v1/sync`
 carries typed Protobuf envelopes with zstd publication data, durable piece
 checkpoints and resume; a first publication of a large history is planned into
 independently committed batches, so recent conversations become searchable
-while the rest uploads; publication, connector-batch, attachment-upload and
+while the rest uploads; publication, attachment-upload and
 progressive-backfill operations share one transfer protocol. The former
 `POST /v1/index` (NDJSON) and `/v1/attachment-upload` routes and handlers were
-removed in the protocol-matched release; `/v1/connector-batches` remains until
-the WebSocket client returns the same source-scoped connector receipt. Search carries a query
+removed in the protocol-matched release. Search carries a query
 embedding and returns candidates for node-side fusion and reranking. The HTTP
 server needs no model assets. Interrupted or invalid uploads leave the visible
 revision and freshness unchanged. Uploads are bounded by 128 records per batch,
@@ -2005,11 +1995,7 @@ configuration, stays local and is ignored by Git.
 sequences against real SQLite, disposable-backend replay interruptions and
 focused cargo-mutants audits. Property tests run with ordinary nextest tests;
 mutation audits run explicitly with `make mutation-tools` and `make mutation-check`.
-Run `make property-check` for generated SQLite tests. With disposable
-`MASH_TEST_QDRANT_URL` and `MASH_TEST_QDRANT_GRPC_URL`, run `make property-backend-check` for generated interrupted
-connector writes and `make mutation-connectors` to audit their regressions.
-
-Bounded TLA+ checks for publication, connector receipts, tombstones and shared
+Bounded TLA+ checks for publication, tombstones and shared
 view recovery live in [protocol/](protocol/README.md). Run `make protocol-tools`
 once to install the pinned checker, then `make protocol-check`. These checks
 include explicit expected counterexamples, including the historical replay

@@ -1,13 +1,16 @@
 use super::*;
 
 #[tokio::test]
-async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+async fn qdrant_sdk_outputs_mask_credentials_in_view_discovery_and_search() {
     let root = tempfile::tempdir().unwrap();
     let chats = root.path().join("chats");
     std::fs::create_dir(&chats).unwrap();
     std::fs::write(chats.join("session.jsonl"), "{\"type\":\"user\",\"sessionId\":\"session\",\"uuid\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"credentialneedle password=\\\"hunter2\\\"\"}}\n").unwrap();
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", chats.display())).unwrap();
+    let qdrant_url = crate::views::local::test_support::configure(&config);
+    let configuration = crate::config::load(Some(&config)).unwrap();
     let mash = Mash {
         runtime: None,
         paths: Arc::new(Paths {
@@ -47,7 +50,7 @@ async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
         if tool == "index" {
             message_id = rusqlite::Connection::open(root.path().join("index.sqlite3"))
                 .unwrap()
-                .query_row("SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1", [], |row| row.get(0))
+                .query_row("SELECT id FROM messages LIMIT 1", [], |row| row.get(0))
                 .unwrap();
         }
         if tool != "index" {
@@ -59,4 +62,9 @@ async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
     }
     client.cancel().await.unwrap();
     server.waiting().await.unwrap();
+    let local =
+        crate::views::local::Local::open(&root.path().join("index.sqlite3"), &configuration)
+            .await
+            .unwrap();
+    crate::views::local::test_support::cleanup(&local, &qdrant_url).await;
 }

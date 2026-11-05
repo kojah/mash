@@ -358,8 +358,7 @@ impl Store {
             .ok_or_else(|| AppError::internal("certification requires an input revision"))?;
         // Decide under the write lock, against the stored views and silver as
         // they are now: concurrent certifications (parallel baseline lanes)
-        // each build only their own chats and may finish in any order, and
-        // the connector pass below writes the node's views.
+        // each build only their own chats and may finish in any order.
         let write = self.views_write_guard(identity).await?;
         let latest = self.views.node_views(identity).await?;
         let fingerprints = self

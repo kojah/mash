@@ -85,7 +85,7 @@ async fn qdrant_publication_reuse_obeys_redacted_snapshot_input() {
     let fixture = crate::views::local::test_support::Fixture::new(&database, "publisher").await;
     crate::storage::test_support::write(
         &database,
-        "UPDATE objects SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE origin='provider' AND id='b-100'",
+        "UPDATE messages SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE id='b-100'",
     );
     let (file, work) = prepared_snapshot(
         &database,
@@ -125,7 +125,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         .unwrap();
     crate::storage::test_support::write(
         &database,
-        "UPDATE objects SET title='changed' WHERE origin='provider' AND id='a'; DELETE FROM objects WHERE origin='provider' AND id='b';",
+        "UPDATE sessions SET title='changed' WHERE id='a'; DELETE FROM sessions WHERE id='b';",
     );
     let target = Target {
         build: crate::views::config::Build::default(),
@@ -190,10 +190,10 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     let root = tempfile::tempdir().unwrap();
     let database = seed(root.path());
     let connection = crate::storage::test_support::connect(&database);
-    connection.execute("UPDATE objects SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE origin='provider' AND id='a-100'",[]).unwrap();
+    connection.execute("UPDATE messages SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE id='a-100'",[]).unwrap();
     connection
         .execute(
-            "UPDATE objects SET title='password=\"rosebud\"' WHERE origin='provider' AND id='a'",
+            "UPDATE sessions SET title='password=\"rosebud\"' WHERE id='a'",
             [],
         )
         .unwrap();
@@ -209,7 +209,7 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     let stream = std::fs::read_to_string(source.file.path()).unwrap();
     assert!(!stream.contains("hunter2") && !stream.contains("rosebud"));
     let canonical: String = connection
-        .query_row("SELECT content FROM objects WHERE origin='provider' AND object_role='entry' AND id='a-100'", [], |row| {
+        .query_row("SELECT content FROM messages WHERE id='a-100'", [], |row| {
             row.get(0)
         })
         .unwrap();

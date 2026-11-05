@@ -3,100 +3,26 @@
 -- holds no retrieval artifacts. Some tables are populated by only one side:
 -- ingestion and publication state locally, shared_head on the server.
 
--- Canonical history for every source, native providers and connectors alike.
--- An object has a core role (container, segment, entry, document), its source's
--- kind label and a parent. Native-only columns are NULL for connector objects.
-CREATE TABLE IF NOT EXISTS objects (
-    -- Internal relational address; never exported.
-    storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    origin TEXT NOT NULL CHECK (origin IN ('provider', 'connector')),
-    -- The provider name, or the connector's source ID.
-    source TEXT NOT NULL,
-    id TEXT NOT NULL CHECK (id <> ''),
-    object_role TEXT NOT NULL CHECK (object_role IN ('container', 'segment', 'entry', 'document')),
-    kind TEXT NOT NULL,
-    -- The parent's own ID, as submitted or parsed.
-    parent_id TEXT,
-    -- The same edge by storage address: native chat and message IDs are
-    -- separate namespaces, so the logical ID alone cannot be a key.
-    parent_storage_id INTEGER REFERENCES objects(storage_id) ON DELETE CASCADE,
-    reply_to TEXT,
-    -- The nearest container: a container's or document's own ID, or the
-    -- container that holds an entry or segment. Results group by it.
-    conversation_id TEXT NOT NULL,
-    -- Native order is independent of branch identity. NULL means linear,
-    -- the empty string is a tree root, otherwise this is the parent message ID.
-    ordinal INTEGER,
-    context_parent TEXT CHECK (context_parent IS NULL OR context_parent <> id),
-    -- Derived grouping never owns canonical messages: deleting a turn only
-    -- clears this reference.
-    turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL,
-    -- Native dialogue role, or a connector entry's author as JSON.
-    role TEXT,
-    author TEXT,
+-- Agent sessions and their canonical messages use separate identity namespaces.
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
+    provider TEXT NOT NULL CHECK (provider IN ('claude-code','codex','opencode','copilot','cursor','antigravity')),
     title TEXT,
-    -- Large text is stored zstd-packed (see app/storage/packed.rs); `content`
-    -- decodes it, so readers, predicates and indexes see plain text.
-    content_packed,
-    content TEXT GENERATED ALWAYS AS (silver_text(content_packed)) VIRTUAL,
-    -- Silver's interpreted visible dialogue; the Rust model calls this dialogue_text.
-    search_projection TEXT,
-    created_at INTEGER,
-    updated_at INTEGER,
     project TEXT,
     repository TEXT,
-    url TEXT,
-    -- Connector metadata as submitted; a native turn's metadata; a native
-    -- entry's structured tool calls and results (NULL when it has none).
-    metadata TEXT,
-    attachments TEXT NOT NULL DEFAULT '[]',
-    -- A connector object's exact submitted record, kept for receipts and replay.
-    record TEXT
-);
--- A connector source's IDs span all of its roles.
-CREATE UNIQUE INDEX IF NOT EXISTS objects_connector_id ON objects(source, id) WHERE origin = 'connector';
--- Native chat and message IDs are each global, as retrieval views and
--- enrichment address them alone, but a message may reuse a chat's ID.
-CREATE UNIQUE INDEX IF NOT EXISTS objects_native_container ON objects(id)
-    WHERE origin = 'provider' AND object_role = 'container';
-CREATE UNIQUE INDEX IF NOT EXISTS objects_native_id ON objects(id)
-    WHERE origin = 'provider' AND object_role <> 'container';
-CREATE UNIQUE INDEX IF NOT EXISTS objects_native_order ON objects(conversation_id, ordinal)
-    WHERE origin = 'provider' AND ordinal IS NOT NULL;
--- Lookups by ID; the partial unique indexes above only serve conflicts.
-CREATE INDEX IF NOT EXISTS objects_id ON objects(id);
-CREATE INDEX IF NOT EXISTS objects_parent ON objects(origin, source, parent_id);
-CREATE INDEX IF NOT EXISTS objects_parent_storage ON objects(parent_storage_id);
-CREATE INDEX IF NOT EXISTS objects_reply ON objects(origin, source, reply_to);
-CREATE INDEX IF NOT EXISTS objects_conversation ON objects(conversation_id, object_role, ordinal);
--- Native ingestion and publication bookkeeping for each native chat.
-CREATE TABLE IF NOT EXISTS native_chats (
-    storage_id INTEGER PRIMARY KEY REFERENCES objects(storage_id) ON DELETE CASCADE,
-    conversation_id TEXT NOT NULL UNIQUE,
-    provider TEXT NOT NULL CHECK (
-        provider IN (
-            'claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity'
-        )
-    ),
+    created_at INTEGER,
+    updated_at INTEGER,
     -- Empty on the server: published history never carries local paths.
-    source_path TEXT NOT NULL,
+    source_path TEXT NOT NULL DEFAULT '',
     source_fingerprint TEXT NOT NULL DEFAULT '',
-    -- Provider-native identity; NULL on the server.
     source_key TEXT,
     source_session TEXT,
-    -- Ordered digest of the thread's published silver; set by the server.
     thread_fingerprint TEXT,
     UNIQUE (provider, source_key)
 );
--- Native message change detection; not published.
-CREATE TABLE IF NOT EXISTS native_messages (
-    storage_id INTEGER PRIMARY KEY REFERENCES objects(storage_id) ON DELETE CASCADE,
-    id TEXT NOT NULL UNIQUE,
-    fingerprint TEXT NOT NULL DEFAULT ''
-);
 CREATE TABLE IF NOT EXISTS turns (
-    id TEXT PRIMARY KEY CHECK (id <> ''),
-    conversation_id TEXT NOT NULL REFERENCES native_chats(conversation_id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
+    conversation_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     revision TEXT NOT NULL,
     boundary TEXT NOT NULL CHECK (boundary IN ('start', 'user_reply', 'branch', 'orphan')),
     closed INTEGER NOT NULL CHECK (closed IN (0, 1)),
@@ -104,9 +30,28 @@ CREATE TABLE IF NOT EXISTS turns (
     updated_at INTEGER
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS turns_conversation ON turns(conversation_id);
-CREATE INDEX IF NOT EXISTS messages_turn ON objects(turn_id) WHERE turn_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
+    conversation_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    -- NULL means linear; empty means a tree root; otherwise a stable message ID.
+    context_parent TEXT CHECK (context_parent IS NULL OR context_parent <> id),
+    -- Derived grouping never owns canonical messages.
+    turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL,
+    content_packed NOT NULL,
+    content TEXT NOT NULL GENERATED ALWAYS AS (silver_text(content_packed)) VIRTUAL,
+    search_projection TEXT,
+    created_at INTEGER,
+    -- Structured tool calls and results.
+    metadata TEXT,
+    attachments TEXT NOT NULL DEFAULT '[]',
+    fingerprint TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id, ordinal);
+CREATE INDEX IF NOT EXISTS messages_turn ON messages(turn_id) WHERE turn_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS conversation_enrichment (
-    conversation_id TEXT PRIMARY KEY REFERENCES native_chats(conversation_id) ON DELETE CASCADE,
+    conversation_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
     evidence TEXT NOT NULL
 ) WITHOUT ROWID;
 -- Deletion intent.
@@ -159,7 +104,7 @@ CREATE TABLE IF NOT EXISTS claude_sources (
 CREATE INDEX IF NOT EXISTS claude_sources_conversation ON claude_sources(conversation_id, source_key);
 CREATE TABLE IF NOT EXISTS claude_source_messages (
     attachments TEXT NOT NULL DEFAULT '[]',
-    -- The contribution's structured tool activity, as on its canonical entry.
+    -- The contribution's structured tool activity, as on its canonical message.
     metadata TEXT,
 
     source_key TEXT NOT NULL REFERENCES claude_sources(source_key) ON DELETE CASCADE,

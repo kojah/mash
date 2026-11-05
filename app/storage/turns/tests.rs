@@ -39,8 +39,8 @@ fn memberships(storage: &Storage) -> Vec<(String, Option<String>)> {
     storage
         .connection
         .prepare(
-            "SELECT m.id, m.turn_id FROM objects m
-              WHERE m.object_role = 'entry' ORDER BY m.ordinal",
+            "SELECT m.id, m.turn_id FROM messages m
+              ORDER BY m.ordinal",
         )
         .unwrap()
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
@@ -128,7 +128,7 @@ fn indexing_stores_turns_without_reparenting_messages() {
     let boundary: String = storage
         .connection
         .query_row(
-            "SELECT t.boundary FROM objects m JOIN turns t ON t.id=m.turn_id WHERE m.id='thanks'",
+            "SELECT t.boundary FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.id='thanks'",
             [],
             |row| row.get(0),
         )
@@ -145,12 +145,6 @@ fn indexing_stores_turns_without_reparenting_messages() {
             ("ask".into(), Some(initial_turn.clone())),
             ("answer".into(), Some(initial_turn)),
         ]
-    );
-    assert!(
-        crate::storage::objects::native_violations(&storage.connection)
-            .unwrap()
-            .is_empty(),
-        "native silver must follow the declared native topology"
     );
     // Searchable counts and listings stay message-only.
     assert_eq!(storage.counts().unwrap().messages, 2);
@@ -193,17 +187,14 @@ fn deleting_derived_turns_preserves_messages_and_session_deletion_cascades() {
     assert_eq!(turn_count(&storage), 1);
     storage
         .connection
-        .execute(
-            "DELETE FROM objects WHERE object_role='container' AND id=?1",
-            [&session.id],
-        )
+        .execute("DELETE FROM sessions WHERE id=?1", [&session.id])
         .unwrap();
     assert_eq!(turn_count(&storage), 0);
     assert_eq!(storage.counts().unwrap().messages, 0);
 }
 
 #[test]
-fn agent_topology_accepts_each_provider_and_rejects_invalid_message_parents() {
+fn session_and_message_constraints_reject_invalid_history_for_every_provider() {
     for &provider in crate::provider::Provider::ALL {
         let directory = tempfile::tempdir().unwrap();
         let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
@@ -211,25 +202,21 @@ fn agent_topology_accepts_each_provider_and_rejects_invalid_message_parents() {
         session.provider = provider;
         storage.replace_conversation(&session).unwrap();
         storage.commit_writer().unwrap();
-        assert_eq!(
-            super::super::objects::native_violations(&storage.connection).unwrap(),
-            Vec::<String>::new(),
-            "{provider}"
-        );
         for mutation in [
-            "UPDATE objects SET kind='unknown:message' WHERE object_role='entry'",
-            "UPDATE objects SET parent_storage_id=NULL WHERE object_role='entry'",
-            "UPDATE objects SET parent_storage_id=storage_id WHERE object_role='entry'",
-            "UPDATE objects SET source='unknown-provider' WHERE object_role='entry'",
+            "UPDATE sessions SET provider='unknown-provider'",
+            "UPDATE messages SET conversation_id='missing'",
+            "UPDATE messages SET role=NULL",
+            "UPDATE messages SET ordinal=NULL",
+            "UPDATE messages SET context_parent=id",
+            "UPDATE messages SET turn_id='missing'",
         ] {
             let transaction = storage.connection.unchecked_transaction().unwrap();
-            transaction.execute_batch(mutation).unwrap();
-            assert_eq!(
-                super::super::objects::native_violations(&transaction).unwrap(),
-                ["ask"],
+            assert!(
+                transaction.execute_batch(mutation).is_err(),
                 "{provider}: {mutation}"
             );
             transaction.rollback().unwrap();
         }
+        assert_eq!(storage.counts().unwrap().messages, 1);
     }
 }

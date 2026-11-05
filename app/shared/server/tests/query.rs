@@ -17,7 +17,7 @@ async fn shared_typed_queries_are_group_scoped_and_reject_sql() {
 
     let response = service
         .request("query", FIRST)
-        .json(&json!({"request": {"target": "messages", "group_by": "source"}}))
+        .json(&json!({"request": {"target": "messages", "group_by": "provider"}}))
         .send()
         .await
         .unwrap();
@@ -30,7 +30,7 @@ async fn shared_typed_queries_are_group_scoped_and_reject_sql() {
     // An in-group node can be named explicitly.
     let response = service
         .request("query", FIRST)
-        .json(&json!({"node": "second", "request": {"target": "conversations"}}))
+        .json(&json!({"node": "second", "request": {"target": "sessions"}}))
         .send()
         .await
         .unwrap();
@@ -55,7 +55,7 @@ async fn shared_typed_queries_are_group_scoped_and_reject_sql() {
     };
     let request = serde_json::from_value(json!({
         "target": "messages",
-        "group_by": "source"
+        "group_by": "provider"
     }))
     .unwrap();
     let value = crate::shared::query_with_token(&config, FIRST, Some("second"), &request)

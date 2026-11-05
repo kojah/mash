@@ -5,18 +5,18 @@ EXTENDS Naturals
 \* Separate actions represent separate durable SQLite/Qdrant operations.
 \* ClearBeforeInvalidate=TRUE restores the historical replay-ordering bug.
 CONSTANT ClearBeforeInvalidate
-Objects == {1, 2}
-EmptyDocs == [id \in Objects |-> <<0, 0>>]
+Messages == {1, 2}
+EmptyDocs == [id \in Messages |-> <<0, 0>>]
 VARIABLES revision, silver, settings, docs, mark, recipe, phase, mode, stable
 vars == <<revision, silver, settings, docs, mark, recipe, phase, mode, stable>>
 
-Desired == [id \in Objects |-> IF silver[id] = 0 THEN <<0, 0>>
+Desired == [id \in Messages |-> IF silver[id] = 0 THEN <<0, 0>>
                                ELSE <<silver[id], settings>>]
 Current == mark = revision /\ recipe = settings
 
 Init ==
-    /\ revision = 1 /\ silver = [id \in Objects |-> 1] /\ settings = 1
-    /\ docs = [id \in Objects |-> <<1, 1>>]
+    /\ revision = 1 /\ silver = [id \in Messages |-> 1] /\ settings = 1
+    /\ docs = [id \in Messages |-> <<1, 1>>]
     /\ mark = 1 /\ recipe = 1 /\ phase = "idle"
     /\ mode = "replay" /\ stable = FALSE
 
@@ -25,8 +25,8 @@ Init ==
 CommitSilver ==
     /\ ~stable /\ phase = "idle" /\ revision < 2
     /\ revision' = revision + 1
-    /\ \E retained \in SUBSET Objects :
-        silver' = [id \in Objects |-> IF id \in retained THEN revision + 1 ELSE 0]
+    /\ \E retained \in SUBSET Messages :
+        silver' = [id \in Messages |-> IF id \in retained THEN revision + 1 ELSE 0]
     /\ phase' = "invalidate" /\ mode' = "upload"
     /\ UNCHANGED <<settings, docs, mark, recipe, stable>>
 
@@ -56,7 +56,7 @@ Clear ==
 \* Each point write/delete can complete separately. Certification is later.
 WritePoint ==
     /\ phase = "write"
-    /\ \E id \in Objects :
+    /\ \E id \in Messages :
         /\ docs[id] # Desired[id]
         /\ docs' = [docs EXCEPT ![id] = Desired[id]]
     /\ UNCHANGED <<revision, silver, settings, mark, recipe, phase, mode, stable>>
@@ -83,8 +83,8 @@ Next == CommitSilver \/ ChangeSettings \/ StartReplay \/ Repair \/ Crash \/ Stab
 Spec == Init /\ [][Next]_vars /\ WF_vars(StartReplay) /\ WF_vars(Repair)
 
 TypeOK ==
-    /\ revision \in 1..2 /\ silver \in [Objects -> 0..2] /\ settings \in 1..2
-    /\ docs \in [Objects -> ((0..2) \X (0..2))]
+    /\ revision \in 1..2 /\ silver \in [Messages -> 0..2] /\ settings \in 1..2
+    /\ docs \in [Messages -> ((0..2) \X (0..2))]
     /\ mark \in 0..2 /\ recipe \in 1..2
     /\ phase \in {"idle", "invalidate", "clear", "write", "certify"}
     /\ mode \in {"upload", "replay"} /\ stable \in BOOLEAN

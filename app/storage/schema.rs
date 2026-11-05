@@ -5,7 +5,7 @@ use crate::AppError;
 use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 60;
+pub(crate) const SCHEMA_VERSION: i64 = 61;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -50,7 +50,7 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
 /// The typed error for any silver schema this release does not write. A newer
 /// schema usually means this process predates an upgrade that already moved
 /// the index forward, such as an MCP server started before it.
-pub(super) fn unsupported(version: i64) -> AppError {
+pub(crate) fn unsupported(version: i64) -> AppError {
     if version > SCHEMA_VERSION {
         return AppError::schema(format!(
             "local index schema {version} is newer than this mash's schema {SCHEMA_VERSION}; a newer mash release wrote it. Reconnect Mash MCP or restart `mash index --watch` if mash was already upgraded; otherwise upgrade mash"
@@ -64,12 +64,11 @@ pub(super) fn unsupported(version: i64) -> AppError {
 pub(super) fn install_publication_triggers(connection: &Connection) -> Result<(), AppError> {
     let mut statements = String::new();
     // Publication journals canonical agent history; turns are derived on receipt.
-    for (table, schema, when) in [
-        ("objects", "main", Some("origin = 'provider'")),
-        ("native_chats", "main", None),
-        ("native_messages", "main", None),
-        ("tombstones", "main", None),
-        ("conversation_enrichment", "main", None),
+    for table in [
+        "sessions",
+        "messages",
+        "tombstones",
+        "conversation_enrichment",
     ] {
         for operation in ["INSERT", "UPDATE", "DELETE"] {
             let references = match operation {
@@ -79,29 +78,20 @@ pub(super) fn install_publication_triggers(connection: &Connection) -> Result<()
             };
             let mut changes = String::new();
             for reference in &references {
-                let id = match table {
-                    "native_messages" => format!(
-                        "(SELECT conversation_id FROM main.objects WHERE storage_id={reference}.storage_id)"
-                    ),
-                    _ => format!("{reference}.conversation_id"),
+                let id = if table == "sessions" {
+                    format!("{reference}.id")
+                } else {
+                    format!("{reference}.conversation_id")
                 };
                 write!(changes,
                     "INSERT INTO main.shared_changes SELECT {id},revision FROM main.shared_publication WHERE singleton=1 AND {id} IS NOT NULL
                      ON CONFLICT(conversation_id) DO UPDATE SET revision=excluded.revision;"
                 ).map_err(|_|AppError::internal("format publication trigger"))?;
             }
-            let when = when.map_or_else(String::new, |when| {
-                let condition = references
-                    .iter()
-                    .map(|reference| format!("{reference}.{when}"))
-                    .collect::<Vec<_>>()
-                    .join(" OR ");
-                format!("WHEN {condition}")
-            });
             write!(
                 statements,
                 "CREATE TEMP TRIGGER IF NOT EXISTS shared_{table}_{operation}
-                 AFTER {operation} ON {schema}.{table} {when} BEGIN
+                 AFTER {operation} ON main.{table} BEGIN
                  UPDATE main.shared_publication SET revision = revision + 1 WHERE singleton = 1;
                  {changes}
                  END;"

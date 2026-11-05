@@ -43,21 +43,14 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
     connection
         .execute_batch(
             "UPDATE silver_state SET interpretation_version=3 WHERE singleton=1;
-         INSERT INTO objects(origin,source,id,object_role,kind,conversation_id)
-         VALUES ('provider','codex','session','container','codex:chat','session');
-         INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_key)
-         SELECT storage_id,id,source,'/tmp/session.jsonl','file:/tmp/session.jsonl'
-           FROM objects WHERE object_role='container' AND id='session';",
+         INSERT INTO sessions(id,provider,source_path,source_key)
+         VALUES ('session','codex','/tmp/session.jsonl','file:/tmp/session.jsonl');",
         )
         .expect("readiness history");
     connection
         .execute(
-            "INSERT INTO objects(
-                origin, source, object_role, kind, parent_id, parent_storage_id,
-                id, conversation_id, ordinal, role, content_packed, search_projection
-             ) SELECT 'provider', 'codex', 'entry', 'codex:message', 'session', storage_id,
-                'message', 'session', 0, 'tool', 'canonical tool output', ?1
-                 FROM objects WHERE object_role = 'container' AND id = 'session'",
+            "INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection)
+             VALUES('message','session',0,'tool','canonical tool output',?1)",
             [dialogue_text],
         )
         .expect("readiness message");

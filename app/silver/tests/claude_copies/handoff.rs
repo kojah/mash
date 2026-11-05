@@ -58,7 +58,7 @@ fn handoff(
 fn canonical(path: &Path) -> Vec<(String, i64, String)> {
     let connection = crate::storage::test_support::connect(path);
     connection
-        .prepare("SELECT id, ordinal, content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal")
+        .prepare("SELECT id, ordinal, content FROM messages ORDER BY ordinal")
         .unwrap()
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .unwrap()

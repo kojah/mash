@@ -117,11 +117,6 @@ pub(crate) fn restore(
         .map_err(AppError::database)?;
     resolve_archive_context(&transaction)?;
     crate::storage::turns::derive_all(&transaction)?;
-    if !crate::storage::objects::native_violations(&transaction)?.is_empty() {
-        return Err(AppError::usage(
-            "archive native history does not follow its provider topology",
-        ));
-    }
     transaction
         .execute(
             "UPDATE silver_state SET revision=?1 WHERE singleton=1",
@@ -185,7 +180,7 @@ pub(crate) fn attachments(storage: &Storage) -> Result<BTreeMap<String, u64>, Ap
     // Claude's branch evidence can retain files absent from the visible thread.
     for (query, format) in [
         (
-            "SELECT attachments FROM objects WHERE origin = 'provider'",
+            "SELECT attachments FROM messages ",
             AttachmentFormat::Canonical,
         ),
         (
@@ -256,8 +251,7 @@ fn resolve_archive_context(transaction: &rusqlite::Transaction<'_>) -> Result<()
     let missing = transaction
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM archive_context a WHERE NOT EXISTS(
-            SELECT 1 FROM objects p WHERE p.origin='provider' AND p.object_role='entry'
-                AND p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal))",
+            SELECT 1 FROM messages p WHERE p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal))",
             [],
             |row| row.get::<_, bool>(0),
         )
@@ -265,12 +259,14 @@ fn resolve_archive_context(transaction: &rusqlite::Transaction<'_>) -> Result<()
     if missing {
         return Err(AppError::usage("archive message parent is missing"));
     }
-    transaction.execute_batch(
-        "UPDATE objects SET context_parent=(SELECT p.id FROM archive_context a JOIN objects p
-             ON p.origin='provider' AND p.object_role='entry' AND p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal
-             WHERE a.id=objects.id)
-         WHERE origin='provider' AND object_role='entry' AND id IN (SELECT id FROM archive_context);
-         DROP TABLE archive_context;"
-    ).map_err(AppError::database)?;
+    transaction
+        .execute_batch(
+            "UPDATE messages SET context_parent=(SELECT p.id FROM archive_context a JOIN messages p
+             ON p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal
+             WHERE a.id=messages.id)
+         WHERE id IN (SELECT id FROM archive_context);
+         DROP TABLE archive_context;",
+        )
+        .map_err(AppError::database)?;
     Ok(())
 }

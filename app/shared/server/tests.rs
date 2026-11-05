@@ -849,8 +849,8 @@ async fn http_storage_contract(service: Service) {
     .unwrap();
     let memberships: Vec<(String, bool)> = silver
         .prepare(
-            "SELECT m.id, m.turn_id IS NOT NULL FROM objects m
-              WHERE m.object_role = 'entry' ORDER BY m.ordinal",
+            "SELECT m.id, m.turn_id IS NOT NULL FROM messages m
+              ORDER BY m.ordinal",
         )
         .unwrap()
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))

@@ -67,8 +67,7 @@ fn file(content: Option<&str>, revision: i64) -> tempfile::NamedTempFile {
 struct Retained {
     history: Vec<u8>,
     head: String,
-    storage_ids: Vec<i64>,
-    sequence: i64,
+    storage_ids: Vec<(String, i64, String)>,
 }
 
 fn retained(store: &SilverStore) -> Retained {
@@ -77,9 +76,9 @@ fn retained(store: &SilverStore) -> Retained {
     let mut history = vec![];
     read::export(&connection, &mut history).unwrap();
     let storage_ids = connection
-        .prepare("SELECT storage_id FROM objects ORDER BY storage_id")
+        .prepare("SELECT 'session',rowid,id FROM sessions UNION ALL SELECT 'message',rowid,id FROM messages ORDER BY 1,2")
         .unwrap()
-        .query_map([], |row| row.get(0))
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -87,13 +86,6 @@ fn retained(store: &SilverStore) -> Retained {
         history,
         head: encode(&head(&connection).unwrap()).unwrap(),
         storage_ids,
-        sequence: connection
-            .query_row(
-                "SELECT seq FROM sqlite_sequence WHERE name='objects'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap(),
     }
 }
 
@@ -140,7 +132,6 @@ fn retry_outer_rollback_preserves_committed_history_across_interruption() {
     let after = retained(&store);
     assert_eq!(after.history, before.history);
     assert_eq!(after.storage_ids, before.storage_ids);
-    assert_eq!(after.sequence, before.sequence);
     // A subsequent revision can still write after the interrupted retry.
     let next = write(
         &store,

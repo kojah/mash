@@ -59,9 +59,9 @@ impl<'a> ListChats<'a> {
     CAST(?7 AS INTEGER) AS before_ms,
     CAST(?8 AS TEXT) AS sort_key,
     CAST(?9 AS INTEGER) AS descending)
-SELECT c.id,c.source AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
-FROM objects c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
-WHERE c.origin='provider' AND c.object_role='container' AND (s.all_providers = 1 OR c.source IN (
+SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+FROM sessions c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
 AND (s.title_contains IS NULL OR instr(lower(c.title),lower(s.title_contains)) > 0)
@@ -78,7 +78,7 @@ CASE WHEN s.sort_key = 'created_at' AND s.descending = 0 THEN c.created_at END A
 CASE WHEN s.sort_key = 'created_at' AND s.descending = 1 THEN c.created_at END DESC,
 CASE WHEN s.sort_key = 'updated_at' AND s.descending = 0 THEN c.updated_at END ASC,
 CASE WHEN s.sort_key = 'updated_at' AND s.descending = 1 THEN c.updated_at END DESC,
-c.source COLLATE BINARY ASC,c.id COLLATE BINARY ASC
+c.provider COLLATE BINARY ASC,c.id COLLATE BINARY ASC
 LIMIT ?2 OFFSET ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -775,7 +775,7 @@ impl<'a>
 pub struct ConversationMessageStateRow {
     pub id: String,
     pub fingerprint: String,
-    pub ordinal: Option<i64>,
+    pub ordinal: i64,
 }
 impl ConversationMessageStateRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -790,9 +790,8 @@ pub struct ConversationMessageState<'a> {
     conversation_id: &'a str,
 }
 impl<'a> ConversationMessageState<'a> {
-    pub const QUERY: &'static str = r"SELECT m.id,COALESCE(n.fingerprint,'') AS fingerprint,m.ordinal
-FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
-WHERE m.origin='provider' AND m.object_role='entry' AND m.conversation_id=?1";
+    pub const QUERY: &'static str =
+        r"SELECT id,fingerprint,ordinal FROM messages WHERE conversation_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2489,7 +2488,8 @@ pub struct CanonicalThreadMessageCount<'a> {
     conversation_id: &'a str,
 }
 impl<'a> CanonicalThreadMessageCount<'a> {
-    pub const QUERY: &'static str = r"SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1";
+    pub const QUERY: &'static str =
+        r"SELECT count(*) AS messages FROM messages WHERE conversation_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2559,13 +2559,13 @@ impl ParkMessageOrdinalRow {
     }
 }
 pub struct ParkMessageOrdinal<'a> {
-    ordinal: Option<i64>,
+    ordinal: i64,
     conversation_id: &'a str,
     message_id: &'a str,
 }
 impl<'a> ParkMessageOrdinal<'a> {
-    pub const QUERY: &'static str = r"UPDATE objects SET ordinal=?1
-WHERE origin='provider' AND object_role='entry' AND conversation_id=?2 AND id=?3";
+    pub const QUERY: &'static str = r"UPDATE messages SET ordinal=?1
+WHERE conversation_id=?2 AND id=?3";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2599,8 +2599,8 @@ pub struct ParkMessageOrdinalBuilder<'a, Fields = ((), (), ())> {
 impl<'a, ConversationId, MessageId> ParkMessageOrdinalBuilder<'a, ((), ConversationId, MessageId)> {
     pub fn ordinal(
         self,
-        ordinal: Option<i64>,
-    ) -> ParkMessageOrdinalBuilder<'a, (Option<i64>, ConversationId, MessageId)> {
+        ordinal: i64,
+    ) -> ParkMessageOrdinalBuilder<'a, (i64, ConversationId, MessageId)> {
         let ((), conversation_id, message_id) = self.fields;
         let _phantom = self._phantom;
         ParkMessageOrdinalBuilder {
@@ -2635,7 +2635,7 @@ impl<'a, Ordinal, ConversationId> ParkMessageOrdinalBuilder<'a, (Ordinal, Conver
         }
     }
 }
-impl<'a> ParkMessageOrdinalBuilder<'a, (Option<i64>, &'a str, &'a str)> {
+impl<'a> ParkMessageOrdinalBuilder<'a, (i64, &'a str, &'a str)> {
     pub fn build(self) -> ParkMessageOrdinal<'a> {
         let (ordinal, conversation_id, message_id) = self.fields;
         ParkMessageOrdinal {
@@ -2648,7 +2648,7 @@ impl<'a> ParkMessageOrdinalBuilder<'a, (Option<i64>, &'a str, &'a str)> {
 pub struct AnchorRow {
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: Option<i64>,
+    pub ordinal: i64,
     pub context_parent: Option<String>,
 }
 impl AnchorRow {
@@ -2665,7 +2665,8 @@ pub struct Anchor<'a> {
     id: &'a str,
 }
 impl<'a> Anchor<'a> {
-    pub const QUERY: &'static str = r"SELECT id,conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1";
+    pub const QUERY: &'static str =
+        r"SELECT id,conversation_id,ordinal,context_parent FROM messages WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2733,7 +2734,7 @@ pub struct MessageAttachments<'a> {
     id: &'a str,
 }
 impl<'a> MessageAttachments<'a> {
-    pub const QUERY: &'static str = r"SELECT attachments FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1";
+    pub const QUERY: &'static str = r"SELECT attachments FROM messages WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2807,7 +2808,8 @@ impl AttachmentCandidatesRow {
 }
 pub struct AttachmentCandidates;
 impl AttachmentCandidates {
-    pub const QUERY: &'static str = r"SELECT id,attachments FROM objects WHERE origin='provider' AND object_role='entry' AND attachments<>'[]' ORDER BY id";
+    pub const QUERY: &'static str =
+        r"SELECT id,attachments FROM messages WHERE attachments<>'[]' ORDER BY id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2967,10 +2969,10 @@ impl<'a> SetAttachmentPolicyBuilder<'a, (&'a str,)> {
 }
 pub struct ViewMessagesRow {
     pub id: String,
-    pub ordinal: Option<i64>,
-    pub role: Option<String>,
-    pub content: Option<String>,
-    pub projection: Option<String>,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub projection: String,
     pub created_at: Option<i64>,
     pub metadata: Option<String>,
 }
@@ -2989,12 +2991,12 @@ impl ViewMessagesRow {
 }
 pub struct ViewMessages<'a> {
     conversation_id: &'a str,
-    first_ordinal: Option<i64>,
-    last_ordinal: Option<i64>,
+    first_ordinal: i64,
+    last_ordinal: i64,
 }
 impl<'a> ViewMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM objects
-WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND ordinal>=?2 AND ordinal<=?3 ORDER BY ordinal";
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM messages
+WHERE conversation_id=?1 AND ordinal>=?2 AND ordinal<=?3 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3046,8 +3048,8 @@ impl<'a, FirstOrdinal, LastOrdinal> ViewMessagesBuilder<'a, ((), FirstOrdinal, L
 impl<'a, ConversationId, LastOrdinal> ViewMessagesBuilder<'a, (ConversationId, (), LastOrdinal)> {
     pub fn first_ordinal(
         self,
-        first_ordinal: Option<i64>,
-    ) -> ViewMessagesBuilder<'a, (ConversationId, Option<i64>, LastOrdinal)> {
+        first_ordinal: i64,
+    ) -> ViewMessagesBuilder<'a, (ConversationId, i64, LastOrdinal)> {
         let (conversation_id, (), last_ordinal) = self.fields;
         let _phantom = self._phantom;
         ViewMessagesBuilder {
@@ -3059,8 +3061,8 @@ impl<'a, ConversationId, LastOrdinal> ViewMessagesBuilder<'a, (ConversationId, (
 impl<'a, ConversationId, FirstOrdinal> ViewMessagesBuilder<'a, (ConversationId, FirstOrdinal, ())> {
     pub fn last_ordinal(
         self,
-        last_ordinal: Option<i64>,
-    ) -> ViewMessagesBuilder<'a, (ConversationId, FirstOrdinal, Option<i64>)> {
+        last_ordinal: i64,
+    ) -> ViewMessagesBuilder<'a, (ConversationId, FirstOrdinal, i64)> {
         let (conversation_id, first_ordinal, ()) = self.fields;
         let _phantom = self._phantom;
         ViewMessagesBuilder {
@@ -3069,7 +3071,7 @@ impl<'a, ConversationId, FirstOrdinal> ViewMessagesBuilder<'a, (ConversationId, 
         }
     }
 }
-impl<'a> ViewMessagesBuilder<'a, (&'a str, Option<i64>, Option<i64>)> {
+impl<'a> ViewMessagesBuilder<'a, (&'a str, i64, i64)> {
     pub fn build(self) -> ViewMessages<'a> {
         let (conversation_id, first_ordinal, last_ordinal) = self.fields;
         ViewMessages {
@@ -3081,10 +3083,10 @@ impl<'a> ViewMessagesBuilder<'a, (&'a str, Option<i64>, Option<i64>)> {
 }
 pub struct ContextMessageRow {
     pub id: String,
-    pub ordinal: Option<i64>,
-    pub role: Option<String>,
-    pub content: Option<String>,
-    pub projection: Option<String>,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub projection: String,
     pub created_at: Option<i64>,
     pub context_parent: Option<String>,
     pub metadata: Option<String>,
@@ -3108,8 +3110,8 @@ pub struct ContextMessage<'a> {
     id: &'a str,
 }
 impl<'a> ContextMessage<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM objects
-WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND id=?2";
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM messages
+WHERE conversation_id=?1 AND id=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3184,7 +3186,7 @@ impl<'a> ContextMessageBuilder<'a, (&'a str, &'a str)> {
 }
 pub struct FirstChildRow {
     pub id: String,
-    pub ordinal: Option<i64>,
+    pub ordinal: i64,
 }
 impl FirstChildRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -3199,7 +3201,7 @@ pub struct FirstChild<'a> {
     parent: Option<&'a str>,
 }
 impl<'a> FirstChild<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
+    pub const QUERY: &'static str = r"SELECT id,ordinal FROM messages WHERE conversation_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3304,7 +3306,7 @@ impl SilverCertificate {
     CAST(s.interpretation_version<>?1
         OR EXISTS(SELECT 1 FROM silver_scans WHERE interpretation_version<>?1)
         OR EXISTS(SELECT 1 FROM source_checkpoints WHERE interpretation_version<>?1)
-        OR EXISTS(SELECT 1 FROM native_chats c WHERE NOT EXISTS(
+        OR EXISTS(SELECT 1 FROM sessions c WHERE NOT EXISTS(
             SELECT 1 FROM silver_scans p WHERE p.provider=c.provider
               AND p.interpretation_version=?1)) AS INTEGER) AS unverified,
     CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=2) AS INTEGER) AS incomplete,
@@ -3466,9 +3468,8 @@ pub struct SourceEnrichment<'a> {
 }
 impl<'a> SourceEnrichment<'a> {
     pub const QUERY: &'static str = r"SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at
-FROM native_chats AS n JOIN objects AS c ON c.storage_id=n.storage_id
-LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
-WHERE n.provider=?1 AND n.source_key=?2";
+FROM sessions c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+WHERE c.provider=?1 AND c.source_key=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3614,40 +3615,39 @@ impl<'a> ConversationEnrichmentBuilder<'a, (&'a str,)> {
         ConversationEnrichment { conversation_id }
     }
 }
-pub struct NativeSourceFingerprintRow {
+pub struct SessionSourceFingerprintRow {
     pub source_fingerprint: String,
 }
-impl NativeSourceFingerprintRow {
+impl SessionSourceFingerprintRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             source_fingerprint: row.get(0)?,
         })
     }
 }
-pub struct NativeSourceFingerprint<'a> {
+pub struct SessionSourceFingerprint<'a> {
     id: &'a str,
 }
-impl<'a> NativeSourceFingerprint<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT source_fingerprint FROM native_chats WHERE conversation_id=?1";
+impl<'a> SessionSourceFingerprint<'a> {
+    pub const QUERY: &'static str = r"SELECT source_fingerprint FROM sessions WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NativeSourceFingerprint<'a> {
+impl<'a> SessionSourceFingerprint<'a> {
     pub fn query_one(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<NativeSourceFingerprintRow> {
+    ) -> rusqlite::Result<SessionSourceFingerprintRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), NativeSourceFingerprintRow::from_row)
+            .query_row(self.as_params(), SessionSourceFingerprintRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<NativeSourceFingerprintRow>> {
+    ) -> rusqlite::Result<Option<SessionSourceFingerprintRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), NativeSourceFingerprintRow::from_row)?
+            .query_map(self.as_params(), SessionSourceFingerprintRow::from_row)?
             .next()
             .transpose()
     }
@@ -3661,62 +3661,59 @@ impl<'a> NativeSourceFingerprint<'a> {
         (self.id,)
     }
 }
-impl<'a> NativeSourceFingerprint<'a> {
-    pub const fn builder() -> NativeSourceFingerprintBuilder<'a, ((),)> {
-        NativeSourceFingerprintBuilder {
+impl<'a> SessionSourceFingerprint<'a> {
+    pub const fn builder() -> SessionSourceFingerprintBuilder<'a, ((),)> {
+        SessionSourceFingerprintBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NativeSourceFingerprintBuilder<'a, Fields = ((),)> {
+pub struct SessionSourceFingerprintBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> NativeSourceFingerprintBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> NativeSourceFingerprintBuilder<'a, (&'a str,)> {
+impl<'a> SessionSourceFingerprintBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> SessionSourceFingerprintBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        NativeSourceFingerprintBuilder {
+        SessionSourceFingerprintBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> NativeSourceFingerprintBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> NativeSourceFingerprint<'a> {
+impl<'a> SessionSourceFingerprintBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> SessionSourceFingerprint<'a> {
         let (id,) = self.fields;
-        NativeSourceFingerprint { id }
+        SessionSourceFingerprint { id }
     }
 }
-pub struct UpsertNativeChatRow {}
-impl UpsertNativeChatRow {
+pub struct UpsertSessionRow {}
+impl UpsertSessionRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct UpsertNativeChat<'a> {
-    provider: &'a str,
+pub struct UpsertSession<'a> {
     id: &'a str,
-    kind: &'a str,
+    provider: &'a str,
     title: Option<&'a str>,
     created_at: Option<i64>,
     updated_at: Option<i64>,
     project: Option<&'a str>,
     repository: Option<&'a str>,
 }
-impl<'a> UpsertNativeChat<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,created_at,updated_at,project,repository)
-VALUES('provider',?1,?2,'container',?3,?2,
-    ?4,?5,?6,?7,?8)
-ON CONFLICT(id) WHERE origin='provider' AND object_role='container' DO UPDATE SET kind=excluded.kind,title=excluded.title,
-created_at=excluded.created_at,updated_at=excluded.updated_at,project=excluded.project,
-repository=excluded.repository";
+impl<'a> UpsertSession<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO sessions(id,provider,title,created_at,updated_at,project,repository)
+VALUES(?1,?2,?3,?4,?5,?6,?7)
+ON CONFLICT(id) DO UPDATE SET title=excluded.title,created_at=excluded.created_at,
+updated_at=excluded.updated_at,project=excluded.project,repository=excluded.repository";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> UpsertNativeChat<'a> {
+impl<'a> UpsertSession<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -3728,9 +3725,8 @@ impl<'a> UpsertNativeChat<'a> {
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
-            self.provider,
             self.id,
-            self.kind,
+            self.provider,
             self.title,
             self.created_at,
             self.updated_at,
@@ -3739,66 +3735,24 @@ impl<'a> UpsertNativeChat<'a> {
         )
     }
 }
-impl<'a> UpsertNativeChat<'a> {
-    pub const fn builder() -> UpsertNativeChatBuilder<'a, ((), (), (), (), (), (), (), ())> {
-        UpsertNativeChatBuilder {
-            fields: ((), (), (), (), (), (), (), ()),
+impl<'a> UpsertSession<'a> {
+    pub const fn builder() -> UpsertSessionBuilder<'a, ((), (), (), (), (), (), ())> {
+        UpsertSessionBuilder {
+            fields: ((), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertNativeChatBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
+pub struct UpsertSessionBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, Id, Kind, Title, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertNativeChatBuilder<
+impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
+    UpsertSessionBuilder<
         'a,
         (
             (),
-            Id,
-            Kind,
-            Title,
-            CreatedAt,
-            UpdatedAt,
-            Project,
-            Repository,
-        ),
-    >
-{
-    pub fn provider(
-        self,
-        provider: &'a str,
-    ) -> UpsertNativeChatBuilder<
-        'a,
-        (
-            &'a str,
-            Id,
-            Kind,
-            Title,
-            CreatedAt,
-            UpdatedAt,
-            Project,
-            Repository,
-        ),
-    > {
-        let ((), id, kind, title, created_at, updated_at, project, repository) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
-            fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, Provider, Kind, Title, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertNativeChatBuilder<
-        'a,
-        (
             Provider,
-            (),
-            Kind,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -3810,12 +3764,11 @@ impl<'a, Provider, Kind, Title, CreatedAt, UpdatedAt, Project, Repository>
     pub fn id(
         self,
         id: &'a str,
-    ) -> UpsertNativeChatBuilder<
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             &'a str,
-            Kind,
+            Provider,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -3823,38 +3776,25 @@ impl<'a, Provider, Kind, Title, CreatedAt, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (provider, (), kind, title, created_at, updated_at, project, repository) = self.fields;
+        let ((), provider, title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertNativeChatBuilder<
-        'a,
-        (
-            Provider,
-            Id,
-            (),
-            Title,
-            CreatedAt,
-            UpdatedAt,
-            Project,
-            Repository,
-        ),
-    >
+impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
+    UpsertSessionBuilder<'a, (Id, (), Title, CreatedAt, UpdatedAt, Project, Repository)>
 {
-    pub fn kind(
+    pub fn provider(
         self,
-        kind: &'a str,
-    ) -> UpsertNativeChatBuilder<
+        provider: &'a str,
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             Id,
             &'a str,
             Title,
@@ -3864,40 +3804,27 @@ impl<'a, Provider, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (provider, id, (), title, created_at, updated_at, project, repository) = self.fields;
+        let (id, (), title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id, Kind, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertNativeChatBuilder<
-        'a,
-        (
-            Provider,
-            Id,
-            Kind,
-            (),
-            CreatedAt,
-            UpdatedAt,
-            Project,
-            Repository,
-        ),
-    >
+impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
+    UpsertSessionBuilder<'a, (Id, Provider, (), CreatedAt, UpdatedAt, Project, Repository)>
 {
     pub fn title(
         self,
         title: Option<&'a str>,
-    ) -> UpsertNativeChatBuilder<
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             Id,
-            Kind,
+            Provider,
             Option<&'a str>,
             CreatedAt,
             UpdatedAt,
@@ -3905,40 +3832,27 @@ impl<'a, Provider, Id, Kind, CreatedAt, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (provider, id, kind, (), created_at, updated_at, project, repository) = self.fields;
+        let (id, provider, (), created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id, Kind, Title, UpdatedAt, Project, Repository>
-    UpsertNativeChatBuilder<
-        'a,
-        (
-            Provider,
-            Id,
-            Kind,
-            Title,
-            (),
-            UpdatedAt,
-            Project,
-            Repository,
-        ),
-    >
+impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
+    UpsertSessionBuilder<'a, (Id, Provider, Title, (), UpdatedAt, Project, Repository)>
 {
     pub fn created_at(
         self,
         created_at: Option<i64>,
-    ) -> UpsertNativeChatBuilder<
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             Id,
-            Kind,
+            Provider,
             Title,
             Option<i64>,
             UpdatedAt,
@@ -3946,40 +3860,27 @@ impl<'a, Provider, Id, Kind, Title, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (provider, id, kind, title, (), updated_at, project, repository) = self.fields;
+        let (id, provider, title, (), updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id, Kind, Title, CreatedAt, Project, Repository>
-    UpsertNativeChatBuilder<
-        'a,
-        (
-            Provider,
-            Id,
-            Kind,
-            Title,
-            CreatedAt,
-            (),
-            Project,
-            Repository,
-        ),
-    >
+impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
+    UpsertSessionBuilder<'a, (Id, Provider, Title, CreatedAt, (), Project, Repository)>
 {
     pub fn updated_at(
         self,
         updated_at: Option<i64>,
-    ) -> UpsertNativeChatBuilder<
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             Id,
-            Kind,
+            Provider,
             Title,
             CreatedAt,
             Option<i64>,
@@ -3987,40 +3888,27 @@ impl<'a, Provider, Id, Kind, Title, CreatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (provider, id, kind, title, created_at, (), project, repository) = self.fields;
+        let (id, provider, title, created_at, (), project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Repository>
-    UpsertNativeChatBuilder<
-        'a,
-        (
-            Provider,
-            Id,
-            Kind,
-            Title,
-            CreatedAt,
-            UpdatedAt,
-            (),
-            Repository,
-        ),
-    >
+impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
+    UpsertSessionBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, (), Repository)>
 {
     pub fn project(
         self,
         project: Option<&'a str>,
-    ) -> UpsertNativeChatBuilder<
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             Id,
-            Kind,
+            Provider,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -4028,28 +3916,27 @@ impl<'a, Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Repository>
             Repository,
         ),
     > {
-        let (provider, id, kind, title, created_at, updated_at, (), repository) = self.fields;
+        let (id, provider, title, created_at, updated_at, (), repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Project>
-    UpsertNativeChatBuilder<'a, (Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Project, ())>
+impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
+    UpsertSessionBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, Project, ())>
 {
     pub fn repository(
         self,
         repository: Option<&'a str>,
-    ) -> UpsertNativeChatBuilder<
+    ) -> UpsertSessionBuilder<
         'a,
         (
-            Provider,
             Id,
-            Kind,
+            Provider,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -4057,21 +3944,20 @@ impl<'a, Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Project>
             Option<&'a str>,
         ),
     > {
-        let (provider, id, kind, title, created_at, updated_at, project, ()) = self.fields;
+        let (id, provider, title, created_at, updated_at, project, ()) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatBuilder {
+        UpsertSessionBuilder {
             fields: (
-                provider, id, kind, title, created_at, updated_at, project, repository,
+                id, provider, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
 impl<'a>
-    UpsertNativeChatBuilder<
+    UpsertSessionBuilder<
         'a,
         (
-            &'a str,
             &'a str,
             &'a str,
             Option<&'a str>,
@@ -4082,12 +3968,11 @@ impl<'a>
         ),
     >
 {
-    pub fn build(self) -> UpsertNativeChat<'a> {
-        let (provider, id, kind, title, created_at, updated_at, project, repository) = self.fields;
-        UpsertNativeChat {
-            provider,
+    pub fn build(self) -> UpsertSession<'a> {
+        let (id, provider, title, created_at, updated_at, project, repository) = self.fields;
+        UpsertSession {
             id,
-            kind,
+            provider,
             title,
             created_at,
             updated_at,
@@ -4096,31 +3981,28 @@ impl<'a>
         }
     }
 }
-pub struct UpsertNativeChatSourceRow {}
-impl UpsertNativeChatSourceRow {
+pub struct SetSessionSourceRow {}
+impl SetSessionSourceRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct UpsertNativeChatSource<'a> {
+pub struct SetSessionSource<'a> {
     source_path: &'a str,
     source_fingerprint: &'a str,
     source_key: Option<&'a str>,
     source_session: Option<&'a str>,
     id: &'a str,
 }
-impl<'a> UpsertNativeChatSource<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_fingerprint,source_key,source_session)
-SELECT o.storage_id,o.id,o.source,?1,?2,?3,?4
-FROM objects o WHERE o.origin='provider' AND o.object_role='container' AND o.id=?5
-ON CONFLICT(conversation_id) DO UPDATE SET provider=excluded.provider,source_path=excluded.source_path,
-source_fingerprint=excluded.source_fingerprint,source_key=excluded.source_key,
-source_session=excluded.source_session";
+impl<'a> SetSessionSource<'a> {
+    pub const QUERY: &'static str = r"UPDATE sessions SET source_path=?1,source_fingerprint=?2,
+source_key=?3,source_session=?4
+WHERE id=?5";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> UpsertNativeChatSource<'a> {
+impl<'a> SetSessionSource<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -4140,29 +4022,29 @@ impl<'a> UpsertNativeChatSource<'a> {
         )
     }
 }
-impl<'a> UpsertNativeChatSource<'a> {
-    pub const fn builder() -> UpsertNativeChatSourceBuilder<'a, ((), (), (), (), ())> {
-        UpsertNativeChatSourceBuilder {
+impl<'a> SetSessionSource<'a> {
+    pub const fn builder() -> SetSessionSourceBuilder<'a, ((), (), (), (), ())> {
+        SetSessionSourceBuilder {
             fields: ((), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertNativeChatSourceBuilder<'a, Fields = ((), (), (), (), ())> {
+pub struct SetSessionSourceBuilder<'a, Fields = ((), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, SourceFingerprint, SourceKey, SourceSession, Id>
-    UpsertNativeChatSourceBuilder<'a, ((), SourceFingerprint, SourceKey, SourceSession, Id)>
+    SetSessionSourceBuilder<'a, ((), SourceFingerprint, SourceKey, SourceSession, Id)>
 {
     pub fn source_path(
         self,
         source_path: &'a str,
-    ) -> UpsertNativeChatSourceBuilder<'a, (&'a str, SourceFingerprint, SourceKey, SourceSession, Id)>
+    ) -> SetSessionSourceBuilder<'a, (&'a str, SourceFingerprint, SourceKey, SourceSession, Id)>
     {
         let ((), source_fingerprint, source_key, source_session, id) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatSourceBuilder {
+        SetSessionSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4175,16 +4057,15 @@ impl<'a, SourceFingerprint, SourceKey, SourceSession, Id>
     }
 }
 impl<'a, SourcePath, SourceKey, SourceSession, Id>
-    UpsertNativeChatSourceBuilder<'a, (SourcePath, (), SourceKey, SourceSession, Id)>
+    SetSessionSourceBuilder<'a, (SourcePath, (), SourceKey, SourceSession, Id)>
 {
     pub fn source_fingerprint(
         self,
         source_fingerprint: &'a str,
-    ) -> UpsertNativeChatSourceBuilder<'a, (SourcePath, &'a str, SourceKey, SourceSession, Id)>
-    {
+    ) -> SetSessionSourceBuilder<'a, (SourcePath, &'a str, SourceKey, SourceSession, Id)> {
         let (source_path, (), source_key, source_session, id) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatSourceBuilder {
+        SetSessionSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4197,12 +4078,12 @@ impl<'a, SourcePath, SourceKey, SourceSession, Id>
     }
 }
 impl<'a, SourcePath, SourceFingerprint, SourceSession, Id>
-    UpsertNativeChatSourceBuilder<'a, (SourcePath, SourceFingerprint, (), SourceSession, Id)>
+    SetSessionSourceBuilder<'a, (SourcePath, SourceFingerprint, (), SourceSession, Id)>
 {
     pub fn source_key(
         self,
         source_key: Option<&'a str>,
-    ) -> UpsertNativeChatSourceBuilder<
+    ) -> SetSessionSourceBuilder<
         'a,
         (
             SourcePath,
@@ -4214,7 +4095,7 @@ impl<'a, SourcePath, SourceFingerprint, SourceSession, Id>
     > {
         let (source_path, source_fingerprint, (), source_session, id) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatSourceBuilder {
+        SetSessionSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4227,12 +4108,12 @@ impl<'a, SourcePath, SourceFingerprint, SourceSession, Id>
     }
 }
 impl<'a, SourcePath, SourceFingerprint, SourceKey, Id>
-    UpsertNativeChatSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, (), Id)>
+    SetSessionSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, (), Id)>
 {
     pub fn source_session(
         self,
         source_session: Option<&'a str>,
-    ) -> UpsertNativeChatSourceBuilder<
+    ) -> SetSessionSourceBuilder<
         'a,
         (
             SourcePath,
@@ -4244,7 +4125,7 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, Id>
     > {
         let (source_path, source_fingerprint, source_key, (), id) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatSourceBuilder {
+        SetSessionSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4257,12 +4138,12 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, Id>
     }
 }
 impl<'a, SourcePath, SourceFingerprint, SourceKey, SourceSession>
-    UpsertNativeChatSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, SourceSession, ())>
+    SetSessionSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, SourceSession, ())>
 {
     pub fn id(
         self,
         id: &'a str,
-    ) -> UpsertNativeChatSourceBuilder<
+    ) -> SetSessionSourceBuilder<
         'a,
         (
             SourcePath,
@@ -4274,7 +4155,7 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, SourceSession>
     > {
         let (source_path, source_fingerprint, source_key, source_session, ()) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeChatSourceBuilder {
+        SetSessionSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4287,11 +4168,11 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, SourceSession>
     }
 }
 impl<'a>
-    UpsertNativeChatSourceBuilder<'a, (&'a str, &'a str, Option<&'a str>, Option<&'a str>, &'a str)>
+    SetSessionSourceBuilder<'a, (&'a str, &'a str, Option<&'a str>, Option<&'a str>, &'a str)>
 {
-    pub fn build(self) -> UpsertNativeChatSource<'a> {
+    pub fn build(self) -> SetSessionSource<'a> {
         let (source_path, source_fingerprint, source_key, source_session, id) = self.fields;
-        UpsertNativeChatSource {
+        SetSessionSource {
             source_path,
             source_fingerprint,
             source_key,
@@ -4300,44 +4181,42 @@ impl<'a>
         }
     }
 }
-pub struct DisplacedNativeMessagesRow {
+pub struct DisplacedSessionMessagesRow {
     pub messages: i64,
 }
-impl DisplacedNativeMessagesRow {
+impl DisplacedSessionMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             messages: row.get(0)?,
         })
     }
 }
-pub struct DisplacedNativeMessages<'a> {
+pub struct DisplacedSessionMessages<'a> {
     provider: &'a str,
     source_key: Option<&'a str>,
     id: &'a str,
 }
-impl<'a> DisplacedNativeMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
-    AND m.conversation_id=n.conversation_id) AS messages
-FROM native_chats n
-WHERE n.provider=?1 AND n.source_key=?2 AND n.conversation_id<>?3";
+impl<'a> DisplacedSessionMessages<'a> {
+    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM messages m WHERE m.conversation_id=n.id) AS messages
+FROM sessions n WHERE n.provider=?1 AND n.source_key=?2 AND n.id<>?3";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DisplacedNativeMessages<'a> {
+impl<'a> DisplacedSessionMessages<'a> {
     pub fn query_one(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<DisplacedNativeMessagesRow> {
+    ) -> rusqlite::Result<DisplacedSessionMessagesRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), DisplacedNativeMessagesRow::from_row)
+            .query_row(self.as_params(), DisplacedSessionMessagesRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<DisplacedNativeMessagesRow>> {
+    ) -> rusqlite::Result<Option<DisplacedSessionMessagesRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), DisplacedNativeMessagesRow::from_row)?
+            .query_map(self.as_params(), DisplacedSessionMessagesRow::from_row)?
             .next()
             .transpose()
     }
@@ -4351,103 +4230,97 @@ impl<'a> DisplacedNativeMessages<'a> {
         (self.provider, self.source_key, self.id)
     }
 }
-impl<'a> DisplacedNativeMessages<'a> {
-    pub const fn builder() -> DisplacedNativeMessagesBuilder<'a, ((), (), ())> {
-        DisplacedNativeMessagesBuilder {
+impl<'a> DisplacedSessionMessages<'a> {
+    pub const fn builder() -> DisplacedSessionMessagesBuilder<'a, ((), (), ())> {
+        DisplacedSessionMessagesBuilder {
             fields: ((), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DisplacedNativeMessagesBuilder<'a, Fields = ((), (), ())> {
+pub struct DisplacedSessionMessagesBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, SourceKey, Id> DisplacedNativeMessagesBuilder<'a, ((), SourceKey, Id)> {
+impl<'a, SourceKey, Id> DisplacedSessionMessagesBuilder<'a, ((), SourceKey, Id)> {
     pub fn provider(
         self,
         provider: &'a str,
-    ) -> DisplacedNativeMessagesBuilder<'a, (&'a str, SourceKey, Id)> {
+    ) -> DisplacedSessionMessagesBuilder<'a, (&'a str, SourceKey, Id)> {
         let ((), source_key, id) = self.fields;
         let _phantom = self._phantom;
-        DisplacedNativeMessagesBuilder {
+        DisplacedSessionMessagesBuilder {
             fields: (provider, source_key, id),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id> DisplacedNativeMessagesBuilder<'a, (Provider, (), Id)> {
+impl<'a, Provider, Id> DisplacedSessionMessagesBuilder<'a, (Provider, (), Id)> {
     pub fn source_key(
         self,
         source_key: Option<&'a str>,
-    ) -> DisplacedNativeMessagesBuilder<'a, (Provider, Option<&'a str>, Id)> {
+    ) -> DisplacedSessionMessagesBuilder<'a, (Provider, Option<&'a str>, Id)> {
         let (provider, (), id) = self.fields;
         let _phantom = self._phantom;
-        DisplacedNativeMessagesBuilder {
+        DisplacedSessionMessagesBuilder {
             fields: (provider, source_key, id),
             _phantom,
         }
     }
 }
-impl<'a, Provider, SourceKey> DisplacedNativeMessagesBuilder<'a, (Provider, SourceKey, ())> {
+impl<'a, Provider, SourceKey> DisplacedSessionMessagesBuilder<'a, (Provider, SourceKey, ())> {
     pub fn id(
         self,
         id: &'a str,
-    ) -> DisplacedNativeMessagesBuilder<'a, (Provider, SourceKey, &'a str)> {
+    ) -> DisplacedSessionMessagesBuilder<'a, (Provider, SourceKey, &'a str)> {
         let (provider, source_key, ()) = self.fields;
         let _phantom = self._phantom;
-        DisplacedNativeMessagesBuilder {
+        DisplacedSessionMessagesBuilder {
             fields: (provider, source_key, id),
             _phantom,
         }
     }
 }
-impl<'a> DisplacedNativeMessagesBuilder<'a, (&'a str, Option<&'a str>, &'a str)> {
-    pub fn build(self) -> DisplacedNativeMessages<'a> {
+impl<'a> DisplacedSessionMessagesBuilder<'a, (&'a str, Option<&'a str>, &'a str)> {
+    pub fn build(self) -> DisplacedSessionMessages<'a> {
         let (provider, source_key, id) = self.fields;
-        DisplacedNativeMessages {
+        DisplacedSessionMessages {
             provider,
             source_key,
             id,
         }
     }
 }
-pub struct UpsertNativeMessageRow {}
-impl UpsertNativeMessageRow {
+pub struct UpsertMessageRow {}
+impl UpsertMessageRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct UpsertNativeMessage<'a> {
+pub struct UpsertMessage<'a> {
     id: &'a str,
-    ordinal: Option<i64>,
-    role: Option<&'a str>,
+    conversation_id: &'a str,
+    ordinal: i64,
+    role: &'a str,
     content: &'a str,
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
     context_parent: Option<&'a str>,
     attachments: &'a str,
     metadata: Option<&'a str>,
-    conversation_id: &'a str,
 }
-impl<'a> UpsertNativeMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
-SELECT 'provider',c.source,?1,'entry',c.source||':message',c.id,c.storage_id,c.id,
-    ?2,?3,silver_pack(CAST(?4 AS TEXT)),?5,
-    ?6,?7,?8,?9
-FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?10
-ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
-source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
-parent_storage_id=excluded.parent_storage_id,
-conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
+impl<'a> UpsertMessage<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
+VALUES(?1,?2,?3,?4,silver_pack(CAST(?5 AS TEXT)),
+?6,?7,?8,?9,?10)
+ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
 content_packed=excluded.content_packed,search_projection=excluded.search_projection,created_at=excluded.created_at,
 context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> UpsertNativeMessage<'a> {
+impl<'a> UpsertMessage<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -4460,6 +4333,7 @@ impl<'a> UpsertNativeMessage<'a> {
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
             self.id,
+            self.conversation_id,
             self.ordinal,
             self.role,
             self.content,
@@ -4468,25 +4342,24 @@ impl<'a> UpsertNativeMessage<'a> {
             self.context_parent,
             self.attachments,
             self.metadata,
-            self.conversation_id,
         )
     }
 }
-impl<'a> UpsertNativeMessage<'a> {
-    pub const fn builder()
-    -> UpsertNativeMessageBuilder<'a, ((), (), (), (), (), (), (), (), (), ())> {
-        UpsertNativeMessageBuilder {
+impl<'a> UpsertMessage<'a> {
+    pub const fn builder() -> UpsertMessageBuilder<'a, ((), (), (), (), (), (), (), (), (), ())> {
+        UpsertMessageBuilder {
             fields: ((), (), (), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertNativeMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), (), ())> {
+pub struct UpsertMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<
     'a,
+    ConversationId,
     Ordinal,
     Role,
     Content,
@@ -4495,12 +4368,12 @@ impl<
     ContextParent,
     Attachments,
     Metadata,
-    ConversationId,
 >
-    UpsertNativeMessageBuilder<
+    UpsertMessageBuilder<
         'a,
         (
             (),
+            ConversationId,
             Ordinal,
             Role,
             Content,
@@ -4509,17 +4382,17 @@ impl<
             ContextParent,
             Attachments,
             Metadata,
-            ConversationId,
         ),
     >
 {
     pub fn id(
         self,
         id: &'a str,
-    ) -> UpsertNativeMessageBuilder<
+    ) -> UpsertMessageBuilder<
         'a,
         (
             &'a str,
+            ConversationId,
             Ordinal,
             Role,
             Content,
@@ -4528,11 +4401,11 @@ impl<
             ContextParent,
             Attachments,
             Metadata,
-            ConversationId,
         ),
     > {
         let (
             (),
+            conversation_id,
             ordinal,
             role,
             content,
@@ -4541,12 +4414,12 @@ impl<
             context_parent,
             attachments,
             metadata,
-            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
+        UpsertMessageBuilder {
             fields: (
                 id,
+                conversation_id,
                 ordinal,
                 role,
                 content,
@@ -4555,615 +4428,6 @@ impl<
                 context_parent,
                 attachments,
                 metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Role,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    ContextParent,
-    Attachments,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            (),
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn ordinal(
-        self,
-        ordinal: Option<i64>,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Option<i64>,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            (),
-            role,
-            content,
-            search_projection,
-            created_at,
-            context_parent,
-            attachments,
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    ContextParent,
-    Attachments,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            (),
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn role(
-        self,
-        role: Option<&'a str>,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Option<&'a str>,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            (),
-            content,
-            search_projection,
-            created_at,
-            context_parent,
-            attachments,
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Role,
-    SearchProjection,
-    CreatedAt,
-    ContextParent,
-    Attachments,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            (),
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn content(
-        self,
-        content: &'a str,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            &'a str,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            role,
-            (),
-            search_projection,
-            created_at,
-            context_parent,
-            attachments,
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Role,
-    Content,
-    CreatedAt,
-    ContextParent,
-    Attachments,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            (),
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn search_projection(
-        self,
-        search_projection: Option<&'a str>,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            Option<&'a str>,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            role,
-            content,
-            (),
-            created_at,
-            context_parent,
-            attachments,
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    ContextParent,
-    Attachments,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            (),
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn created_at(
-        self,
-        created_at: Option<i64>,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            Option<i64>,
-            ContextParent,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            role,
-            content,
-            search_projection,
-            (),
-            context_parent,
-            attachments,
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    Attachments,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            (),
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn context_parent(
-        self,
-        context_parent: Option<&'a str>,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            Option<&'a str>,
-            Attachments,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            role,
-            content,
-            search_projection,
-            created_at,
-            (),
-            attachments,
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    ContextParent,
-    Metadata,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            (),
-            Metadata,
-            ConversationId,
-        ),
-    >
-{
-    pub fn attachments(
-        self,
-        attachments: &'a str,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            &'a str,
-            Metadata,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            role,
-            content,
-            search_projection,
-            created_at,
-            context_parent,
-            (),
-            metadata,
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<
-    'a,
-    Id,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    ContextParent,
-    Attachments,
-    ConversationId,
->
-    UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            (),
-            ConversationId,
-        ),
-    >
-{
-    pub fn metadata(
-        self,
-        metadata: Option<&'a str>,
-    ) -> UpsertNativeMessageBuilder<
-        'a,
-        (
-            Id,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-            Attachments,
-            Option<&'a str>,
-            ConversationId,
-        ),
-    > {
-        let (
-            id,
-            ordinal,
-            role,
-            content,
-            search_projection,
-            created_at,
-            context_parent,
-            attachments,
-            (),
-            conversation_id,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
-            fields: (
-                id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-                attachments,
-                metadata,
-                conversation_id,
             ),
             _phantom,
         }
@@ -5181,10 +4445,11 @@ impl<
     Attachments,
     Metadata,
 >
-    UpsertNativeMessageBuilder<
+    UpsertMessageBuilder<
         'a,
         (
             Id,
+            (),
             Ordinal,
             Role,
             Content,
@@ -5193,17 +4458,17 @@ impl<
             ContextParent,
             Attachments,
             Metadata,
-            (),
         ),
     >
 {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> UpsertNativeMessageBuilder<
+    ) -> UpsertMessageBuilder<
         'a,
         (
             Id,
+            &'a str,
             Ordinal,
             Role,
             Content,
@@ -5212,11 +4477,11 @@ impl<
             ContextParent,
             Attachments,
             Metadata,
-            &'a str,
         ),
     > {
         let (
             id,
+            (),
             ordinal,
             role,
             content,
@@ -5225,12 +4490,12 @@ impl<
             context_parent,
             attachments,
             metadata,
-            (),
         ) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeMessageBuilder {
+        UpsertMessageBuilder {
             fields: (
                 id,
+                conversation_id,
                 ordinal,
                 role,
                 content,
@@ -5239,32 +4504,640 @@ impl<
                 context_parent,
                 attachments,
                 metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            (),
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    >
+{
+    pub fn ordinal(
+        self,
+        ordinal: i64,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            i64,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            (),
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+            attachments,
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
                 conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            (),
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    >
+{
+    pub fn role(
+        self,
+        role: &'a str,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            &'a str,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            (),
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+            attachments,
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Role,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            (),
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    >
+{
+    pub fn content(
+        self,
+        content: &'a str,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            &'a str,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            (),
+            search_projection,
+            created_at,
+            context_parent,
+            attachments,
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Role,
+    Content,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            (),
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    >
+{
+    pub fn search_projection(
+        self,
+        search_projection: Option<&'a str>,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            Option<&'a str>,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            (),
+            created_at,
+            context_parent,
+            attachments,
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    ContextParent,
+    Attachments,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            (),
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    >
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            Option<i64>,
+            ContextParent,
+            Attachments,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            (),
+            context_parent,
+            attachments,
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    Attachments,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            (),
+            Attachments,
+            Metadata,
+        ),
+    >
+{
+    pub fn context_parent(
+        self,
+        context_parent: Option<&'a str>,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            Option<&'a str>,
+            Attachments,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            (),
+            attachments,
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            (),
+            Metadata,
+        ),
+    >
+{
+    pub fn attachments(
+        self,
+        attachments: &'a str,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            &'a str,
+            Metadata,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+            (),
+            metadata,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    ConversationId,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+>
+    UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            (),
+        ),
+    >
+{
+    pub fn metadata(
+        self,
+        metadata: Option<&'a str>,
+    ) -> UpsertMessageBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Option<&'a str>,
+        ),
+    > {
+        let (
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+            attachments,
+            (),
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertMessageBuilder {
+            fields: (
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
 impl<'a>
-    UpsertNativeMessageBuilder<
+    UpsertMessageBuilder<
         'a,
         (
             &'a str,
-            Option<i64>,
-            Option<&'a str>,
+            &'a str,
+            i64,
+            &'a str,
             &'a str,
             Option<&'a str>,
             Option<i64>,
             Option<&'a str>,
             &'a str,
             Option<&'a str>,
-            &'a str,
         ),
     >
 {
-    pub fn build(self) -> UpsertNativeMessage<'a> {
+    pub fn build(self) -> UpsertMessage<'a> {
         let (
             id,
+            conversation_id,
             ordinal,
             role,
             content,
@@ -5273,10 +5146,10 @@ impl<'a>
             context_parent,
             attachments,
             metadata,
-            conversation_id,
         ) = self.fields;
-        UpsertNativeMessage {
+        UpsertMessage {
             id,
+            conversation_id,
             ordinal,
             role,
             content,
@@ -5285,29 +5158,26 @@ impl<'a>
             context_parent,
             attachments,
             metadata,
-            conversation_id,
         }
     }
 }
-pub struct UpsertNativeMessageFingerprintRow {}
-impl UpsertNativeMessageFingerprintRow {
+pub struct SetMessageFingerprintRow {}
+impl SetMessageFingerprintRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct UpsertNativeMessageFingerprint<'a> {
+pub struct SetMessageFingerprint<'a> {
     fingerprint: &'a str,
     id: &'a str,
 }
-impl<'a> UpsertNativeMessageFingerprint<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO native_messages(storage_id,id,fingerprint)
-SELECT o.storage_id,o.id,?1 FROM objects o WHERE o.origin='provider' AND o.object_role='entry' AND o.id=?2
-ON CONFLICT(id) DO UPDATE SET fingerprint=excluded.fingerprint";
+impl<'a> SetMessageFingerprint<'a> {
+    pub const QUERY: &'static str = r"UPDATE messages SET fingerprint=?1 WHERE id=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> UpsertNativeMessageFingerprint<'a> {
+impl<'a> SetMessageFingerprint<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -5321,67 +5191,63 @@ impl<'a> UpsertNativeMessageFingerprint<'a> {
         (self.fingerprint, self.id)
     }
 }
-impl<'a> UpsertNativeMessageFingerprint<'a> {
-    pub const fn builder() -> UpsertNativeMessageFingerprintBuilder<'a, ((), ())> {
-        UpsertNativeMessageFingerprintBuilder {
+impl<'a> SetMessageFingerprint<'a> {
+    pub const fn builder() -> SetMessageFingerprintBuilder<'a, ((), ())> {
+        SetMessageFingerprintBuilder {
             fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertNativeMessageFingerprintBuilder<'a, Fields = ((), ())> {
+pub struct SetMessageFingerprintBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, Id> UpsertNativeMessageFingerprintBuilder<'a, ((), Id)> {
+impl<'a, Id> SetMessageFingerprintBuilder<'a, ((), Id)> {
     pub fn fingerprint(
         self,
         fingerprint: &'a str,
-    ) -> UpsertNativeMessageFingerprintBuilder<'a, (&'a str, Id)> {
+    ) -> SetMessageFingerprintBuilder<'a, (&'a str, Id)> {
         let ((), id) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeMessageFingerprintBuilder {
+        SetMessageFingerprintBuilder {
             fields: (fingerprint, id),
             _phantom,
         }
     }
 }
-impl<'a, Fingerprint> UpsertNativeMessageFingerprintBuilder<'a, (Fingerprint, ())> {
-    pub fn id(
-        self,
-        id: &'a str,
-    ) -> UpsertNativeMessageFingerprintBuilder<'a, (Fingerprint, &'a str)> {
+impl<'a, Fingerprint> SetMessageFingerprintBuilder<'a, (Fingerprint, ())> {
+    pub fn id(self, id: &'a str) -> SetMessageFingerprintBuilder<'a, (Fingerprint, &'a str)> {
         let (fingerprint, ()) = self.fields;
         let _phantom = self._phantom;
-        UpsertNativeMessageFingerprintBuilder {
+        SetMessageFingerprintBuilder {
             fields: (fingerprint, id),
             _phantom,
         }
     }
 }
-impl<'a> UpsertNativeMessageFingerprintBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> UpsertNativeMessageFingerprint<'a> {
+impl<'a> SetMessageFingerprintBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> SetMessageFingerprint<'a> {
         let (fingerprint, id) = self.fields;
-        UpsertNativeMessageFingerprint { fingerprint, id }
+        SetMessageFingerprint { fingerprint, id }
     }
 }
-pub struct DeleteNativeChatRow {}
-impl DeleteNativeChatRow {
+pub struct DeleteSessionRow {}
+impl DeleteSessionRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct DeleteNativeChat<'a> {
+pub struct DeleteSession<'a> {
     id: &'a str,
 }
-impl<'a> DeleteNativeChat<'a> {
-    pub const QUERY: &'static str =
-        r"DELETE FROM objects WHERE origin='provider' AND object_role='container' AND id=?1";
+impl<'a> DeleteSession<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM sessions WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteNativeChat<'a> {
+impl<'a> DeleteSession<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -5395,51 +5261,50 @@ impl<'a> DeleteNativeChat<'a> {
         (self.id,)
     }
 }
-impl<'a> DeleteNativeChat<'a> {
-    pub const fn builder() -> DeleteNativeChatBuilder<'a, ((),)> {
-        DeleteNativeChatBuilder {
+impl<'a> DeleteSession<'a> {
+    pub const fn builder() -> DeleteSessionBuilder<'a, ((),)> {
+        DeleteSessionBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteNativeChatBuilder<'a, Fields = ((),)> {
+pub struct DeleteSessionBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> DeleteNativeChatBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> DeleteNativeChatBuilder<'a, (&'a str,)> {
+impl<'a> DeleteSessionBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> DeleteSessionBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        DeleteNativeChatBuilder {
+        DeleteSessionBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> DeleteNativeChatBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> DeleteNativeChat<'a> {
+impl<'a> DeleteSessionBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteSession<'a> {
         let (id,) = self.fields;
-        DeleteNativeChat { id }
+        DeleteSession { id }
     }
 }
-pub struct DeleteNativeMessageRow {}
-impl DeleteNativeMessageRow {
+pub struct DeleteMessageRow {}
+impl DeleteMessageRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct DeleteNativeMessage<'a> {
+pub struct DeleteMessage<'a> {
     id: &'a str,
 }
-impl<'a> DeleteNativeMessage<'a> {
-    pub const QUERY: &'static str =
-        r"DELETE FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1";
+impl<'a> DeleteMessage<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM messages WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteNativeMessage<'a> {
+impl<'a> DeleteMessage<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -5453,41 +5318,41 @@ impl<'a> DeleteNativeMessage<'a> {
         (self.id,)
     }
 }
-impl<'a> DeleteNativeMessage<'a> {
-    pub const fn builder() -> DeleteNativeMessageBuilder<'a, ((),)> {
-        DeleteNativeMessageBuilder {
+impl<'a> DeleteMessage<'a> {
+    pub const fn builder() -> DeleteMessageBuilder<'a, ((),)> {
+        DeleteMessageBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteNativeMessageBuilder<'a, Fields = ((),)> {
+pub struct DeleteMessageBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> DeleteNativeMessageBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> DeleteNativeMessageBuilder<'a, (&'a str,)> {
+impl<'a> DeleteMessageBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> DeleteMessageBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        DeleteNativeMessageBuilder {
+        DeleteMessageBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> DeleteNativeMessageBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> DeleteNativeMessage<'a> {
+impl<'a> DeleteMessageBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteMessage<'a> {
         let (id,) = self.fields;
-        DeleteNativeMessage { id }
+        DeleteMessage { id }
     }
 }
-pub struct NativeChatsForPurgeRow {
+pub struct SessionsForPurgeRow {
     pub id: String,
     pub source_path: String,
     pub source_key: Option<String>,
     pub modified_ns: Option<i64>,
 }
-impl NativeChatsForPurgeRow {
+impl SessionsForPurgeRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
@@ -5497,24 +5362,24 @@ impl NativeChatsForPurgeRow {
         })
     }
 }
-pub struct NativeChatsForPurge<'a> {
+pub struct SessionsForPurge<'a> {
     provider: &'a str,
 }
-impl<'a> NativeChatsForPurge<'a> {
-    pub const QUERY: &'static str = r"SELECT n.conversation_id AS id,n.source_path,n.source_key,k.modified_ns
-FROM native_chats n LEFT JOIN source_checkpoints k ON k.provider=n.provider AND k.source_key=n.source_key
+impl<'a> SessionsForPurge<'a> {
+    pub const QUERY: &'static str = r"SELECT n.id,n.source_path,n.source_key,k.modified_ns FROM sessions n
+LEFT JOIN source_checkpoints k ON k.provider=n.provider AND k.source_key=n.source_key
 WHERE n.provider=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NativeChatsForPurge<'a> {
+impl<'a> SessionsForPurge<'a> {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<NativeChatsForPurgeRow>> {
+    ) -> rusqlite::Result<Vec<SessionsForPurgeRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), NativeChatsForPurgeRow::from_row)?
+            .query_map(self.as_params(), SessionsForPurgeRow::from_row)?
             .collect()
     }
     pub fn prepare<'conn>(
@@ -5527,67 +5392,63 @@ impl<'a> NativeChatsForPurge<'a> {
         (self.provider,)
     }
 }
-impl<'a> NativeChatsForPurge<'a> {
-    pub const fn builder() -> NativeChatsForPurgeBuilder<'a, ((),)> {
-        NativeChatsForPurgeBuilder {
+impl<'a> SessionsForPurge<'a> {
+    pub const fn builder() -> SessionsForPurgeBuilder<'a, ((),)> {
+        SessionsForPurgeBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NativeChatsForPurgeBuilder<'a, Fields = ((),)> {
+pub struct SessionsForPurgeBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> NativeChatsForPurgeBuilder<'a, ((),)> {
-    pub fn provider(self, provider: &'a str) -> NativeChatsForPurgeBuilder<'a, (&'a str,)> {
+impl<'a> SessionsForPurgeBuilder<'a, ((),)> {
+    pub fn provider(self, provider: &'a str) -> SessionsForPurgeBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        NativeChatsForPurgeBuilder {
+        SessionsForPurgeBuilder {
             fields: (provider,),
             _phantom,
         }
     }
 }
-impl<'a> NativeChatsForPurgeBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> NativeChatsForPurge<'a> {
+impl<'a> SessionsForPurgeBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> SessionsForPurge<'a> {
         let (provider,) = self.fields;
-        NativeChatsForPurge { provider }
+        SessionsForPurge { provider }
     }
 }
-pub struct NativeChatBySourceRow {
+pub struct SessionBySourceRow {
     pub id: String,
 }
-impl NativeChatBySourceRow {
+impl SessionBySourceRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self { id: row.get(0)? })
     }
 }
-pub struct NativeChatBySource<'a> {
+pub struct SessionBySource<'a> {
     provider: &'a str,
     source_key: Option<&'a str>,
 }
-impl<'a> NativeChatBySource<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT conversation_id AS id FROM native_chats WHERE provider=?1 AND source_key=?2";
+impl<'a> SessionBySource<'a> {
+    pub const QUERY: &'static str = r"SELECT id FROM sessions WHERE provider=?1 AND source_key=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NativeChatBySource<'a> {
-    pub fn query_one(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<NativeChatBySourceRow> {
+impl<'a> SessionBySource<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<SessionBySourceRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), NativeChatBySourceRow::from_row)
+            .query_row(self.as_params(), SessionBySourceRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<NativeChatBySourceRow>> {
+    ) -> rusqlite::Result<Option<SessionBySourceRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), NativeChatBySourceRow::from_row)?
+            .query_map(self.as_params(), SessionBySourceRow::from_row)?
             .next()
             .transpose()
     }
@@ -5601,86 +5462,80 @@ impl<'a> NativeChatBySource<'a> {
         (self.provider, self.source_key)
     }
 }
-impl<'a> NativeChatBySource<'a> {
-    pub const fn builder() -> NativeChatBySourceBuilder<'a, ((), ())> {
-        NativeChatBySourceBuilder {
+impl<'a> SessionBySource<'a> {
+    pub const fn builder() -> SessionBySourceBuilder<'a, ((), ())> {
+        SessionBySourceBuilder {
             fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NativeChatBySourceBuilder<'a, Fields = ((), ())> {
+pub struct SessionBySourceBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, SourceKey> NativeChatBySourceBuilder<'a, ((), SourceKey)> {
-    pub fn provider(
-        self,
-        provider: &'a str,
-    ) -> NativeChatBySourceBuilder<'a, (&'a str, SourceKey)> {
+impl<'a, SourceKey> SessionBySourceBuilder<'a, ((), SourceKey)> {
+    pub fn provider(self, provider: &'a str) -> SessionBySourceBuilder<'a, (&'a str, SourceKey)> {
         let ((), source_key) = self.fields;
         let _phantom = self._phantom;
-        NativeChatBySourceBuilder {
+        SessionBySourceBuilder {
             fields: (provider, source_key),
             _phantom,
         }
     }
 }
-impl<'a, Provider> NativeChatBySourceBuilder<'a, (Provider, ())> {
+impl<'a, Provider> SessionBySourceBuilder<'a, (Provider, ())> {
     pub fn source_key(
         self,
         source_key: Option<&'a str>,
-    ) -> NativeChatBySourceBuilder<'a, (Provider, Option<&'a str>)> {
+    ) -> SessionBySourceBuilder<'a, (Provider, Option<&'a str>)> {
         let (provider, ()) = self.fields;
         let _phantom = self._phantom;
-        NativeChatBySourceBuilder {
+        SessionBySourceBuilder {
             fields: (provider, source_key),
             _phantom,
         }
     }
 }
-impl<'a> NativeChatBySourceBuilder<'a, (&'a str, Option<&'a str>)> {
-    pub fn build(self) -> NativeChatBySource<'a> {
+impl<'a> SessionBySourceBuilder<'a, (&'a str, Option<&'a str>)> {
+    pub fn build(self) -> SessionBySource<'a> {
         let (provider, source_key) = self.fields;
-        NativeChatBySource {
+        SessionBySource {
             provider,
             source_key,
         }
     }
 }
-pub struct NativeChatProviderRow {
+pub struct SessionProviderRow {
     pub provider: String,
 }
-impl NativeChatProviderRow {
+impl SessionProviderRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             provider: row.get(0)?,
         })
     }
 }
-pub struct NativeChatProvider<'a> {
+pub struct SessionProvider<'a> {
     id: &'a str,
 }
-impl<'a> NativeChatProvider<'a> {
-    pub const QUERY: &'static str = r"SELECT provider FROM native_chats WHERE conversation_id=?1";
+impl<'a> SessionProvider<'a> {
+    pub const QUERY: &'static str = r"SELECT provider FROM sessions WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NativeChatProvider<'a> {
-    pub fn query_one(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<NativeChatProviderRow> {
+impl<'a> SessionProvider<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<SessionProviderRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), NativeChatProviderRow::from_row)
+            .query_row(self.as_params(), SessionProviderRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<NativeChatProviderRow>> {
+    ) -> rusqlite::Result<Option<SessionProviderRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), NativeChatProviderRow::from_row)?
+            .query_map(self.as_params(), SessionProviderRow::from_row)?
             .next()
             .transpose()
     }
@@ -5694,39 +5549,39 @@ impl<'a> NativeChatProvider<'a> {
         (self.id,)
     }
 }
-impl<'a> NativeChatProvider<'a> {
-    pub const fn builder() -> NativeChatProviderBuilder<'a, ((),)> {
-        NativeChatProviderBuilder {
+impl<'a> SessionProvider<'a> {
+    pub const fn builder() -> SessionProviderBuilder<'a, ((),)> {
+        SessionProviderBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NativeChatProviderBuilder<'a, Fields = ((),)> {
+pub struct SessionProviderBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> NativeChatProviderBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> NativeChatProviderBuilder<'a, (&'a str,)> {
+impl<'a> SessionProviderBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> SessionProviderBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        NativeChatProviderBuilder {
+        SessionProviderBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> NativeChatProviderBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> NativeChatProvider<'a> {
+impl<'a> SessionProviderBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> SessionProvider<'a> {
         let (id,) = self.fields;
-        NativeChatProvider { id }
+        SessionProvider { id }
     }
 }
 pub struct TurnSourcesRow {
     pub id: String,
-    pub ordinal: Option<i64>,
-    pub role: Option<String>,
-    pub projection: Option<String>,
+    pub ordinal: i64,
+    pub role: String,
+    pub projection: String,
     pub context_parent: Option<String>,
     pub created_at: Option<i64>,
 }
@@ -5747,7 +5602,7 @@ pub struct TurnSources<'a> {
 }
 impl<'a> TurnSources<'a> {
     pub const QUERY: &'static str = r"SELECT id,ordinal,role,COALESCE(search_projection,content) AS projection,context_parent,created_at
-FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1
+FROM messages WHERE conversation_id=?1
 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -6266,9 +6121,8 @@ pub struct SetMessageTurn<'a> {
     id: &'a str,
 }
 impl<'a> SetMessageTurn<'a> {
-    pub const QUERY: &'static str = r"UPDATE objects SET turn_id=?1
-WHERE origin='provider' AND object_role='entry' AND object_role<>'container'
-  AND conversation_id=?2
+    pub const QUERY: &'static str = r"UPDATE messages SET turn_id=?1
+WHERE conversation_id=?2
   AND id=?3 AND turn_id IS NOT ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -6403,29 +6257,25 @@ impl<'a> DeleteTurnBuilder<'a, (&'a str,)> {
         DeleteTurn { id }
     }
 }
-pub struct NativeChatIdsRow {
+pub struct SessionIdsRow {
     pub id: String,
 }
-impl NativeChatIdsRow {
+impl SessionIdsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self { id: row.get(0)? })
     }
 }
-pub struct NativeChatIds;
-impl NativeChatIds {
-    pub const QUERY: &'static str =
-        r"SELECT id FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id";
+pub struct SessionIds;
+impl SessionIds {
+    pub const QUERY: &'static str = r"SELECT id FROM sessions ORDER BY id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl NativeChatIds {
-    pub fn query_many(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<NativeChatIdsRow>> {
+impl SessionIds {
+    pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<SessionIdsRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), NativeChatIdsRow::from_row)?
+            .query_map(self.as_params(), SessionIdsRow::from_row)?
             .collect()
     }
     pub fn prepare<'conn>(
@@ -6438,21 +6288,21 @@ impl NativeChatIds {
         ()
     }
 }
-impl NativeChatIds {
-    pub const fn builder() -> NativeChatIdsBuilder<'static, ()> {
-        NativeChatIdsBuilder {
+impl SessionIds {
+    pub const fn builder() -> SessionIdsBuilder<'static, ()> {
+        SessionIdsBuilder {
             fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NativeChatIdsBuilder<'a, Fields = ()> {
+pub struct SessionIdsBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> NativeChatIdsBuilder<'a, ()> {
-    pub fn build(self) -> NativeChatIds {
+impl<'a> SessionIdsBuilder<'a, ()> {
+    pub fn build(self) -> SessionIds {
         let () = self.fields;
-        NativeChatIds {}
+        SessionIds {}
     }
 }

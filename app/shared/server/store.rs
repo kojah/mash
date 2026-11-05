@@ -292,8 +292,7 @@ impl Store {
             let mut counts = std::collections::BTreeMap::new();
             let mut statement = connection
                 .prepare(
-                    "SELECT conversation_id, COUNT(*) FROM objects
-                     WHERE origin = 'provider' AND object_role = 'entry'
+                    "SELECT conversation_id, COUNT(*) FROM messages
                      GROUP BY conversation_id",
                 )
                 .map_err(AppError::database)?;
@@ -504,7 +503,7 @@ impl Store {
         dense: bool,
         exclude_self: bool,
     ) -> Result<BTreeSet<String>, AppError> {
-        // View exists only after a node uploads or receives connector records,
+        // Views exist only after a node publishes its history,
         // so configured nodes without it are simply absent from search.
         let mut active = BTreeSet::new();
         for node_id in self.silver.nodes(&identity.group_id).iter().cloned() {

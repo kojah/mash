@@ -7,13 +7,6 @@ retries = 0
 slow-timeout = { period = "30s", terminate-after = 2 }
 
 [[profile.default.overrides]]
-# Generated SQLite sequences include repeated durable commits and archive round
-# trips. Reserve the local runner's four slots rather than compete with other
-# storage tests for the same disk throughout the sequence.
-filter = 'test(=connectors::silver::tests::properties::generated_connector_sequences_preserve_data_ordering_and_receipts)'
-threads-required = 4
-
-[[profile.default.overrides]]
 # Two explicit installations and compilation of a fresh Core ML sequence shape
 # take about a minute on the development MacBook, even with cached downloads.
 filter = 'test(=semantic::models::generations::tests::lazy_coreml_reader_loads_new_shapes_from_a_retired_generation)'

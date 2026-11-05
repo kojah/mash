@@ -73,7 +73,7 @@ impl Storage {
 
         let enrichment = crate::silver::enrichment::Evidence::capture(conversation)?;
         let source_fingerprint = conversation_fingerprint(conversation, &enrichment)?;
-        let existing_source_fingerprint = sql::NativeSourceFingerprint::builder()
+        let existing_source_fingerprint = sql::SessionSourceFingerprint::builder()
             .id(&conversation.id)
             .build()
             .query_opt(&self.connection)
@@ -93,10 +93,9 @@ impl Storage {
             crate::redaction::private_text(&mut title);
             title
         });
-        sql::UpsertNativeChat::builder()
+        sql::UpsertSession::builder()
             .provider(conversation.provider.as_str())
             .id(&conversation.id)
-            .kind(&format!("{}:chat", conversation.provider.as_str()))
             .title(title.as_deref())
             .created_at(conversation.created_at)
             .updated_at(conversation.updated_at)
@@ -107,7 +106,7 @@ impl Storage {
             .map_err(AppError::database)?;
         let source_path = conversation.source.path.to_string_lossy();
         let source_key = conversation.source.key();
-        sql::UpsertNativeChatSource::builder()
+        sql::SetSessionSource::builder()
             .source_path(&source_path)
             .source_fingerprint(&source_fingerprint)
             .source_key(Some(&source_key))
@@ -141,7 +140,7 @@ impl Storage {
         // source ownership within the writer transaction, staging every derived
         // index before deletion so an agent-first replay is also correct.
         let source_key = conversation.source.key();
-        let displaced = sql::DisplacedNativeMessages::builder()
+        let displaced = sql::DisplacedSessionMessages::builder()
             .provider(conversation.provider.as_str())
             .source_key(Some(&source_key))
             .id(&conversation.id)
@@ -218,11 +217,11 @@ impl Storage {
         let mut changed = Vec::new();
         let mut upsert_message = self
             .connection
-            .prepare_cached(sql::UpsertNativeMessage::QUERY)
+            .prepare_cached(sql::UpsertMessage::QUERY)
             .map_err(AppError::database)?;
         let mut upsert_fingerprint = self
             .connection
-            .prepare_cached(sql::UpsertNativeMessageFingerprint::QUERY)
+            .prepare_cached(sql::SetMessageFingerprint::QUERY)
             .map_err(AppError::database)?;
         let removed = self.remove_missing_messages(conversation, existing_messages)?;
         self.park_moved_ordinals(conversation, existing_messages)?;
@@ -241,11 +240,11 @@ impl Storage {
             let attachments = serde_json::to_string(&self.retain_attachments(&message)?)
                 .map_err(|_| AppError::internal("serialize attachments"))?;
             let metadata = message.tools.encode()?;
-            let upsert = sql::UpsertNativeMessage::builder()
+            let upsert = sql::UpsertMessage::builder()
                 .id(&message.id)
                 .conversation_id(&conversation.id)
-                .ordinal(Some(message.ordinal))
-                .role(Some(message.role.as_str()))
+                .ordinal(message.ordinal)
+                .role(message.role.as_str())
                 .content(&message.content)
                 .search_projection(message.dialogue_text.as_deref())
                 .created_at(message.created_at)
@@ -256,7 +255,7 @@ impl Storage {
             upsert_message
                 .execute(upsert.as_params())
                 .map_err(AppError::database)?;
-            let stored = sql::UpsertNativeMessageFingerprint::builder()
+            let stored = sql::SetMessageFingerprint::builder()
                 .fingerprint(&fingerprint)
                 .id(&message.id)
                 .build();
@@ -280,7 +279,7 @@ impl Storage {
             .collect::<Result<BTreeSet<_>, AppError>>()?;
         let mut delete = self
             .connection
-            .prepare_cached(sql::DeleteNativeMessage::QUERY)
+            .prepare_cached(sql::DeleteMessage::QUERY)
             .map_err(AppError::database)?;
         let mut removed = 0_u64;
         for id in existing.keys().filter(|id| !incoming.contains(id.as_str())) {
@@ -309,7 +308,7 @@ impl Storage {
         } else {
             0
         };
-        let existing = sql::NativeChatsForPurge::builder()
+        let existing = sql::SessionsForPurge::builder()
             .provider(provider.as_str())
             .build()
             .query_many(&self.connection)
@@ -335,7 +334,7 @@ impl Storage {
             {
                 continue;
             }
-            self.delete_native_chat(&id)?;
+            self.delete_session(&id)?;
             removed += 1;
         }
         let mut statement = self
@@ -390,7 +389,7 @@ impl Storage {
             return Ok(removed);
         }
         let source_key = source.key();
-        let id = sql::NativeChatBySource::builder()
+        let id = sql::SessionBySource::builder()
             .provider(provider.as_str())
             .source_key(Some(&source_key))
             .build()
@@ -404,12 +403,12 @@ impl Storage {
     }
 
     pub(super) fn remove_canonical_conversation(&mut self, id: &str) -> Result<bool, AppError> {
-        self.delete_native_chat(id)?;
+        self.delete_session(id)?;
         Ok(true)
     }
 
-    fn delete_native_chat(&self, id: &str) -> Result<(), AppError> {
-        sql::DeleteNativeChat::builder()
+    fn delete_session(&self, id: &str) -> Result<(), AppError> {
+        sql::DeleteSession::builder()
             .id(id)
             .build()
             .execute(&self.connection)
@@ -422,7 +421,7 @@ impl Storage {
             .connection
             .unchecked_transaction()
             .map_err(AppError::database)?;
-        let provider = sql::NativeChatProvider::builder()
+        let provider = sql::SessionProvider::builder()
             .id(id)
             .build()
             .query_opt(&transaction)
@@ -441,7 +440,7 @@ impl Storage {
                 params![provider, id],
             )
             .map_err(AppError::database)?;
-        let removed = sql::DeleteNativeChat::builder()
+        let removed = sql::DeleteSession::builder()
             .id(id)
             .build()
             .execute(&transaction)
@@ -485,7 +484,7 @@ impl Storage {
                     .checked_add(1)
                     .ok_or_else(|| AppError::database_data("message ordinal staging overflow"))?;
                 let query = sql::ParkMessageOrdinal::builder()
-                    .ordinal(Some(ordinal))
+                    .ordinal(ordinal)
                     .conversation_id(&conversation.id)
                     .message_id(&message.id)
                     .build();
@@ -522,7 +521,7 @@ impl Storage {
                     row.id,
                     MessageState {
                         fingerprint: row.fingerprint,
-                        ordinal: super::required(row.ordinal, "ordinal")?,
+                        ordinal: row.ordinal,
                     },
                 ))
             })

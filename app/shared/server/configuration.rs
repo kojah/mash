@@ -48,7 +48,7 @@ pub(super) struct Configuration {
 pub(super) struct Redaction {
     /// HTTP read responses: search candidates, chats, view and attachments.
     pub(super) responses: bool,
-    /// Connector text sent to a remote embedding endpoint.
+    /// History text sent to a remote embedding endpoint during views replay.
     pub(super) remote_embeddings: bool,
 }
 impl Default for Redaction {

@@ -70,7 +70,8 @@ impl Watching {
 
 #[cfg(unix)]
 #[test]
-fn runtime_upgrade_stops_idle_and_standby_cli_watchers() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+fn qdrant_runtime_upgrade_stops_idle_and_standby_cli_watchers() {
     let root = tempfile::tempdir().unwrap();
     let sources = root.path().join("history");
     std::fs::create_dir(&sources).unwrap();
@@ -122,13 +123,10 @@ fn runtime_upgrade_stops_idle_and_standby_cli_watchers() {
     );
     let connection = super::support::open_silver(root.path().join("index.sqlite3"));
     let content: String = connection
-        .query_row(
-            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT content FROM messages ", [], |row| row.get(0))
         .unwrap();
     assert_eq!(content, "before upgrade");
+    cleanup_local_gold(&root.path().join("index.sqlite3"), "local");
 }
 
 impl Drop for Watching {
@@ -153,12 +151,14 @@ fn configure(root: &Path, sources: &Path) {
         .unwrap(),
     )
     .unwrap();
+    configure_qdrant(&root.join("config.toml"));
 }
 
 // Bounding the write burst needs SIGSTOP/SIGCONT, which Windows lacks.
 #[cfg(unix)]
 #[test]
-fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+fn qdrant_watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let sources = root.join("history");
@@ -194,11 +194,7 @@ fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
     assert_eq!(watcher.next()["changed_messages"], 1);
     let connection = super::support::open_silver(root.join("index.sqlite3"));
     let content: String = connection
-        .query_row(
-            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT content FROM messages ", [], |r| r.get(0))
         .unwrap();
     assert_eq!(content, "three");
     watcher.quiet();
@@ -219,10 +215,13 @@ fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
             .unwrap();
         assert_eq!(watcher.next()["watching"], false);
     }
+    drop(watcher);
+    cleanup_local_gold(&root.join("index.sqlite3"), "local");
 }
 
 #[test]
-fn watcher_recovers_missing_roots_and_reloads_configuration() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+fn qdrant_watcher_recovers_missing_roots_and_reloads_configuration() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let sources = root.join("missing");
@@ -240,20 +239,19 @@ fn watcher_recovers_missing_roots_and_reloads_configuration() {
     watcher.next();
     let connection = super::support::open_silver(root.join("index.sqlite3"));
     let content: String = connection
-        .query_row(
-            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT content FROM messages ", [], |r| r.get(0))
         .unwrap();
     assert_eq!(content, "new root");
     watcher.quiet();
     history(&sources.join("session.jsonl"), "excluded old root");
     watcher.quiet();
+    drop(watcher);
+    cleanup_local_gold(&root.join("index.sqlite3"), "local");
 }
 
 #[test]
-fn mcp_indexes_only_on_explicit_request_and_stops_when_session_closes() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+fn qdrant_mcp_indexes_only_on_explicit_request_and_stops_when_session_closes() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let sources = root.join("history");
@@ -335,6 +333,8 @@ fn mcp_indexes_only_on_explicit_request_and_stops_when_session_closes() {
         std::thread::sleep(Duration::from_millis(25));
     }
     watcher.quiet(); // No CLI response may follow the MCP shutdown.
+    drop(watcher);
+    cleanup_local_gold(&root.join("index.sqlite3"), "local");
 }
 
 #[cfg(unix)]
@@ -416,7 +416,8 @@ impl Elected {
 
 #[cfg(unix)]
 #[test]
-fn killed_leader_fails_over_to_a_standby_that_indexes_changes_from_the_gap() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+fn qdrant_killed_leader_fails_over_to_a_standby_that_indexes_changes_from_the_gap() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let sources = root.join("history");
@@ -443,11 +444,10 @@ fn killed_leader_fails_over_to_a_standby_that_indexes_changes_from_the_gap() {
     assert_eq!(standby.role(), "leader");
     assert_eq!(standby.watching.next()["changed_messages"], 1);
     let content: String = super::support::open_silver(root.join("index.sqlite3"))
-        .query_row(
-            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT content FROM messages ", [], |r| r.get(0))
         .unwrap();
     assert_eq!(content, "written while leaderless");
+    drop(standby);
+    drop(leader);
+    cleanup_local_gold(&root.join("index.sqlite3"), "local");
 }

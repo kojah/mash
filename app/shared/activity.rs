@@ -7,7 +7,6 @@ use std::time::Instant;
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Kind {
     Publication,
-    Connector,
     Attachment,
 }
 
@@ -25,7 +24,6 @@ pub(crate) enum Phase {
     CertifyingViews,
     OptimizingViews,
     CheckingSearch,
-    Connector,
     Attachment,
 }
 
@@ -191,7 +189,7 @@ mod tests {
         let registry = Registry::default();
         let requester = registry.start("one", "node-a", Kind::Publication);
         let worker = requester.clone();
-        let other = registry.start("two", "private-node", Kind::Connector);
+        let other = registry.start("two", "private-node", Kind::Publication);
         requester.phase(Phase::ApplyingSilver, Unit::Records);
         worker.advance(128);
         drop(requester);

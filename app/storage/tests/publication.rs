@@ -154,10 +154,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         .unwrap();
     storage
         .connection
-        .execute(
-            "UPDATE objects SET title='newer' WHERE origin='provider' AND id='session-1'",
-            [],
-        )
+        .execute("UPDATE sessions SET title='newer' WHERE id='session-1'", [])
         .unwrap();
     storage
         .acknowledge_publication(
@@ -180,10 +177,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         .unwrap();
     storage
         .connection
-        .execute(
-            "DELETE FROM objects WHERE origin='provider' AND id='session-1'",
-            [],
-        )
+        .execute("DELETE FROM sessions WHERE id='session-1'", [])
         .unwrap();
     storage
         .with_publication_snapshot(|snapshot| {
@@ -211,7 +205,12 @@ fn journal_changes_roll_back_with_the_source_mutation() {
     let before = storage.with_publication_snapshot(|_| Ok(())).unwrap();
     {
         let transaction = storage.connection.unchecked_transaction().unwrap();
-        transaction.execute("INSERT INTO objects(origin,source,id,object_role,kind,conversation_id) VALUES('provider','codex','rollback','container','codex:chat','rollback')",[]).unwrap();
+        transaction
+            .execute(
+                "INSERT INTO sessions(id,provider) VALUES('rollback','codex')",
+                [],
+            )
+            .unwrap();
         let changed: i64 = transaction
             .query_row("SELECT count(*) FROM shared_changes", [], |row| row.get(0))
             .unwrap();

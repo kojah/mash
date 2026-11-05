@@ -305,7 +305,7 @@ responsibility. This model makes no delivery/progress claim.
 [SharedViews.tla](SharedViews.tla) models a native silver commit, invalidation,
 destructive replay, individual point writes/deletes, and certification as
 separate steps. A crash preserves whichever durable operations have finished.
-Bounds: two objects, two canonical revisions, two settings identities and one
+Bounds: two messages, two canonical revisions, two settings identities and one
 writer. Settings change only at a quiescent owner restart. `Current` is computed
 from persisted revision/settings markers, independently of the worker phase,
 so checks can detect metadata lying about physical documents.

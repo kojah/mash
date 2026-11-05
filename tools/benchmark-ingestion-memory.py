@@ -155,10 +155,10 @@ def run(args):
         indexed = json.loads((root / 'stdout.json').read_text())
         with COST.connection(database) as connection:
             identities = connection.execute(
-                "SELECT id,role FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id"
+                "SELECT id,role FROM messages ORDER BY id"
             ).fetchall()
             conversations = connection.execute(
-                "SELECT COUNT(*) FROM objects WHERE origin='provider' AND object_role='container'"
+                "SELECT COUNT(*) FROM sessions"
             ).fetchone()[0]
         rows = [(message_id, role, canonical_content(base, message_id))
                 for message_id, role in identities]

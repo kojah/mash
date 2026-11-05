@@ -92,15 +92,11 @@ class EvaluationTests(unittest.TestCase):
         captures['queries'][0]['response']['results'][0]['provider'] = 'claude-code'
         self.assertFalse(evaluate(judgments, captures, Split.HELD_OUT)['complete'])
 
-    def test_current_results_tag_their_source(self):
+    def test_results_require_provider_identity(self):
         judgments, captures = fixture()
         result = captures['queries'][0]['response']['results'][0]
-        result['source'] = {'provider': result.pop('provider')}
-        self.assertTrue(evaluate(judgments, captures, Split.HELD_OUT)['complete'])
-        result['source'] = {'connector': 'codex'}
-        self.assertFalse(evaluate(judgments, captures, Split.HELD_OUT)['complete'])
-        result['source'] = {'provider': 'codex', 'connector': 'x'}
-        with self.assertRaises(ValueError):
+        result.pop('provider')
+        with self.assertRaises(KeyError):
             evaluate(judgments, captures, Split.HELD_OUT)
 
     def test_malformed_judgments_and_query_sets_reject(self):

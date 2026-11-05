@@ -50,8 +50,8 @@ fn unfiltered(fixture: &Fixture) {
 fn local_witness(fixture: &Fixture) -> Vec<String> {
     let connection = open_silver(&fixture.database);
     [
-        "SELECT json_object('id',id,'provider',source,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id",
-        "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id",
+        "SELECT json_object('id',id,'provider',provider,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM sessions ORDER BY id",
+        "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM messages ORDER BY id",
         "SELECT json_object('id',conversation_id,'evidence',evidence) AS witness FROM conversation_enrichment ORDER BY conversation_id",
     ].into_iter().flat_map(|sql| {
         connection.prepare(sql).unwrap().query_map([], |row| row.get::<_, String>("witness")).unwrap()
@@ -70,8 +70,9 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     unfiltered(&fixture);
     let initial = fixture.json(&["index", "--all-history"], true);
     assert_eq!(initial["shared"]["state"], "published");
-    assert_eq!(initial["shared"]["preparation"]["forwarded_embeddings"], 0);
-    assert_eq!(initial["shared"]["preparation"]["model_inferences"], 2);
+    // Local Qdrant already holds the identical dialogue recipe for both chats.
+    assert_eq!(initial["shared"]["preparation"]["forwarded_embeddings"], 2);
+    assert_eq!(initial["shared"]["preparation"]["model_inferences"], 0);
     let before = fixture.remote_node("split");
     let local = local_witness(&fixture);
     let local_points = local_gold_points(&fixture.database, "split");
@@ -86,6 +87,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     unfiltered(&fixture);
     let switched = fixture.json(&["index", "--all-history"], true);
     assert_eq!(switched["shared"]["state"], "published");
+    assert_eq!(switched["shared"]["preparation"]["forwarded_embeddings"], 0);
     assert_eq!(switched["shared"]["preparation"]["model_inferences"], 2);
     assert_eq!(
         assert_current(&fixture, 2)["silver_revision"],
@@ -98,6 +100,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     let current = fixture.remote_node("split");
     let noop = fixture.json(&["index", "--all-history"], true);
     assert_eq!(noop["shared"]["state"], "published");
+    assert_eq!(noop["shared"]["preparation"]["forwarded_embeddings"], 0);
     assert_eq!(noop["shared"]["preparation"]["model_inferences"], 0);
     // Already-current acknowledgement skips snapshot preparation entirely.
     assert_eq!(noop["shared"]["preparation"]["upload_bytes"], 0);
@@ -106,13 +109,16 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     write_source(&fixture, "canonical updated compilation topic");
     let edited = fixture.json(&["index", "--all-history"], true);
     assert_eq!(edited["shared"]["state"], "published");
+    // Local views still use dialogue, so the changed chat needs the shared
+    // title-and-dialogue embedding; the unchanged chat is not republished.
+    assert_eq!(edited["shared"]["preparation"]["forwarded_embeddings"], 0);
     assert_eq!(edited["shared"]["preparation"]["model_inferences"], 1);
     std::fs::remove_file(fixture.codex.join("session.jsonl")).unwrap();
     std::fs::remove_file(fixture.directory.path().join("claude/session.jsonl")).unwrap();
     let connection = open_silver(&fixture.database);
     let id: String = connection
         .query_row(
-            "SELECT id FROM objects WHERE origin='provider' AND object_role='container' AND source='codex'",
+            "SELECT id FROM sessions WHERE provider='codex'",
             [],
             |row| row.get(0),
         )
@@ -120,6 +126,10 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     drop(connection);
     let forgotten = fixture.json(&["forget", &id], true);
     assert_eq!(forgotten["shared"]["state"], "published");
+    assert_eq!(
+        forgotten["shared"]["preparation"]["forwarded_embeddings"],
+        0
+    );
     assert_eq!(forgotten["shared"]["preparation"]["model_inferences"], 0);
     assert_current(&fixture, 1);
     eprintln!(

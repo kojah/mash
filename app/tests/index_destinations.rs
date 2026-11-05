@@ -94,7 +94,13 @@ impl Fixture {
 
     fn json(&self, arguments: &[&str], online: bool) -> Value {
         let output = self.run(arguments, online);
-        let body: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let body: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+            panic!(
+                "{arguments:?}: {error}; status={}; stderr={}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
         let pending_index =
             arguments.first() == Some(&"index") && body["shared"]["state"] == "pending";
         assert!(
@@ -183,6 +189,7 @@ fn claude_copy_reconciliation() {
                 index = (index_config)
                 shared = {group_id = (fixture.group.as_str()),node_id = "split",api_url = (fixture.server.as_ref().unwrap().url.as_str()),token_env = "MASH_TEST_ROUTING_TOKEN"}
             }).unwrap()).unwrap();
+    configure_qdrant(&fixture.config);
     let check = |messages: u64| {
         let indexed = fixture.json(&["index", "--all-history"], true);
         assert_eq!(indexed["shared"]["state"], "published", "{indexed}");
@@ -198,7 +205,7 @@ fn claude_copy_reconciliation() {
         assert_ready_node(node, messages, &local["silver"]["interpretation_version"]);
         let connection = super::support::open_silver(&fixture.database);
         let rows = connection
-            .prepare("SELECT id,content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal")
+            .prepare("SELECT id,content FROM messages ORDER BY ordinal")
             .unwrap()
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))

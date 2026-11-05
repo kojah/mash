@@ -27,9 +27,8 @@ pub(crate) fn visit(
     emit: &mut impl FnMut(Record) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
     let invalid_context = storage.connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
-            AND m.context_parent<>'' AND NOT EXISTS(SELECT 1 FROM objects p
-                WHERE p.origin='provider' AND p.object_role='entry' AND p.conversation_id=m.conversation_id
+        "SELECT EXISTS(SELECT 1 FROM messages m WHERE m.context_parent<>'' AND NOT EXISTS(SELECT 1 FROM messages p
+                WHERE p.conversation_id=m.conversation_id
                     AND p.id=m.context_parent AND p.ordinal<m.ordinal))",
         [], |row| row.get::<_, bool>(0),
     ).map_err(AppError::database)?;
@@ -52,8 +51,8 @@ pub(crate) fn visit(
             }
         }};
     }
-    table!("SELECT c.id,c.source AS provider,n.source_path,n.source_key,n.source_session,c.title,c.created_at,c.updated_at,n.source_fingerprint,c.project,c.repository
-         FROM objects c JOIN native_chats n ON n.storage_id=c.storage_id ORDER BY c.id", |row| Ok::<
+    table!("SELECT c.id,c.provider,c.source_path,c.source_key,c.source_session,c.title,c.created_at,c.updated_at,c.source_fingerprint,c.project,c.repository
+         FROM sessions c ORDER BY c.id", |row| Ok::<
         _,
         AppError,
     >(
@@ -74,10 +73,10 @@ pub(crate) fn visit(
     table!(
         "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,
              CASE WHEN m.context_parent IS NULL THEN NULL WHEN m.context_parent='' THEN -1
-                  ELSE (SELECT p.ordinal FROM objects p WHERE p.origin='provider' AND p.object_role='entry' AND p.conversation_id=m.conversation_id AND p.id=m.context_parent) END AS context_parent,
-             m.created_at,COALESCE(n.fingerprint,'') AS fingerprint,m.metadata
-         FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
-         WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.conversation_id,m.ordinal",
+                  ELSE (SELECT p.ordinal FROM messages p WHERE p.conversation_id=m.conversation_id AND p.id=m.context_parent) END AS context_parent,
+             m.created_at,m.fingerprint AS fingerprint,m.metadata
+         FROM messages m
+         ORDER BY m.conversation_id,m.ordinal",
         |row| Ok::<_, AppError>(Record::Message {
             attachments: json(row, "attachments")?,
             id: get(row, "id")?,
@@ -260,8 +259,8 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             repository,
         } => {
             execute!(
-                "INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,created_at,updated_at,project,repository)
-                 VALUES('provider',?2,?1,'container',?2||':chat',?1,?3,?4,?5,?6,?7)",
+                "INSERT INTO sessions(id,provider,title,created_at,updated_at,project,repository)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7)",
                 id,
                 provider,
                 title,
@@ -271,8 +270,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 repository
             );
             execute!(
-                "INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_fingerprint,source_key,source_session)
-                 SELECT storage_id,id,source,?2,?3,?4,?5 FROM objects WHERE origin='provider' AND object_role='container' AND id=?1",
+                "UPDATE sessions SET source_path=?2,source_fingerprint=?3,source_key=?4,source_session=?5 WHERE id=?1",
                 id,
                 source_path,
                 source_fingerprint,
@@ -296,10 +294,8 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             // The chat precedes its messages in every archive; a message
             // without one would otherwise vanish rather than fail.
             let inserted = execute!(
-                "INSERT INTO objects(attachments,id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,
-                    metadata,origin,source,object_role,kind,parent_id,parent_storage_id)
-                 SELECT ?1,?2,?3,?4,?5,silver_pack(?6),?7,?8,?9,?10,'provider',c.source,'entry',c.source||':message',c.id,c.storage_id
-                   FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?3",
+                "INSERT INTO messages(attachments,id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata)
+                 VALUES(?1,?2,?3,?4,?5,silver_pack(?6),?7,?8,?9,?10)",
                 encode(&attachments)?,
                 id,
                 conversation_id,
@@ -325,8 +321,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 );
             }
             execute!(
-                "INSERT INTO native_messages(storage_id,id,fingerprint)
-                 SELECT storage_id,id,?2 FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1",
+                "UPDATE messages SET fingerprint=?2 WHERE id=?1",
                 id,
                 fingerprint
             );

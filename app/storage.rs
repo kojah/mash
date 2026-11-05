@@ -20,7 +20,6 @@ mod enrichment;
 pub(crate) mod export;
 pub(crate) mod gold_input;
 mod indexing;
-pub(crate) mod objects;
 pub(crate) mod packed;
 pub(crate) mod publication;
 mod silver_state;
@@ -226,11 +225,6 @@ impl Drop for Storage {
             let _ = self.connection.execute_batch("ROLLBACK");
         }
     }
-}
-
-/// A column every native entry has; its absence means corrupt silver.
-pub(crate) fn required<T>(value: Option<T>, field: &str) -> Result<T, AppError> {
-    value.ok_or_else(|| AppError::database_data(format!("native silver is missing {field}")))
 }
 
 #[cfg(test)]

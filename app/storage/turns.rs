@@ -18,10 +18,10 @@ pub(crate) fn message_turn(
     use rusqlite::OptionalExtension;
     let row = connection
         .prepare_cached(
-            "SELECT m.source, m.conversation_id, m.turn_id, t.conversation_id
-               FROM objects m
+            "SELECT c.provider, m.conversation_id, m.turn_id, t.conversation_id
+               FROM messages m JOIN sessions c ON c.id=m.conversation_id
                LEFT JOIN turns t ON t.id = m.turn_id
-              WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1",
+              WHERE m.id = ?1",
         )
         .map_err(AppError::database)?
         .query_row([message_id], |row| {
@@ -81,28 +81,28 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
         .map_err(AppError::database)?;
     let roles = rows
         .iter()
-        .map(|row| super::required(row.role.clone(), "role").map(crate::role::Role::from))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|row| crate::role::Role::from(row.role.clone()))
+        .collect::<Vec<_>>();
     let positions = rows
         .iter()
-        .map(|row| Ok((row.id.as_str(), super::required(row.ordinal, "ordinal")?)))
-        .collect::<Result<HashMap<_, _>, AppError>>()?;
+        .map(|row| (row.id.as_str(), row.ordinal))
+        .collect::<HashMap<_, _>>();
     let sources = rows
         .iter()
         .zip(&roles)
         .map(|(row, role)| {
             Ok(Source {
                 id: &row.id,
-                ordinal: super::required(row.ordinal, "ordinal")?,
+                ordinal: row.ordinal,
                 role,
-                projection: row.projection.as_deref().unwrap_or_default(),
+                projection: &row.projection,
                 context_parent: match row.context_parent.as_deref() {
                     None => None,
                     Some("") => Some(-1),
                     Some(parent) => Some(
                         *positions
                             .get(parent)
-                            .filter(|ordinal| **ordinal < row.ordinal.unwrap_or(-1))
+                            .filter(|ordinal| **ordinal < row.ordinal)
                             .ok_or_else(|| {
                                 AppError::database_data("invalid native message parent")
                             })?,
@@ -169,7 +169,7 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
 
 /// Derive every chat's turns, after an import has restored their messages.
 pub(crate) fn derive_all(connection: &Connection) -> Result<(), AppError> {
-    for chat in sql::NativeChatIds
+    for chat in sql::SessionIds
         .query_many(connection)
         .map_err(AppError::database)?
     {

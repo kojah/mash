@@ -57,6 +57,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
 
 mod chats;
 mod indexing;
+mod properties;
 mod publication;
 mod schema;
 mod staging;

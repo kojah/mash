@@ -1,7 +1,8 @@
 use super::*;
 
 #[test]
-fn view_returns_structured_tool_calls_and_results() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+fn qdrant_view_returns_structured_tool_calls_and_results() {
     let root = tempfile::tempdir().unwrap();
     let provider = root.path().join("provider");
     std::fs::create_dir(&provider).unwrap();
@@ -13,6 +14,7 @@ fn view_returns_structured_tool_calls_and_results() {
     let config = root.path().join("node.toml");
     std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
         toml::Value::String(provider.to_str().unwrap().into()))).unwrap();
+    configure_qdrant(&config);
     let database = root.path().join("index.sqlite3");
     let models = root.path().join("no-models");
     let args = [
@@ -52,10 +54,11 @@ fn view_returns_structured_tool_calls_and_results() {
         activity[2]["tool_results"],
         serde_json::json!([{"call_id": "toolu_01C"}])
     );
-    // Entries without tool activity omit the field.
+    // Messages without tool activity omit the field.
     assert!(
         messages
             .iter()
             .any(|message| message.get("tools").is_none())
     );
+    cleanup_local_gold(&database, "local");
 }

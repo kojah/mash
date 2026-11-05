@@ -41,7 +41,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     let mut storage = Storage::open_writer(&database).unwrap();
     assert_eq!(storage.counts().unwrap().conversations, 4);
     let paths: Vec<(String, String)> = storage.connection.prepare(
-        "SELECT source_path, source_session FROM native_chats WHERE conversation_id IN ('keep','deleted') ORDER BY conversation_id"
+        "SELECT source_path, source_session FROM sessions WHERE id IN ('keep','deleted') ORDER BY id"
     ).unwrap().query_map([], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
         .collect::<Result<_, _>>().unwrap();
     assert!(
@@ -206,7 +206,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
         let parent: String = storage
             .connection
             .query_row(
-                "SELECT context_parent FROM objects WHERE id = 'reply'",
+                "SELECT context_parent FROM messages WHERE id = 'reply'",
                 [],
                 |row| row.get(0),
             )

@@ -167,10 +167,10 @@ jobs:
         env:
           MASH_TEST_QDRANT_URL: http://localhost:6333
           MASH_TEST_QDRANT_GRPC_URL: http://localhost:6334
-      - name: Verify CLI Qdrant readiness, connector replay and archives
+      - name: Verify CLI Qdrant readiness and archives
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
-          -E 'test(status_with_completed_embeddings) or test(current_views_readiness) or test(exact_status_uses_lexical_certification) or test(status_with_completed_context_only) or test(explicit_empty_index_reports_ready) or test(connector_records_become_searchable) or test(later_deliveries_refresh_gold) or test(scoped_refreshes_match_a_full_rebuild) or test(export_imports_history_offline) or test(users_only_cli_index) or test(lexical_only_cli_indexes) or test(index_without_pending_embeddings) or test(incomplete_index_progress) or test(rejected_source_preserves_cli) or test(init_configures_registers_and_indexes) or test(local_destination_never_publishes)'
+          -E 'test(status_with_completed_embeddings) or test(current_views_readiness) or test(exact_status_uses_lexical_certification) or test(status_with_completed_context_only) or test(explicit_empty_index_reports_ready) or test(export_imports_history_offline) or test(users_only_cli_index) or test(lexical_only_cli_indexes) or test(index_without_pending_embeddings) or test(incomplete_index_progress) or test(rejected_source_preserves_cli) or test(init_configures_registers_and_indexes) or test(local_destination_never_publishes)'
       - name: Verify local Qdrant search presentation and privacy
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2

@@ -44,7 +44,7 @@ fn canonical_silver_reader_never_opens_or_synthesizes_gold() {
     assert!(
         reader
             .connection
-            .execute("DELETE FROM objects", [])
+            .execute("DELETE FROM sessions", [])
             .is_err()
     );
     assert_eq!(
@@ -98,7 +98,7 @@ fn deleting_silver_journals_the_canonical_change() {
     let before = revision(&storage);
     storage
         .connection
-        .execute("DELETE FROM objects WHERE origin='provider'", [])
+        .execute("DELETE FROM sessions ", [])
         .unwrap();
     assert!(revision(&storage) > before);
     assert_eq!(storage.counts().unwrap().messages, 0);

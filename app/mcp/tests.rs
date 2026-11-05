@@ -216,12 +216,15 @@ async fn wire_next(
     clippy::too_many_lines,
     reason = "wire-level handshake, live progress, token omission, and failure form one session"
 )]
-async fn indexing_streams_correlated_progress_before_the_tool_result() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config.toml");
     let database = dir.path().join("index.sqlite3");
     let models = dir.path().join("models");
     std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let qdrant_url = crate::views::local::test_support::configure(&config);
+    let configuration = crate::config::load(Some(&config)).unwrap();
     install_test_marker(&models);
     let server = Mash {
         runtime: None,
@@ -317,6 +320,10 @@ async fn indexing_streams_correlated_progress_before_the_tool_result() {
     drop(write);
     drop(read);
     server.waiting().await.unwrap();
+    let local = crate::views::local::Local::open(&database, &configuration)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &qdrant_url).await;
 }
 
 fn assert_filter_schema(tools: &[rmcp::model::Tool]) {

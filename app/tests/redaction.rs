@@ -36,7 +36,8 @@ fn private_spans_never_reach_silver_or_its_views() {
     }
     let connection = super::support::open_silver(&db);
     for query in [
-        "SELECT group_concat(COALESCE(title,'') || content || COALESCE(search_projection,''), ' ') FROM objects",
+        "SELECT group_concat(COALESCE(title,''), ' ') FROM sessions",
+        "SELECT group_concat(content || COALESCE(search_projection,''), ' ') FROM messages",
         "SELECT group_concat(content || COALESCE(projection,''), ' ') FROM claude_source_messages",
         "SELECT group_concat(COALESCE(title,''), ' ') FROM claude_sources",
     ] {
@@ -90,11 +91,7 @@ fn cli_output_redaction(masked: bool) {
     run_json(&[prefix.as_slice(), &["index"]].concat());
     let connection = super::support::open_silver(&db);
     let message_id: String = connection
-        .query_row(
-            "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT id FROM messages LIMIT 1", [], |row| row.get(0))
         .unwrap();
     for args in [
         vec!["view", message_id.as_str()],
@@ -130,11 +127,7 @@ fn cli_output_redaction(masked: bool) {
         format!("{body}\n")
     );
     let canonical: String = connection
-        .query_row(
-            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT content FROM messages LIMIT 1", [], |row| row.get(0))
         .unwrap();
     assert!(canonical.contains("hunter2"));
     cleanup_local_gold(&db, "local");

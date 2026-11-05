@@ -69,7 +69,7 @@ fn body(seed: u64, tokens: usize) -> String {
         "capacity",
         "admission",
         "watcher",
-        "connector",
+        "session",
         "attachment",
         "tombstone",
         "certificate",

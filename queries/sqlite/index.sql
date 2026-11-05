@@ -9,9 +9,9 @@ WITH scope AS (SELECT
     CAST(sqlc.narg(before_ms) AS INTEGER) AS before_ms,
     CAST(sqlc.arg(sort_key) AS TEXT) AS sort_key,
     CAST(sqlc.arg(descending) AS INTEGER) AS descending)
-SELECT c.id,c.source AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
-FROM objects c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
-WHERE c.origin='provider' AND c.object_role='container' AND (s.all_providers = 1 OR c.source IN (
+SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+FROM sessions c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
 AND (s.title_contains IS NULL OR instr(lower(c.title),lower(s.title_contains)) > 0)
@@ -28,13 +28,11 @@ CASE WHEN s.sort_key = 'created_at' AND s.descending = 0 THEN c.created_at END A
 CASE WHEN s.sort_key = 'created_at' AND s.descending = 1 THEN c.created_at END DESC,
 CASE WHEN s.sort_key = 'updated_at' AND s.descending = 0 THEN c.updated_at END ASC,
 CASE WHEN s.sort_key = 'updated_at' AND s.descending = 1 THEN c.updated_at END DESC,
-c.source COLLATE BINARY ASC,c.id COLLATE BINARY ASC
+c.provider COLLATE BINARY ASC,c.id COLLATE BINARY ASC
 LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 
 -- name: ConversationMessageState :many
-SELECT m.id,COALESCE(n.fingerprint,'') AS fingerprint,m.ordinal
-FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
-WHERE m.origin='provider' AND m.object_role='entry' AND m.conversation_id=sqlc.arg(conversation_id);
+SELECT id,fingerprint,ordinal FROM messages WHERE conversation_id=sqlc.arg(conversation_id);
 
 -- name: ClaudeSourceThread :one
 SELECT conversation_id FROM claude_sources WHERE source_key=sqlc.arg(source_key);
@@ -91,20 +89,20 @@ DELETE FROM claude_sources WHERE conversation_id=sqlc.arg(conversation_id);
 SELECT conversation_id FROM tombstones WHERE provider='claude-code' AND conversation_id=sqlc.arg(conversation_id);
 
 -- name: CanonicalThreadMessageCount :one
-SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id);
+SELECT count(*) AS messages FROM messages WHERE conversation_id=sqlc.arg(conversation_id);
 
 -- name: ParkMessageOrdinal :exec
-UPDATE objects SET ordinal=sqlc.arg(ordinal)
-WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
+UPDATE messages SET ordinal=sqlc.arg(ordinal)
+WHERE conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
 
 -- name: Anchor :one
-SELECT id,conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
+SELECT id,conversation_id,ordinal,context_parent FROM messages WHERE id=?1;
 
 -- name: MessageAttachments :one
-SELECT attachments FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
+SELECT attachments FROM messages WHERE id=?1;
 
 -- name: AttachmentCandidates :many
-SELECT id,attachments FROM objects WHERE origin='provider' AND object_role='entry' AND attachments<>'[]' ORDER BY id;
+SELECT id,attachments FROM messages WHERE attachments<>'[]' ORDER BY id;
 
 -- name: AttachmentPolicy :one
 SELECT fingerprint FROM attachment_policy WHERE singleton=1;
@@ -113,15 +111,15 @@ SELECT fingerprint FROM attachment_policy WHERE singleton=1;
 INSERT INTO attachment_policy(singleton,fingerprint) VALUES(1,sqlc.arg(fingerprint)) ON CONFLICT(singleton) DO UPDATE SET fingerprint=excluded.fingerprint;
 
 -- name: ViewMessages :many
-SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM objects
-WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM messages
+WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;
 
 -- name: ContextMessage :one
-SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM objects
-WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(id);
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM messages
+WHERE conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(id);
 
 -- name: FirstChild :one
-SELECT id,ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
+SELECT id,ordinal FROM messages WHERE conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
 
 -- name: SilverCertificate :one
 SELECT s.revision, s.interpretation_version,
@@ -129,7 +127,7 @@ SELECT s.revision, s.interpretation_version,
     CAST(s.interpretation_version<>sqlc.arg(current_version)
         OR EXISTS(SELECT 1 FROM silver_scans WHERE interpretation_version<>sqlc.arg(current_version))
         OR EXISTS(SELECT 1 FROM source_checkpoints WHERE interpretation_version<>sqlc.arg(current_version))
-        OR EXISTS(SELECT 1 FROM native_chats c WHERE NOT EXISTS(
+        OR EXISTS(SELECT 1 FROM sessions c WHERE NOT EXISTS(
             SELECT 1 FROM silver_scans p WHERE p.provider=c.provider
               AND p.interpretation_version=sqlc.arg(current_version))) AS INTEGER) AS unverified,
     CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=2) AS INTEGER) AS incomplete,
@@ -142,80 +140,62 @@ WHERE provider=sqlc.arg(provider) ORDER BY source_key;
 
 -- name: SourceEnrichment :many
 SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at
-FROM native_chats AS n JOIN objects AS c ON c.storage_id=n.storage_id
-LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
-WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key);
+FROM sessions c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+WHERE c.provider=sqlc.arg(provider) AND c.source_key=sqlc.arg(source_key);
 
 -- name: ConversationEnrichment :one
 SELECT evidence FROM conversation_enrichment WHERE conversation_id=sqlc.arg(conversation_id);
 
--- name: NativeSourceFingerprint :one
-SELECT source_fingerprint FROM native_chats WHERE conversation_id=sqlc.arg(id);
+-- name: SessionSourceFingerprint :one
+SELECT source_fingerprint FROM sessions WHERE id=sqlc.arg(id);
 
--- name: UpsertNativeChat :exec
-INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,created_at,updated_at,project,repository)
-VALUES('provider',sqlc.arg(provider),sqlc.arg(id),'container',sqlc.arg(kind),sqlc.arg(id),
-    sqlc.narg(title),sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.narg(project),sqlc.narg(repository))
-ON CONFLICT(id) WHERE origin='provider' AND object_role='container' DO UPDATE SET kind=excluded.kind,title=excluded.title,
-created_at=excluded.created_at,updated_at=excluded.updated_at,project=excluded.project,
-repository=excluded.repository;
+-- name: UpsertSession :exec
+INSERT INTO sessions(id,provider,title,created_at,updated_at,project,repository)
+VALUES(sqlc.arg(id),sqlc.arg(provider),sqlc.narg(title),sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.narg(project),sqlc.narg(repository))
+ON CONFLICT(id) DO UPDATE SET title=excluded.title,created_at=excluded.created_at,
+updated_at=excluded.updated_at,project=excluded.project,repository=excluded.repository;
 
--- name: UpsertNativeChatSource :exec
-INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_fingerprint,source_key,source_session)
-SELECT o.storage_id,o.id,o.source,sqlc.arg(source_path),sqlc.arg(source_fingerprint),sqlc.narg(source_key),sqlc.narg(source_session)
-FROM objects o WHERE o.origin='provider' AND o.object_role='container' AND o.id=sqlc.arg(id)
-ON CONFLICT(conversation_id) DO UPDATE SET provider=excluded.provider,source_path=excluded.source_path,
-source_fingerprint=excluded.source_fingerprint,source_key=excluded.source_key,
-source_session=excluded.source_session;
+-- name: SetSessionSource :exec
+UPDATE sessions SET source_path=sqlc.arg(source_path),source_fingerprint=sqlc.arg(source_fingerprint),
+source_key=sqlc.narg(source_key),source_session=sqlc.narg(source_session)
+WHERE id=sqlc.arg(id);
 
--- name: DisplacedNativeMessages :one
-SELECT (SELECT count(*) FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
-    AND m.conversation_id=n.conversation_id) AS messages
-FROM native_chats n
-WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key) AND n.conversation_id<>sqlc.arg(id);
+-- name: DisplacedSessionMessages :one
+SELECT (SELECT count(*) FROM messages m WHERE m.conversation_id=n.id) AS messages
+FROM sessions n WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key) AND n.id<>sqlc.arg(id);
 
--- name: UpsertNativeMessage :exec
--- A native message takes its provider from its chat, and sits under it.
-INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
-SELECT 'provider',c.source,sqlc.arg(id),'entry',c.source||':message',c.id,c.storage_id,c.id,
-    sqlc.arg(ordinal),sqlc.arg(role),silver_pack(CAST(sqlc.arg(content) AS TEXT)),sqlc.narg(search_projection),
-    sqlc.narg(created_at),sqlc.narg(context_parent),sqlc.arg(attachments),sqlc.narg(metadata)
-FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=sqlc.arg(conversation_id)
-ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
-source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
-parent_storage_id=excluded.parent_storage_id,
-conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
+-- name: UpsertMessage :exec
+INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
+VALUES(sqlc.arg(id),sqlc.arg(conversation_id),sqlc.arg(ordinal),sqlc.arg(role),silver_pack(CAST(sqlc.arg(content) AS TEXT)),
+sqlc.narg(search_projection),sqlc.narg(created_at),sqlc.narg(context_parent),sqlc.arg(attachments),sqlc.narg(metadata))
+ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
 content_packed=excluded.content_packed,search_projection=excluded.search_projection,created_at=excluded.created_at,
 context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata;
 
+-- name: SetMessageFingerprint :exec
+UPDATE messages SET fingerprint=sqlc.arg(fingerprint) WHERE id=sqlc.arg(id);
 
--- name: UpsertNativeMessageFingerprint :exec
-INSERT INTO native_messages(storage_id,id,fingerprint)
-SELECT o.storage_id,o.id,sqlc.arg(fingerprint) FROM objects o WHERE o.origin='provider' AND o.object_role='entry' AND o.id=sqlc.arg(id)
-ON CONFLICT(id) DO UPDATE SET fingerprint=excluded.fingerprint;
+-- name: DeleteSession :execrows
+-- Its turns and messages are deleted through their session foreign keys.
+DELETE FROM sessions WHERE id=sqlc.arg(id);
 
--- name: DeleteNativeChat :execrows
--- Its turns and messages go with it through the parent edge.
-DELETE FROM objects WHERE origin='provider' AND object_role='container' AND id=sqlc.arg(id);
+-- name: DeleteMessage :exec
+DELETE FROM messages WHERE id=sqlc.arg(id);
 
--- name: DeleteNativeMessage :exec
-DELETE FROM objects WHERE origin='provider' AND object_role='entry' AND id=sqlc.arg(id);
-
--- name: NativeChatsForPurge :many
-SELECT n.conversation_id AS id,n.source_path,n.source_key,k.modified_ns
-FROM native_chats n LEFT JOIN source_checkpoints k ON k.provider=n.provider AND k.source_key=n.source_key
+-- name: SessionsForPurge :many
+SELECT n.id,n.source_path,n.source_key,k.modified_ns FROM sessions n
+LEFT JOIN source_checkpoints k ON k.provider=n.provider AND k.source_key=n.source_key
 WHERE n.provider=sqlc.arg(provider);
 
--- name: NativeChatBySource :one
-SELECT conversation_id AS id FROM native_chats WHERE provider=sqlc.arg(provider) AND source_key=sqlc.arg(source_key);
+-- name: SessionBySource :one
+SELECT id FROM sessions WHERE provider=sqlc.arg(provider) AND source_key=sqlc.arg(source_key);
 
--- name: NativeChatProvider :one
-SELECT provider FROM native_chats WHERE conversation_id=sqlc.arg(id);
+-- name: SessionProvider :one
+SELECT provider FROM sessions WHERE id=sqlc.arg(id);
 
 -- name: TurnSources :many
 SELECT id,ordinal,role,COALESCE(search_projection,content) AS projection,context_parent,created_at
-FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id)
+FROM messages WHERE conversation_id=sqlc.arg(conversation_id)
 ORDER BY ordinal;
 
 -- name: ChatTurns :many
@@ -233,13 +213,12 @@ WHERE turns.revision IS NOT excluded.revision OR turns.boundary IS NOT excluded.
    OR turns.updated_at IS NOT excluded.updated_at;
 
 -- name: SetMessageTurn :exec
-UPDATE objects SET turn_id=sqlc.narg(turn_id)
-WHERE origin='provider' AND object_role='entry' AND object_role<>'container'
-  AND conversation_id=sqlc.arg(conversation_id)
+UPDATE messages SET turn_id=sqlc.narg(turn_id)
+WHERE conversation_id=sqlc.arg(conversation_id)
   AND id=sqlc.arg(id) AND turn_id IS NOT sqlc.narg(turn_id);
 
 -- name: DeleteTurn :exec
 DELETE FROM turns WHERE id=sqlc.arg(id);
 
--- name: NativeChatIds :many
-SELECT id FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id;
+-- name: SessionIds :many
+SELECT id FROM sessions ORDER BY id;

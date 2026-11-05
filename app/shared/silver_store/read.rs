@@ -54,8 +54,8 @@ pub(crate) fn view(
     if anchor.context == MessageContext::Linear {
         return sql::MessageWindow::builder()
             .conversation_id(&thread)
-            .first_ordinal(Some(anchor.ordinal.saturating_sub(context)))
-            .last_ordinal(Some(anchor.ordinal.saturating_add(context)))
+            .first_ordinal(anchor.ordinal.saturating_sub(context))
+            .last_ordinal(anchor.ordinal.saturating_add(context))
             .build()
             .query_many(connection)
             .map_err(database)?

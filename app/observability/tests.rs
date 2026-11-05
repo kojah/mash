@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 use tracing::instrument::WithSubscriber;
 
 #[tokio::test]
-async fn partial_index_result_is_traced_as_incomplete_without_source_text() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+async fn qdrant_partial_index_result_is_traced_as_incomplete_without_source_text() {
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("source-canary.jsonl");
     std::fs::write(&source, "malformed-history-canary\n").unwrap();
@@ -14,6 +15,8 @@ async fn partial_index_result_is_traced_as_incomplete_without_source_text() {
         format!("version = 1\n[providers.claude-code]\nroots = [{source:?}]\n"),
     )
     .unwrap();
+    let qdrant_url = crate::views::local::test_support::configure(&config);
+    let configuration = crate::config::load(Some(&config)).unwrap();
     let models = directory.path().join("models");
     crate::test_support::create_valid_model_marker(&models);
     let (bytes, dispatcher) = test_support::capture();
@@ -34,6 +37,11 @@ async fn partial_index_result_is_traced_as_incomplete_without_source_text() {
     assert!(!output.contains("\"outcome\":\"success\""));
     assert!(!output.contains("source-canary"));
     assert!(!output.contains("malformed-history-canary"));
+    let local =
+        crate::views::local::Local::open(&directory.path().join("index.sqlite3"), &configuration)
+            .await
+            .unwrap();
+    crate::views::local::test_support::cleanup(&local, &qdrant_url).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -26,11 +26,14 @@ class CanonicalWitnessTests(unittest.TestCase):
         with closing(sqlite3.connect(self.database)) as connection:
             # Only schema creation knows this function. The witness connection
             # must read stored bytes, never depend on a Python silver codec.
-            connection.create_function("silver_text", 1, lambda _: None, deterministic=True)
+            connection.create_function("silver_text", 1, lambda _: "canonical text", deterministic=True)
             connection.executescript(schema.read_text())
             connection.execute(
-                "INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,content_packed) "
-                "VALUES('provider','codex','entry','entry','codex:message','thread',?)",
+                "INSERT INTO sessions(id,provider) VALUES('thread','codex')"
+            )
+            connection.execute(
+                "INSERT INTO messages(id,conversation_id,ordinal,role,content_packed) "
+                "VALUES('message','thread',0,'user',?)",
                 (b"opaque packed canonical bytes",),
             )
             connection.commit()
@@ -42,16 +45,17 @@ class CanonicalWitnessTests(unittest.TestCase):
             connection.commit()
         self.assertEqual(COST.silver_digest(self.database), original)
         with closing(sqlite3.connect(self.database)) as connection:
-            connection.create_function("silver_text", 1, lambda _: None, deterministic=True)
-            connection.execute("UPDATE objects SET content_packed=?", (b"changed bytes",))
+            connection.create_function("silver_text", 1, lambda _: "canonical text", deterministic=True)
+            connection.execute("UPDATE messages SET content_packed=?", (b"changed bytes",))
             connection.commit()
         self.assertNotEqual(COST.silver_digest(self.database), original)
 
     def test_storage_reports_silver_without_opening_gold(self) -> None:
         report = COST.storage(self.database)
         self.assertEqual(report["scope"], "sqlite-silver-only")
-        self.assertEqual(report["counts"]["objects"], 1)
-        self.assertEqual(report["counts"]["native_messages"], 0)
+        self.assertEqual(report["counts"]["sessions"], 1)
+        self.assertEqual(report["counts"]["messages"], 1)
+        self.assertEqual(report["counts"]["turns"], 0)
         self.assertFalse(self.database.with_suffix(".views.sqlite3").exists())
 
     def test_explicit_backend_configuration_is_strict_toml(self) -> None:

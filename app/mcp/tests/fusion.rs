@@ -171,12 +171,12 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_mo
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
     };
-    core::execute(Request {
-        paths: server.paths.as_ref().clone(),
-        operation: Operation::Index(IndexRequest::default()),
-    })
-    .await
-    .unwrap();
+    // This shared-search transport test needs only an untouched local database,
+    // not a local search backend or a model installation.
+    let mut storage =
+        crate::storage::Storage::open_writer(&root.path().join("unused.sqlite3")).unwrap();
+    storage.commit_writer().unwrap();
+    drop(storage);
     let before = std::fs::read(root.path().join("unused.sqlite3")).unwrap();
     std::fs::write(&config, transport.configuration()).unwrap();
     let (server_io, client_io) = tokio::io::duplex(64 * 1024);

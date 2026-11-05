@@ -6,9 +6,8 @@ fn portable_v1_parent_positions_resolve_after_out_of_order_records() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());
     connection.execute_batch(
-        "INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at)
-         SELECT 'provider','codex','reply','entry','codex:message','thread',storage_id,'thread',2,'assistant','Reply','Reply','message',12 FROM objects WHERE id='thread';
-         INSERT INTO native_messages(storage_id,id,fingerprint) SELECT storage_id,id,'reply-hash' FROM objects WHERE id='reply';"
+        "INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,fingerprint)
+         VALUES('reply','thread',2,'assistant','Reply','Reply','message',12,'reply-hash');"
     ).unwrap();
     crate::storage::turns::derive(&connection, "thread").unwrap();
     drop(connection);
@@ -68,7 +67,7 @@ fn portable_v1_parent_positions_resolve_after_out_of_order_records() {
             let connection = crate::storage::test_support::connect(&imported);
             let parent: String = connection
                 .query_row(
-                    "SELECT context_parent FROM objects WHERE id='reply'",
+                    "SELECT context_parent FROM messages WHERE id='reply'",
                     [],
                     |row| row.get(0),
                 )
@@ -170,14 +169,11 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
     let connection = crate::storage::test_support::connect(&path);
     connection.execute_batch(
         "PRAGMA foreign_keys=ON;
-         INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,project,repository,created_at,updated_at)
-         VALUES('provider','codex','thread','container','codex:chat','thread','Useful thread','/project','https://example.test/repo',10,20);
-         INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_key,source_session,source_fingerprint)
-         SELECT storage_id,id,source,'/missing/session','file:/missing/session',NULL,'source-hash' FROM objects WHERE id='thread';
-         INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata)
-         SELECT 'provider','codex','message','entry','codex:message','thread',storage_id,'thread',0,'user','Canonical evidence','visible evidence','',11,
-           '{\"tool_calls\":[{\"name\":\"exec\",\"call_id\":\"c1\",\"input\":{\"cmd\":[\"ls\"]}}],\"tool_results\":[{\"call_id\":\"c0\",\"is_error\":true}]}' FROM objects WHERE id='thread';
-         INSERT INTO native_messages(storage_id,id,fingerprint) SELECT storage_id,id,'message-hash' FROM objects WHERE id='message';
+         INSERT INTO sessions(id,provider,title,project,repository,created_at,updated_at,source_path,source_key,source_fingerprint)
+         VALUES('thread','codex','Useful thread','/project','https://example.test/repo',10,20,'/missing/session','file:/missing/session','source-hash');
+         INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata,fingerprint)
+         VALUES('message','thread',0,'user','Canonical evidence','visible evidence','',11,
+           '{\"tool_calls\":[{\"name\":\"exec\",\"call_id\":\"c1\",\"input\":{\"cmd\":[\"ls\"]}}],\"tool_results\":[{\"call_id\":\"c0\",\"is_error\":true}]}','message-hash');
          INSERT INTO conversation_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');
          INSERT INTO tombstones VALUES('codex','forgotten-thread',30);
          INSERT INTO claude_sources VALUES('branch','/missing/branch','thread','Branch title','/other-project',NULL);
@@ -187,8 +183,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO silver_scans VALUES('codex',3,1);
          INSERT INTO attachment_policy VALUES(1,'policy-fingerprint');
          UPDATE shared_publication SET acknowledged=revision,target='old-service';
-         UPDATE silver_state SET revision=77,interpretation_version=3;
-         UPDATE sqlite_sequence SET seq=42 WHERE name='objects';"
+         UPDATE silver_state SET revision=77,interpretation_version=3;"
     ).unwrap();
     // Indexing derives turns; the raw fixture does the same, then keeps its
     // chosen revisions.
@@ -212,10 +207,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
     };
     let json = serde_json::to_string(std::slice::from_ref(&metadata)).unwrap();
     connection
-        .execute(
-            "UPDATE objects SET attachments=?1 WHERE origin='provider' AND object_role='entry'",
-            [&json],
-        )
+        .execute("UPDATE messages SET attachments=?1", [&json])
         .unwrap();
     let source_json = serde_json::to_string(&[attachments::Source::Retained { metadata }]).unwrap();
     connection
@@ -234,10 +226,7 @@ fn export_keeps_retained_files_from_nonvisible_claude_branches() {
     let root = tempfile::tempdir().unwrap();
     let (database, writer) = fixture(root.path());
     writer
-        .execute(
-            "UPDATE objects SET attachments='[]' WHERE origin='provider'",
-            [],
-        )
+        .execute("UPDATE messages SET attachments='[]'", [])
         .unwrap();
     let exported = root.path().join("export");
     let result = write(&database, &exported, None).unwrap();
@@ -280,17 +269,12 @@ fn export_rejects_unresolved_provider_attachments_in_stored_claude_evidence() {
 }
 
 fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {
-    // Storage addresses are never exported, so compare objects without them.
     let sql = match table {
-        "objects" => "SELECT origin,source,id,object_role,kind,parent_id,reply_to,conversation_id,
-            ordinal,context_parent,role,author,title,content,search_projection,created_at,
-            updated_at,project,repository,url,metadata,attachments,record
-            FROM objects ORDER BY origin,source,object_role,id"
-            .to_owned(),
-        "native_chats" => "SELECT conversation_id,provider,source_path,source_fingerprint,
-            source_key,source_session,thread_fingerprint FROM native_chats ORDER BY 1"
-            .to_owned(),
-        "native_messages" => "SELECT id,fingerprint FROM native_messages ORDER BY 1".to_owned(),
+        "messages" => {
+            "SELECT id,conversation_id,ordinal,role,context_parent,turn_id,content,
+            search_projection,created_at,metadata,attachments,fingerprint FROM messages ORDER BY id"
+                .to_owned()
+        }
         // Packing is a storage detail; the decoded text is what must survive.
         "claude_source_messages" => "SELECT attachments,metadata,source_key,message_id,parent_id,
             role,content,projection,created_at FROM claude_source_messages ORDER BY 3,4"
@@ -347,7 +331,7 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
     let (database, writer) = fixture(root.path());
     // A live WAL writer has an uncommitted edit. Only committed silver is copied.
     writer
-        .execute_batch("BEGIN IMMEDIATE; UPDATE objects SET title='not committed';")
+        .execute_batch("BEGIN IMMEDIATE; UPDATE sessions SET title='not committed';")
         .unwrap();
     let before = Storage::open_silver(&database)
         .unwrap()
@@ -367,9 +351,9 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
     ));
     let imported = crate::storage::test_support::connect(&destination);
     for table in [
-        "objects",
-        "native_chats",
-        "native_messages",
+        "sessions",
+        "messages",
+        "turns",
         "conversation_enrichment",
         "tombstones",
         "claude_sources",
@@ -549,7 +533,7 @@ fn empty_history_preserves_unverified_state_without_storage_engine_sequences() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());
     connection
-        .execute_batch("DELETE FROM objects WHERE origin='provider'; DELETE FROM silver_scans; UPDATE silver_state SET interpretation_version=0;")
+        .execute_batch("DELETE FROM sessions; DELETE FROM silver_scans; UPDATE silver_state SET interpretation_version=0;")
         .unwrap();
     let export = root.path().join("export");
     write(&database, &export, None).unwrap();
@@ -558,7 +542,7 @@ fn empty_history_preserves_unverified_state_without_storage_engine_sequences() {
     assert!(matches!(result.recommended_action, NextStep::RepairSilver));
     assert_eq!(result.counts.messages, 0);
     let imported = crate::storage::test_support::connect(&target);
-    assert_eq!(rows(&imported, "objects").len(), 0);
+    assert_eq!(rows(&imported, "messages").len(), 0);
     let text = fs::read_to_string(export.join(DATABASE)).unwrap();
     assert!(!text.contains("sqlite_sequence"));
     assert!(!text.contains("storage_id"));

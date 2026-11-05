@@ -59,7 +59,7 @@ impl Storage {
         &self,
         scope: &crate::search_filter::Scope,
     ) -> Result<Retained, AppError> {
-        self.connection.query_row(&format!("SELECT count(DISTINCT c.id) AS conversations,count(m.id) AS messages,min(m.created_at) AS earliest,max(m.created_at) AS latest FROM objects c LEFT JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.conversation_id=c.id WHERE c.origin='provider' AND c.object_role='container' AND ({})",scope.filter.sql(Some(&scope.node))), [], |row| {
+        self.connection.query_row(&format!("SELECT count(DISTINCT c.id) AS conversations,count(m.id) AS messages,min(m.created_at) AS earliest,max(m.created_at) AS latest FROM sessions c LEFT JOIN messages m ON m.conversation_id=c.id WHERE ({})",scope.filter.sql(Some(&scope.node))), [], |row| {
             Ok(Retained { conversations: count(row, "conversations")?, messages: count(row, "messages")?, earliest_message_at: row.get("earliest")?, latest_message_at: row.get("latest")? })
         }).map_err(AppError::database)
     }

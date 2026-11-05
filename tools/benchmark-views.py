@@ -29,11 +29,10 @@ from urllib.parse import urlsplit
 
 BINS = ((1024, 64 * 1024), (64 * 1024, 512 * 1024),
         (512 * 1024, 2 * 1024**2), (2 * 1024**2, 8 * 1024**2))
-SILVER = ('objects', 'native_chats', 'native_messages', 'conversation_enrichment',
+SILVER = ('sessions', 'messages', 'turns', 'conversation_enrichment',
           'source_checkpoints', 'claude_sources', 'claude_source_messages',
           'silver_state', 'silver_scans', 'silver_rejections', 'tombstones',
-          'connector_sources', 'connector_activity', 'connector_schemas',
-          'connector_receipts', 'attachment_policy')
+          'attachment_policy')
 QUERIES = ('cbioportal', 'rust', 'qdrant', 'search', 'embedding', 'configuration')
 
 
@@ -144,7 +143,7 @@ def storage(database):
                   for name, allocated, payload in db.execute(
                       'SELECT name,sum(pgsize),sum(payload) FROM dbstat GROUP BY name')}
         counts = {table: db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]
-                  for table in ('objects', 'native_chats', 'native_messages')}
+                  for table in ('sessions', 'messages', 'turns')}
     wal = database.with_name(database.name + '-wal')
     return {'scope': 'sqlite-silver-only', 'database_file_bytes': database.stat().st_size,
             'wal_file_bytes': wal.stat().st_size if wal.exists() else 0,

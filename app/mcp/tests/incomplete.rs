@@ -24,7 +24,8 @@ fn assert_diagnostics(
 }
 
 #[tokio::test]
-async fn unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_progress() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+async fn qdrant_unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_progress() {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config.toml");
     std::fs::write(
@@ -36,6 +37,7 @@ async fn unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_p
         ),
     )
     .unwrap();
+    crate::views::local::test_support::configure(&config);
     let models = dir.path().join("models");
     install_test_marker(&models);
     let server = Mash {
@@ -70,10 +72,12 @@ async fn unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_p
     assert_eq!(last.eta_seconds, None);
     assert_eq!(last.malformed_records, Some(0));
     assert!(crate::progress::display(&last).contains("retry required"));
+    cleanup(dir.path()).await;
 }
 
 #[tokio::test]
-async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
+#[ignore = "requires disposable Qdrant REST/gRPC endpoints"]
+async fn qdrant_partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("broken.jsonl");
     std::fs::write(
@@ -91,6 +95,7 @@ async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
     )
     .unwrap();
     let models = dir.path().join("models");
+    crate::views::local::test_support::configure(&config);
     install_test_marker(&models);
     let server = Mash {
         runtime: None,
@@ -170,4 +175,13 @@ async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
     drop(write);
     drop(read);
     server.waiting().await.unwrap();
+    cleanup(dir.path()).await;
+}
+
+async fn cleanup(root: &std::path::Path) {
+    let configuration = crate::config::load(Some(&root.join("config.toml"))).unwrap();
+    let local = crate::views::local::Local::open(&root.join("index.sqlite3"), &configuration)
+        .await
+        .unwrap();
+    crate::views::local::test_support::cleanup(&local, &configuration.qdrant.url).await;
 }

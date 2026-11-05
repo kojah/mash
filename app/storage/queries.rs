@@ -89,16 +89,10 @@ impl Storage {
         let (conversations, messages, searchable): (i64, i64, i64) = self
             .connection
             .query_row(
-                "SELECT
-             (SELECT count(*) FROM objects INDEXED BY objects_native_container
-              WHERE origin='provider' AND object_role='container'),
-             (SELECT count(*) FROM objects INDEXED BY objects_native_id
-              WHERE origin='provider' AND object_role<>'container')
-             - (SELECT count(*) FROM objects INDEXED BY objects_conversation
-                WHERE origin='provider' AND object_role IN ('segment','document')),
-             (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
-              WHERE origin='provider' AND object_role='entry'
-                AND COALESCE(search_projection,content)<>'')",
+                "SELECT (SELECT count(*) FROM sessions),
+                        (SELECT count(*) FROM messages),
+                        (SELECT count(*) FROM messages INDEXED BY messages_searchable_role
+                         WHERE COALESCE(search_projection,content)<>'')",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -133,14 +127,14 @@ impl Storage {
             return Ok(Vec::new());
         };
         let context = i64::from(context);
-        let anchor_ordinal = super::required(anchor.ordinal, "ordinal")?;
+        let anchor_ordinal = anchor.ordinal;
         if anchor.context_parent.is_some() {
             return self.view_branch(&anchor, anchor_ordinal, context, representation);
         }
         let rows = sql::ViewMessages::builder()
             .conversation_id(&anchor.conversation_id)
-            .first_ordinal(Some(anchor_ordinal.saturating_sub(context)))
-            .last_ordinal(Some(anchor_ordinal.saturating_add(context)))
+            .first_ordinal(anchor_ordinal.saturating_sub(context))
+            .last_ordinal(anchor_ordinal.saturating_add(context))
             .build()
             .query_many(&self.connection)
             .map_err(AppError::database)?;
@@ -149,15 +143,12 @@ impl Storage {
                 Ok(Message {
                     attachments: Vec::new(),
                     id: row.id,
-                    ordinal: super::required(row.ordinal, "ordinal")?,
-                    role: super::required(row.role, "role")?.into(),
-                    content: super::required(
-                        match representation {
-                            super::MessageContent::Canonical => row.content,
-                            super::MessageContent::SearchProjection => row.projection,
-                        },
-                        "content",
-                    )?,
+                    ordinal: row.ordinal,
+                    role: row.role.into(),
+                    content: match representation {
+                        super::MessageContent::Canonical => row.content,
+                        super::MessageContent::SearchProjection => row.projection,
+                    },
                     created_at: row.created_at,
                     tools: crate::tools::Activity::decode(row.metadata.as_deref())?,
                 })
@@ -185,7 +176,7 @@ impl Storage {
         let mut previous_ordinal = None;
         for _ in 0..=context {
             let Some(row) = read(&id)? else { break };
-            let ordinal = super::required(row.ordinal, "ordinal")?;
+            let ordinal = row.ordinal;
             if previous_ordinal.is_some_and(|previous| ordinal >= previous) {
                 return Err(AppError::database_data("invalid message context parent"));
             }
@@ -209,7 +200,7 @@ impl Storage {
             else {
                 break;
             };
-            let next_ordinal = super::required(child.ordinal, "ordinal")?;
+            let next_ordinal = child.ordinal;
             if next_ordinal <= ordinal {
                 return Err(AppError::database_data("invalid message context parent"));
             }
@@ -224,15 +215,12 @@ impl Storage {
                 Ok(Message {
                     attachments: Vec::new(),
                     id: row.id,
-                    ordinal: super::required(row.ordinal, "ordinal")?,
-                    role: super::required(row.role, "role")?.into(),
-                    content: super::required(
-                        match representation {
-                            super::MessageContent::Canonical => row.content,
-                            super::MessageContent::SearchProjection => row.projection,
-                        },
-                        "content",
-                    )?,
+                    ordinal: row.ordinal,
+                    role: row.role.into(),
+                    content: match representation {
+                        super::MessageContent::Canonical => row.content,
+                        super::MessageContent::SearchProjection => row.projection,
+                    },
                     created_at: row.created_at,
                     tools: crate::tools::Activity::decode(row.metadata.as_deref())?,
                 })

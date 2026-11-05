@@ -160,9 +160,9 @@ fn assert_source_independent_views_rebuild(
     let connection = open_silver(database);
     let silver_tables = [
         "conversation_enrichment",
-        "objects",
-        "native_chats",
-        "native_messages",
+        "sessions",
+        "messages",
+        "turns",
         "tombstones",
         "claude_sources",
         "claude_source_messages",
