@@ -150,8 +150,7 @@ impl Storage {
                     attachments: Vec::new(),
                     id: row.id,
                     ordinal: super::required(row.ordinal, "ordinal")?,
-                    role: Some(super::required(row.role, "role")?.into()),
-                    author_kind: None,
+                    role: super::required(row.role, "role")?.into(),
                     content: super::required(
                         match representation {
                             super::MessageContent::Canonical => row.content,
@@ -226,8 +225,7 @@ impl Storage {
                     attachments: Vec::new(),
                     id: row.id,
                     ordinal: super::required(row.ordinal, "ordinal")?,
-                    role: Some(super::required(row.role, "role")?.into()),
-                    author_kind: None,
+                    role: super::required(row.role, "role")?.into(),
                     content: super::required(
                         match representation {
                             super::MessageContent::Canonical => row.content,

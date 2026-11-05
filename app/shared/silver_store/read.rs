@@ -113,8 +113,7 @@ pub(crate) fn message(record: MessageRecord, projection: bool) -> Message {
         attachments: record.attachments,
         id: record.id,
         ordinal: record.ordinal,
-        role: Some(record.role),
-        author_kind: None,
+        role: record.role,
         content: if projection {
             record.projection
         } else {

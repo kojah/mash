@@ -16,11 +16,3 @@ pub enum Role {
     /// Standalone searchable text, such as a note; never a parent.
     Document,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum AuthorKind {
-    Human,
-    Bot,
-    Unknown,
-}

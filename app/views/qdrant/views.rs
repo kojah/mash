@@ -293,7 +293,7 @@ impl Documents {
                 payload: Document {
                     node_id: identity.node_id.clone(),
                     provider: conversation.provider,
-                    role: Some(message.role),
+                    role: message.role,
                     object: crate::source::ObjectType::native_message(conversation.provider),
                     conversation_id: conversation.id.clone(),
                     project: conversation.project.clone(),
@@ -306,7 +306,6 @@ impl Documents {
                         content: message.projection,
                         title: conversation.title.clone(),
                         enrichment: conversation.enrichment.clone(),
-                        author_kind: None,
                         sequence: message.ordinal,
                         chat_created_at: conversation.created_at,
                         chat_updated_at: conversation.updated_at,

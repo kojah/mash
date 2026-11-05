@@ -75,15 +75,7 @@ pub(crate) struct SearchHit {
     /// Enclosing containers and segments, nearest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) ancestors: Vec<crate::source::Ancestor>,
-    /// Native messages have a role; connector messages have an author kind.
-    /// Both are internal: the serialized speaker is `author`.
-    #[serde(skip)]
-    pub(crate) role: Option<crate::role::Role>,
-    #[serde(skip)]
-    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
-    /// The same speaker in one normalized form, for both origins.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) author: Option<crate::source::Author>,
+    pub(crate) role: crate::role::Role,
     /// Position in the conversation: a native message's ordinal, or a connector
     /// entry's position among its container's entries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -106,32 +98,13 @@ pub(crate) struct SearchHit {
     pub(crate) node_id: Option<String>,
 }
 
-impl SearchHit {
-    /// Rebuild the internal speaker after a hit crosses the wire: `role` and
-    /// `author_kind` are never serialized, but `author` carries a native role
-    /// as its id and a connector author kind as its kind. Copies of one
-    /// message on several nodes only merge when their speakers match.
-    pub(crate) fn restore_speaker(&mut self) {
-        let Some(author) = &self.author else {
-            return;
-        };
-        if self.role.is_none() {
-            self.role = author.id.as_deref().map(crate::role::Role::from);
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Message {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) attachments: Vec<crate::attachments::Metadata>,
     pub(crate) id: String,
     pub(crate) ordinal: i64,
-    /// Native messages have a role; connector messages have an author kind.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) role: Option<crate::role::Role>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
+    pub(crate) role: crate::role::Role,
     pub(crate) content: String,
     pub(crate) created_at: Option<i64>,
     /// A native entry's structured tool calls and results.

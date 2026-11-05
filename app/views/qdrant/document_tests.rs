@@ -7,7 +7,7 @@ fn document() -> Document {
     Document {
         node_id: "node".into(),
         provider: Provider::Codex,
-        role: Some(Role::User),
+        role: Role::User,
         object: crate::source::ObjectType::native_message(Provider::Codex),
         conversation_id: "chat".into(),
         project: None,
@@ -20,7 +20,6 @@ fn document() -> Document {
             content: "needle".into(),
             title: Some("Title".into()),
             enrichment: None,
-            author_kind: None,
             sequence: 3,
             chat_created_at: Some(90),
             chat_updated_at: Some(110),
@@ -119,12 +118,10 @@ fn common_document_requires_current_dense_evidence_only_for_ranked_reads() {
 #[test]
 fn common_document_keeps_source_metadata_and_anchor_namespaces_consistent() {
     let active = BTreeSet::from(["node".into()]);
-    for field in ["provider", "role", "author", "kind", "content", "group"] {
+    for field in ["provider", "kind", "content", "group"] {
         let mut d = document();
         match field {
             "provider" => d.provider = Provider::ClaudeCode,
-            "role" => d.role = None,
-            "author" => d.unit.author_kind = Some(crate::connectors::AuthorKind::Human),
             "kind" => d.object.kind = "notes:note".into(),
             "content" => d.unit.content = "different".into(),
             "group" => {
@@ -165,7 +162,7 @@ fn common_document_excluded_dense_units_are_lexical_only() {
         }
     }
     let mut d = document();
-    d.role = Some(Role::Assistant);
+    d.role = Role::Assistant;
     d.vector = None;
     d.unit.generation = None;
     let build = Build {

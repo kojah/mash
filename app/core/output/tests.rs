@@ -23,7 +23,7 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
     assert!(hit["content"].as_str().unwrap().chars().count() <= EXCERPT_CHARS + 2);
     assert_eq!(hit["content_truncated"], true);
     for key in [
-        "id", "chat_id", "provider", "object", "author", "node_id", "copies",
+        "id", "chat_id", "provider", "object", "role", "node_id", "copies",
     ] {
         assert_eq!(hit[key], full["results"][0][key]);
     }

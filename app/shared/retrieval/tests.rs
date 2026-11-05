@@ -8,9 +8,7 @@ fn hit(node: &str, content: &str) -> SearchHit {
         provider: Provider::Codex,
         object: crate::source::ObjectType::native_message(Provider::Codex),
         ancestors: Vec::new(),
-        role: Some(Role::User),
-        author_kind: None,
-        author: None,
+        role: Role::User,
         sequence: None,
         content: content.into(),
         created_at: Some(123),
@@ -27,6 +25,38 @@ fn hit(node: &str, content: &str) -> SearchHit {
         rerank_score: None,
         node_id: Some(node.into()),
     }
+}
+
+#[test]
+fn candidate_roles_survive_transport_without_merging_distinct_speakers() {
+    let mut first = hit("node", "same content");
+    first.role = Role::Other("reviewer".into());
+    let mut second = hit("node", "same content");
+    second.role = Role::Other("planner".into());
+    let keys = [
+        crate::search_results::evidence_key(&first),
+        crate::search_results::evidence_key(&second),
+    ];
+    assert_ne!(keys[0], keys[1]);
+    let candidates = protocol::Candidates {
+        lexical: vec![first, second],
+        semantic: Vec::new(),
+        documents: Vec::new(),
+    };
+    let mut wire = serde_json::to_value(candidates).unwrap();
+    assert_eq!(wire["lexical"][0]["role"], "reviewer");
+    assert_eq!(wire["lexical"][1]["role"], "planner");
+    let restored: protocol::Candidates = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(
+        crate::search_results::evidence_key(&restored.lexical[0]),
+        keys[0]
+    );
+    assert_eq!(
+        crate::search_results::evidence_key(&restored.lexical[1]),
+        keys[1]
+    );
+    wire["lexical"][0].as_object_mut().unwrap().remove("role");
+    assert!(serde_json::from_value::<protocol::Candidates>(wire).is_err());
 }
 
 #[test]

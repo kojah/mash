@@ -155,12 +155,7 @@ pub(crate) struct ChatMatch {
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) message_id: String,
     pub(crate) node_id: Option<String>,
-    #[serde(skip)]
-    pub(crate) role: Option<crate::role::Role>,
-    #[serde(skip)]
-    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) author: Option<crate::source::Author>,
+    pub(crate) role: crate::role::Role,
     pub(crate) created_at: Option<i64>,
     pub(crate) snippet: String,
     /// Primary message's search projection; excludes display ellipses.
@@ -184,12 +179,12 @@ pub(crate) struct MessageReference {
     pub(crate) node_id: Option<String>,
 }
 
-/// Who produced the evidence: a native role or a connector author kind.
-pub(crate) type Speaker = (
-    Option<crate::role::Role>,
-    Option<crate::connectors::AuthorKind>,
+pub(crate) type EvidenceKey = (
+    crate::provider::Provider,
+    String,
+    crate::role::Role,
+    blake3::Hash,
 );
-pub(crate) type EvidenceKey = (crate::provider::Provider, String, Speaker, blake3::Hash);
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) enum HitKey {
     Message(EvidenceKey, String),
@@ -208,7 +203,7 @@ pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
     (
         hit.provider,
         hit.conversation_id.clone(),
-        (hit.role.clone(), hit.author_kind),
+        hit.role.clone(),
         blake3::hash(text.as_bytes()),
     )
 }
@@ -217,12 +212,7 @@ pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
 pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
     hits.into_iter()
         .filter_map(|mut hit| {
-            // Agent-role cleanup applies to native dialogue only; connector
-            // text is already the source's own rendering.
-            let clean = match &hit.role {
-                Some(role) => crate::silver::dialogue::visible(role, &hit.content),
-                None => std::borrow::Cow::Borrowed(hit.content.as_str()),
-            };
+            let clean = crate::silver::dialogue::visible(&hit.role, &hit.content);
             if clean.trim().is_empty() {
                 return None;
             }
@@ -464,8 +454,7 @@ fn collect_inner(
             message_id: hit.id,
             node_id: hit.node_id,
             role: hit.role.clone(),
-            author_kind: hit.author_kind,
-            author: crate::source::author(hit.role, hit.author_kind),
+
             created_at: hit.created_at,
             snippet,
             projection_span,
@@ -520,10 +509,7 @@ pub(crate) fn contextual_document(
             (
                 index.abs_diff(anchor),
                 message,
-                match &message.role {
-                    Some(role) => crate::silver::dialogue::visible(role, &message.content),
-                    None => std::borrow::Cow::Borrowed(message.content.as_str()),
-                },
+                crate::silver::dialogue::visible(&message.role, &message.content),
             )
         })
         .filter(|(_, _, text)| !text.trim().is_empty())
@@ -531,11 +517,7 @@ pub(crate) fn contextual_document(
     neighbours.sort_by_key(|(distance, _, _)| *distance);
     for (_, message, text) in neighbours.into_iter().take(2) {
         document.push_str("\nNearby ");
-        document.push_str(crate::source::speaker(
-            crate::connectors::Role::Entry,
-            message.role.as_ref(),
-            message.author_kind,
-        ));
+        document.push_str(message.role.as_str());
         document.push_str(" message: ");
         document.push_str(&evidence_window(&text, query, 160));
     }

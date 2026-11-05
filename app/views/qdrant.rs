@@ -91,7 +91,7 @@ pub(crate) struct Store {
 struct Document {
     node_id: String,
     provider: crate::provider::Provider,
-    role: Option<crate::role::Role>,
+    role: crate::role::Role,
     object: crate::source::ObjectType,
     conversation_id: String,
     project: Option<String>,
@@ -114,7 +114,6 @@ pub(crate) struct SearchUnit {
     pub(crate) content: String,
     pub(crate) title: Option<String>,
     pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
-    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     /// Position among the container's entries.
     pub(crate) sequence: i64,
     pub(crate) chat_created_at: Option<i64>,
@@ -132,9 +131,7 @@ fn document_hit(
     active: &std::collections::BTreeSet<String>,
     dense: Option<(&Scope, &crate::views::config::Build, bool)>,
 ) -> Result<crate::storage::SearchHit, AppError> {
-    if d.role.is_none()
-        || d.unit.author_kind.is_some()
-        || d.object != crate::source::ObjectType::native_message(d.provider)
+    if d.object != crate::source::ObjectType::native_message(d.provider)
         || d.unit.content != d.unit.text
     {
         return Err(failure());
@@ -163,10 +160,7 @@ fn document_hit(
         return Err(failure());
     }
     if let Some((scope, build, lexical)) = dense {
-        let included = d.role.as_ref().map_or_else(
-            || build.dense_enabled(),
-            |role| build.includes_dense(role, &d.unit.text),
-        );
+        let included = build.includes_dense(&d.role, &d.unit.text);
         if if included {
             d.unit.generation.as_deref() != Some(scope.generation.as_str())
                 || d.vector
@@ -178,7 +172,6 @@ fn document_hit(
             return Err(failure());
         }
     }
-    let author = crate::source::author(d.role.clone(), d.unit.author_kind);
     Ok(crate::storage::SearchHit {
         node_id: Some(d.node_id),
         id: d.unit.anchor,
@@ -187,8 +180,6 @@ fn document_hit(
         object: d.object,
         ancestors: d.unit.ancestors,
         role: d.role,
-        author_kind: d.unit.author_kind,
-        author,
         sequence: Some(d.unit.sequence),
         content: d.unit.content,
         copies: vec![],

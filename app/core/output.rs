@@ -72,10 +72,7 @@ struct Message<'a> {
     #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
     ancestors: &'a [crate::source::Ancestor],
     node_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<&'a crate::role::Role>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    author_kind: Option<crate::connectors::AuthorKind>,
+    role: &'a crate::role::Role,
     created_at: Option<i64>,
     content: String,
     content_truncated: bool,
@@ -92,10 +89,7 @@ struct Excerpt<'a> {
     lexical_match: Option<&'a crate::views::matching::Evidence>,
     message_id: &'a str,
     node_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<&'a crate::role::Role>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    author_kind: Option<crate::connectors::AuthorKind>,
+    role: &'a crate::role::Role,
     created_at: Option<i64>,
     snippet: String,
     snippet_truncated: bool,
@@ -110,8 +104,7 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
             lexical_match: value.lexical_match.as_ref(),
             message_id: &value.message_id,
             node_id: value.node_id.as_deref(),
-            role: value.role.as_ref(),
-            author_kind: value.author_kind,
+            role: &value.role,
             created_at: value.created_at,
             // Results were masked under the output policy before they got here.
             snippet: crate::search_results::evidence_window_with(
@@ -204,8 +197,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         object: &hit.object,
                         ancestors: &hit.ancestors,
                         node_id: hit.node_id.as_deref(),
-                        role: hit.role.as_ref(),
-                        author_kind: hit.author_kind,
+                        role: &hit.role,
                         created_at: hit.created_at,
                         content: crate::search_results::evidence_window_with(
                             &hit.content,

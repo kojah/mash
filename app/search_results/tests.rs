@@ -124,9 +124,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
         provider: Provider::Codex,
         object: crate::source::ObjectType::native_message(Provider::Codex),
         ancestors: Vec::new(),
-        role: Some(crate::role::Role::User),
-        author_kind: None,
-        author: None,
+        role: crate::role::Role::User,
         sequence: None,
         content: id.into(),
         copies: Vec::new(),
@@ -296,8 +294,7 @@ fn contextual_evidence_uses_nearest_searchable_messages_with_a_fixed_budget() {
         attachments: Vec::new(),
         id: id.into(),
         ordinal: 0,
-        role: Some(role),
-        author_kind: None,
+        role,
         content,
         created_at: None,
         tools: crate::tools::Activity::default(),
@@ -389,7 +386,7 @@ fn message_results_apply_exclusions_without_changing_the_view_anchor() {
     let mut mixed = hit("a", "request");
     mixed.content = "<environment_context>noise</environment_context>actual question".into();
     let mut system = hit("a", "system");
-    system.role = Some(crate::role::Role::System);
+    system.role = crate::role::Role::System;
     let Results::Messages(results) =
         collect(vec![system, mixed], SearchUnit::Messages, 20, "question")
     else {

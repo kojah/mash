@@ -192,8 +192,9 @@ with `mash serve --server-config PATH --replay-views` when upgrading an existing
 server. Canonical silver is retained.
 
 Search results, chat matches and listed chats identify their provider directly,
-for example `"provider": "codex"`. Message context includes its derived turn
-and enclosing chat. Local and shared Qdrant use views schema 9; silver uses
+for example `"provider": "codex"`. Messages and matching excerpts carry the agent's
+`role` directly, including provider-defined roles. Message context includes its derived turn
+and enclosing chat. Local and shared Qdrant use views schema 10; silver uses
 schema 59. Views are rebuilt from silver; silver from an earlier release crosses
 over through export and `import --keep-identity`.
 

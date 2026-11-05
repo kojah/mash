@@ -37,32 +37,10 @@ fn related_discussion(intent: &crate::views::exact::Intent) -> bool {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(from = "WireCandidates")]
 pub(crate) struct Candidates {
     pub lexical: Vec<SearchHit>,
     pub semantic: Vec<SearchHit>,
     pub documents: Vec<Document>,
-}
-
-/// `Candidates` as received; decoding restores each hit's internal speaker.
-#[derive(Deserialize)]
-struct WireCandidates {
-    lexical: Vec<SearchHit>,
-    semantic: Vec<SearchHit>,
-    documents: Vec<Document>,
-}
-
-impl From<WireCandidates> for Candidates {
-    fn from(mut wire: WireCandidates) -> Self {
-        for hit in wire.lexical.iter_mut().chain(&mut wire.semantic) {
-            hit.restore_speaker();
-        }
-        Self {
-            lexical: wire.lexical,
-            semantic: wire.semantic,
-            documents: wire.documents,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
