@@ -82,54 +82,8 @@ jobs:
           tool: nextest,uv@0.12.1
           fallback: none
       - run: cargo fmt --check
-      - name: Verify generated Python connector models
-        # Reuse CI's LLVM artifacts; local generation defaults to Cranelift.
-        run: MASH_SCHEMA_CARGO_RUN=run make check-python-models
-      - name: Verify Python connector SDK and Rust decoder conformance
-        run: |
-          cargo build --locked --bin mash
-          uv run --directory sdk/python --locked ruff check src tests examples
-          uv run --directory sdk/python --locked ruff format --check src tests examples
-          uv run --directory sdk/python --locked ty check src tests examples
-          MASH_CONNECTOR_CONTRACT_BINARY="$GITHUB_WORKSPACE/target/debug/examples/connector-schema" \
-            MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --directory sdk/python --locked python -m unittest discover -s tests
-      - name: Verify Obsidian ingestion and real local search
-        run: |
-          uv sync --project connectors/blueprints/obsidian --locked
-          uv run --project connectors/blueprints/obsidian --locked ruff check connectors/blueprints/obsidian
-          uv run --project connectors/blueprints/obsidian --locked ruff format --check connectors/blueprints/obsidian
-          uv run --project connectors/blueprints/obsidian --locked ty check connectors/blueprints/obsidian
-          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/blueprints/obsidian --locked python -m unittest discover \
-              -s connectors/blueprints/obsidian/tests
-      - name: Verify GitHub ingestion against a fake API and real local search
-        run: |
-          uv sync --project connectors/blueprints/github --locked
-          uv run --project connectors/blueprints/github --locked ruff check connectors/blueprints/github
-          uv run --project connectors/blueprints/github --locked ruff format --check connectors/blueprints/github
-          uv run --project connectors/blueprints/github --locked ty check connectors/blueprints/github
-          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/blueprints/github --locked python -m unittest discover \
-              -s connectors/blueprints/github/tests
-      - name: Verify Slack ingestion against a fake API and real local search
-        run: |
-          uv sync --project connectors/blueprints/slack --locked
-          uv run --project connectors/blueprints/slack --locked ruff check connectors/blueprints/slack
-          uv run --project connectors/blueprints/slack --locked ruff format --check connectors/blueprints/slack
-          uv run --project connectors/blueprints/slack --locked ty check connectors/blueprints/slack
-          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/blueprints/slack --locked python -m unittest discover \
-              -s connectors/blueprints/slack/tests
-      - name: Verify Discord ingestion against a fake API and real local search
-        run: |
-          uv sync --project connectors/blueprints/discord --locked
-          uv run --project connectors/blueprints/discord --locked ruff check connectors/blueprints/discord
-          uv run --project connectors/blueprints/discord --locked ruff format --check connectors/blueprints/discord
-          uv run --project connectors/blueprints/discord --locked ty check connectors/blueprints/discord
-          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
-            uv run --project connectors/blueprints/discord --locked python -m unittest discover \
-              -s connectors/blueprints/discord/tests
+      - name: Build CLI for acceptance tests
+        run: cargo build --locked --bin mash
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |

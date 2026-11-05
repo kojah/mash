@@ -16,11 +16,12 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   neither views store may be certified against history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-views --full`,
   `serve --replay-views`).
-- Native and connector history share one silver object model: the `objects` table
-  with core roles (container, segment, entry, document), namespaced kinds and
-  parent edges, plus native-only side tables. Native turns are segments derived
-  from silver after every write, never archived or published; each native
-  provider declares its topology in code (`source::native_schema`).
+- Model agent history directly as sessions, messages, turns, and branch ancestry.
+  Turns are derived from silver after every write, never archived or published.
+  Keep message identity independent of display order and use stable message IDs
+  for branch ancestry. Do not introduce a generic object model, external content
+  connectors, connector ingress, or a Python SDK. Slack, Obsidian, and other
+  non-agent content are outside the product boundary.
 - Do not check in schema upgrade code. Each release opens only its own silver
   and views schemas and rejects others untouched; views are rebuilt, shared silver
   is republished, and local silver crosses releases only through export and
@@ -30,10 +31,8 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   Qdrant.
   Commit silver before synchronizing views; do not build transaction, staging or
   versioning machinery on top of Qdrant. Native history requires a local SQLite index; support
-  local-only or both indexing, where shared publishes exactly the local index. External
-  connectors deliver to each destination they choose (local and/or a node's shared silver)
-  independently: node publication never carries connector records, and a node's shared
-  connector records arrive only through direct ingress. Keep local operations
+  local-only or both indexing, where shared publishes exactly the local index.
+  Keep local operations
   offline-capable using a local Qdrant instance. Local CLI/MCP accesses Qdrant
   directly without Axum; the authenticated HTTP service owns shared access.
   Keep local writer admission across silver commits and gold certification.
@@ -149,18 +148,14 @@ the backing services implement it. They supplement the existing focused tests.
 
 ### Implementation checks
 
-Use Proptest for invariants across varied inputs or operation sequences, with
-an independent expected state. Start with the real SQLite connector sequence
-harness in `app/connectors/silver/tests/properties.rs`; generated retries,
-rejections, reopenings and archive round trips supplement named regressions.
+Use Proptest for agent-history invariants across varied inputs or operation
+sequences, with an independent expected state. Generated retries, rejections,
+reopenings and archive round trips supplement named regressions.
 Keep cases bounded in normal CI, reproduce failures with `PROPTEST_RNG_SEED`,
 and promote shrunk failures to focused deterministic regressions. Property
 tests do not replace public API or disposable backend tests.
-Use `make property-check` for the SQLite harness and `make property-backend-check`
-with disposable `MASH_TEST_QDRANT_URL` for generated connector failure sequences.
-Keep shrunk failures as named regressions. Use `make mutation-connectors` to audit
-the connector recovery tests against changed production code; its scope is in
-`.cargo/mutants-connectors.toml`.
+Keep shrunk failures as named regressions. Run backend sequence tests against
+disposable Qdrant services with explicit resource limits.
 
 Use `make mutation-tools` then `make mutation-check` for focused test-quality
 audits when changing critical validation/freshness guards or strengthening their

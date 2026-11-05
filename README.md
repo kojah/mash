@@ -1,7 +1,6 @@
 <p align="center">
   <img src="assets/mash-logo.png" alt="mash logo: a smiling bowl of mashed potatoes" width="200">
 </p>
-
 # mash
 
 mash (Multi-Agent Search History) searches Claude Code, Codex, Copilot, Cursor,
@@ -1120,55 +1119,6 @@ and hidden federation workers are removed. To migrate a configuration, move this
 machine's `providers` and `index` settings to the top level and optionally add
 `shared`. Old configuration shapes are rejected rather than guessed.
 
-## External connectors
-
-All external connectors currently live in [blueprints](connectors/blueprints/README.md).
-They are experimental and will move out individually after testing establishes
-readiness. Their automated checks remain enabled.
-
-[Obsidian vault ingestion](connectors/blueprints/obsidian/README.md) is a runnable external
-connector through the Python SDK. It reads selected Markdown notes without
-changing the vault, retains frontmatter and stable identities, and delivers to
-explicit local and/or shared destinations. No Obsidian API key is needed.
-
-Out-of-process connectors (see `sdk/python` and `connectors/`) deliver typed
-batches of objects. Each object has a core `role`: a `container` (a channel,
-thread or pull request) groups results; a `segment` (such as a review) is a
-structural part of a container; an `entry` is searchable text with an author; a
-`document` is standalone text. A namespaced `kind` such as
-`discord:reply-thread` labels it, and a `parent` places it in the source's own
-hierarchy: an entry may own a thread container, for example. Ingestion enforces
-the role rules (only entries and documents carry text; entries and segments sit
-under a container; documents contain nothing; no parent or reply cycles); kind
-labels are free unless the source declares a schema. A `declare-schema` change
-(SDK: `Changes.declare(KindRule(...), ...)`) lists the source's kinds, each with
-its role, the kinds it may sit under and whether it may be top-level. From then
-on ingestion rejects objects that use an undeclared kind, a different role or a
-disallowed parent, and a new declaration is rejected if anything the source
-already stored would violate it.
-`mash index --connector-batch PATH` commits a batch to local silver and returns a
-durable receipt with `views_ready: false`; it loads no models. Records become
-searchable after the next `mash index` (or `index --rebuild-local-views`), which
-indexes their text, embeds them with the configured model and recertifies local
-views. Until then, local search reports views as stale rather than omitting them.
-
-Connector results use namespaced anchors `connector#<role>#<source_id>#<id>`,
-such as `connector#entry#discord:guild#message-1`; pass them to `view`, `chat`
-filters and the history skill like native IDs. `view` shows an entry with its
-chronological neighbours among the entries of its nearest container (segments
-included), or a document on its own. Connector attachments are source
-references, not captured files. `list-chats` lists connector containers, nested
-ones included, unless a `provider` selection names native providers.
-
-Connectors deliver to each destination they list: local silver, a node's shared
-silver (`POST /v1/connector-batches`, authenticated as that node), or both. Node
-publication never carries connector records. After committing a shared batch,
-the server embeds changed records with its `--models-dir` model (or the
-configured remote embeddings) and writes them to Qdrant alongside native
-documents; a server without a model cannot certify that node's dense views. If
-synchronization fails, the receipt still confirms durable silver and the node
-stays uncertified until its next batch, upload or `--replay-views`, which also
-rebuilds connector points from shared silver.
 
 ## Search filters
 

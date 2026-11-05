@@ -48,7 +48,7 @@ iterate:
 validate-dev:
 	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=0 bash tools/build-dev-linux.sh --validate-only
 
-.PHONY: build check-skills generate-skills generate-queries check-generated coverage generate-python-models check-python-models
+.PHONY: build check-skills generate-skills generate-queries check-generated coverage
 build: check-skills
 ifeq ($(CODEGEN),1)
 	$(MAKE) generate-queries
@@ -67,13 +67,6 @@ generate-queries:
 
 check-generated: generate-queries
 	git diff --exit-code -- app/storage/generated app/shared/silver_store/generated
-
-generate-python-models:
-	bash tools/generate-python-models.sh
-
-check-python-models: generate-python-models
-	git ls-files --error-unmatch sdk/python/src/mash_sdk/_generated/batch.py sdk/python/src/mash_sdk/_generated/receipt.py sdk/python/src/mash_sdk/_generated/batch.schema.json sdk/python/src/mash_sdk/_generated/receipt.schema.json >/dev/null
-	git diff --exit-code -- sdk/python/src/mash_sdk/_generated
 
 # Coverage includes the installed-model and disposable shared-backend contracts.
 # LLVM instrumentation is required here; ordinary development uses Cranelift.
