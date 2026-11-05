@@ -4,6 +4,7 @@ mod api;
 mod configuration;
 #[cfg(test)]
 mod document_tests;
+mod evidence;
 mod exact;
 mod read;
 #[cfg(test)]
@@ -16,8 +17,9 @@ pub(crate) use api::endpoint;
 pub(crate) use configuration::{SCHEMA_VERSION, Settings};
 use serde::{Deserialize, Serialize};
 
+pub(crate) use evidence::{ProjectionEvidence, ProjectionFamily, ProjectionScope, Projections};
 pub(crate) use read::validate_search;
-pub(crate) use views::{ConnectorPoint, Documents, NodeViews, ViewChat};
+pub(crate) use views::{ConnectorPoint, Documents, NodeViews};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

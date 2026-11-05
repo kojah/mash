@@ -5,7 +5,7 @@ use crate::AppError;
 use crate::shared::activity::{Phase, Progress, Unit};
 use crate::shared::protocol::{Batch, ConversationRecord, Event, Indexed};
 use crate::shared::silver_store::{self, Applied};
-use crate::views::qdrant::{NodeViews, ViewChat};
+use crate::views::qdrant::{NodeViews, ProjectionEvidence, ProjectionFamily, ProjectionScope};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::BufRead;
 
@@ -208,8 +208,11 @@ impl Store {
                 && let Some(latest) = self.views.node_views(identity).await?
                 && latest.compatible(&self.views, identity)
             {
-                for (id, chat) in latest.chats {
-                    views.chats.entry(id).or_insert(chat);
+                for (id, chat) in latest.projections.native() {
+                    let scope = ProjectionScope::NativeChat(id.clone());
+                    if views.projections.get(&scope).is_none() {
+                        views.projections.insert(scope, chat.clone());
+                    }
                 }
             }
             self.views.put_node_views(identity, &views).await?;
@@ -218,7 +221,9 @@ impl Store {
             self.views
                 .retain_documents(identity, id, Vec::new())
                 .await?;
-            views.chats.remove(id);
+            views
+                .projections
+                .remove(&ProjectionScope::NativeChat(id.clone()));
         }
         let fingerprints = self
             .read(identity, |connection| {
@@ -260,9 +265,9 @@ impl Store {
                 .get(id)
                 .cloned()
                 .ok_or_else(|| AppError::internal("supplied chat has no silver"))?;
-            views.chats.insert(
-                id.clone(),
-                ViewChat {
+            views.projections.insert(
+                ProjectionScope::NativeChat(id.clone()),
+                ProjectionEvidence {
                     fingerprint,
                     embeddings: chat.map_or(0, |t| t.embeddings),
                     complete: chat.is_none_or(|t| t.embeddings == t.expected),
@@ -371,14 +376,9 @@ impl Store {
             // loses coverage. An older one must not stamp its revision.
             Some(mut latest) if latest.input > views.input => {
                 if compatible(&latest) && compatible(&views) {
-                    for (id, chat) in views.chats {
-                        if latest.chats.get(&id).is_none_or(|existing| {
-                            fingerprints.get(&id) != Some(&existing.fingerprint)
-                        }) && fingerprints.get(&id) == Some(&chat.fingerprint)
-                        {
-                            latest.chats.insert(id, chat);
-                        }
-                    }
+                    latest
+                        .projections
+                        .merge_native(&views.projections, &fingerprints);
                 }
                 latest
             }
@@ -387,31 +387,30 @@ impl Store {
             // stored views, so its stale chats never do.
             Some(latest) => {
                 if compatible(&latest) {
-                    for (id, chat) in latest.chats {
-                        if views.chats.get(&id).is_none_or(|existing| {
-                            fingerprints.get(&id) != Some(&existing.fingerprint)
-                        }) && fingerprints.get(&id) == Some(&chat.fingerprint)
-                        {
-                            views.chats.insert(id, chat);
-                        }
-                    }
+                    views
+                        .projections
+                        .merge_native(&latest.projections, &fingerprints);
                 }
                 views
             }
             None => views,
         };
         self.sync_connectors(identity, &mut views).await?;
+        let current = fingerprints
+            .iter()
+            .map(|(id, fingerprint)| (ProjectionScope::NativeChat(id.clone()), fingerprint.clone()))
+            .collect();
         views
-            .chats
-            .retain(|id, chat| fingerprints.get(id) == Some(&chat.fingerprint));
+            .projections
+            .retain_matching(&current, ProjectionFamily::Native);
         let head = self.head(identity).await?;
-        let synced = views.chats.len() == fingerprints.len();
+        let synced = views.projections.native().count() == fingerprints.len();
         // A certification that finishes after a newer commit wrote every chat
         // of its own revision, but not of the head. Stamping the head would make
         // searches serve older chats as current, so it only claims the revision
         // it was built from.
         let current = head.as_ref().map(|head| head.revision) == views.input;
-        views.certified = synced && current && views.chats.values().all(|chat| chat.complete);
+        views.certified = synced && current && views.projections.complete();
         // Claim a silver revision only when these views cover every chat of
         // it (`synced`) and were built from it (`current`); either alone lets
         // a partial rebuild, such as one after a recipe change, pass as current.

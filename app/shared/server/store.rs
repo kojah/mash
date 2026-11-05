@@ -443,7 +443,9 @@ impl Store {
             let mut counts = self.read(&node, silver_store::counts).await?;
             let views = self.views.node_views(&node).await?;
             let connectors_current = match &views {
-                Some(g) => g.connectors == self.connector_digests(&node).await?,
+                Some(g) => {
+                    g.projections.connector_digests() == self.connector_digests(&node).await?
+                }
                 None => false,
             };
             let silver = head.silver_revision.as_ref();

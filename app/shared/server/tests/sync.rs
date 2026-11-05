@@ -2557,6 +2557,7 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
 async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();
+    let scope = crate::views::qdrant::ProjectionScope::NativeChat("conversation".into());
     service
         .upload(FIRST, &snapshot(1))
         .await
@@ -2600,11 +2601,11 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
         .unwrap()
         .unwrap();
     stale
-        .chats
-        .insert("conversation".into(), old.chats["conversation"].clone());
+        .projections
+        .insert(scope.clone(), old.projections.get(&scope).unwrap().clone());
     assert_ne!(
-        stale.chats["conversation"].fingerprint,
-        valid.chats["conversation"].fingerprint
+        stale.projections.get(&scope).unwrap().fingerprint,
+        valid.projections.get(&scope).unwrap().fingerprint
     );
 
     for (stored, incoming) in [(&stale, &valid), (&valid, &stale)] {
@@ -2625,11 +2626,14 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
             .unwrap()
             .unwrap();
         assert_eq!(
-            merged.chats.len(),
+            merged.projections.native().count(),
             2,
             "a stale marker must not suppress valid coverage"
         );
-        assert_eq!(merged.chats["conversation"], valid.chats["conversation"]);
+        assert_eq!(
+            merged.projections.get(&scope).unwrap(),
+            valid.projections.get(&scope).unwrap()
+        );
         assert_eq!(merged.input, Some(3));
         assert!(service.store.views_current(&identity).await.unwrap());
     }
@@ -2643,6 +2647,7 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
 async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alternate() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();
+    let scope = crate::views::qdrant::ProjectionScope::NativeChat("conversation".into());
     service
         .upload(FIRST, &snapshot(1))
         .await
@@ -2654,9 +2659,10 @@ async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alterna
         .await
         .unwrap()
         .unwrap();
-    let chat = partial.chats.get_mut("conversation").unwrap();
+    let mut chat = partial.projections.get(&scope).unwrap().clone();
     chat.complete = false;
     chat.embeddings = 0;
+    partial.projections.insert(scope.clone(), chat);
     service
         .upload(FIRST, &snapshot(2))
         .await
@@ -2669,10 +2675,10 @@ async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alterna
         .unwrap()
         .unwrap();
     assert!(complete.input > partial.input);
-    assert!(complete.chats["conversation"].complete);
+    assert!(complete.projections.get(&scope).unwrap().complete);
     assert_eq!(
-        complete.chats["conversation"].fingerprint,
-        partial.chats["conversation"].fingerprint
+        complete.projections.get(&scope).unwrap().fingerprint,
+        partial.projections.get(&scope).unwrap().fingerprint
     );
     for (stored, incoming) in [(&complete, &partial), (&partial, &complete)] {
         service.store.put_views(&identity, stored).await.unwrap();
@@ -2691,7 +2697,10 @@ async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alterna
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(merged.chats["conversation"], complete.chats["conversation"]);
+        assert_eq!(
+            merged.projections.get(&scope).unwrap(),
+            complete.projections.get(&scope).unwrap()
+        );
         assert_eq!(merged.input, complete.input);
         assert!(service.store.views_current(&identity).await.unwrap());
     }

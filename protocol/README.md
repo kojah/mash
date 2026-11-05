@@ -51,6 +51,19 @@ original extraction preserved shared mutation ordering and revision checks.
 The local cutover is modeled separately by `LocalWriter` and `LocalGold` below;
 shared coordinators retain their existing models.
 
+Native chat and connector unit evidence now share `NodeViews.projections`, keyed
+by a typed dependency scope, with fingerprint, vector count and completeness on
+every entry. `Projections::merge_native` implements the same preferred/current
+fingerprint rule modeled by `CoverageMerge`; `retain_matching` preserves the
+other scope family while dropping stale evidence. Connector entries are added
+only after completed point writes, and invalidation still precedes those writes.
+This representation change leaves the `LocalGold`, `SharedViews`, `RetryViews`
+and `CoverageMerge` durable actions and lock boundaries unchanged. Native deletion
+filters now explicitly restrict the source family even for one chat, enforcing
+the models' assumption that deleting native history cannot delete connector
+points with a colliding group ID. The mixed-source cleanup regression exercises
+that boundary; the models do not represent raw string IDs or Qdrant filters.
+
 Qdrant point publication now uses the generated Tonic client in
 `app/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
 This changes encoding and transport, not modeled atomic actions: each upsert or

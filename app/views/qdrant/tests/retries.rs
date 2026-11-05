@@ -177,15 +177,16 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
         ..fixture.identity.clone()
     };
     let anchor = "connector#document#notes#note";
+    // Native IDs are opaque; even a collision with a connector group anchor
+    // must not widen native deletion into the connector's destination scope.
+    let mut conversation = Fixture::conversation();
+    conversation.id = anchor.into();
     for identity in [&fixture.identity, &other] {
         let mut documents = Documents::new(identity);
+        let mut message = fixture.messages("native").remove(0);
+        message.conversation_id.clone_from(&conversation.id);
         documents
-            .push(
-                &fixture.store,
-                identity,
-                &Fixture::conversation(),
-                fixture.messages("native").remove(0),
-            )
+            .push(&fixture.store, identity, &conversation, message)
             .await
             .unwrap();
         documents
@@ -228,7 +229,7 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
         .unwrap();
     fixture
         .store
-        .retain_documents(&fixture.identity, &Fixture::conversation().id, Vec::new())
+        .retain_documents(&fixture.identity, &conversation.id, Vec::new())
         .await
         .unwrap();
     let name = collection(&fixture.identity.group_id, false);

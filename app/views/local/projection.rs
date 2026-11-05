@@ -1,5 +1,5 @@
 //! Native and connector point writes for a captured local silver snapshot.
-use super::{AppError, Arc, Input, NodeViews, Scope, Store, ViewChat};
+use super::{AppError, Arc, Input, NodeViews, ProjectionEvidence, ProjectionScope, Scope, Store};
 use crate::views::materialize::Writer;
 
 pub(super) async fn native(
@@ -12,10 +12,11 @@ pub(super) async fn native(
 ) -> Result<(), AppError> {
     for (id, chat) in &input.chats {
         if let Some(old) = previous
-            .and_then(|n| n.chats.get(id))
+            .and_then(|n| n.projections.get(&ProjectionScope::NativeChat(id.clone())))
             .filter(|old| old.complete && old.fingerprint == chat.fingerprint)
         {
-            node.chats.insert(id.clone(), old.clone());
+            node.projections
+                .insert(ProjectionScope::NativeChat(id.clone()), old.clone());
             continue;
         }
         let source = Arc::clone(input);
@@ -33,9 +34,9 @@ pub(super) async fn native(
             )
             .await?;
         let built = writer.write_chat(&chat.record, &messages).await?;
-        node.chats.insert(
-            id.clone(),
-            ViewChat {
+        node.projections.insert(
+            ProjectionScope::NativeChat(id.clone()),
+            ProjectionEvidence {
                 fingerprint: chat.fingerprint.clone(),
                 embeddings: built.embeddings,
                 complete: built.complete,
@@ -63,7 +64,13 @@ pub(super) async fn connectors(
         let changed = batch
             .iter()
             .filter(|(digest, point)| {
-                previous.and_then(|node| node.connectors.get(&point.unit.anchor)) != Some(digest)
+                previous
+                    .and_then(|node| {
+                        node.projections
+                            .get(&ProjectionScope::ConnectorUnit(point.unit.anchor.clone()))
+                    })
+                    .map(|evidence| &evidence.fingerprint)
+                    != Some(digest)
             })
             .collect::<Vec<_>>();
         let points = changed
@@ -72,8 +79,14 @@ pub(super) async fn connectors(
             .collect::<Vec<_>>();
         writer.write_connectors(&points).await?;
         for (digest, point) in batch {
-            node.connectors
-                .insert(point.unit.anchor.clone(), digest.clone());
+            node.projections.insert(
+                ProjectionScope::ConnectorUnit(point.unit.anchor.clone()),
+                ProjectionEvidence {
+                    fingerprint: digest.clone(),
+                    embeddings: u64::from(store.build().dense_enabled()),
+                    complete: true,
+                },
+            );
         }
     }
     writer.flush().await?;

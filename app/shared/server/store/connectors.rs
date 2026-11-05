@@ -3,7 +3,7 @@
 use super::{Identity, Store};
 use crate::storage::connector_views::{self, Evidence, Unit};
 use crate::views::materialize::{Writer, connector_digest as digest, connector_point as point};
-use crate::views::qdrant::NodeViews;
+use crate::views::qdrant::{NodeViews, ProjectionEvidence, ProjectionFamily, ProjectionScope};
 use crate::{
     AppError,
     connectors::{Batch, Receipt, silver},
@@ -133,7 +133,7 @@ impl Store {
         identity: &Identity,
         views: &mut NodeViews,
     ) -> Result<(), AppError> {
-        let known = views.connectors.clone();
+        let known = views.projections.connector_digests();
         let units = self
             .read(identity, move |connection| {
                 let mut digests = BTreeMap::new();
@@ -156,9 +156,19 @@ impl Store {
         views.silver = None;
         // Reversion after a failed write must not reuse the old digest: the
         // physical point may have been overwritten or deleted in the meantime.
+        let current = units
+            .digests
+            .iter()
+            .map(|(anchor, digest)| {
+                (
+                    ProjectionScope::ConnectorUnit(anchor.clone()),
+                    digest.clone(),
+                )
+            })
+            .collect();
         views
-            .connectors
-            .retain(|anchor, digest| units.digests.get(anchor) == Some(digest));
+            .projections
+            .retain_matching(&current, ProjectionFamily::Connector);
         self.views.put_node_views(identity, views).await?;
         self.views
             .retain_connector_points(identity, units.digests.keys().cloned().collect())
@@ -180,7 +190,16 @@ impl Store {
         if self.connector_interruption {
             return Err(AppError::internal("injected connector interruption"));
         }
-        views.connectors = units.digests;
+        for (anchor, fingerprint) in units.digests {
+            views.projections.insert(
+                ProjectionScope::ConnectorUnit(anchor),
+                ProjectionEvidence {
+                    fingerprint,
+                    embeddings: u64::from(self.views.build().dense_enabled()),
+                    complete: true,
+                },
+            );
+        }
         Ok(())
     }
 

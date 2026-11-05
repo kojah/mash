@@ -28,21 +28,7 @@ pub(crate) struct NodeViews {
     /// different revision's content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) input: Option<i64>,
-    pub(crate) chats: BTreeMap<String, ViewChat>,
-    /// Connector anchor to the complete projected evidence fingerprint, for
-    /// every connector point written from this node's silver.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) connectors: BTreeMap<String, String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ViewChat {
-    /// Silver dependency fingerprint of the documents written for this chat.
-    pub(crate) fingerprint: String,
-    pub(crate) embeddings: u64,
-    /// Every dense-eligible message of the chat has a vector.
-    pub(crate) complete: bool,
+    pub(crate) projections: super::Projections,
 }
 
 impl NodeViews {
@@ -55,8 +41,7 @@ impl NodeViews {
             silver: None,
             certified: false,
             input: None,
-            chats: BTreeMap::new(),
-            connectors: BTreeMap::new(),
+            projections: super::Projections::default(),
         }
     }
 
@@ -70,7 +55,7 @@ impl NodeViews {
         self.compatible(store, identity)
             && silver.is_some()
             && self.silver.as_ref() == silver
-            && self.chats.values().all(|chat| chat.complete)
+            && self.projections.complete()
     }
 
     /// Dense retrieval may use this node's documents.
@@ -79,21 +64,36 @@ impl NodeViews {
     }
 
     pub(crate) fn embeddings(&self) -> u64 {
-        self.chats.values().map(|chat| chat.embeddings).sum()
+        self.projections
+            .native()
+            .map(|(_, evidence)| evidence.embeddings)
+            .sum()
     }
 
     pub(crate) fn stored_vectors(&self) -> u64 {
-        self.embeddings()
-            + if self.build.dense_enabled() {
-                self.connectors.len() as u64
-            } else {
-                0
-            }
+        self.projections.embeddings()
     }
 }
 
 fn views_id(node: &str) -> String {
     point_id(&["node-views", node])
+}
+
+fn family_condition(family: super::ProjectionFamily) -> api::Condition {
+    match family {
+        super::ProjectionFamily::Native => api::matches(
+            "provider",
+            crate::provider::Provider::ALL
+                .iter()
+                .map(|p| p.as_str().to_owned())
+                .collect(),
+        ),
+        super::ProjectionFamily::Connector => api::Condition::IsEmpty {
+            is_empty: api::Field {
+                key: "provider".into(),
+            },
+        },
+    }
 }
 
 impl Store {
@@ -185,7 +185,6 @@ impl Store {
             .await
     }
 
-    /// Upsert one batch of a chat's documents; returns stored dense vectors.
     /// Delete a chat's documents except the listed current messages.
     pub(crate) async fn retain_documents(
         &self,
@@ -197,6 +196,7 @@ impl Store {
             must: vec![
                 api::matches("node_id", vec![identity.node_id.clone()]),
                 api::matches("conversation_id", vec![conversation.to_owned()]),
+                family_condition(super::ProjectionFamily::Native),
             ],
             ..api::Filter::default()
         };
@@ -217,11 +217,7 @@ impl Store {
         let mut filter = api::Filter {
             must: vec![
                 api::matches("node_id", vec![identity.node_id.clone()]),
-                api::Condition::IsEmpty {
-                    is_empty: api::Field {
-                        key: "provider".into(),
-                    },
-                },
+                family_condition(super::ProjectionFamily::Connector),
             ],
             ..api::Filter::default()
         };
@@ -242,14 +238,7 @@ impl Store {
         let mut filter = api::Filter {
             must: vec![
                 api::matches("node_id", vec![identity.node_id.clone()]),
-                // Connector points share this collection, but have no provider.
-                api::matches(
-                    "provider",
-                    crate::provider::Provider::ALL
-                        .iter()
-                        .map(|p| p.as_str().to_owned())
-                        .collect(),
-                ),
+                family_condition(super::ProjectionFamily::Native),
             ],
             ..api::Filter::default()
         };

@@ -1,7 +1,7 @@
 //! Direct local Qdrant projection from committed SQLite silver. No HTTP service.
 use super::{
     manifest::Manifest,
-    qdrant::{NodeViews, Store, ViewChat},
+    qdrant::{NodeViews, ProjectionEvidence, ProjectionScope, Store},
     scope::Scope,
 };
 use crate::{
@@ -264,7 +264,7 @@ pub(crate) async fn build(
         i64::try_from(certificate.revision)
             .map_err(|_| AppError::database_data("silver revision overflow"))?,
     );
-    let ready = certificate.permits_views() && node.chats.values().all(|chat| chat.complete);
+    let ready = certificate.permits_views() && node.projections.complete();
     node.certified = ready;
     node.silver = ready.then_some(state);
     store.put_node_views(&scope, &node).await?;
