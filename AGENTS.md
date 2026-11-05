@@ -97,6 +97,20 @@ JSON limited to opaque provider tool payloads and SDK boundaries requiring it.
 Use `apply_patch` for source edits. Preserve unrelated worktree changes. Do not
 create compatibility copies or versioned replacement files.
 
+## Dashboard front end
+
+`dashboard/` holds the front end for `mash dash`, a planned local, read-only web
+dashboard (Beads mash-twg6; design mockup linked there). It uses Svelte 5, Vite,
+TypeScript 7 (`svelte-check --tsgo`, with TypeScript 6 kept only as its
+compatibility dependency), Tailwind CSS 4, Lucide Svelte, pnpm, Biome and Vitest;
+follow `.agents/skills/frontend-development-prefs/SKILL.md` and
+`.agents/skills/typescript-coding-conventions/SKILL.md`. Until the Rust command
+serves its JSON API, `dashboard/src/lib/api.ts` returns sample data with the
+same shapes. Before completing front-end changes, run `pnpm run lint`,
+`pnpm run check`, `pnpm run test` and `pnpm run build` in `dashboard/`.
+Render all chat content as text or through a sanitizer; archived history is
+untrusted.
+
 ## Python conventions
 
 Use `.agents/skills/python-coding-conventions/SKILL.md` when changing Python.
