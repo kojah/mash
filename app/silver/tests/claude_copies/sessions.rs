@@ -106,11 +106,15 @@ fn claude_nested_forks_resolve_native_metadata_at_each_transition() {
     assert_eq!(parsed.messages.len(), 3);
     assert_eq!(
         parsed.messages.inline()[1].context,
-        MessageContext::Parent { ordinal: 0 }
+        MessageContext::Parent {
+            id: parsed.messages.inline()[0].id.clone()
+        }
     );
     assert_eq!(
         parsed.messages.inline()[2].context,
-        MessageContext::Parent { ordinal: 1 }
+        MessageContext::Parent {
+            id: parsed.messages.inline()[1].id.clone()
+        }
     );
 }
 

@@ -155,7 +155,7 @@ fn native_dialogue_spill_keeps_forward_parents_duplicates_and_context() {
         assert_eq!(&message.content, content);
         assert_eq!(
             message.context.parent(),
-            Some(parent.as_ref().map_or(-1, |parent| ordinals[parent]))
+            Some(parent.as_deref().unwrap_or(""))
         );
         ordinals.insert(message.id, message.ordinal);
     }

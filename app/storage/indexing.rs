@@ -461,8 +461,8 @@ impl Storage {
         existing: &BTreeMap<String, MessageState>,
     ) -> Result<(), AppError> {
         // Free occupied destination slots before inserting/updating stable IDs.
-        // Positive temporary ordinals preserve the parent < ordinal CHECK for
-        // tree histories. The writer transaction hides staging from readers.
+        // Branch references use stable IDs and are unaffected by these positions.
+        // The writer transaction hides staging from readers.
         let mut ordinal = existing
             .values()
             .map(|state| state.ordinal)
@@ -578,8 +578,24 @@ fn conversation_fingerprint(
         &mut hasher,
         &conversation.updated_at.unwrap_or_default().to_string(),
     );
+    let mut seen = BTreeSet::new();
+    let mut previous = -1;
     for message in conversation.messages.rows()? {
         let message = message?;
+        if message.id.is_empty()
+            || message.ordinal <= previous
+            || !message.context.valid(&message.id)
+            || message
+                .context
+                .parent()
+                .is_some_and(|parent| !parent.is_empty() && !seen.contains(parent))
+            || !seen.insert(message.id.clone())
+        {
+            return Err(AppError::database_data(
+                "invalid native message identity, order or parent",
+            ));
+        }
+        previous = message.ordinal;
         update_hash(&mut hasher, &message_fingerprint(&message));
     }
     Ok(hasher.finalize().to_hex().to_string())
@@ -591,7 +607,7 @@ fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
     update_hash(&mut hasher, &message.ordinal.to_string());
     if let Some(parent) = message.context.parent() {
         update_hash(&mut hasher, "tree-context");
-        update_hash(&mut hasher, &parent.to_string());
+        update_hash(&mut hasher, parent);
     }
     update_hash(&mut hasher, message.role.as_str());
     update_hash(&mut hasher, &message.content);

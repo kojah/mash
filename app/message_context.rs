@@ -1,49 +1,44 @@
-//! A native tree edge, or the ordinal neighbourhood used by linear histories.
+//! Stable native ancestry, independent of a message's current display position.
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum MessageContext {
     #[default]
     Linear,
     Root,
     Parent {
-        ordinal: i64,
+        id: String,
     },
 }
 
 impl MessageContext {
-    #[allow(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "serde skip_serializing_if callback takes a reference"
-    )]
     pub(crate) const fn is_linear(&self) -> bool {
         matches!(self, Self::Linear)
     }
 
-    pub(crate) const fn parent(self) -> Option<i64> {
+    /// SQL uses NULL for linear ancestry and the empty string for a tree root.
+    /// Message IDs are nonempty, so neither can alias a parent identity.
+    pub(crate) fn parent(&self) -> Option<&str> {
         match self {
             Self::Linear => None,
-            Self::Root => Some(-1),
-            Self::Parent { ordinal } => Some(ordinal),
+            Self::Root => Some(""),
+            Self::Parent { id } => Some(id),
         }
     }
 
-    pub(crate) const fn valid(self, ordinal: i64) -> bool {
+    pub(crate) fn valid(&self, message_id: &str) -> bool {
         match self {
             Self::Linear | Self::Root => true,
-            Self::Parent { ordinal: parent } => parent >= 0 && parent < ordinal,
+            Self::Parent { id } => !id.is_empty() && id != message_id,
         }
     }
 
-    pub(crate) fn from_parent(parent: Option<i64>) -> Result<Self, crate::AppError> {
+    pub(crate) fn from_parent(parent: Option<String>) -> Self {
         match parent {
-            None => Ok(Self::Linear),
-            Some(-1) => Ok(Self::Root),
-            Some(ordinal) if ordinal >= 0 => Ok(Self::Parent { ordinal }),
-            _ => Err(crate::AppError::database_data(
-                "invalid message context parent",
-            )),
+            None => Self::Linear,
+            Some(id) if id.is_empty() => Self::Root,
+            Some(id) => Self::Parent { id },
         }
     }
 }

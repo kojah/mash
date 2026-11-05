@@ -294,7 +294,7 @@ macro_rules! message_record {
             id: row.id,
             conversation_id: row.conversation_id,
             ordinal: $crate::storage::required(row.ordinal, "ordinal")?,
-            context: $crate::message_context::MessageContext::from_parent(row.context_parent)?,
+            context: $crate::message_context::MessageContext::from_parent(row.context_parent),
             role: $crate::role::Role::from($crate::storage::required(row.role, "role")?),
             content: $crate::storage::required(row.content, "content")?,
             projection: row.search_projection.unwrap_or_default(),

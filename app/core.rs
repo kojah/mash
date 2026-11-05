@@ -6,7 +6,6 @@ use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
 mod chats;
-mod connector_ingestion;
 pub(crate) mod coverage;
 mod indexing;
 mod inspection;
@@ -43,9 +42,6 @@ async fn execute_admitted(
     let operation = match &request.operation {
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
-        Operation::IngestConnector { .. } | Operation::DeliverConnector { .. } => {
-            "ingest_connector"
-        }
         Operation::ListChats { .. } => "list_chats",
         Operation::Search { .. } => "search",
         Operation::View { .. } => "view",
@@ -151,9 +147,7 @@ async fn execute_inner(
         None
     };
     let writer_database = match &request.operation {
-        Operation::Index(_) | Operation::IngestConnector { .. } | Operation::Forget { .. } => {
-            Some(database.clone())
-        }
+        Operation::Index(_) | Operation::Forget { .. } => Some(database.clone()),
         Operation::ImportSilver { database, .. } => Some(database.clone()),
         _ => None,
     };
@@ -253,19 +247,6 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
-        Operation::IngestConnector { batch_file } => {
-            connector_ingestion::run(configuration, database, models, batch_file)
-                .await
-                .map(Response::IngestConnector)
-        }
-        Operation::DeliverConnector { batch_file } => {
-            let shared = configuration.shared.as_ref().ok_or_else(|| {
-                AppError::configuration("configure [shared] to deliver connector batches")
-            })?;
-            let bytes = std::fs::read(&batch_file).map_err(AppError::io)?;
-            let receipt = crate::shared::deliver_connector(shared, &bytes).await?;
-            Ok(Response::IngestConnector(receipt))
-        }
         Operation::QuerySilver {
             sql,
             limit,

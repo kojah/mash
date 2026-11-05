@@ -55,13 +55,6 @@ pub(crate) enum Operation {
     /// Configure, register with agents and index for the first time.
     Init(super::setup::InitRequest),
     Index(IndexRequest),
-    IngestConnector {
-        batch_file: PathBuf,
-    },
-    /// Deliver a connector batch to the configured shared destination.
-    DeliverConnector {
-        batch_file: PathBuf,
-    },
     ListChats {
         input: Box<crate::chat_catalog::Request>,
         local: bool,
@@ -140,7 +133,6 @@ pub(crate) enum Operation {
 pub(crate) enum Response {
     Init(super::setup::InitResponse),
     Index(IndexResponse),
-    IngestConnector(crate::connectors::Receipt),
     ListChats(super::chats::Response),
     Search(SearchResponse),
     View(ViewResponse),

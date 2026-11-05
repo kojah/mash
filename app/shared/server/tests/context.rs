@@ -135,13 +135,17 @@ fn snapshot(revision: i64) -> Vec<Value> {
         (0, MessageContext::Root, "root request", "root request"),
         (
             1,
-            MessageContext::Parent { ordinal: 0 },
+            MessageContext::Parent {
+                id: "message-0".into(),
+            },
             "left reply",
             "left reply",
         ),
         (
             2,
-            MessageContext::Parent { ordinal: 1 },
+            MessageContext::Parent {
+                id: "message-1".into(),
+            },
             "left detail",
             "left detail",
         ),
@@ -153,19 +157,25 @@ fn snapshot(revision: i64) -> Vec<Value> {
         ),
         (
             5,
-            MessageContext::Parent { ordinal: 0 },
+            MessageContext::Parent {
+                id: "message-0".into(),
+            },
             "right request\nprivate tool marker",
             "right request",
         ),
         (
             6,
-            MessageContext::Parent { ordinal: 5 },
+            MessageContext::Parent {
+                id: "message-5".into(),
+            },
             "right reply",
             "right reply",
         ),
         (
             8,
-            MessageContext::Parent { ordinal: 6 },
+            MessageContext::Parent {
+                id: "message-6".into(),
+            },
             "private output",
             "",
         ),
@@ -300,7 +310,9 @@ async fn contract(service: Service) {
     let before = service.get("freshness", FIRST).await;
     for parent in [-1, 4, 5, 7] {
         let mut invalid = snapshot(2);
-        invalid[2]["records"][4]["context"] = json!(MessageContext::Parent { ordinal: parent });
+        invalid[2]["records"][4]["context"] = json!(MessageContext::Parent {
+            id: format!("message-{parent}")
+        });
         let response = service.upload(FIRST, &invalid).await;
         assert_eq!(
             response.status(),

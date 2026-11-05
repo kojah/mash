@@ -1222,7 +1222,7 @@ pub struct MessageRow {
     pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl MessageRow {
@@ -1310,7 +1310,7 @@ pub struct MessageAtRow {
     pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl MessageAtRow {
@@ -1423,7 +1423,7 @@ pub struct FirstChildRow {
     pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl FirstChildRow {
@@ -1444,7 +1444,7 @@ impl FirstChildRow {
 }
 pub struct FirstChild<'a> {
     conversation_id: &'a str,
-    parent: Option<i64>,
+    parent: Option<&'a str>,
 }
 impl<'a> FirstChild<'a> {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
@@ -1509,8 +1509,8 @@ impl<'a, Parent> FirstChildBuilder<'a, ((), Parent)> {
 impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
     pub fn parent(
         self,
-        parent: Option<i64>,
-    ) -> FirstChildBuilder<'a, (ConversationId, Option<i64>)> {
+        parent: Option<&'a str>,
+    ) -> FirstChildBuilder<'a, (ConversationId, Option<&'a str>)> {
         let (conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         FirstChildBuilder {
@@ -1519,7 +1519,7 @@ impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
         }
     }
 }
-impl<'a> FirstChildBuilder<'a, (&'a str, Option<i64>)> {
+impl<'a> FirstChildBuilder<'a, (&'a str, Option<&'a str>)> {
     pub fn build(self) -> FirstChild<'a> {
         let (conversation_id, parent) = self.fields;
         FirstChild {
@@ -1537,7 +1537,7 @@ pub struct MessageWindowRow {
     pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl MessageWindowRow {
@@ -1663,7 +1663,7 @@ pub struct ThreadMessagesRow {
     pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl ThreadMessagesRow {
@@ -1753,7 +1753,7 @@ pub struct NodeMessagesRow {
     pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl NodeMessagesRow {
@@ -1832,7 +1832,7 @@ pub struct InsertMessage<'a> {
     content: &'a str,
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
-    context_parent: Option<i64>,
+    context_parent: Option<&'a str>,
     metadata: Option<&'a str>,
     conversation_id: &'a str,
 }
@@ -2449,7 +2449,7 @@ impl<
 {
     pub fn context_parent(
         self,
-        context_parent: Option<i64>,
+        context_parent: Option<&'a str>,
     ) -> InsertMessageBuilder<
         'a,
         (
@@ -2460,7 +2460,7 @@ impl<
             Content,
             SearchProjection,
             CreatedAt,
-            Option<i64>,
+            Option<&'a str>,
             Metadata,
             ConversationId,
         ),
@@ -2658,7 +2658,7 @@ impl<'a>
             &'a str,
             Option<&'a str>,
             Option<i64>,
-            Option<i64>,
+            Option<&'a str>,
             Option<&'a str>,
             &'a str,
         ),
@@ -2812,10 +2812,10 @@ pub struct MissingParent<'a> {
 }
 impl<'a> MissingParent<'a> {
     pub const QUERY: &'static str = r"SELECT m.id FROM objects m
-WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1 AND m.context_parent >= 0
+WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1 AND m.context_parent <> ''
   AND NOT EXISTS(SELECT 1 FROM objects p
       WHERE p.origin = 'provider' AND p.object_role = 'entry'
-        AND p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
+        AND p.conversation_id = m.conversation_id AND p.id = m.context_parent AND p.ordinal < m.ordinal)
 LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY

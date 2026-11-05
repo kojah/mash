@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS objects (
     origin TEXT NOT NULL CHECK (origin IN ('provider', 'connector')),
     -- The provider name, or the connector's source ID.
     source TEXT NOT NULL,
-    id TEXT NOT NULL,
+    id TEXT NOT NULL CHECK (id <> ''),
     object_role TEXT NOT NULL CHECK (object_role IN ('container', 'segment', 'entry', 'document')),
     kind TEXT NOT NULL,
     -- The parent's own ID, as submitted or parsed.
@@ -24,10 +24,10 @@ CREATE TABLE IF NOT EXISTS objects (
     -- The nearest container: a container's or document's own ID, or the
     -- container that holds an entry or segment. Results group by it.
     conversation_id TEXT NOT NULL,
-    -- Native order and branch tree: NULL for linear threads, -1 for a tree
-    -- root, otherwise the parent ordinal. NULL for connector objects.
+    -- Native order is independent of branch identity. NULL means linear,
+    -- the empty string is a tree root, otherwise this is the parent message ID.
     ordinal INTEGER,
-    context_parent INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal)),
+    context_parent TEXT CHECK (context_parent IS NULL OR context_parent <> id),
     -- Native dialogue role, or a connector entry's author as JSON.
     role TEXT,
     author TEXT,

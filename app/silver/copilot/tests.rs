@@ -171,7 +171,9 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     );
     assert_eq!(
         conversation.messages.inline()[6].context,
-        MessageContext::Parent { ordinal: 5 }
+        MessageContext::Parent {
+            id: conversation.messages.inline()[5].id.clone()
+        }
     );
     assert_eq!(
         conversation.messages.inline()[7].context,
@@ -179,7 +181,9 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     );
     assert_eq!(
         conversation.messages.inline()[8].context,
-        MessageContext::Parent { ordinal: 4 }
+        MessageContext::Parent {
+            id: conversation.messages.inline()[4].id.clone()
+        }
     );
     assert_eq!(std::fs::read(file.path()).unwrap(), original);
     let repeated = parse(file.path()).unwrap().conversation.unwrap();
@@ -449,7 +453,9 @@ fn settled_workspace_and_complete_chunks_ignore_preliminary_and_ephemeral_events
     );
     assert_eq!(
         parsed.messages.inline()[2].context,
-        MessageContext::Parent { ordinal: 1 }
+        MessageContext::Parent {
+            id: parsed.messages.inline()[1].id.clone()
+        }
     );
 }
 

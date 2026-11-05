@@ -104,7 +104,7 @@ pub(in crate::shared) struct MessageRef<'a> {
     conversation_id: &'a str,
     ordinal: i64,
     #[serde(skip_serializing_if = "MessageContext::is_linear")]
-    context: MessageContext,
+    context: &'a MessageContext,
     role: &'a Role,
     content: &'a str,
     projection: &'a str,
@@ -121,7 +121,7 @@ impl MessageRecord {
             id: &self.id,
             conversation_id: &self.conversation_id,
             ordinal: self.ordinal,
-            context: self.context,
+            context: &self.context,
             role: &self.role,
             content: &self.content,
             projection: &self.projection,

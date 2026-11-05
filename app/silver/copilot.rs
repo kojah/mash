@@ -356,7 +356,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let mut workspace = start.context.filter(|w| !w.pending_git_context);
     let mut ids = super::identities::Identities::default();
     ids.insert(&first_id)?;
-    let mut heads = HashMap::<Option<String>, i64>::new();
+    let mut heads = HashMap::<Option<String>, String>::new();
     let mut messages = super::messages::Builder::default();
     for line in lines {
         let record = event(&line?)?;
@@ -395,26 +395,25 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         };
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many Copilot messages"))?;
+        let id = super::parsers::stable_id(
+            "message",
+            &[Provider::Copilot.as_str(), &start.session_id, &record.id],
+        );
         messages.push(NormalizedMessage {
             attachments: Vec::new(),
-            id: super::parsers::stable_id(
-                "message",
-                &[Provider::Copilot.as_str(), &start.session_id, &record.id],
-            ),
+            id: id.clone(),
             ordinal,
             context: heads
                 .get(&lane)
-                .copied()
-                .map_or(MessageContext::Root, |ordinal| MessageContext::Parent {
-                    ordinal,
-                }),
+                .cloned()
+                .map_or(MessageContext::Root, |id| MessageContext::Parent { id }),
             role: text.role,
             content: text.canonical,
             dialogue_text: Some(text.projection),
             created_at: Some(time),
             tools: crate::tools::Activity::default(),
         })?;
-        heads.insert(lane, ordinal);
+        heads.insert(lane, id);
     }
     let messages = messages.finish()?;
     let title = messages.summary()?.title;

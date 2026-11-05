@@ -8,15 +8,12 @@ DEV_TARGET_DIR ?= /home/james/scratch/achi-targets/integrated
 DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local/bin/agent-test,)
 export FOCUS
 
-.PHONY: mutation-tools mutation-check mutation-connectors mutation-certification property-check property-backend-check
+.PHONY: mutation-tools mutation-check mutation-certification property-check
 mutation-tools:
 	bash tools/mutation-check.sh --install-tools
 
 mutation-check:
 	$(DEV_RUN) bash tools/mutation-check.sh
-
-mutation-connectors:
-	$(DEV_RUN) bash tools/mutation-check.sh --connectors
 
 mutation-certification:
 	$(DEV_RUN) bash tools/mutation-check.sh --certification
@@ -27,11 +24,6 @@ mutation-runtime:
 
 property-check:
 	$(MAKE) iterate FOCUS='test(connectors::silver::tests::properties)'
-
-property-backend-check:
-	@test -n "$${MASH_TEST_QDRANT_URL}" || (echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+'; exit 2)
-	@test -n "$${MASH_TEST_QDRANT_GRPC_URL}" || (echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance'; exit 2)
-	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --locked --lib --run-ignored only -E 'test(connector_sequences)' --no-tests fail --test-threads 1
 
 .PHONY: protocol-tools protocol-check
 protocol-tools:

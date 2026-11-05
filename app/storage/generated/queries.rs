@@ -2646,16 +2646,18 @@ impl<'a> ParkMessageOrdinalBuilder<'a, (Option<i64>, &'a str, &'a str)> {
     }
 }
 pub struct AnchorRow {
+    pub id: String,
     pub conversation_id: String,
     pub ordinal: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
 }
 impl AnchorRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            conversation_id: row.get(0)?,
-            ordinal: row.get(1)?,
-            context_parent: row.get(2)?,
+            id: row.get(0)?,
+            conversation_id: row.get(1)?,
+            ordinal: row.get(2)?,
+            context_parent: row.get(3)?,
         })
     }
 }
@@ -2663,7 +2665,7 @@ pub struct Anchor<'a> {
     id: &'a str,
 }
 impl<'a> Anchor<'a> {
-    pub const QUERY: &'static str = r"SELECT conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1";
+    pub const QUERY: &'static str = r"SELECT id,conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3084,7 +3086,7 @@ pub struct ContextMessageRow {
     pub content: Option<String>,
     pub projection: Option<String>,
     pub created_at: Option<i64>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub metadata: Option<String>,
 }
 impl ContextMessageRow {
@@ -3103,11 +3105,11 @@ impl ContextMessageRow {
 }
 pub struct ContextMessage<'a> {
     conversation_id: &'a str,
-    ordinal: Option<i64>,
+    id: &'a str,
 }
 impl<'a> ContextMessage<'a> {
     pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM objects
-WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND ordinal=?2";
+WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND id=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3133,7 +3135,7 @@ impl<'a> ContextMessage<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id, self.ordinal)
+        (self.conversation_id, self.id)
     }
 }
 impl<'a> ContextMessage<'a> {
@@ -3148,57 +3150,56 @@ pub struct ContextMessageBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, Ordinal> ContextMessageBuilder<'a, ((), Ordinal)> {
+impl<'a, Id> ContextMessageBuilder<'a, ((), Id)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> ContextMessageBuilder<'a, (&'a str, Ordinal)> {
-        let ((), ordinal) = self.fields;
+    ) -> ContextMessageBuilder<'a, (&'a str, Id)> {
+        let ((), id) = self.fields;
         let _phantom = self._phantom;
         ContextMessageBuilder {
-            fields: (conversation_id, ordinal),
+            fields: (conversation_id, id),
             _phantom,
         }
     }
 }
 impl<'a, ConversationId> ContextMessageBuilder<'a, (ConversationId, ())> {
-    pub fn ordinal(
-        self,
-        ordinal: Option<i64>,
-    ) -> ContextMessageBuilder<'a, (ConversationId, Option<i64>)> {
+    pub fn id(self, id: &'a str) -> ContextMessageBuilder<'a, (ConversationId, &'a str)> {
         let (conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         ContextMessageBuilder {
-            fields: (conversation_id, ordinal),
+            fields: (conversation_id, id),
             _phantom,
         }
     }
 }
-impl<'a> ContextMessageBuilder<'a, (&'a str, Option<i64>)> {
+impl<'a> ContextMessageBuilder<'a, (&'a str, &'a str)> {
     pub fn build(self) -> ContextMessage<'a> {
-        let (conversation_id, ordinal) = self.fields;
+        let (conversation_id, id) = self.fields;
         ContextMessage {
             conversation_id,
-            ordinal,
+            id,
         }
     }
 }
 pub struct FirstChildRow {
+    pub id: String,
     pub ordinal: Option<i64>,
 }
 impl FirstChildRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            ordinal: row.get(0)?,
+            id: row.get(0)?,
+            ordinal: row.get(1)?,
         })
     }
 }
 pub struct FirstChild<'a> {
     conversation_id: &'a str,
-    parent: Option<i64>,
+    parent: Option<&'a str>,
 }
 impl<'a> FirstChild<'a> {
-    pub const QUERY: &'static str = r"SELECT ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
+    pub const QUERY: &'static str = r"SELECT id,ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3255,8 +3256,8 @@ impl<'a, Parent> FirstChildBuilder<'a, ((), Parent)> {
 impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
     pub fn parent(
         self,
-        parent: Option<i64>,
-    ) -> FirstChildBuilder<'a, (ConversationId, Option<i64>)> {
+        parent: Option<&'a str>,
+    ) -> FirstChildBuilder<'a, (ConversationId, Option<&'a str>)> {
         let (conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         FirstChildBuilder {
@@ -3265,7 +3266,7 @@ impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
         }
     }
 }
-impl<'a> FirstChildBuilder<'a, (&'a str, Option<i64>)> {
+impl<'a> FirstChildBuilder<'a, (&'a str, Option<&'a str>)> {
     pub fn build(self) -> FirstChild<'a> {
         let (conversation_id, parent) = self.fields;
         FirstChild {
@@ -7831,7 +7832,7 @@ pub struct UpsertNativeMessage<'a> {
     content: &'a str,
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
-    context_parent: Option<i64>,
+    context_parent: Option<&'a str>,
     attachments: &'a str,
     metadata: Option<&'a str>,
     conversation_id: &'a str,
@@ -8377,7 +8378,7 @@ impl<
 {
     pub fn context_parent(
         self,
-        context_parent: Option<i64>,
+        context_parent: Option<&'a str>,
     ) -> UpsertNativeMessageBuilder<
         'a,
         (
@@ -8387,7 +8388,7 @@ impl<
             Content,
             SearchProjection,
             CreatedAt,
-            Option<i64>,
+            Option<&'a str>,
             Attachments,
             Metadata,
             ConversationId,
@@ -8661,7 +8662,7 @@ impl<'a>
             &'a str,
             Option<&'a str>,
             Option<i64>,
-            Option<i64>,
+            Option<&'a str>,
             &'a str,
             Option<&'a str>,
             &'a str,
@@ -9133,7 +9134,7 @@ pub struct TurnSourcesRow {
     pub ordinal: Option<i64>,
     pub role: Option<String>,
     pub projection: Option<String>,
-    pub context_parent: Option<i64>,
+    pub context_parent: Option<String>,
     pub created_at: Option<i64>,
 }
 impl TurnSourcesRow {

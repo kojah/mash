@@ -26,9 +26,9 @@ pub(crate) fn threads(connection: &Connection, node: &str) -> Result<Vec<Chat>, 
 }
 
 /// A message with the native tree parent, if any.
-fn parent(record: &MessageRecord) -> Option<i64> {
-    match record.context {
-        MessageContext::Parent { ordinal } => Some(ordinal),
+fn parent(record: &MessageRecord) -> Option<&str> {
+    match &record.context {
+        MessageContext::Parent { id } => Some(id),
         MessageContext::Linear | MessageContext::Root => None,
     }
 }
@@ -66,16 +66,11 @@ pub(crate) fn view(
     let mut rows = vec![anchor];
     let mut ordinal = rows[0].ordinal;
     for _ in 0..context {
-        let Some(parent) = rows
-            .last()
-            .and_then(parent)
-            .filter(|parent| *parent < ordinal)
-        else {
+        let Some(parent) = rows.last().and_then(parent) else {
             break;
         };
-        let Some(next) = sql::MessageAt::builder()
-            .conversation_id(&thread)
-            .ordinal(Some(parent))
+        let Some(next) = sql::Message::builder()
+            .id(parent)
             .build()
             .query_opt(connection)
             .map_err(database)?
@@ -83,14 +78,18 @@ pub(crate) fn view(
             break;
         };
         let next = message_record!(next)?;
+        if next.conversation_id != thread || next.ordinal >= ordinal {
+            return Err(AppError::database_data("invalid message context parent"));
+        }
         ordinal = next.ordinal;
         rows.push(next);
     }
     ordinal = rows[0].ordinal;
+    let mut id = rows[0].id.clone();
     for _ in 0..context {
         let Some(child) = sql::FirstChild::builder()
             .conversation_id(&thread)
-            .parent(Some(ordinal))
+            .parent(Some(&id))
             .build()
             .query_opt(connection)
             .map_err(database)?
@@ -102,6 +101,7 @@ pub(crate) fn view(
             return Err(AppError::database_data("invalid message context parent"));
         }
         ordinal = child.ordinal;
+        id.clone_from(&child.id);
         rows.push(child);
     }
     rows.sort_by_key(|row| row.ordinal);

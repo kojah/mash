@@ -195,8 +195,9 @@ async fn prepare_units(
                 &recipe,
                 crate::views::units::Input {
                     chat: &message.conversation_id,
+                    id: &message.id,
                     ordinal: message.ordinal,
-                    context: message.context,
+                    context: &message.context,
                     role: &message.role,
                     projection: &message.projection,
                 },

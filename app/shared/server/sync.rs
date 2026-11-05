@@ -3,15 +3,14 @@
 use super::{App, Identity, admission};
 use crate::AppError;
 use crate::attachments::{Availability, Metadata};
-use crate::connectors::Batch;
 use crate::shared::protocol::{self, Event};
 use crate::shared::silver_store;
 use crate::shared::sync::catalog::{self, Begin, BeginOutcome, Catalog, StoredChunk};
 use crate::shared::sync::wire::{
     self, Accepted, AttachmentStored, BackfillComplete, Cancelled, Checkpoint, Chunk, CommitState,
-    ConnectorReceipt, Credit, Failed, FinishBackfill, FinishUpload, Hello, Outcome, OutcomeState,
-    Progress, Published, Resume, ServerFrame, SilverCommitted, TooLateToCancel, Welcome,
-    client_frame, server_frame,
+    Credit, Failed, FinishBackfill, FinishUpload, Hello, Outcome, OutcomeState, Progress,
+    Published, Resume, ServerFrame, SilverCommitted, TooLateToCancel, Welcome, client_frame,
+    server_frame,
 };
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Extension, State};
@@ -175,11 +174,6 @@ async fn run(app: App, identity: Identity, socket: WebSocket) -> Result<(), AppE
             client_frame::Body::BeginBackfill(begin) => {
                 active = Some(operation_id.clone());
                 handle_begin_backfill(&mut sink, &app, &identity, &catalog, &operation_id, begin)
-                    .await?;
-            }
-            client_frame::Body::BeginConnectorBatch(begin) => {
-                active = Some(operation_id.clone());
-                handle_begin_connector(&mut sink, &app, &identity, &catalog, &operation_id, begin)
                     .await?;
             }
             client_frame::Body::BeginAttachment(begin) => {
@@ -757,52 +751,6 @@ async fn handle_begin_backfill(
     begin_operation(sink, handle, operation_id, owned).await
 }
 
-async fn handle_begin_connector(
-    sink: &mut Sink,
-    app: &App,
-    identity: &Identity,
-    handle: &CatalogHandle,
-    operation_id: &str,
-    begin: wire::BeginConnectorBatch,
-) -> Result<(), AppError> {
-    let valid = !begin.source_id.is_empty()
-        && begin.source_id.len() <= 256
-        && !begin.batch_id.is_empty()
-        && begin.batch_id.len() <= 256
-        && begin.expected_revision.parse::<u64>().is_ok()
-        && begin.manifest_digest.len() == 64
-        && begin.manifest_digest.bytes().all(|b| b.is_ascii_hexdigit())
-        && begin.decoded_bytes > 0
-        && begin.decoded_bytes <= app.store.max_node_bytes();
-    if !valid {
-        return reject(
-            sink,
-            operation_id,
-            "begin",
-            "invalid_connector_batch",
-            "connector batch metadata is invalid",
-        )
-        .await;
-    }
-    let start_json = serde_json::json!({
-        "source_id": begin.source_id,
-        "batch_id": begin.batch_id,
-        "expected_revision": begin.expected_revision,
-    })
-    .to_string();
-    let owned = OwnedBegin {
-        operation_id: operation_id.to_owned(),
-        group_id: identity.group_id.clone(),
-        node_id: identity.node_id.clone(),
-        kind: "connector".into(),
-        manifest_digest: begin.manifest_digest,
-        decoded_bytes: begin.decoded_bytes,
-        record_count: 0,
-        start_json,
-    };
-    begin_operation(sink, handle, operation_id, owned).await
-}
-
 async fn handle_begin_attachment(
     sink: &mut Sink,
     app: &App,
@@ -1080,18 +1028,6 @@ async fn handle_finish(
             )
             .await;
         }
-        "connector" => {
-            return finish_connector(
-                sink,
-                app,
-                identity,
-                handle,
-                operation_id,
-                &operation,
-                &pieces,
-            )
-            .await;
-        }
         "attachment" => {
             return finish_attachment(
                 sink,
@@ -1214,7 +1150,6 @@ async fn handle_finish(
                             revision,
                             views_current: app.store.views_current(identity).await.unwrap_or(false),
                             coverage_through: expected_revision,
-                            connector: None,
                         }),
                     )
                     .await;
@@ -1287,7 +1222,6 @@ async fn handle_finish(
                     revision: indexed.revision,
                     views_current: indexed.views_current,
                     coverage_through: expected_revision,
-                    connector: None,
                 }),
             )
             .await?;
@@ -1578,13 +1512,6 @@ struct ManifestStart {
 }
 
 #[derive(serde::Deserialize)]
-struct ConnectorStart {
-    source_id: String,
-    batch_id: String,
-    expected_revision: String,
-}
-
-#[derive(serde::Deserialize)]
 struct AttachmentStart {
     message_id: String,
     attachment: Metadata,
@@ -1788,110 +1715,6 @@ async fn finish_manifest(
             .await
         }
     }
-}
-
-/// Validate connector bytes against their begin frame, commit silver, and
-/// record transport state. Shared by the socket handler and recovery.
-async fn apply_connector(
-    app: &App,
-    identity: &Identity,
-    handle: &CatalogHandle,
-    operation: &catalog::Operation,
-    pieces: &[wire::Piece],
-) -> Result<crate::connectors::Receipt, AppError> {
-    let start: ConnectorStart = serde_json::from_str(&operation.start_json)
-        .map_err(|_| AppError::internal("connector batch metadata is not valid"))?;
-    let max_decoded = usize::try_from(app.store.max_node_bytes()).unwrap_or(usize::MAX);
-    let bytes = wire::decode_bytes(pieces, max_decoded)
-        .map_err(|_| AppError::usage("connector batch bytes were not valid"))?;
-    let batch =
-        Batch::decode(&bytes).map_err(|_| AppError::usage("connector batch JSON is not valid"))?;
-    if batch.source_id.as_str() != start.source_id
-        || batch.batch_id.as_str() != start.batch_id
-        || batch.expected_revision.to_string() != start.expected_revision
-    {
-        return Err(AppError::usage(
-            "connector batch identity does not match its begin frame",
-        ));
-    }
-    let receipt = app.store.ingest_connector(identity, batch).await?;
-    let revision = i64::try_from(receipt.silver_revision).unwrap_or(i64::MAX);
-    let receipt_digest = blake3::hash(&bytes).to_hex().to_string();
-    let operation_id = operation.operation_id.clone();
-    let digest = receipt_digest.clone();
-    let _ = catalog(handle, move |catalog| {
-        catalog.published(&operation_id, revision, &digest)
-    })
-    .await;
-    Ok(receipt)
-}
-
-async fn finish_connector(
-    sink: &mut Sink,
-    app: &App,
-    identity: &Identity,
-    handle: &CatalogHandle,
-    operation_id: &str,
-    operation: &catalog::Operation,
-    pieces: &[wire::Piece],
-) -> Result<(), AppError> {
-    let receipt = match apply_connector(app, identity, handle, operation, pieces).await {
-        Ok(receipt) => receipt,
-        Err(error) => {
-            return send(
-                sink,
-                operation_id,
-                server_frame::Body::Failed(Failed {
-                    phase: "applying".into(),
-                    code: "connector_failed".into(),
-                    commit_state: CommitState::Unknown as i32,
-                    retryable: true,
-                    recovery_action: "reconnect and resume to verify the durable outcome".into(),
-                    kind: error.error.kind.name(),
-                    message: error.error.message,
-                }),
-            )
-            .await;
-        }
-    };
-    let revision = i64::try_from(receipt.silver_revision).unwrap_or(i64::MAX);
-    let receipt_digest = catalog(handle, {
-        let operation_id = operation_id.to_owned();
-        let group = identity.group_id.clone();
-        let node = identity.node_id.clone();
-        move |catalog| {
-            catalog
-                .select(&operation_id, &group, &node)
-                .map(|operation| operation.receipt_digest.unwrap_or_default())
-        }
-    })
-    .await
-    .unwrap_or_default();
-    send(
-        sink,
-        operation_id,
-        server_frame::Body::SilverCommitted(SilverCommitted {
-            revision,
-            receipt_digest: receipt_digest.clone(),
-        }),
-    )
-    .await?;
-    send(
-        sink,
-        operation_id,
-        server_frame::Body::Published(Published {
-            revision,
-            views_current: receipt.views_ready,
-            coverage_through: Some(revision),
-            connector: Some(ConnectorReceipt {
-                source_id: receipt.source_id.as_str().to_owned(),
-                batch_id: receipt.batch_id.as_str().to_owned(),
-                source_revision: receipt.source_revision,
-                silver_revision: receipt.silver_revision,
-            }),
-        }),
-    )
-    .await
 }
 
 /// Authorize and durably store attachment bytes. Shared by the socket handler
@@ -2153,9 +1976,6 @@ pub(super) async fn recover(app: &App) -> Result<usize, AppError> {
                 recover_publication(app, &identity, &handle, &operation, &pieces).await
             }
             "backfill_manifest" => apply_manifest(app, &identity, &handle, &operation, &pieces)
-                .await
-                .map(|_| ()),
-            "connector" => apply_connector(app, &identity, &handle, &operation, &pieces)
                 .await
                 .map(|_| ()),
             "attachment" => apply_attachment(app, &identity, &handle, &operation, &pieces)

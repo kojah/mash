@@ -132,10 +132,10 @@ DELETE FROM objects WHERE origin = 'provider' AND object_role <> 'container';
 
 -- name: MissingParent :one
 SELECT m.id FROM objects m
-WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = sqlc.arg(conversation_id) AND m.context_parent >= 0
+WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = sqlc.arg(conversation_id) AND m.context_parent <> ''
   AND NOT EXISTS(SELECT 1 FROM objects p
       WHERE p.origin = 'provider' AND p.object_role = 'entry'
-        AND p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
+        AND p.conversation_id = m.conversation_id AND p.id = m.context_parent AND p.ordinal < m.ordinal)
 LIMIT 1;
 
 -- name: NodeTombstones :many

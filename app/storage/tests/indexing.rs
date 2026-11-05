@@ -202,6 +202,17 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
 
 #[test]
 fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context() {
+    fn assert_parent(storage: &Storage) {
+        let parent: String = storage
+            .connection
+            .query_row(
+                "SELECT context_parent FROM objects WHERE id = 'reply'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(parent, "message-1");
+    }
     fn history(insert: bool) -> crate::silver::Conversation {
         let mut value = conversation("original request");
         let shift = i64::from(insert);
@@ -216,7 +227,9 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
                 ordinal: shift + 1,
                 content: "original reply".into(),
                 role: crate::role::Role::Assistant,
-                context: crate::message_context::MessageContext::Parent { ordinal: shift },
+                context: crate::message_context::MessageContext::Parent {
+                    id: "message-1".into(),
+                },
                 dialogue_text: None,
                 created_at: None,
                 tools: crate::tools::Activity::default(),
@@ -243,9 +256,11 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let original = history(false);
     storage.replace_conversation(&original).unwrap();
+    assert_parent(&storage);
     let shifted = history(true);
     storage.replace_conversation(&shifted).unwrap();
     storage.commit_writer().unwrap();
+    assert_parent(&storage);
     let viewed = storage.view("reply", 4).unwrap();
     assert_eq!(
         viewed.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
@@ -258,13 +273,15 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert!(storage.view("inserted", 0).unwrap().is_empty());
     assert_eq!(storage.view("reply", 0).unwrap()[0].ordinal, 1);
+    assert_parent(&storage);
 
     // A later failure must not commit temporary ordinals or partial context.
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     storage.begin_provider_scan().unwrap();
     let mut invalid = history(true);
-    invalid.messages.inline_mut()[2].context =
-        crate::message_context::MessageContext::Parent { ordinal: 9 };
+    invalid.messages.inline_mut()[2].context = crate::message_context::MessageContext::Parent {
+        id: "missing".into(),
+    };
     assert!(storage.replace_conversation(&invalid).is_err());
     storage.rollback_provider_scan().unwrap();
     storage.commit_writer().unwrap();

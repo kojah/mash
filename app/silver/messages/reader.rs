@@ -32,7 +32,7 @@ pub(super) fn write_record(
         attachments: message.attachments.clone(),
         id: message.id.clone(),
         ordinal: message.ordinal,
-        context: message.context,
+        context: message.context.clone(),
         role: message.role.clone(),
         created_at: message.created_at,
         content_bytes: message.content.len() as u64,

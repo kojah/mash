@@ -266,7 +266,9 @@ fn claude_native_ancestry_resolves_intermediate_events_and_rejects_cycles() {
     let parsed = parse_claude(&path).unwrap().conversation.unwrap();
     assert_eq!(
         parsed.messages.inline()[1].context,
-        MessageContext::Parent { ordinal: 0 }
+        MessageContext::Parent {
+            id: parsed.messages.inline()[0].id.clone()
+        }
     );
     transcript(
         &path,

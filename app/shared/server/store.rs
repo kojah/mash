@@ -11,8 +11,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(super) mod connectors;
-#[cfg(test)]
-pub(crate) use connectors::Embedder;
 mod replay;
 #[cfg(test)]
 pub(crate) use replay::ReplayFault;
@@ -32,14 +30,10 @@ pub(crate) struct Store {
     /// Serializes the short read-check-write that stamps node views. Distinct
     /// from `nodes`: certification may not run under the publication lock.
     views_writes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
-    /// Group-wide ownership of account-scoped connector sources.
-    claims: Option<std::sync::Arc<std::sync::Mutex<crate::shared::sync::catalog::Catalog>>>,
     /// Whether HTTP read responses mask recognizable credentials.
     responses: crate::redaction::Policy,
     #[cfg(test)]
     replay_fault: Option<ReplayFault>,
-    #[cfg(test)]
-    connector_interruption: bool,
     /// Test hook: fail views certification after a committed silver write.
     #[cfg(test)]
     views_interruption: bool,
@@ -121,16 +115,6 @@ pub(super) async fn initialize(
 const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
 impl Store {
-    /// Attach the durable, group-wide claim table. Production always sets it;
-    /// tests that do not exercise ownership leave it unset.
-    pub(crate) fn with_source_claims(
-        mut self,
-        claims: std::sync::Arc<std::sync::Mutex<crate::shared::sync::catalog::Catalog>>,
-    ) -> Self {
-        self.claims = Some(claims);
-        self
-    }
-
     pub(crate) fn new(
         silver: SilverStore,
         views: qdrant_index::Store,
@@ -143,12 +127,9 @@ impl Store {
             max_upload_bytes,
             nodes: Arc::default(),
             views_writes: Arc::default(),
-            claims: None,
             responses: crate::redaction::Policy::ON,
             #[cfg(test)]
             replay_fault: None,
-            #[cfg(test)]
-            connector_interruption: false,
             #[cfg(test)]
             views_interruption: false,
             #[cfg(test)]

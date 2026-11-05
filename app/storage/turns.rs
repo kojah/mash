@@ -29,6 +29,10 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
         .iter()
         .map(|row| super::required(row.role.clone(), "role").map(crate::role::Role::from))
         .collect::<Result<Vec<_>, _>>()?;
+    let positions = rows
+        .iter()
+        .map(|row| Ok((row.id.as_str(), super::required(row.ordinal, "ordinal")?)))
+        .collect::<Result<HashMap<_, _>, AppError>>()?;
     let sources = rows
         .iter()
         .zip(&roles)
@@ -38,7 +42,18 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
                 ordinal: super::required(row.ordinal, "ordinal")?,
                 role,
                 projection: row.projection.as_deref().unwrap_or_default(),
-                context_parent: row.context_parent,
+                context_parent: match row.context_parent.as_deref() {
+                    None => None,
+                    Some("") => Some(-1),
+                    Some(parent) => Some(
+                        *positions
+                            .get(parent)
+                            .filter(|ordinal| **ordinal < row.ordinal.unwrap_or(-1))
+                            .ok_or_else(|| {
+                                AppError::database_data("invalid native message parent")
+                            })?,
+                    ),
+                },
             })
         })
         .collect::<Result<Vec<_>, AppError>>()?;

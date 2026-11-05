@@ -89,9 +89,9 @@ pub(crate) fn reconcile(
             .map_err(|_| AppError::internal("Claude conversation contains too many messages"))?;
         message.context = parent
             .as_ref()
-            .and_then(|id| positions.get(id))
-            .map_or(MessageContext::Root, |&ordinal| MessageContext::Parent {
-                ordinal,
+            .filter(|id| positions.contains_key(*id))
+            .map_or(MessageContext::Root, |id| MessageContext::Parent {
+                id: id.clone(),
             });
         positions.insert(id.clone(), message.ordinal);
         lineage.insert(id.clone(), parent);

@@ -123,6 +123,8 @@ fn claude_repeated_consistent_metadata_still_bridges_dialogue_ancestry() {
     assert_eq!(conversation.messages.len(), 2);
     assert_eq!(
         conversation.messages.inline()[1].context,
-        MessageContext::Parent { ordinal: 0 }
+        MessageContext::Parent {
+            id: conversation.messages.inline()[0].id.clone()
+        }
     );
 }

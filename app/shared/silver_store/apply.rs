@@ -288,7 +288,7 @@ impl Upload<'_> {
         if record.ordinal < 0
             || (!self.build.includes_dense(&record.role, &record.projection)
                 && (record.vector.is_some() || record.generation.is_some()))
-            || !record.context.valid(record.ordinal)
+            || !record.context.valid(&record.id)
             || record
                 .vector
                 .as_ref()

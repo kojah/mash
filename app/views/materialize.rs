@@ -100,8 +100,9 @@ impl<'a> Writer<'a> {
                         &plan,
                         super::units::Input {
                             chat: &message.conversation_id,
+                            id: &message.id,
                             ordinal: message.ordinal,
-                            context: message.context,
+                            context: &message.context,
                             role: &message.role,
                             projection: &message.projection,
                         },

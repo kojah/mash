@@ -4,15 +4,15 @@
 //! fingerprints remain in silver; Protobuf serialization is never used as a
 //! canonical history identity.
 //!
-//! Connector, attachment and progressive-backfill variants are part of the
-//! negotiated contract; their handlers land with those operations.
+//! Publication, attachment and progressive-backfill transfers share the
+//! negotiated contract.
 #![allow(dead_code)]
 use crate::AppError;
 use crate::shared::protocol::{self, Event};
 use prost::Message;
 use std::io::Read;
 
-pub(crate) const PROTOCOL_VERSION: u32 = 1;
+pub(crate) const PROTOCOL_VERSION: u32 = 2;
 pub(crate) const MAX_CONTROL_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_ENVELOPE_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;
@@ -32,7 +32,7 @@ pub(crate) const BATCH_TOO_LARGE: &str = "publication batch exceeds decoded-size
 pub(crate) struct ClientFrame {
     #[prost(string, tag = "1")]
     pub operation_id: String,
-    #[prost(oneof = "client_frame::Body", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
+    #[prost(oneof = "client_frame::Body", tags = "2, 3, 4, 6, 7, 8, 9, 10, 11")]
     pub body: Option<client_frame::Body>,
 }
 
@@ -45,8 +45,6 @@ pub(crate) mod client_frame {
         BeginBackfill(super::BeginBackfill),
         #[prost(message, tag = "4")]
         BeginPublication(super::BeginPublication),
-        #[prost(message, tag = "5")]
-        BeginConnectorBatch(super::BeginConnectorBatch),
         #[prost(message, tag = "6")]
         BeginAttachment(super::BeginAttachment),
         #[prost(message, tag = "7")]
@@ -227,20 +225,6 @@ pub(crate) struct PublicationStart {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct BeginConnectorBatch {
-    #[prost(string, tag = "1")]
-    pub source_id: String,
-    #[prost(string, tag = "2")]
-    pub batch_id: String,
-    #[prost(string, tag = "3")]
-    pub expected_revision: String,
-    #[prost(string, tag = "4")]
-    pub manifest_digest: String,
-    #[prost(uint64, tag = "5")]
-    pub decoded_bytes: u64,
-}
-
-#[derive(Clone, PartialEq, Message)]
 pub(crate) struct BeginAttachment {
     #[prost(string, tag = "1")]
     pub message_id: String,
@@ -373,22 +357,6 @@ pub(crate) struct Published {
     pub views_current: bool,
     #[prost(int64, optional, tag = "3")]
     pub coverage_through: Option<i64>,
-    /// Connector batches carry the source-scoped receipt the HTTP route
-    /// returned, so adapters can retire it.
-    #[prost(message, optional, tag = "4")]
-    pub connector: Option<ConnectorReceipt>,
-}
-
-#[derive(Clone, PartialEq, Message)]
-pub(crate) struct ConnectorReceipt {
-    #[prost(string, tag = "1")]
-    pub source_id: String,
-    #[prost(string, tag = "2")]
-    pub batch_id: String,
-    #[prost(uint64, tag = "3")]
-    pub source_revision: u64,
-    #[prost(uint64, tag = "4")]
-    pub silver_revision: u64,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -576,8 +544,9 @@ pub(crate) struct Vector {
 pub(crate) struct MessageContext {
     #[prost(uint32, tag = "1")]
     pub kind: u32,
-    #[prost(int64, optional, tag = "2")]
-    pub ordinal: Option<i64>,
+    // Tag 2 belonged to ordinal ancestry in protocol 1.
+    #[prost(string, optional, tag = "3")]
+    pub parent_id: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -1165,7 +1134,7 @@ impl TryFrom<&protocol::MessageRecord> for NativeRecord {
                 id: record.id.clone(),
                 conversation_id: record.conversation_id.clone(),
                 ordinal: record.ordinal,
-                context: Some(MessageContext::from(record.context)),
+                context: Some(MessageContext::from(&record.context)),
                 role: record.role.as_str().to_owned(),
                 content: record.content.clone(),
                 projection: record.projection.clone(),
@@ -1230,20 +1199,20 @@ impl TryFrom<Tombstone> for protocol::Tombstone {
     }
 }
 
-impl From<crate::message_context::MessageContext> for MessageContext {
-    fn from(context: crate::message_context::MessageContext) -> Self {
+impl From<&crate::message_context::MessageContext> for MessageContext {
+    fn from(context: &crate::message_context::MessageContext) -> Self {
         match context {
             crate::message_context::MessageContext::Linear => Self {
                 kind: 0,
-                ordinal: None,
+                parent_id: None,
             },
             crate::message_context::MessageContext::Root => Self {
                 kind: 1,
-                ordinal: None,
+                parent_id: None,
             },
-            crate::message_context::MessageContext::Parent { ordinal } => Self {
+            crate::message_context::MessageContext::Parent { id } => Self {
                 kind: 2,
-                ordinal: Some(ordinal),
+                parent_id: Some(id.clone()),
             },
         }
     }
@@ -1252,10 +1221,10 @@ impl From<crate::message_context::MessageContext> for MessageContext {
 impl TryFrom<MessageContext> for crate::message_context::MessageContext {
     type Error = AppError;
     fn try_from(context: MessageContext) -> Result<Self, Self::Error> {
-        match (context.kind, context.ordinal) {
+        match (context.kind, context.parent_id) {
             (0, None) => Ok(Self::Linear),
             (1, None) => Ok(Self::Root),
-            (2, Some(ordinal)) => Ok(Self::Parent { ordinal }),
+            (2, Some(id)) if !id.is_empty() => Ok(Self::Parent { id }),
             _ => Err(invalid("invalid message context")),
         }
     }

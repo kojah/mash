@@ -2,6 +2,83 @@ use super::*;
 use rusqlite::{Connection, types::Value};
 
 #[test]
+fn portable_v1_parent_positions_resolve_after_out_of_order_records() {
+    let root = tempfile::tempdir().unwrap();
+    let (database, connection) = fixture(root.path());
+    connection.execute_batch(
+        "INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at)
+         SELECT 'provider','codex','reply','entry','codex:message','thread',storage_id,'thread',2,'assistant','Reply','Reply','message',12 FROM objects WHERE id='thread';
+         INSERT INTO native_messages(storage_id,id,fingerprint) SELECT storage_id,id,'reply-hash' FROM objects WHERE id='reply';"
+    ).unwrap();
+    crate::storage::turns::derive(&connection, "thread").unwrap();
+    drop(connection);
+    let archive = root.path().join("export");
+    write(&database, &archive, None).unwrap();
+    let path = archive.join(DATABASE);
+    let mut records: Vec<crate::silver::archive::Record> = fs::read_to_string(&path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let parent = records
+        .iter()
+        .position(|record| {
+            matches!(record,
+                crate::silver::archive::Record::Message { id, .. } if id == "message"
+            )
+        })
+        .unwrap();
+    let child = records.iter().position(|record| matches!(record,
+        crate::silver::archive::Record::Message { id, context: crate::silver::archive::Context::Parent { ordinal: 0 }, .. } if id == "reply"
+    )).unwrap();
+    assert!(parent < child);
+    records.swap(parent, child);
+    for missing_parent in [false, true] {
+        if missing_parent {
+            let crate::silver::archive::Record::Message { context, .. } = &mut records[parent]
+            else {
+                panic!("expected child record");
+            };
+            *context = crate::silver::archive::Context::Parent { ordinal: 1 };
+        }
+        let text = records
+            .iter()
+            .map(|record| serde_json::to_string(record).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&path, text).unwrap();
+        let mut manifest: Manifest =
+            serde_json::from_slice(&fs::read(archive.join(MANIFEST)).unwrap()).unwrap();
+        manifest.records = digest(&path).unwrap();
+        fs::write(
+            archive.join(MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let imported = root
+            .path()
+            .join(format!("imported-{missing_parent}.sqlite3"));
+        let result = load(&archive, &imported, true);
+        if missing_parent {
+            assert!(result.is_err());
+            assert!(!imported.exists());
+        } else {
+            result.unwrap();
+            let connection = crate::storage::test_support::connect(&imported);
+            let parent: String = connection
+                .query_row(
+                    "SELECT context_parent FROM objects WHERE id='reply'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(parent, "message");
+        }
+    }
+}
+
+#[test]
 fn import_preserves_past_interpretation_evidence_without_certifying_current_views() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());
@@ -123,7 +200,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_key,source_session,source_fingerprint)
          SELECT storage_id,id,source,'/missing/session','file:/missing/session',NULL,'source-hash' FROM objects WHERE id='thread';
          INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata)
-         SELECT 'provider','codex','message','entry','codex:message','thread',storage_id,'thread',0,'user','Canonical evidence','visible evidence',-1,11,
+         SELECT 'provider','codex','message','entry','codex:message','thread',storage_id,'thread',0,'user','Canonical evidence','visible evidence','',11,
            '{\"tool_calls\":[{\"name\":\"exec\",\"call_id\":\"c1\",\"input\":{\"cmd\":[\"ls\"]}}],\"tool_results\":[{\"call_id\":\"c0\",\"is_error\":true}]}' FROM objects WHERE id='thread';
          INSERT INTO native_messages(storage_id,id,fingerprint) SELECT storage_id,id,'message-hash' FROM objects WHERE id='message';
          INSERT INTO conversation_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');

@@ -31,6 +31,18 @@ pub(crate) fn visit(
     storage: &Storage,
     emit: &mut impl FnMut(Record) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
+    let invalid_context = storage.connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
+            AND m.context_parent<>'' AND NOT EXISTS(SELECT 1 FROM objects p
+                WHERE p.origin='provider' AND p.object_role='entry' AND p.conversation_id=m.conversation_id
+                    AND p.id=m.context_parent AND p.ordinal<m.ordinal))",
+        [], |row| row.get::<_, bool>(0),
+    ).map_err(AppError::database)?;
+    if invalid_context {
+        return Err(AppError::database_data(
+            "invalid native message parent in archive source",
+        ));
+    }
     macro_rules! table {
         ($sql:expr, $convert:expr) => {{
             let mut statement = storage
@@ -65,7 +77,10 @@ pub(crate) fn visit(
         }
     ));
     table!(
-        "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,m.context_parent,m.created_at,COALESCE(n.fingerprint,'') AS fingerprint,m.metadata
+        "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,
+             CASE WHEN m.context_parent IS NULL THEN NULL WHEN m.context_parent='' THEN -1
+                  ELSE (SELECT p.ordinal FROM objects p WHERE p.origin='provider' AND p.object_role='entry' AND p.conversation_id=m.conversation_id AND p.id=m.context_parent) END AS context_parent,
+             m.created_at,COALESCE(n.fingerprint,'') AS fingerprint,m.metadata
          FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
          WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.conversation_id,m.ordinal",
         |row| Ok::<_, AppError>(Record::Message {
@@ -363,7 +378,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 role,
                 content,
                 dialogue_text,
-                context.parent(),
+                (context.parent() == Some(-1)).then_some(""),
                 created_at,
                 tools.encode()?
             );
@@ -371,6 +386,14 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 return Err(AppError::database_data(
                     "archive message precedes its conversation",
                 ));
+            }
+            if let crate::silver::archive::Context::Parent { ordinal } = context {
+                execute!(
+                    "INSERT INTO archive_context(id,conversation_id,parent_ordinal) VALUES(?1,?2,?3)",
+                    id,
+                    conversation_id,
+                    ordinal
+                );
             }
             execute!(
                 "INSERT INTO native_messages(storage_id,id,fingerprint)

@@ -5,19 +5,12 @@ use rusqlite::{OptionalExtension, params};
 
 pub(crate) const PARENT_CHARS: usize = 2048;
 
-pub(crate) fn parent_ordinal(context: MessageContext, ordinal: i64) -> Option<i64> {
-    match context {
-        MessageContext::Linear => ordinal.checked_sub(1).filter(|value| *value >= 0),
-        MessageContext::Root => None,
-        MessageContext::Parent { ordinal } => Some(ordinal),
-    }
-}
-
 #[derive(Clone, Copy)]
 pub(crate) struct Input<'a> {
     pub(crate) chat: &'a str,
+    pub(crate) id: &'a str,
     pub(crate) ordinal: i64,
-    pub(crate) context: MessageContext,
+    pub(crate) context: &'a MessageContext,
     pub(crate) role: &'a Role,
     pub(crate) projection: &'a str,
 }
@@ -45,7 +38,7 @@ impl Parents {
             .execute_batch(
                 "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;
              PRAGMA cache_size=-2048; PRAGMA temp_store=FILE;
-             CREATE TABLE parents(ordinal INTEGER PRIMARY KEY, projection TEXT NOT NULL);",
+             CREATE TABLE parents(id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL UNIQUE, projection TEXT NOT NULL);",
             )
             .map_err(AppError::database)?;
         Ok(Self {
@@ -64,30 +57,37 @@ impl Parents {
             input.chat.clone_into(&mut self.chat);
             self.ordinal = -1;
         }
-        if input.ordinal <= self.ordinal || !input.context.valid(input.ordinal) {
+        if input.ordinal <= self.ordinal || !input.context.valid(input.id) {
             return Err(AppError::internal(
                 "views unit messages are not in valid ordinal order",
             ));
         }
         self.ordinal = input.ordinal;
-        let parent = match parent_ordinal(input.context, input.ordinal) {
-            Some(ordinal) => self
+        let parent = match input.context {
+            MessageContext::Linear => self
                 .connection
                 .query_row(
                     "SELECT projection FROM parents WHERE ordinal=?1",
-                    [ordinal],
+                    [input.ordinal.saturating_sub(1)],
                     |row| row.get::<_, String>("projection"),
                 )
                 .optional()
                 .map_err(AppError::database)?,
-            None => None,
+            MessageContext::Parent { id } => self
+                .connection
+                .query_row("SELECT projection FROM parents WHERE id=?1", [id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .optional()
+                .map_err(AppError::database)?,
+            MessageContext::Root => None,
         };
         if build.includes_dense(input.role, input.projection) {
             let projection: String = input.projection.chars().take(PARENT_CHARS).collect();
             self.connection
                 .execute(
-                    "INSERT INTO parents(ordinal, projection) VALUES (?1, ?2)",
-                    params![input.ordinal, projection],
+                    "INSERT INTO parents(id, ordinal, projection) VALUES (?1, ?2, ?3)",
+                    params![input.id, input.ordinal, projection],
                 )
                 .map_err(AppError::database)?;
         }

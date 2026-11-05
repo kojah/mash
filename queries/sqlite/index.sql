@@ -98,7 +98,7 @@ UPDATE objects SET ordinal=sqlc.arg(ordinal)
 WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
 
 -- name: Anchor :one
-SELECT conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
+SELECT id,conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
 
 -- name: MessageAttachments :one
 SELECT attachments FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
@@ -118,10 +118,10 @@ WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(con
 
 -- name: ContextMessage :one
 SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM objects
-WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND ordinal=sqlc.arg(ordinal);
+WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(id);
 
 -- name: FirstChild :one
-SELECT ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
+SELECT id,ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
 
 -- name: SilverCertificate :one
 SELECT s.revision, s.interpretation_version,

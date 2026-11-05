@@ -227,7 +227,7 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
         ordinal: row.get::<_, i64>(2).map_err(AppError::database)?,
         context: crate::message_context::MessageContext::from_parent(
             row.get("context_parent").map_err(AppError::database)?,
-        )?,
+        ),
         role: row
             .get::<_, crate::role::Role>(3)
             .map_err(AppError::database)?,

@@ -62,12 +62,6 @@ enum Command {
     },
     /// Discover and index supported local histories.
     Index {
-        /// Commit an external connector batch to local silver; receipt reports views readiness.
-        #[arg(long, value_name = "PATH", conflicts_with_all = ["watch", "full", "rebuild_local_views", "provider", "since_days", "all_history"])]
-        connector_batch: Option<PathBuf>,
-        /// Deliver --connector-batch to the shared destination instead of local silver.
-        #[arg(long, requires = "connector_batch")]
-        shared: bool,
         /// Build local retrieval state from certified stored silver, offline.
         /// With --full, discard all local views and replay it from silver.
         #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history"])]
@@ -99,7 +93,7 @@ enum Command {
             value_name = "BACKFILL_ID",
             num_args = 0..=1,
             default_missing_value = "baseline",
-            conflicts_with_all = ["watch", "connector_batch", "rebuild_local_views"]
+            conflicts_with_all = ["watch", "rebuild_local_views"]
         )]
         backfill: Option<String>,
     },
@@ -393,15 +387,6 @@ impl Cli {
                 shared,
                 diagnostics,
             },
-            Command::Index {
-                connector_batch: Some(batch_file),
-                shared: true,
-                ..
-            } => Operation::DeliverConnector { batch_file },
-            Command::Index {
-                connector_batch: Some(batch_file),
-                ..
-            } => Operation::IngestConnector { batch_file },
             Command::Index {
                 rebuild_local_views,
                 full,

@@ -475,7 +475,7 @@ mod tests {
                    origin TEXT, source TEXT, id TEXT, object_role TEXT,
                    kind TEXT, parent_id TEXT, parent_storage_id INTEGER,
                    reply_to TEXT, conversation_id TEXT, ordinal INTEGER,
-                   context_parent INTEGER, role TEXT, author TEXT, title TEXT,
+                   context_parent TEXT, role TEXT, author TEXT, title TEXT,
                    content TEXT, search_projection TEXT, created_at INTEGER,
                    updated_at INTEGER, project TEXT, repository TEXT, url TEXT,
                    metadata TEXT, attachments TEXT DEFAULT '[]', record TEXT);

@@ -5,7 +5,7 @@ use crate::AppError;
 use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 57;
+pub(crate) const SCHEMA_VERSION: i64 = 58;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");

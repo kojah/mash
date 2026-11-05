@@ -11,7 +11,9 @@ fn fixtures() -> Vec<NormalizedMessage> {
             context: if index == 0 {
                 crate::message_context::MessageContext::Root
             } else {
-                crate::message_context::MessageContext::Parent { ordinal: 0 }
+                crate::message_context::MessageContext::Parent {
+                    id: "message-0".into(),
+                }
             },
             role: crate::role::Role::Other("custom-channel".to_owned()),
             content: format!("text {index} with control \0 and newline\n and escaped \\\""),

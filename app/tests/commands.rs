@@ -139,7 +139,14 @@ fn informational_flags_succeed_without_initializing_application_resources() {
 
 #[test]
 fn missing_and_invalid_cli_arguments_remain_json_usage_errors() {
-    for arguments in [vec![], vec!["--unknown"], vec!["search"], vec!["serve"]] {
+    for arguments in [
+        vec![],
+        vec!["--unknown"],
+        vec!["search"],
+        vec!["serve"],
+        vec!["index", "--connector-batch", "batch.json"],
+        vec!["index", "--shared"],
+    ] {
         let output = Command::cargo_bin("mash")
             .unwrap()
             .args(&arguments)

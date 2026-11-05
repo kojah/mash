@@ -44,7 +44,9 @@ fn dependency_digest_ignores_views_but_covers_all_silver_and_has_stable_order() 
             2 => messages[0].projection.push('!'),
             3 => messages[1].content.push('!'),
             4 => {
-                messages[1].context = crate::message_context::MessageContext::Parent { ordinal: 0 };
+                messages[1].context = crate::message_context::MessageContext::Parent {
+                    id: messages[0].id.clone(),
+                };
             }
             5 => conversation.repository = Some("repo".into()),
             _ => {

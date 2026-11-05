@@ -24,7 +24,7 @@ fn digest(messages: &crate::silver::messages::Messages, lineage: &claude::Lineag
         let record = serde_json::to_vec(&(
             &message.id,
             message.ordinal,
-            message.context,
+            message.context.clone(),
             &message.role,
             &message.content,
             &message.dialogue_text,

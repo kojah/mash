@@ -6,7 +6,7 @@ fn text(
     build: &Build,
     chat: &str,
     ordinal: i64,
-    context: MessageContext,
+    context: &MessageContext,
     role: &Role,
     projection: &str,
 ) -> Option<String> {
@@ -15,6 +15,7 @@ fn text(
             build,
             Input {
                 chat,
+                id: &ordinal.to_string(),
                 ordinal,
                 context,
                 role,
@@ -38,7 +39,7 @@ fn parent_units_respect_branches_roots_gaps_visibility_and_role_selection() {
             &build,
             "a",
             0,
-            MessageContext::Root,
+            &MessageContext::Root,
             &Role::User,
             "root"
         ),
@@ -50,7 +51,7 @@ fn parent_units_respect_branches_roots_gaps_visibility_and_role_selection() {
             &build,
             "a",
             1,
-            MessageContext::Linear,
+            &MessageContext::Linear,
             &Role::Assistant,
             "answer"
         ),
@@ -62,7 +63,7 @@ fn parent_units_respect_branches_roots_gaps_visibility_and_role_selection() {
             &build,
             "a",
             2,
-            MessageContext::Parent { ordinal: 0 },
+            &MessageContext::Parent { id: "0".into() },
             &Role::User,
             "branch"
         ),
@@ -74,7 +75,7 @@ fn parent_units_respect_branches_roots_gaps_visibility_and_role_selection() {
             &build,
             "a",
             3,
-            MessageContext::Linear,
+            &MessageContext::Linear,
             &Role::User,
             ""
         ),
@@ -86,7 +87,7 @@ fn parent_units_respect_branches_roots_gaps_visibility_and_role_selection() {
             &build,
             "a",
             4,
-            MessageContext::Linear,
+            &MessageContext::Linear,
             &Role::User,
             "after hidden"
         ),
@@ -106,7 +107,7 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
         &build,
         "a",
         4,
-        MessageContext::Root,
+        &MessageContext::Root,
         &Role::User,
         "previous",
     );
@@ -116,7 +117,7 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
             &build,
             "a",
             6,
-            MessageContext::Linear,
+            &MessageContext::Linear,
             &Role::User,
             "gap"
         ),
@@ -128,7 +129,7 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
             &build,
             "a",
             7,
-            MessageContext::Root,
+            &MessageContext::Root,
             &Role::User,
             "new root"
         ),
@@ -140,7 +141,7 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
             &build,
             "b",
             1,
-            MessageContext::Parent { ordinal: 0 },
+            &MessageContext::Parent { id: "0".into() },
             &Role::User,
             "other chat"
         ),
@@ -157,7 +158,7 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
             &users,
             "a",
             0,
-            MessageContext::Root,
+            &MessageContext::Root,
             &Role::Assistant,
             "excluded"
         ),
@@ -169,7 +170,7 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
             &users,
             "a",
             1,
-            MessageContext::Linear,
+            &MessageContext::Linear,
             &Role::User,
             "user"
         ),
@@ -227,7 +228,7 @@ fn invalid_stream_order_and_edges_fail_without_default_scratch_overhead() {
         &Build::default(),
         "a",
         0,
-        MessageContext::Root,
+        &MessageContext::Root,
         &Role::User,
         "a",
     );
@@ -241,14 +242,14 @@ fn invalid_stream_order_and_edges_fail_without_default_scratch_overhead() {
         &build,
         "a",
         1,
-        MessageContext::Root,
+        &MessageContext::Root,
         &Role::User,
         "a",
     );
     for (ordinal, context) in [
         (1, MessageContext::Linear),
         (0, MessageContext::Root),
-        (2, MessageContext::Parent { ordinal: 2 }),
+        (2, MessageContext::Parent { id: "2".into() }),
     ] {
         assert!(
             stream
@@ -256,8 +257,9 @@ fn invalid_stream_order_and_edges_fail_without_default_scratch_overhead() {
                     &build,
                     Input {
                         chat: "a",
+                        id: &ordinal.to_string(),
                         ordinal,
-                        context,
+                        context: &context,
                         role: &Role::User,
                         projection: "bad"
                     },

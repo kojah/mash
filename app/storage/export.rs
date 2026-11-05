@@ -77,6 +77,9 @@ pub(crate) fn restore(
     let mut line = Vec::new();
     let mut state_seen = false;
     let mut identity_seen = false;
+    transaction.execute_batch(
+        "CREATE TEMP TABLE archive_context(id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, parent_ordinal INTEGER NOT NULL);"
+    ).map_err(AppError::database)?;
     loop {
         line.clear();
         let bytes = (&mut reader)
@@ -112,6 +115,7 @@ pub(crate) fn restore(
     let (silver, publication): (i64, i64) = transaction
         .query_row(revisions, [], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(AppError::database)?;
+    resolve_archive_context(&transaction)?;
     crate::storage::turns::derive_all(&transaction)?;
     if !crate::storage::objects::native_violations(&transaction)?.is_empty() {
         return Err(AppError::usage(
@@ -250,4 +254,29 @@ impl AttachmentFormat {
             }
         }
     }
+}
+
+fn resolve_archive_context(transaction: &rusqlite::Transaction<'_>) -> Result<(), AppError> {
+    // Version-1 archives refer to frozen positions. Resolve all of them after
+    // reading the records, so import order cannot change live parent identity.
+    let missing = transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM archive_context a WHERE NOT EXISTS(
+            SELECT 1 FROM objects p WHERE p.origin='provider' AND p.object_role='entry'
+                AND p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal))",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(AppError::database)?;
+    if missing {
+        return Err(AppError::usage("archive message parent is missing"));
+    }
+    transaction.execute_batch(
+        "UPDATE objects SET context_parent=(SELECT p.id FROM archive_context a JOIN objects p
+             ON p.origin='provider' AND p.object_role='entry' AND p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal
+             WHERE a.id=objects.id)
+         WHERE origin='provider' AND object_role='entry' AND id IN (SELECT id FROM archive_context);
+         DROP TABLE archive_context;"
+    ).map_err(AppError::database)?;
+    Ok(())
 }

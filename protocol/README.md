@@ -528,9 +528,8 @@ retirement without a validated import. No progress/liveness property is claimed.
 
 ### Shared vocabulary
 
-`docs/source-model.md` is the reference for how publications, connectors and
-baselines relate: source identity (device- vs account-scoped), ownership, the
-connector kind/role schema, deletion rules and the deduplication contract.
+`docs/agent-history.md` defines the agent-history domain and the relationship
+between canonical sessions, messages, derived turns, publication, and replay.
 Model changes here should keep that document in sync.
 
 ### WebSocket synchronization: transfer and durable acknowledgement
@@ -703,11 +702,8 @@ Known implementation/model gaps, recorded in Beads:
    estimate at the group's embedding width; text and index overhead excluded).
    `mash status --shared` reports it as `duplicates`. The endpoint exposes
    content hashes only, never plaintext.
-6. Connector batches and attachments now use the same transfer path
-   (`BeginConnectorBatch`, `BeginAttachment`, then `Chunk`/`FinishUpload`).
-   Connector batches commit through the existing `Store::ingest_connector`
-   receipt boundary and return a connector receipt revision, not a native
-   publication revision. Attachments are sent as uncompressed pieces
+6. Attachments use `BeginAttachment`, then `Chunk`/`FinishUpload`.
+   Attachments are sent as uncompressed pieces
    (`Compression::NONE`), validated against the published message metadata, and
    written with `fsync` before `AttachmentStored`.
 
@@ -718,12 +714,11 @@ Known implementation/model gaps, recorded in Beads:
    path rather than a retired one, and
    `released_server_no_longer_exposes_legacy_mutation_routes` proves the routes
    answer 404.
-   `/v1/connector-batches` is gone as well. `Published` now carries the
-   source-scoped `ConnectorReceipt` (source id, batch id, source revision,
-   silver revision) plus views readiness, the Rust client ships
-   `deliver_connector`, and the Python SDK delivers by running
-   `mash index --connector-batch <file> --shared` over `/v1/sync`. The cutover
-   test asserts 404 for the old route.
+   Agent-history-only publication no longer accepts external-content batches
+   or account-source ownership transfers. The native publication, attachment,
+   and backfill lock and durable-write boundaries are unchanged by this removal.
+   The native synchronization models therefore retain their existing actions;
+   deleting the separate ingress introduces no new interleaving.
 7. Multiple concurrent sessions are serialized by an in-process catalog mutex
    plus operation ownership checks. Client publication is fenced per local
    database and destination by an advisory file lock

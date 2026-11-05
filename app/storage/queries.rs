@@ -238,42 +238,50 @@ impl Storage {
         context: i64,
         representation: super::MessageContent,
     ) -> Result<Vec<Message>, AppError> {
-        let read = |ordinal| {
+        let read = |id: &str| {
             sql::ContextMessage::builder()
                 .conversation_id(&anchor.conversation_id)
-                .ordinal(Some(ordinal))
+                .id(id)
                 .build()
                 .query_opt(&self.connection)
                 .map_err(AppError::database)
         };
         let mut rows = Vec::new();
-        let mut ordinal = anchor_ordinal;
+        let mut id = anchor.id.clone();
+        let mut previous_ordinal = None;
         for _ in 0..=context {
-            let Some(row) = read(ordinal)? else { break };
-            let parent = row.context_parent;
+            let Some(row) = read(&id)? else { break };
+            let ordinal = super::required(row.ordinal, "ordinal")?;
+            if previous_ordinal.is_some_and(|previous| ordinal >= previous) {
+                return Err(AppError::database_data("invalid message context parent"));
+            }
+            previous_ordinal = Some(ordinal);
+            let parent = row.context_parent.clone();
             rows.push(row);
-            let Some(parent) = parent.filter(|n| *n >= 0 && *n < ordinal) else {
+            let Some(parent) = parent.filter(|id| !id.is_empty()) else {
                 break;
             };
-            ordinal = parent;
+            id = parent;
         }
-        ordinal = anchor_ordinal;
+        let mut ordinal = anchor_ordinal;
+        id.clone_from(&anchor.id);
         for _ in 0..context {
             let Some(child) = sql::FirstChild::builder()
                 .conversation_id(&anchor.conversation_id)
-                .parent(Some(ordinal))
+                .parent(Some(&id))
                 .build()
                 .query_opt(&self.connection)
                 .map_err(AppError::database)?
             else {
                 break;
             };
-            let child = super::required(child.ordinal, "ordinal")?;
-            if child <= ordinal {
+            let next_ordinal = super::required(child.ordinal, "ordinal")?;
+            if next_ordinal <= ordinal {
                 return Err(AppError::database_data("invalid message context parent"));
             }
-            ordinal = child;
-            let Some(row) = read(ordinal)? else { break };
+            ordinal = next_ordinal;
+            id = child.id;
+            let Some(row) = read(&id)? else { break };
             rows.push(row);
         }
         rows.sort_by_key(|row| row.ordinal);

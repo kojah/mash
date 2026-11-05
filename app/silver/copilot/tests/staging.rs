@@ -71,6 +71,7 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
     );
     assert_eq!(conversation.messages.summary().unwrap().searchable, 2);
     let mut count = 0;
+    let mut previous = String::new();
     for row in conversation.messages.rows().unwrap() {
         let row = row.unwrap();
         let ordinal = row.ordinal;
@@ -80,7 +81,7 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
             _ => assert_eq!(
                 row.context,
                 MessageContext::Parent {
-                    ordinal: ordinal - 1
+                    id: previous.clone()
                 }
             ),
         }
@@ -99,6 +100,7 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
                 )
             );
         }
+        previous = row.id.clone();
         count += 1;
     }
     assert_eq!(count, 604);

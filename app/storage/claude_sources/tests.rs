@@ -35,7 +35,7 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     for message in &all.messages.inline()[1..] {
         assert_eq!(
             message.context,
-            crate::message_context::MessageContext::Parent { ordinal: 0 }
+            crate::message_context::MessageContext::Parent { id: "root".into() }
         );
     }
     assert_eq!(all.created_at, Some(10));
