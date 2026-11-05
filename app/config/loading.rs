@@ -50,6 +50,7 @@ pub(super) fn load_from_paths(
         Err(error) if error.kind() == io::ErrorKind::NotFound && !explicit => {
             let providers = built_in_providers()?;
             return Ok(ResolvedConfig {
+                qdrant: super::QdrantConfig::default(),
                 attachments: crate::attachments::Configuration::default(),
                 redaction: crate::redaction::Settings::default(),
                 path,
@@ -102,6 +103,7 @@ pub(super) fn load_from_paths(
         shared.publication_redaction = parsed.redaction.publication();
     }
     Ok(ResolvedConfig {
+        qdrant: parsed.qdrant,
         attachments: parsed.attachments,
         redaction: parsed.redaction,
         path: canonical,

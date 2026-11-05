@@ -6,6 +6,45 @@ use tempfile::TempDir;
 use super::loading::{MAX_CONFIG_BYTES, load_from_paths};
 use super::*;
 
+#[test]
+fn local_qdrant_configuration_is_strict_and_does_not_resolve_credentials() {
+    let prefix = "version = 1\n[providers]\n";
+    let defaults = parse_document(prefix.as_bytes()).unwrap();
+    assert_eq!(defaults.qdrant, QdrantConfig::default());
+    let parsed = parse_document(
+        format!(
+            "{prefix}[qdrant]\nurl = 'https://localhost:6333'\n\
+             api_key_env = 'MASH_TEST_UNRESOLVED_QDRANT_KEY'\nmemory = 'cold'\n\
+             [qdrant.vector_search]\nalgorithm = 'exact'\n"
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(parsed.qdrant.memory, crate::views::qdrant::MemoryTier::Cold);
+    assert_eq!(
+        parsed.qdrant.vector_search,
+        crate::views::vector::Search::Exact {}
+    );
+    for settings in [
+        "url = 'file:///db'",
+        "url = 'http://user:secret@localhost:6333'",
+        "url = 'http://localhost:6333/path'",
+        "url = 'http://localhost:6333/?key=secret'",
+        "url = 'http://localhost:6333/#fragment'",
+        "api_key_env = ''",
+        "api_key_env = '1KEY'",
+        "api_key_env = 'KEY-NAME'",
+        "api_key = 'secret'",
+        "memory = 'unknown'",
+        "[qdrant.vector_search]\nalgorithm = 'hnsw'\nef_runtime = 0",
+    ] {
+        assert!(
+            parse_document(format!("{prefix}[qdrant]\n{settings}\n").as_bytes()).is_err(),
+            "accepted {settings}"
+        );
+    }
+}
+
 /// Fixtures name Unix-style absolute roots; on Windows a root needs a drive
 /// to be absolute, as Mash requires, so quoted absolute paths gain one there.
 fn portable(text: &str) -> String {

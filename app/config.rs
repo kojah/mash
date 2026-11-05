@@ -8,17 +8,20 @@ use serde::{Deserialize, Serialize};
 mod document;
 pub(crate) mod init;
 mod loading;
+mod qdrant;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use document::validate_identifier;
 pub(crate) use loading::{default_path, load};
+pub(crate) use qdrant::QdrantConfig;
 
 const DEFAULT_SINCE_DAYS: u32 = 90;
 const MAX_SINCE_DAYS: u32 = 36_500;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedConfig {
+    pub(crate) qdrant: QdrantConfig,
     pub(crate) attachments: crate::attachments::Configuration,
     pub(crate) redaction: crate::redaction::Settings,
     pub(crate) path: PathBuf,
@@ -52,6 +55,7 @@ pub(crate) struct SharedConfig {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ConfigurationStatus {
+    qdrant: QdrantConfig,
     attachments: crate::attachments::Configuration,
     redaction: crate::redaction::Settings,
     path: PathBuf,
@@ -78,6 +82,7 @@ struct IndexStatus {
 impl ResolvedConfig {
     pub(crate) fn status(&self) -> ConfigurationStatus {
         ConfigurationStatus {
+            qdrant: self.qdrant.clone(),
             attachments: self.attachments.clone(),
             redaction: self.redaction,
             path: self.path.clone(),

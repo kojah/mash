@@ -10,6 +10,7 @@ use crate::provider::{Provider, ProviderRoots};
 
 #[derive(Debug)]
 pub(super) struct ParsedDocument {
+    pub(super) qdrant: super::QdrantConfig,
     pub(super) attachments: crate::attachments::Configuration,
     pub(super) redaction: crate::redaction::Settings,
     pub(super) providers: ProviderRoots,
@@ -23,6 +24,8 @@ pub(super) struct ParsedDocument {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawDocument {
+    #[serde(default)]
+    qdrant: super::QdrantConfig,
     #[serde(default)]
     attachments: crate::attachments::Configuration,
     version: u32,
@@ -69,6 +72,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     if let Some(embeddings) = &raw.embeddings {
         embeddings.validate()?;
     }
+    raw.qdrant.validate()?;
     raw.views.validate()?;
     raw.attachments.validate()?;
     if raw.index.all_history && raw.index.since_days.is_some() {
@@ -121,6 +125,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         ));
     }
     Ok(ParsedDocument {
+        qdrant: raw.qdrant,
         attachments: raw.attachments,
         redaction: raw.redaction,
         providers: raw

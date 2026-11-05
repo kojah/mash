@@ -12,6 +12,25 @@ mod schema_tests;
 mod staging;
 pub(super) use staging::StagingBatch;
 
+pub(crate) fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
+    let mut url = reqwest::Url::parse(url)
+        .map_err(|_| AppError::configuration("invalid Qdrant HTTP endpoint"))?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return Err(AppError::configuration(
+            "Qdrant endpoint requires http(s) origin without credentials, path, query, or fragment",
+        ));
+    }
+    url.set_path("/");
+    Ok(url)
+}
+
 #[derive(Clone)]
 pub(super) struct Client {
     http: reqwest::Client,
@@ -509,21 +528,7 @@ impl Client {
         key: Option<&str>,
         max_node_bytes: usize,
     ) -> Result<Self, AppError> {
-        let mut url = reqwest::Url::parse(url)
-            .map_err(|_| AppError::configuration("invalid Qdrant HTTP endpoint"))?;
-        if !matches!(url.scheme(), "http" | "https")
-            || url.host_str().is_none()
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-            || url.path() != "/"
-        {
-            return Err(AppError::configuration(
-                "Qdrant endpoint requires http(s) origin without credentials, path, query, or fragment",
-            ));
-        }
-        url.set_path("/");
+        let url = endpoint(url)?;
         let mut headers = reqwest::header::HeaderMap::new();
         if let Some(key) = key {
             if key.is_empty() {

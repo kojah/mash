@@ -10,6 +10,7 @@ mod views;
 
 use crate::AppError;
 use crate::views::scope::Scope;
+pub(crate) use api::endpoint;
 pub(crate) use configuration::Settings;
 use serde::{Deserialize, Serialize};
 

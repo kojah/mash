@@ -57,6 +57,7 @@ fn test_configuration(
 ) -> ResolvedConfig {
     let root = std::env::temp_dir().join("mash-cli-options");
     ResolvedConfig {
+        qdrant: config::QdrantConfig::default(),
         attachments: crate::attachments::Configuration::default(),
         redaction: crate::redaction::Settings::default(),
         embeddings: None,
