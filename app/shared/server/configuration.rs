@@ -30,6 +30,7 @@ pub(super) struct Configuration {
     #[serde(default = "default_listen")]
     pub(super) listen: SocketAddr,
     pub(super) qdrant_url_env: Option<String>,
+    pub(super) qdrant_grpc_url_env: Option<String>,
     pub(super) qdrant_api_key_env: Option<String>,
     #[serde(default = "default_upload_mib")]
     max_upload_mib: u64,

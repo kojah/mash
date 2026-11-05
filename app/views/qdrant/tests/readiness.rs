@@ -72,7 +72,10 @@ async fn qdrant_publication_searches_applied_data_while_optimizer_stays_busy() {
     let app = Router::new().fallback(forward).with_state(proxy.clone());
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let mut views = fixture.store.clone();
-    views.api = api::Client::new(&url, None, 64 * 1024 * 1024).unwrap();
+    views.api = api::Client::new(&url, None, 64 * 1024 * 1024)
+        .unwrap()
+        .with_mutations(&fixture.grpc_url, None)
+        .unwrap();
     let server = fixture.serve(views);
     let started = Instant::now();
     for (revision, marker) in [(1, "initial"), (2, "replacement")] {

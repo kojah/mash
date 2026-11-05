@@ -212,7 +212,7 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
                 .unwrap();
         }
         let wide = Store::connect(
-            &fixture.url,
+            (&fixture.url, &fixture.grpc_url),
             None,
             std::slice::from_ref(&fixture.identity.group_id),
             8,

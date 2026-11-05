@@ -81,6 +81,8 @@ sha2 = "0.11"
 hex = "0.4"
 base64 = "0.22.1"
 prost = "0.14.4"
+qdrant-client = { version = "=1.19.0", default-features = false, features = ["serde"] }
+tonic = { version = "0.14.9", features = ["transport", "tls-native-roots"] }
 zstd = "0.13.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
@@ -93,6 +95,7 @@ ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"]
 tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 
 [dev-dependencies]
+tonic-prost = "0.14.9"
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 shlex = "2.0.1"
 pulldown-cmark = { version = "0.13.4", default-features = false }

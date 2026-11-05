@@ -84,6 +84,8 @@ impl Database {
             "512m",
             "-p",
             &publication,
+            "-p",
+            "127.0.0.1::6334",
         ];
         args.extend(["--mount", "type=volume,dst=/qdrant/storage", image]);
         let result = docker(&args, 30);
@@ -96,7 +98,11 @@ impl Database {
     }
 
     pub(super) fn endpoint(&self) -> String {
-        let port = docker(&["port", &self.name, "6333"], 5);
+        self.port("6333")
+    }
+
+    fn port(&self, port: &str) -> String {
+        let port = docker(&["port", &self.name, port], 5);
         assert!(port.status.success(), "container port");
         let port = String::from_utf8(port.stdout).unwrap();
         let port = port.trim().rsplit(':').next().unwrap();
@@ -284,7 +290,7 @@ impl Api {
     ) -> (Self, Vec<serde_json::Value>) {
         // Shared silver lives beside the config and survives database restarts.
         let config = format!(
-            "version=1\nlisten='127.0.0.1:0'\nqdrant_url_env='MASH_RESTART_URL'\nsilver_dir={silver:?}\n[[nodes]]\ngroup_id='restart-main'\nnode_id='first'\ntoken_env='MASH_RESTART_FIRST'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='second'\ntoken_env='MASH_RESTART_SECOND'\n[[nodes]]\ngroup_id='restart-other'\nnode_id='first'\ntoken_env='MASH_RESTART_OTHER'\n",
+            "version=1\nlisten='127.0.0.1:0'\nqdrant_url_env='MASH_RESTART_URL'\nqdrant_grpc_url_env='MASH_RESTART_GRPC_URL'\nsilver_dir={silver:?}\n[[nodes]]\ngroup_id='restart-main'\nnode_id='first'\ntoken_env='MASH_RESTART_FIRST'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='second'\ntoken_env='MASH_RESTART_SECOND'\n[[nodes]]\ngroup_id='restart-other'\nnode_id='first'\ntoken_env='MASH_RESTART_OTHER'\n",
             silver = root.join("shared-silver").to_str().unwrap()
         );
         let path = root.join("server.toml");
@@ -302,6 +308,7 @@ impl Api {
         }
         let child = command
             .env("MASH_RESTART_URL", database.endpoint())
+            .env("MASH_RESTART_GRPC_URL", database.port("6334"))
             .env("MASH_RESTART_FIRST", super::FIRST)
             .env("MASH_RESTART_SECOND", super::SECOND)
             .env("MASH_RESTART_OTHER", super::OTHER)

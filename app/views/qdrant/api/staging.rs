@@ -1,9 +1,8 @@
 //! Bound staged writes by their actual encoded size, retaining completed-write semantics.
-use super::{Client, Operation, OperationStatus, Point, UpsertSlice, failure};
+use super::{Client, Point, grpc};
 use crate::AppError;
-use reqwest::Method;
+use prost::Message;
 use serde::Serialize;
-use serde_json::value::{RawValue, to_raw_value};
 
 const MAX_POINTS: usize = 512;
 const TARGET_BYTES: usize = 2 * 1024 * 1024;
@@ -11,7 +10,7 @@ const MAX_POINT_BYTES: usize = 30 * 1024 * 1024 - 1024;
 
 #[derive(Default)]
 pub(in crate::views::qdrant) struct StagingBatch {
-    points: Vec<Box<RawValue>>,
+    points: Vec<qdrant_client::qdrant::PointStruct>,
     bytes: usize,
 }
 
@@ -22,10 +21,10 @@ impl StagingBatch {
         collection: &str,
         point: Point<P>,
     ) -> Result<(), AppError> {
-        // Serialize the typed record once. RawValue retains those validated bytes
-        // for sizing and transport, without an untyped mapping or a second codec.
-        let point = to_raw_value(&point).map_err(|_| failure())?;
-        let bytes = point.get().len();
+        let point = grpc::point(&point)?;
+        let encoded = point.encoded_len();
+        // Each repeated point includes its protobuf field tag and length prefix.
+        let bytes = 1 + prost::length_delimiter_len(encoded) + encoded;
         if bytes > MAX_POINT_BYTES {
             return Err(AppError::usage(
                 "Qdrant document exceeds the request-size limit",
@@ -55,19 +54,10 @@ impl StagingBatch {
         if self.points.is_empty() {
             return Ok(());
         }
-        let input = UpsertSlice {
-            points: &self.points,
-        };
-        let result: Operation = client
-            .call(
-                Method::PUT,
-                &format!("collections/{collection}/points?wait=true&ordering=strong"),
-                Some(&input),
-            )
+        client
+            .mutations()?
+            .upsert(collection, self.points.clone())
             .await?;
-        if result.status != OperationStatus::Completed {
-            return Err(failure());
-        }
         self.points.clear();
         self.bytes = 0;
         Ok(())

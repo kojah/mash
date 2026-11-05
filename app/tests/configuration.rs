@@ -63,6 +63,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "shared": null,
             "qdrant": {
                 "url": "http://127.0.0.1:6333", "api_key_env": null,
+                "grpc_url": "http://127.0.0.1:6334",
                 "memory": "durable",
                 "vector_search": {"algorithm": "hnsw", "ef_runtime": 200}
             },

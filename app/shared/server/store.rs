@@ -65,6 +65,13 @@ pub(super) async fn initialize(
     env_name(name)?;
     let url = std::env::var(name)
         .map_err(|_| AppError::configuration(format!("set {name} to the Qdrant HTTP endpoint")))?;
+    let name = config
+        .qdrant_grpc_url_env
+        .as_ref()
+        .ok_or_else(|| AppError::configuration("Qdrant requires qdrant_grpc_url_env"))?;
+    env_name(name)?;
+    let grpc_url = std::env::var(name)
+        .map_err(|_| AppError::configuration(format!("set {name} to the Qdrant gRPC endpoint")))?;
     let key = config
         .qdrant_api_key_env
         .as_ref()
@@ -78,7 +85,7 @@ pub(super) async fn initialize(
     let configured = identities.values().cloned().collect::<Vec<_>>();
     let silver = crate::blocking(move || SilverStore::open(&root, &configured)).await?;
     let views = qdrant_index::Store::connect(
-        &url,
+        (&url, &grpc_url),
         key.as_deref(),
         &groups,
         config.embeddings.dimensions,

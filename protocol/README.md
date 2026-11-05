@@ -52,6 +52,15 @@ boundaries are unchanged. The existing models retain their semantics; source
 mappings below follow the moved files. Local Qdrant coordination will require
 its own model review when the local workflow changes.
 
+Qdrant point publication now uses the generated Tonic client in
+`app/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
+This changes encoding and transport, not modeled atomic actions: each upsert or
+delete awaits strong ordering and requires `Completed`, without automatic RPC
+retries. Partial batches still fail before certification. Request/response limits,
+credential handling and completion statuses are checked in Rust boundary tests;
+the existing recovery tests exercise the same silver-first transitions over gRPC.
+The models do not gain any guarantee about delayed operations after a crash.
+
 Shared activity reporting is observational: progress records follow the existing
 admission-owned worker, and never gate work or change retries, transaction
 boundaries or certification ordering. Its cancellation and group-isolation
@@ -286,7 +295,7 @@ Publication no longer waits for collection-wide optimizer idleness (`mash-yves`)
 The `SharedViews` actions/configurations are unchanged: `WritePoint` abstracts
 completed, awaited Qdrant writes/deletes, and `Certify` records their revision.
 Background index maintenance does not change those logical documents. Native
-publication still uses `wait=true&ordering=strong`, includes unindexed data in
+publication uses gRPC `wait=true` and strong write ordering, includes unindexed data in
 queries, and checks health plus bounded retrieval probes after certification.
 Yellow/optimizing health is accepted; failed, paused or unreadable health is not.
 A failed probe can follow a persisted certificate, as before: readiness evidence

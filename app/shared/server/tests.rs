@@ -547,7 +547,10 @@ impl Service {
         );
         let views = if matches!(backend, TestBackend::Qdrant) {
             crate::views::qdrant::Store::connect(
-                &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
+                (
+                    &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
+                    &std::env::var("MASH_TEST_QDRANT_GRPC_URL").unwrap(),
+                ),
                 None,
                 &[group.clone(), format!("{group}-other")],
                 dimensions,

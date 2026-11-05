@@ -301,7 +301,7 @@ impl Store {
     }
     /// Explicit setup of each group's document and views-state collections.
     pub(crate) async fn connect(
-        url: &str,
+        (url, grpc_url): (&str, &str),
         key: Option<&str>,
         groups: &[String],
         dimensions: usize,
@@ -310,7 +310,7 @@ impl Store {
         memory: MemoryPolicy,
     ) -> Result<Self, AppError> {
         vector_index.validate()?;
-        let api = api::Client::new(url, key, max_response_bytes)?;
+        let api = api::Client::new(url, key, max_response_bytes)?.with_mutations(grpc_url, key)?;
         api.verify_version().await?;
         for group in groups {
             api.initialize(&collection(group, true), None, memory)
@@ -318,7 +318,7 @@ impl Store {
             api.initialize(&collection(group, false), Some(dimensions), memory)
                 .await?;
         }
-        Self::open(
+        let mut store = Self::open(
             url,
             key,
             groups,
@@ -327,7 +327,9 @@ impl Store {
             vector_index,
             memory.tier,
         )
-        .await
+        .await?;
+        store.api = api;
+        Ok(store)
     }
 
     /// Open existing views for readers. Missing or incomplete setup fails closed;

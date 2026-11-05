@@ -1338,7 +1338,7 @@ local views and republishes shared silver. History whose source files are gone
 keeps its text without tool metadata.
 
 The HTTP service stores shared silver in SQLite and shared views in
-[Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`; there is no backend
+[Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env` and `qdrant_grpc_url_env`; there is no backend
 selector. See [shared storage](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/shared-storage.md)
 for the publication sequence, recovery and cutover from Qdrant-only servers.
 
@@ -1563,7 +1563,9 @@ recall tradeoffs before choosing approximate retrieval.
 
 ### Qdrant shared storage
 
-Configure `qdrant_url_env` on the HTTP service. Nodes continue using the same
+Configure `qdrant_url_env` and `qdrant_grpc_url_env` on the HTTP service. Point
+publication uses gRPC; reads and collection setup use REST. Both endpoints must
+address the same Qdrant instance. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
 required; older versions are rejected before creating collections. Shared
 silver lives on the API host under `silver_dir` (absolute path; default
@@ -1578,6 +1580,7 @@ the same directory fails at startup. Filtered HNSW vector retrieval is the defau
 version = 1
 listen = "127.0.0.1:8787"
 qdrant_url_env = "MASH_QDRANT_URL"
+qdrant_grpc_url_env = "MASH_QDRANT_GRPC_URL"
 # Optional for an authenticated Qdrant service:
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
 # silver_dir = "/var/lib/mash/shared-silver"
@@ -2059,7 +2062,7 @@ modules are grouped by responsibility:
   Core ML, remote embeddings, hybrid retrieval and query/ranking policies.
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and views embeddings within one atomic revision.
-- `app/views/qdrant/`: common typed REST, collection schema, document writes,
+- `app/views/qdrant/`: common typed REST reads/setup, gRPC document writes, collection schema,
   and dense/sparse retrieval. The engine takes an index scope, independently
   of Axum authentication; shared publication owns coordination around it.
   `Store::open` inspects existing collections without writes; `Store::connect`
@@ -2092,7 +2095,7 @@ sequences against real SQLite, disposable-backend replay interruptions and
 focused cargo-mutants audits. Property tests run with ordinary nextest tests;
 mutation audits run explicitly with `make mutation-tools` and `make mutation-check`.
 Run `make property-check` for generated SQLite tests. With disposable
-`MASH_TEST_QDRANT_URL`, run `make property-backend-check` for generated interrupted
+`MASH_TEST_QDRANT_URL` and `MASH_TEST_QDRANT_GRPC_URL`, run `make property-backend-check` for generated interrupted
 connector writes and `make mutation-connectors` to audit their regressions.
 
 Bounded TLA+ checks for publication, connector receipts, tombstones and shared
@@ -2165,12 +2168,14 @@ when checking async code. On that toolchain, use
 `RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.
 
 The storage integration tests require disposable Qdrant 1.19+ in
-`MASH_TEST_QDRANT_URL`. Tests start real HTTP services and create/remove isolated
+`MASH_TEST_QDRANT_URL` and its gRPC endpoint in `MASH_TEST_QDRANT_GRPC_URL`.
+Tests start real HTTP services and create/remove isolated
 collections for their owned groups:
 
 ```bash
 MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
   MASH_TEST_QDRANT_URL='http://localhost:6333/' \
+  MASH_TEST_QDRANT_GRPC_URL='http://localhost:6334/' \
   cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
 ```
 

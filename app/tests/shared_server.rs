@@ -42,6 +42,7 @@ impl Server {
             version = 1
             listen = "127.0.0.1:0"
             qdrant_url_env = "MASH_TEST_QDRANT_URL"
+            qdrant_grpc_url_env = "MASH_TEST_QDRANT_GRPC_URL"
             silver_dir = silver
             nodes = (credentials)
         };

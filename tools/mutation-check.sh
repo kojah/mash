@@ -52,12 +52,14 @@ case "${1:-}" in
         config=.cargo/mutants-connectors.toml
         if [[ $1 == --list-connectors ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
         [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
+        [[ -n ${MASH_TEST_QDRANT_GRPC_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance' >&2; exit 2; }
         ;;
     --certification|--list-certification)
         [[ $# == 1 ]] || exit 2
         config=.cargo/mutants-certification.toml
         if [[ $1 == --list-certification ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
         [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
+        [[ -n ${MASH_TEST_QDRANT_GRPC_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance' >&2; exit 2; }
         ;;
     *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--connectors|--list-connectors|--certification|--list-certification]' >&2; exit 2 ;;
 esac

@@ -20,6 +20,7 @@ struct Fixture {
     _directory: tempfile::TempDir,
     identity: Scope,
     url: String,
+    grpc_url: String,
 }
 impl Fixture {
     async fn new(index: VectorIndex) -> Self {
@@ -31,6 +32,7 @@ impl Fixture {
         getrandom::fill(&mut random).unwrap();
         let group = format!("qdrant-test-{}", hex::encode(random));
         let url = std::env::var("MASH_TEST_QDRANT_URL").unwrap();
+        let grpc_url = std::env::var("MASH_TEST_QDRANT_GRPC_URL").unwrap();
         let identity = Scope {
             group_id: group.clone(),
             node_id: "node".into(),
@@ -38,7 +40,7 @@ impl Fixture {
             dimensions: 4,
         };
         let store = Store::connect(
-            &url,
+            (&url, &grpc_url),
             None,
             &[group],
             4,
@@ -58,6 +60,7 @@ impl Fixture {
             _directory: directory,
             identity,
             url,
+            grpc_url,
         }
     }
 
@@ -68,7 +71,7 @@ impl Fixture {
 
     async fn reopen(&self, index: VectorIndex, memory: MemoryTier) -> Result<Server, AppError> {
         let views = Store::connect(
-            &self.url,
+            (&self.url, &self.grpc_url),
             None,
             std::slice::from_ref(&self.identity.group_id),
             self.identity.dimensions,

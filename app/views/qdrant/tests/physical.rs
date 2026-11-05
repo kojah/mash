@@ -82,7 +82,7 @@ async fn qdrant_rejects_incompatible_physical_graph_without_resetting_or_republi
         .unwrap();
     for policy in [VectorIndex::Exact {}, VectorIndex::Hnsw { ef_runtime: 80 }] {
         let error = Store::connect(
-            &fixture.url,
+            (&fixture.url, &fixture.grpc_url),
             None,
             std::slice::from_ref(&fixture.identity.group_id),
             4,

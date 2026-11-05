@@ -1,10 +1,12 @@
-//! Small typed REST boundary; credentials and upstream bodies never enter errors.
+//! Typed REST reads/setup and protobuf publication. Upstream bodies and secrets
+//! never enter errors; gold mutations have no automatic retry or REST fallback.
 use super::{AppError, MemoryPolicy, MemoryTier, PAYLOAD_MEMORY, PhysicalMemory, failure};
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::time::Duration;
 use tracing::Instrument;
+mod grpc;
 mod optimization;
 mod planner;
 #[cfg(test)]
@@ -33,6 +35,7 @@ pub(crate) fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
 
 #[derive(Clone)]
 pub(super) struct Client {
+    mutations: Option<grpc::Client>,
     http: reqwest::Client,
     url: reqwest::Url,
     max_response: usize,
@@ -114,7 +117,7 @@ pub(super) struct Scored<P> {
     pub score: f32,
     pub payload: P,
 }
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct Vectors {
     pub dense: Option<(String, Vec<f64>)>,
     pub lexical: Option<Sparse>,
@@ -132,7 +135,7 @@ impl Serialize for Vectors {
         map.end()
     }
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub(super) struct Sparse {
     pub indices: Vec<u32>,
     pub values: Vec<f32>,
@@ -140,10 +143,6 @@ pub(super) struct Sparse {
 #[derive(Serialize)]
 pub(super) struct Upsert<P> {
     pub points: Vec<Point<P>>,
-}
-#[derive(Serialize)]
-struct UpsertSlice<'a, P> {
-    points: &'a [P],
 }
 #[derive(Clone, Default, Serialize)]
 pub(super) struct Filter {
@@ -235,13 +234,10 @@ pub(super) struct ScrollResult<P> {
     pub points: Vec<Record<P>>,
     pub next_page_offset: Option<String>,
 }
-#[derive(Serialize)]
-struct Delete {
-    filter: Filter,
-}
 #[derive(Deserialize)]
 struct Operation {
-    status: OperationStatus,
+    #[serde(rename = "status")]
+    _status: OperationStatus,
 }
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -550,11 +546,23 @@ impl Client {
             .build()
             .map_err(|_| AppError::configuration("could not configure Qdrant HTTP client"))?;
         Ok(Self {
+            mutations: None,
             http,
             url,
             max_response: max_node_bytes.saturating_add(16 * 1024 * 1024),
         })
     }
+    pub(super) fn with_mutations(mut self, url: &str, key: Option<&str>) -> Result<Self, AppError> {
+        self.mutations = Some(grpc::Client::new(url, key)?);
+        Ok(self)
+    }
+
+    fn mutations(&self) -> Result<&grpc::Client, AppError> {
+        self.mutations
+            .as_ref()
+            .ok_or_else(|| AppError::configuration("Qdrant writer requires a gRPC endpoint"))
+    }
+
     async fn call<T: DeserializeOwned>(
         &self,
         method: Method,
@@ -593,12 +601,6 @@ impl Client {
             let mut request = self
                 .http
                 .request(method, self.url.join(path).map_err(|_| failure())?);
-            // Awaited writes can exceed the interactive database deadline while
-            // Qdrant indexes large batches. Keep reads bounded and do not replay
-            // ambiguous mutations; publication verification owns their recovery.
-            if path.ends_with("?wait=true&ordering=strong") {
-                request = request.timeout(std::time::Duration::from_mins(30));
-            }
             if let Some(body) = body {
                 request = request.json(body);
             }
@@ -909,52 +911,21 @@ impl Client {
         name: &str,
         input: &Upsert<P>,
     ) -> Result<(), AppError> {
-        // The canonical node limit may exceed Qdrant's default 32 MiB request
-        // limit. Split by encoded bytes as well as the caller's record count.
-        const BUDGET: usize = 30 * 1024 * 1024;
-        let mut start = 0;
-        let mut bytes = 1024;
-        for (index, point) in input.points.iter().enumerate() {
-            let size = serde_json::to_vec(point).map_err(|_| failure())?.len();
-            if size > BUDGET - 1024 {
-                return Err(AppError::usage(
-                    "Qdrant document exceeds the request-size limit",
-                ));
-            }
-            if bytes + size > BUDGET {
-                self.send_points(name, input, start, index).await?;
-                start = index;
-                bytes = 1024;
-            }
-            bytes += size + 1;
-        }
-        if start < input.points.len() {
-            self.send_points(name, input, start, input.points.len())
+        let mut batch = StagingBatch::default();
+        for point in &input.points {
+            batch
+                .push(
+                    self,
+                    name,
+                    Point {
+                        id: point.id.clone(),
+                        vector: point.vector.clone(),
+                        payload: &point.payload,
+                    },
+                )
                 .await?;
         }
-        Ok(())
-    }
-    async fn send_points<P: Serialize>(
-        &self,
-        name: &str,
-        input: &Upsert<P>,
-        start: usize,
-        end: usize,
-    ) -> Result<(), AppError> {
-        let body = UpsertSlice {
-            points: &input.points[start..end],
-        };
-        let op: Operation = self
-            .call(
-                Method::PUT,
-                &format!("collections/{name}/points?wait=true&ordering=strong"),
-                Some(&body),
-            )
-            .await?;
-        if op.status != OperationStatus::Completed {
-            return Err(failure());
-        }
-        Ok(())
+        batch.flush(self, name).await
     }
     pub(super) async fn retrieve<P: DeserializeOwned>(
         &self,
@@ -1077,16 +1048,6 @@ impl Client {
     }
     #[tracing::instrument(name = "qdrant_native_delete", skip_all)]
     pub(super) async fn delete_filtered(&self, name: &str, filter: Filter) -> Result<(), AppError> {
-        let op: Operation = self
-            .call(
-                Method::POST,
-                &format!("collections/{name}/points/delete?wait=true&ordering=strong"),
-                Some(&Delete { filter }),
-            )
-            .await?;
-        if op.status != OperationStatus::Completed {
-            return Err(failure());
-        }
-        Ok(())
+        self.mutations()?.delete(name, filter).await
     }
 }

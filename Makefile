@@ -30,6 +30,7 @@ property-check:
 
 property-backend-check:
 	@test -n "$${MASH_TEST_QDRANT_URL}" || (echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+'; exit 2)
+	@test -n "$${MASH_TEST_QDRANT_GRPC_URL}" || (echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance'; exit 2)
 	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --locked --lib --run-ignored only -E 'test(connector_sequences)' --no-tests fail --test-threads 1
 
 .PHONY: protocol-tools protocol-check
@@ -79,6 +80,7 @@ check-python-models: generate-python-models
 coverage:
 	@test -n "$${MASH_TEST_MODELS_DIR}" || (echo 'Set MASH_TEST_MODELS_DIR to explicitly installed test models'; exit 1)
 	@test -n "$${MASH_TEST_QDRANT_URL}" || (echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+'; exit 1)
+	@test -n "$${MASH_TEST_QDRANT_GRPC_URL}" || (echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance'; exit 1)
 	@test -n "$${MASH_TEST_SERVER_BINARY}" || (echo 'Set MASH_TEST_SERVER_BINARY to the coverage-target mash binary for database restart contracts'; exit 1)
 	cargo llvm-cov clean --workspace
 	cargo llvm-cov nextest --no-report --run-ignored all -j 2 -E 'not test(benchmark)' $(CARGO_ARGS)

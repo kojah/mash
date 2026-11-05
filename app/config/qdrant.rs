@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct QdrantConfig {
     pub(crate) url: String,
+    pub(crate) grpc_url: String,
     pub(crate) api_key_env: Option<String>,
     pub(crate) memory: MemoryTier,
     pub(crate) vector_search: VectorIndex,
@@ -16,6 +17,7 @@ impl Default for QdrantConfig {
     fn default() -> Self {
         Self {
             url: "http://127.0.0.1:6333".into(),
+            grpc_url: "http://127.0.0.1:6334".into(),
             api_key_env: None,
             memory: MemoryTier::default(),
             vector_search: VectorIndex::default(),
@@ -26,6 +28,7 @@ impl Default for QdrantConfig {
 impl QdrantConfig {
     pub(super) fn validate(&self) -> Result<(), AppError> {
         crate::views::qdrant::endpoint(&self.url)?;
+        crate::views::qdrant::endpoint(&self.grpc_url)?;
         self.vector_search.validate()?;
         if let Some(name) = &self.api_key_env
             && (name.is_empty()

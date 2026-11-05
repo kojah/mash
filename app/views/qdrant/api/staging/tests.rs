@@ -1,5 +1,6 @@
 use super::*;
-use axum::{Router, body::Bytes, extract::State, http::StatusCode, routing::put};
+use axum::{Router, body::Body, extract::State, routing::post};
+use qdrant_client::qdrant as q;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
@@ -7,11 +8,6 @@ use std::sync::{Arc, Mutex};
 struct Payload {
     text: String,
 }
-#[derive(Deserialize)]
-struct Request {
-    points: Vec<Received>,
-}
-#[derive(Deserialize)]
 struct Received {
     id: String,
     payload: Payload,
@@ -20,20 +16,65 @@ struct Received {
 struct Captured {
     requests: Vec<(usize, Vec<Received>)>,
     fail_request: Option<usize>,
+    delay: std::time::Duration,
 }
 type Shared = Arc<Mutex<Captured>>;
 
-async fn receive(State(state): State<Shared>, bytes: Bytes) -> (StatusCode, &'static str) {
-    let request: Request = serde_json::from_slice(&bytes).unwrap();
-    let mut state = state.lock().unwrap();
-    state.requests.push((bytes.len(), request.points));
-    if state.fail_request == Some(state.requests.len()) {
-        return (StatusCode::SERVICE_UNAVAILABLE, "{}");
+struct Receive(Shared);
+impl tonic::server::UnaryService<q::UpsertPoints> for Receive {
+    type Response = q::PointsOperationResponse;
+    type Future = tonic::codegen::BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+    fn call(&mut self, request: tonic::Request<q::UpsertPoints>) -> Self::Future {
+        let state = self.0.clone();
+        Box::pin(async move {
+            assert!(request.metadata().contains_key("grpc-timeout"));
+            let delay = state.lock().unwrap().delay;
+            tokio::time::sleep(delay).await;
+            let request = request.into_inner();
+            assert_eq!(request.wait, Some(true));
+            assert_eq!(
+                request.ordering.unwrap().r#type,
+                q::WriteOrderingType::Strong as i32
+            );
+            let bytes = request.encoded_len();
+            let points = request
+                .points
+                .into_iter()
+                .map(|p| Received {
+                    id: match p.id.unwrap().point_id_options.unwrap() {
+                        q::point_id::PointIdOptions::Uuid(id) => id,
+                        q::point_id::PointIdOptions::Num(id) => id.to_string(),
+                    },
+                    payload: Payload {
+                        text: p.payload["text"].as_str().unwrap().to_owned(),
+                    },
+                })
+                .collect();
+            let mut state = state.lock().unwrap();
+            state.requests.push((bytes, points));
+            if state.fail_request == Some(state.requests.len()) {
+                return Err(tonic::Status::unavailable("injected ambiguous write"));
+            }
+            Ok(tonic::Response::new(q::PointsOperationResponse {
+                result: Some(q::UpdateResult {
+                    status: q::UpdateStatus::Completed as i32,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        })
     }
-    (
-        StatusCode::OK,
-        r#"{"status":"ok","result":{"status":"completed"}}"#,
-    )
+}
+
+async fn receive(
+    State(state): State<Shared>,
+    request: axum::extract::Request,
+) -> axum::response::Response {
+    let codec = tonic_prost::ProstCodec::default();
+    tonic::server::Grpc::new(codec)
+        .unary(Receive(state), request)
+        .await
+        .map(Body::new)
 }
 
 async fn fixture(fail_request: Option<usize>) -> (Client, Shared, tokio::task::JoinHandle<()>) {
@@ -42,16 +83,14 @@ async fn fixture(fail_request: Option<usize>) -> (Client, Shared, tokio::task::J
         ..Captured::default()
     }));
     let router = Router::new()
-        .route("/collections/test/points", put(receive))
-        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
+        .route("/qdrant.Points/Upsert", post(receive))
         .with_state(captured.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let client = Client::new(
-        &format!("http://{}", listener.local_addr().unwrap()),
-        None,
-        64 * 1024 * 1024,
-    )
-    .unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let client = Client::new(&url, None, 64 * 1024 * 1024)
+        .unwrap()
+        .with_mutations(&url, None)
+        .unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     (client, captured, server)
 }
@@ -155,5 +194,23 @@ async fn staging_stops_at_a_failed_batch_without_acknowledging_it() {
     );
     assert_eq!(captured.lock().unwrap().requests.len(), 2);
     assert_eq!(batch.points.len(), MAX_POINTS);
+    server.abort();
+}
+
+#[tokio::test]
+async fn grpc_writes_outlive_the_rest_read_deadline() {
+    let (mut client, captured, server) = fixture(None).await;
+    client.http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(20))
+        .build()
+        .unwrap();
+    captured.lock().unwrap().delay = std::time::Duration::from_millis(100);
+    let mut batch = StagingBatch::default();
+    batch
+        .push(&client, "test", point(1, "awaited"))
+        .await
+        .unwrap();
+    batch.flush(&client, "test").await.unwrap();
+    assert_eq!(captured.lock().unwrap().requests.len(), 1);
     server.abort();
 }

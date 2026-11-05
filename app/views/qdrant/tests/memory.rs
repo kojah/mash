@@ -81,7 +81,7 @@ async fn durable_memory_activation_preserves_publications_and_is_idempotent() {
     );
     for _ in 0..2 {
         let upgraded = Store::connect(
-            &fixture.url,
+            (&fixture.url, &fixture.grpc_url),
             None,
             std::slice::from_ref(&fixture.identity.group_id),
             4,

@@ -41,7 +41,9 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
 - Keep concrete local FastEmbed and remote HTTP embedding options with exact
   cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.
-- Qdrant uses the existing reqwest client and typed REST models, named dense/sparse
+- Qdrant publication uses the generated Tonic client with bounded protobuf requests,
+  explicit completion checks and no automatic mutation retries or REST fallback.
+  Reads and collection setup use the existing reqwest client and typed REST models, named dense/sparse
   vectors on Qdrant 1.19+. Default to HNSW vector retrieval with ef_runtime=200;
   permit explicit exact search. Never report uncertified views as current, and
   fail closed on incompatible existing schemas or superseded views settings.

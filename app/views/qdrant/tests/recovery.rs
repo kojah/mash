@@ -8,7 +8,7 @@ async fn lose_views(fixture: &Fixture) {
 
 async fn reconnect(fixture: &Fixture) -> Server {
     let views = Store::connect(
-        &fixture.url,
+        (&fixture.url, &fixture.grpc_url),
         None,
         std::slice::from_ref(&fixture.identity.group_id),
         fixture.identity.dimensions,
