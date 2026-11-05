@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS objects (
     -- the empty string is a tree root, otherwise this is the parent message ID.
     ordinal INTEGER,
     context_parent TEXT CHECK (context_parent IS NULL OR context_parent <> id),
+    -- Derived grouping never owns canonical messages: deleting a turn only
+    -- clears this reference.
+    turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL,
     -- Native dialogue role, or a connector entry's author as JSON.
     role TEXT,
     author TEXT,
@@ -91,6 +94,17 @@ CREATE TABLE IF NOT EXISTS native_messages (
     id TEXT NOT NULL UNIQUE,
     fingerprint TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS turns (
+    id TEXT PRIMARY KEY CHECK (id <> ''),
+    conversation_id TEXT NOT NULL REFERENCES native_chats(conversation_id) ON DELETE CASCADE,
+    revision TEXT NOT NULL,
+    boundary TEXT NOT NULL CHECK (boundary IN ('start', 'user_reply', 'branch', 'orphan')),
+    closed INTEGER NOT NULL CHECK (closed IN (0, 1)),
+    created_at INTEGER,
+    updated_at INTEGER
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS turns_conversation ON turns(conversation_id);
+CREATE INDEX IF NOT EXISTS messages_turn ON objects(turn_id) WHERE turn_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS conversation_enrichment (
     conversation_id TEXT PRIMARY KEY REFERENCES native_chats(conversation_id) ON DELETE CASCADE,
     evidence TEXT NOT NULL

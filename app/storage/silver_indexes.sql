@@ -14,6 +14,15 @@ CREATE INDEX IF NOT EXISTS objects_searchable_metadata
 CREATE INDEX IF NOT EXISTS objects_searchable_identity ON objects(id, role)
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
 -- View writes and scan bookkeeping do not change the canonical revision.
+CREATE TRIGGER IF NOT EXISTS silver_turns_INSERT AFTER INSERT ON turns BEGIN
+    UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
+END;
+CREATE TRIGGER IF NOT EXISTS silver_turns_UPDATE AFTER UPDATE ON turns BEGIN
+    UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
+END;
+CREATE TRIGGER IF NOT EXISTS silver_turns_DELETE AFTER DELETE ON turns BEGIN
+    UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
+END;
 CREATE TRIGGER IF NOT EXISTS silver_objects_INSERT AFTER INSERT ON objects BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;

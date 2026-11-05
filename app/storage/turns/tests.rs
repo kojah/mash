@@ -3,12 +3,11 @@ use crate::storage::Storage;
 use crate::storage::tests::conversation_with_messages;
 
 #[test]
-fn entry_parent_updates_use_a_native_id_lookup_instead_of_scanning_the_chat() {
+fn message_turn_updates_use_an_id_lookup_instead_of_scanning_the_chat() {
     let directory = tempfile::tempdir().unwrap();
     let storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    let update = crate::storage::generated::SetEntryParent::builder()
-        .parent_id(Some("turn"))
-        .parent_storage_id(Some(1))
+    let update = crate::storage::generated::SetMessageTurn::builder()
+        .turn_id(Some("turn"))
         .conversation_id("chat")
         .id("entry")
         .build();
@@ -16,7 +15,7 @@ fn entry_parent_updates_use_a_native_id_lookup_instead_of_scanning_the_chat() {
         .connection
         .prepare(&format!(
             "EXPLAIN QUERY PLAN {}",
-            crate::storage::generated::SetEntryParent::QUERY
+            crate::storage::generated::SetMessageTurn::QUERY
         ))
         .unwrap()
         .query_map(update.as_params(), |row| row.get(3))
@@ -35,13 +34,12 @@ fn chat(roles: &[(&str, Role, &str)]) -> crate::silver::Conversation {
     chat
 }
 
-/// Each message's parent kind and ID, in ordinal order.
-fn parents(storage: &Storage) -> Vec<(String, String)> {
+/// Each message's turn membership, in ordinal order.
+fn memberships(storage: &Storage) -> Vec<(String, Option<String>)> {
     storage
         .connection
         .prepare(
-            "SELECT m.id, p.object_role FROM objects m
-               JOIN objects p ON p.storage_id = m.parent_storage_id
+            "SELECT m.id, m.turn_id FROM objects m
               WHERE m.object_role = 'entry' ORDER BY m.ordinal",
         )
         .unwrap()
@@ -54,11 +52,7 @@ fn parents(storage: &Storage) -> Vec<(String, String)> {
 fn turn_count(storage: &Storage) -> i64 {
     storage
         .connection
-        .query_row(
-            "SELECT count(*) FROM objects WHERE object_role = 'segment'",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT count(*) FROM turns", [], |row| row.get(0))
         .unwrap()
 }
 
@@ -108,7 +102,7 @@ fn message_turn_lookup_preserves_boundaries_and_checks_search_identity() {
 }
 
 #[test]
-fn indexing_stores_turns_between_chats_and_their_messages() {
+fn indexing_stores_turns_without_reparenting_messages() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let mut first = chat(&[
@@ -119,37 +113,39 @@ fn indexing_stores_turns_between_chats_and_their_messages() {
     ]);
     storage.replace_conversation(&first).unwrap();
     assert_eq!(turn_count(&storage), 2);
-    let segment = |id: &str| (id.to_owned(), "segment".to_owned());
+    let membership = memberships(&storage);
     assert_eq!(
-        parents(&storage),
-        [
-            segment("ask"),
-            segment("answer"),
-            // Injected instructions belong to no turn.
-            ("skill".to_owned(), "container".to_owned()),
-            segment("thanks"),
-        ]
+        membership
+            .iter()
+            .map(|(id, _)| id.as_str())
+            .collect::<Vec<_>>(),
+        ["ask", "answer", "skill", "thanks"]
     );
-    let (kind, metadata): (String, String) = storage
+    let initial_turn = membership[0].1.clone().unwrap();
+    assert_eq!(membership[1].1.as_deref(), Some(initial_turn.as_str()));
+    assert_eq!(membership[2].1, None);
+    assert_ne!(membership[3].1.as_ref().unwrap(), &initial_turn);
+    let boundary: String = storage
         .connection
         .query_row(
-            "SELECT t.kind, t.metadata FROM objects m JOIN objects t ON t.storage_id = m.parent_storage_id
-              WHERE m.id = 'thanks'",
+            "SELECT t.boundary FROM objects m JOIN turns t ON t.id=m.turn_id WHERE m.id='thanks'",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(kind, "codex:turn");
-    assert!(
-        metadata.contains(r#""boundary":"user_reply""#),
-        "{metadata}"
-    );
+    assert_eq!(boundary, "user_reply");
 
     // Dropping the reply removes its turn, but never the surviving messages.
     first.messages.inline_mut().truncate(2);
     storage.replace_conversation(&first).unwrap();
     assert_eq!(turn_count(&storage), 1);
-    assert_eq!(parents(&storage), [segment("ask"), segment("answer")]);
+    assert_eq!(
+        memberships(&storage),
+        [
+            ("ask".into(), Some(initial_turn.clone())),
+            ("answer".into(), Some(initial_turn)),
+        ]
+    );
     assert!(
         crate::storage::objects::native_violations(&storage.connection)
             .unwrap()
@@ -173,6 +169,37 @@ fn unchanged_reindexing_leaves_silver_untouched() {
     let before = storage.silver_certificate().unwrap();
     super::derive(&storage.connection, &thread.id).unwrap();
     assert_eq!(storage.silver_certificate().unwrap(), before);
+}
+
+#[test]
+fn deleting_derived_turns_preserves_messages_and_session_deletion_cascades() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let session = chat(&[
+        ("ask", Role::User, "question"),
+        ("answer", Role::Assistant, "reply"),
+    ]);
+    storage.replace_conversation(&session).unwrap();
+    let before = storage.view("ask", 10).unwrap();
+    storage.connection.execute("DELETE FROM turns", []).unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert!(memberships(&storage).iter().all(|(_, turn)| turn.is_none()));
+    let after = storage.view("ask", 10).unwrap();
+    assert_eq!(
+        serde_json::to_value(after).unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+    super::derive(&storage.connection, &session.id).unwrap();
+    assert_eq!(turn_count(&storage), 1);
+    storage
+        .connection
+        .execute(
+            "DELETE FROM objects WHERE object_role='container' AND id=?1",
+            [&session.id],
+        )
+        .unwrap();
+    assert_eq!(turn_count(&storage), 0);
+    assert_eq!(storage.counts().unwrap().messages, 0);
 }
 
 #[test]

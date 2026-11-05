@@ -847,10 +847,9 @@ async fn http_storage_contract(service: Service) {
             .join(format!("{}.sqlite3", identity.node_id)),
     )
     .unwrap();
-    let parents: Vec<(String, String)> = silver
+    let memberships: Vec<(String, bool)> = silver
         .prepare(
-            "SELECT m.id, p.object_role FROM objects m
-               JOIN objects p ON p.storage_id = m.parent_storage_id
+            "SELECT m.id, m.turn_id IS NOT NULL FROM objects m
               WHERE m.object_role = 'entry' ORDER BY m.ordinal",
         )
         .unwrap()
@@ -858,13 +857,13 @@ async fn http_storage_contract(service: Service) {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    let parent = |id: &str, role: &str| (id.to_owned(), role.to_owned());
+    let member = |id: &str, in_turn: bool| (id.to_owned(), in_turn);
     assert_eq!(
-        parents,
+        memberships,
         [
-            parent("searchable", "segment"),
-            parent("opposite", "segment"),
-            parent("context", "container"),
+            member("searchable", true),
+            member("opposite", true),
+            member("context", false),
         ]
     );
     drop(silver);

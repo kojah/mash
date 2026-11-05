@@ -28,15 +28,9 @@ pub(crate) fn native_violations(connection: &Connection) -> Result<Vec<String>, 
         let conforms = source.parse::<crate::provider::Provider>().is_ok()
             && match role.as_str() {
                 "container" => kind == format!("{source}:chat") && parent.is_none(),
-                "segment" => {
-                    kind == format!("{source}:turn")
-                        && parent.as_deref() == Some(format!("{source}:chat").as_str())
-                }
                 "entry" => {
                     kind == format!("{source}:message")
-                        && parent.as_deref().is_some_and(|parent| {
-                            parent == format!("{source}:chat") || parent == format!("{source}:turn")
-                        })
+                        && parent.as_deref() == Some(format!("{source}:chat").as_str())
                 }
                 _ => false,
             };

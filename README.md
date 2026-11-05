@@ -196,7 +196,7 @@ for example `"provider": "codex"`. Messages and matching excerpts carry the agen
 `role` directly, including provider-defined roles. Messages and matching excerpts
 include `turn_id` when they belong to a derived turn; `chat_id` identifies their chat.
 Local and shared Qdrant use views schema 11; silver uses
-schema 59. Views are rebuilt from silver; silver from an earlier release crosses
+schema 60. Views are rebuilt from silver; silver from an earlier release crosses
 over through export and `import --keep-identity`.
 
 Silver compresses canonical text of at least 1 KiB with zstd when it saves space.

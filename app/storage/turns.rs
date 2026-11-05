@@ -1,10 +1,9 @@
-//! Native turn segments: derived from a chat's messages after every write, so
+//! Agent turns: derived from a chat's messages after every write, so
 //! local silver, shared silver and imports all hold the same turns.
 use super::generated as sql;
 use crate::AppError;
 use crate::silver::turns::{self, Boundary, Source};
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 
 /// Resolve a message's derived turn while checking its canonical chat identity.
@@ -19,9 +18,9 @@ pub(crate) fn message_turn(
     use rusqlite::OptionalExtension;
     let row = connection
         .prepare_cached(
-            "SELECT m.source, m.conversation_id, p.id, p.object_role
+            "SELECT m.source, m.conversation_id, m.turn_id, t.conversation_id
                FROM objects m
-               LEFT JOIN objects p ON p.storage_id = m.parent_storage_id
+               LEFT JOIN turns t ON t.id = m.turn_id
               WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1",
         )
         .map_err(AppError::database)?
@@ -35,7 +34,7 @@ pub(crate) fn message_turn(
         })
         .optional()
         .map_err(AppError::database)?;
-    let Some((source, chat, parent, parent_role)) = row else {
+    let Some((source, chat, turn, turn_chat)) = row else {
         return Ok(None);
     };
     if source != provider.as_str() || chat != chat_id {
@@ -43,13 +42,12 @@ pub(crate) fn message_turn(
             "search message identity disagrees with silver",
         ));
     }
-    match parent_role.as_deref() {
-        Some("segment") => Ok(parent),
-        Some("container") if parent.as_deref() == Some(chat_id) => Ok(None),
-        _ => Err(AppError::database_data(
-            "message has an invalid turn or chat parent",
-        )),
+    if turn.is_some() && turn_chat.as_deref() != Some(chat_id) {
+        return Err(AppError::database_data(
+            "message turn belongs to another chat",
+        ));
     }
+    Ok(turn)
 }
 
 impl super::Storage {
@@ -73,18 +71,8 @@ impl super::Storage {
     }
 }
 
-/// What a stored turn records beyond its place in the hierarchy.
-#[derive(Serialize, Deserialize)]
-struct Metadata {
-    revision: String,
-    boundary: Boundary,
-    closed: bool,
-}
-
-/// Bring a chat's turns in line with its current messages.
-///
-/// Messages are reparented before stale turns are deleted, since deleting a
-/// turn deletes whatever is still beneath it.
+/// Bring a chat's derived turns and message references up to date.
+/// Deleting stale turns cannot delete canonical messages.
 pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppError> {
     let rows = sql::TurnSources::builder()
         .conversation_id(chat_id)
@@ -125,46 +113,36 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
         .collect::<Result<Vec<_>, AppError>>()?;
     let derived = turns::extract(chat_id, &sources);
 
-    let mut parents = vec![chat_id; rows.len()];
+    let mut membership = vec![None; rows.len()];
     for turn in &derived {
         let times: Vec<i64> = turn
             .members()
             .filter_map(|index| rows[index].created_at)
             .collect();
-        let metadata = serde_json::to_string(&Metadata {
-            revision: turn.revision.clone(),
-            boundary: turn.boundary,
-            closed: turn.closed,
-        })
-        .map_err(|_| AppError::internal("serialize turn metadata"))?;
+        let boundary = match turn.boundary {
+            Boundary::Start => "start",
+            Boundary::UserReply => "user_reply",
+            Boundary::Branch => "branch",
+            Boundary::Orphan => "orphan",
+        };
         sql::UpsertTurn::builder()
             .id(&turn.id)
             .created_at(times.iter().min().copied())
             .updated_at(times.iter().max().copied())
-            .metadata(Some(&metadata))
+            .revision(&turn.revision)
+            .boundary(boundary)
+            .closed(i64::from(turn.closed))
             .conversation_id(chat_id)
             .build()
             .execute(connection)
             .map_err(AppError::database)?;
         for index in turn.members() {
-            parents[index] = &turn.id;
+            membership[index] = Some(turn.id.as_str());
         }
     }
-    let storage: HashMap<String, i64> = sql::SegmentStorage::builder()
-        .conversation_id(chat_id)
-        .build()
-        .query_many(connection)
-        .map_err(AppError::database)?
-        .into_iter()
-        .map(|row| (row.id, row.storage_id))
-        .collect();
-    for (row, parent) in rows.iter().zip(parents) {
-        let parent_storage = *storage
-            .get(parent)
-            .ok_or_else(|| AppError::database_data("native turn parent is missing"))?;
-        sql::SetEntryParent::builder()
-            .parent_id(Some(parent))
-            .parent_storage_id(Some(parent_storage))
+    for (row, turn_id) in rows.iter().zip(membership) {
+        sql::SetMessageTurn::builder()
+            .turn_id(turn_id)
             .conversation_id(chat_id)
             .id(&row.id)
             .build()

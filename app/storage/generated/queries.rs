@@ -5812,7 +5812,7 @@ pub struct ChatTurns<'a> {
     conversation_id: &'a str,
 }
 impl<'a> ChatTurns<'a> {
-    pub const QUERY: &'static str = r"SELECT id FROM objects WHERE origin='provider' AND object_role='segment' AND conversation_id=?1";
+    pub const QUERY: &'static str = r"SELECT id FROM turns WHERE conversation_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -5869,21 +5869,22 @@ impl UpsertTurnRow {
 }
 pub struct UpsertTurn<'a> {
     id: &'a str,
+    conversation_id: &'a str,
+    revision: &'a str,
+    boundary: &'a str,
+    closed: i64,
     created_at: Option<i64>,
     updated_at: Option<i64>,
-    metadata: Option<&'a str>,
-    conversation_id: &'a str,
 }
 impl<'a> UpsertTurn<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    created_at,updated_at,metadata)
-SELECT 'provider',c.source,?1,'segment',c.source||':turn',c.id,c.storage_id,c.id,
-    ?2,?3,?4
-FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?5
-ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
-created_at=excluded.created_at,updated_at=excluded.updated_at,metadata=excluded.metadata
-WHERE objects.created_at IS NOT excluded.created_at OR objects.updated_at IS NOT excluded.updated_at
-   OR objects.metadata IS NOT excluded.metadata";
+    pub const QUERY: &'static str = r"INSERT INTO turns(id,conversation_id,revision,boundary,closed,created_at,updated_at)
+VALUES(?1,?2,?3,?4,
+       ?5,?6,?7)
+ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,boundary=excluded.boundary,
+closed=excluded.closed,created_at=excluded.created_at,updated_at=excluded.updated_at
+WHERE turns.revision IS NOT excluded.revision OR turns.boundary IS NOT excluded.boundary
+   OR turns.closed IS NOT excluded.closed OR turns.created_at IS NOT excluded.created_at
+   OR turns.updated_at IS NOT excluded.updated_at";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -5901,206 +5902,379 @@ impl<'a> UpsertTurn<'a> {
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
             self.id,
+            self.conversation_id,
+            self.revision,
+            self.boundary,
+            self.closed,
             self.created_at,
             self.updated_at,
-            self.metadata,
-            self.conversation_id,
         )
     }
 }
 impl<'a> UpsertTurn<'a> {
-    pub const fn builder() -> UpsertTurnBuilder<'a, ((), (), (), (), ())> {
+    pub const fn builder() -> UpsertTurnBuilder<'a, ((), (), (), (), (), (), ())> {
         UpsertTurnBuilder {
-            fields: ((), (), (), (), ()),
+            fields: ((), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertTurnBuilder<'a, Fields = ((), (), (), (), ())> {
+pub struct UpsertTurnBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, CreatedAt, UpdatedAt, Metadata, ConversationId>
-    UpsertTurnBuilder<'a, ((), CreatedAt, UpdatedAt, Metadata, ConversationId)>
+impl<'a, ConversationId, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<
+        'a,
+        (
+            (),
+            ConversationId,
+            Revision,
+            Boundary,
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    >
 {
     pub fn id(
         self,
         id: &'a str,
-    ) -> UpsertTurnBuilder<'a, (&'a str, CreatedAt, UpdatedAt, Metadata, ConversationId)> {
-        let ((), created_at, updated_at, metadata, conversation_id) = self.fields;
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            &'a str,
+            ConversationId,
+            Revision,
+            Boundary,
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    > {
+        let ((), conversation_id, revision, boundary, closed, created_at, updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
-            fields: (id, created_at, updated_at, metadata, conversation_id),
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
             _phantom,
         }
     }
 }
-impl<'a, Id, UpdatedAt, Metadata, ConversationId>
-    UpsertTurnBuilder<'a, (Id, (), UpdatedAt, Metadata, ConversationId)>
+impl<'a, Id, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<'a, (Id, (), Revision, Boundary, Closed, CreatedAt, UpdatedAt)>
+{
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            &'a str,
+            Revision,
+            Boundary,
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    > {
+        let (id, (), revision, boundary, closed, created_at, updated_at) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, ConversationId, Boundary, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            (),
+            Boundary,
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    >
+{
+    pub fn revision(
+        self,
+        revision: &'a str,
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            &'a str,
+            Boundary,
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    > {
+        let (id, conversation_id, (), boundary, closed, created_at, updated_at) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, ConversationId, Revision, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            (),
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    >
+{
+    pub fn boundary(
+        self,
+        boundary: &'a str,
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            &'a str,
+            Closed,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    > {
+        let (id, conversation_id, revision, (), closed, created_at, updated_at) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, ConversationId, Revision, Boundary, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            Boundary,
+            (),
+            CreatedAt,
+            UpdatedAt,
+        ),
+    >
+{
+    pub fn closed(
+        self,
+        closed: i64,
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            Boundary,
+            i64,
+            CreatedAt,
+            UpdatedAt,
+        ),
+    > {
+        let (id, conversation_id, revision, boundary, (), created_at, updated_at) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, ConversationId, Revision, Boundary, Closed, UpdatedAt>
+    UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            Boundary,
+            Closed,
+            (),
+            UpdatedAt,
+        ),
+    >
 {
     pub fn created_at(
         self,
         created_at: Option<i64>,
-    ) -> UpsertTurnBuilder<'a, (Id, Option<i64>, UpdatedAt, Metadata, ConversationId)> {
-        let (id, (), updated_at, metadata, conversation_id) = self.fields;
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            Boundary,
+            Closed,
+            Option<i64>,
+            UpdatedAt,
+        ),
+    > {
+        let (id, conversation_id, revision, boundary, closed, (), updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
-            fields: (id, created_at, updated_at, metadata, conversation_id),
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
             _phantom,
         }
     }
 }
-impl<'a, Id, CreatedAt, Metadata, ConversationId>
-    UpsertTurnBuilder<'a, (Id, CreatedAt, (), Metadata, ConversationId)>
+impl<'a, Id, ConversationId, Revision, Boundary, Closed, CreatedAt>
+    UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            Boundary,
+            Closed,
+            CreatedAt,
+            (),
+        ),
+    >
 {
     pub fn updated_at(
         self,
         updated_at: Option<i64>,
-    ) -> UpsertTurnBuilder<'a, (Id, CreatedAt, Option<i64>, Metadata, ConversationId)> {
-        let (id, created_at, (), metadata, conversation_id) = self.fields;
+    ) -> UpsertTurnBuilder<
+        'a,
+        (
+            Id,
+            ConversationId,
+            Revision,
+            Boundary,
+            Closed,
+            CreatedAt,
+            Option<i64>,
+        ),
+    > {
+        let (id, conversation_id, revision, boundary, closed, created_at, ()) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
-            fields: (id, created_at, updated_at, metadata, conversation_id),
+            fields: (
+                id,
+                conversation_id,
+                revision,
+                boundary,
+                closed,
+                created_at,
+                updated_at,
+            ),
             _phantom,
         }
     }
 }
-impl<'a, Id, CreatedAt, UpdatedAt, ConversationId>
-    UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, (), ConversationId)>
+impl<'a>
+    UpsertTurnBuilder<
+        'a,
+        (
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+            i64,
+            Option<i64>,
+            Option<i64>,
+        ),
+    >
 {
-    pub fn metadata(
-        self,
-        metadata: Option<&'a str>,
-    ) -> UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, Option<&'a str>, ConversationId)> {
-        let (id, created_at, updated_at, (), conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        UpsertTurnBuilder {
-            fields: (id, created_at, updated_at, metadata, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, Id, CreatedAt, UpdatedAt, Metadata>
-    UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, Metadata, ())>
-{
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, Metadata, &'a str)> {
-        let (id, created_at, updated_at, metadata, ()) = self.fields;
-        let _phantom = self._phantom;
-        UpsertTurnBuilder {
-            fields: (id, created_at, updated_at, metadata, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> UpsertTurnBuilder<'a, (&'a str, Option<i64>, Option<i64>, Option<&'a str>, &'a str)> {
     pub fn build(self) -> UpsertTurn<'a> {
-        let (id, created_at, updated_at, metadata, conversation_id) = self.fields;
+        let (id, conversation_id, revision, boundary, closed, created_at, updated_at) = self.fields;
         UpsertTurn {
             id,
+            conversation_id,
+            revision,
+            boundary,
+            closed,
             created_at,
             updated_at,
-            metadata,
-            conversation_id,
         }
     }
 }
-pub struct SegmentStorageRow {
-    pub id: String,
-    pub storage_id: i64,
-}
-impl SegmentStorageRow {
-    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self {
-            id: row.get(0)?,
-            storage_id: row.get(1)?,
-        })
-    }
-}
-pub struct SegmentStorage<'a> {
-    conversation_id: &'a str,
-}
-impl<'a> SegmentStorage<'a> {
-    pub const QUERY: &'static str = r"SELECT id,storage_id FROM objects
-WHERE origin='provider' AND object_role IN ('container','segment') AND conversation_id=?1";
-    pub fn query_str(&self) -> &str {
-        Self::QUERY
-    }
-}
-impl<'a> SegmentStorage<'a> {
-    pub fn query_many(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<SegmentStorageRow>> {
-        self.prepare(client)?
-            .query_map(self.as_params(), SegmentStorageRow::from_row)?
-            .collect()
-    }
-    pub fn prepare<'conn>(
-        &self,
-        client: &'conn impl RusqliteClient,
-    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
-        client.prepare(self.query_str())
-    }
-    pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
-    }
-}
-impl<'a> SegmentStorage<'a> {
-    pub const fn builder() -> SegmentStorageBuilder<'a, ((),)> {
-        SegmentStorageBuilder {
-            fields: ((),),
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-pub struct SegmentStorageBuilder<'a, Fields = ((),)> {
-    fields: Fields,
-    _phantom: std::marker::PhantomData<&'a ()>,
-}
-impl<'a> SegmentStorageBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> SegmentStorageBuilder<'a, (&'a str,)> {
-        let ((),) = self.fields;
-        let _phantom = self._phantom;
-        SegmentStorageBuilder {
-            fields: (conversation_id,),
-            _phantom,
-        }
-    }
-}
-impl<'a> SegmentStorageBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> SegmentStorage<'a> {
-        let (conversation_id,) = self.fields;
-        SegmentStorage { conversation_id }
-    }
-}
-pub struct SetEntryParentRow {}
-impl SetEntryParentRow {
+pub struct SetMessageTurnRow {}
+impl SetMessageTurnRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct SetEntryParent<'a> {
-    parent_id: Option<&'a str>,
-    parent_storage_id: Option<i64>,
+pub struct SetMessageTurn<'a> {
+    turn_id: Option<&'a str>,
     conversation_id: &'a str,
     id: &'a str,
 }
-impl<'a> SetEntryParent<'a> {
-    pub const QUERY: &'static str = r"UPDATE objects SET parent_id=?1,parent_storage_id=?2
+impl<'a> SetMessageTurn<'a> {
+    pub const QUERY: &'static str = r"UPDATE objects SET turn_id=?1
 WHERE origin='provider' AND object_role='entry' AND object_role<>'container'
-  AND conversation_id=?3
-  AND id=?4 AND parent_storage_id IS NOT ?2";
+  AND conversation_id=?2
+  AND id=?3 AND turn_id IS NOT ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> SetEntryParent<'a> {
+impl<'a> SetMessageTurn<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -6111,92 +6285,62 @@ impl<'a> SetEntryParent<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (
-            self.parent_id,
-            self.parent_storage_id,
-            self.conversation_id,
-            self.id,
-        )
+        (self.turn_id, self.conversation_id, self.id)
     }
 }
-impl<'a> SetEntryParent<'a> {
-    pub const fn builder() -> SetEntryParentBuilder<'a, ((), (), (), ())> {
-        SetEntryParentBuilder {
-            fields: ((), (), (), ()),
+impl<'a> SetMessageTurn<'a> {
+    pub const fn builder() -> SetMessageTurnBuilder<'a, ((), (), ())> {
+        SetMessageTurnBuilder {
+            fields: ((), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SetEntryParentBuilder<'a, Fields = ((), (), (), ())> {
+pub struct SetMessageTurnBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, ParentStorageId, ConversationId, Id>
-    SetEntryParentBuilder<'a, ((), ParentStorageId, ConversationId, Id)>
-{
-    pub fn parent_id(
+impl<'a, ConversationId, Id> SetMessageTurnBuilder<'a, ((), ConversationId, Id)> {
+    pub fn turn_id(
         self,
-        parent_id: Option<&'a str>,
-    ) -> SetEntryParentBuilder<'a, (Option<&'a str>, ParentStorageId, ConversationId, Id)> {
-        let ((), parent_storage_id, conversation_id, id) = self.fields;
+        turn_id: Option<&'a str>,
+    ) -> SetMessageTurnBuilder<'a, (Option<&'a str>, ConversationId, Id)> {
+        let ((), conversation_id, id) = self.fields;
         let _phantom = self._phantom;
-        SetEntryParentBuilder {
-            fields: (parent_id, parent_storage_id, conversation_id, id),
+        SetMessageTurnBuilder {
+            fields: (turn_id, conversation_id, id),
             _phantom,
         }
     }
 }
-impl<'a, ParentId, ConversationId, Id>
-    SetEntryParentBuilder<'a, (ParentId, (), ConversationId, Id)>
-{
-    pub fn parent_storage_id(
-        self,
-        parent_storage_id: Option<i64>,
-    ) -> SetEntryParentBuilder<'a, (ParentId, Option<i64>, ConversationId, Id)> {
-        let (parent_id, (), conversation_id, id) = self.fields;
-        let _phantom = self._phantom;
-        SetEntryParentBuilder {
-            fields: (parent_id, parent_storage_id, conversation_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a, ParentId, ParentStorageId, Id>
-    SetEntryParentBuilder<'a, (ParentId, ParentStorageId, (), Id)>
-{
+impl<'a, TurnId, Id> SetMessageTurnBuilder<'a, (TurnId, (), Id)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> SetEntryParentBuilder<'a, (ParentId, ParentStorageId, &'a str, Id)> {
-        let (parent_id, parent_storage_id, (), id) = self.fields;
+    ) -> SetMessageTurnBuilder<'a, (TurnId, &'a str, Id)> {
+        let (turn_id, (), id) = self.fields;
         let _phantom = self._phantom;
-        SetEntryParentBuilder {
-            fields: (parent_id, parent_storage_id, conversation_id, id),
+        SetMessageTurnBuilder {
+            fields: (turn_id, conversation_id, id),
             _phantom,
         }
     }
 }
-impl<'a, ParentId, ParentStorageId, ConversationId>
-    SetEntryParentBuilder<'a, (ParentId, ParentStorageId, ConversationId, ())>
-{
-    pub fn id(
-        self,
-        id: &'a str,
-    ) -> SetEntryParentBuilder<'a, (ParentId, ParentStorageId, ConversationId, &'a str)> {
-        let (parent_id, parent_storage_id, conversation_id, ()) = self.fields;
+impl<'a, TurnId, ConversationId> SetMessageTurnBuilder<'a, (TurnId, ConversationId, ())> {
+    pub fn id(self, id: &'a str) -> SetMessageTurnBuilder<'a, (TurnId, ConversationId, &'a str)> {
+        let (turn_id, conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
-        SetEntryParentBuilder {
-            fields: (parent_id, parent_storage_id, conversation_id, id),
+        SetMessageTurnBuilder {
+            fields: (turn_id, conversation_id, id),
             _phantom,
         }
     }
 }
-impl<'a> SetEntryParentBuilder<'a, (Option<&'a str>, Option<i64>, &'a str, &'a str)> {
-    pub fn build(self) -> SetEntryParent<'a> {
-        let (parent_id, parent_storage_id, conversation_id, id) = self.fields;
-        SetEntryParent {
-            parent_id,
-            parent_storage_id,
+impl<'a> SetMessageTurnBuilder<'a, (Option<&'a str>, &'a str, &'a str)> {
+    pub fn build(self) -> SetMessageTurn<'a> {
+        let (turn_id, conversation_id, id) = self.fields;
+        SetMessageTurn {
+            turn_id,
             conversation_id,
             id,
         }
@@ -6212,8 +6356,7 @@ pub struct DeleteTurn<'a> {
     id: &'a str,
 }
 impl<'a> DeleteTurn<'a> {
-    pub const QUERY: &'static str =
-        r"DELETE FROM objects WHERE origin='provider' AND object_role='segment' AND id=?1";
+    pub const QUERY: &'static str = r"DELETE FROM turns WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
