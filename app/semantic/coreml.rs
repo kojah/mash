@@ -1,6 +1,8 @@
 //! Apple Silicon Core ML sessions with fixed batch and sequence shapes.
 #[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 mod cache;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub(super) mod reranker;
 #[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 use super::COREML_SEQUENCE_LENGTH;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]

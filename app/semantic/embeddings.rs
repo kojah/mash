@@ -3,8 +3,10 @@
 use super::coreml::CoreMlEmbeddingPool;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use super::models::load_local_embedding;
+use super::remote;
 use super::retrieval::quantize_vector;
-use super::{EMBEDDING_BATCH_SIZE, EMBEDDING_THREADS_PER_WORKER, EMBEDDING_WORKERS, remote};
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+use super::{EMBEDDING_BATCH_SIZE, EMBEDDING_THREADS_PER_WORKER, EMBEDDING_WORKERS};
 use crate::AppError;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use fastembed::TextEmbedding;
@@ -53,6 +55,13 @@ pub(crate) struct EmbeddingProgress {
 impl EmbeddingPool {
     /// Offline label experiment: retain document batches, isolate label inputs.
     #[cfg(test)]
+    #[cfg_attr(
+        all(target_os = "macos", target_arch = "aarch64"),
+        allow(
+            clippy::unused_self,
+            reason = "the CPU-only experiment rejects Core ML backends"
+        )
+    )]
     pub(crate) fn singleton_label_vectors(
         &mut self,
         texts: &[&str],

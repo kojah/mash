@@ -447,7 +447,7 @@ async fn test_parent_exit() {
 
 #[cfg(not(debug_assertions))]
 async fn test_parent_exit() {
-    std::future::pending().await
+    std::future::pending::<()>().await;
 }
 
 #[cfg(test)]

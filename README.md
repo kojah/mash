@@ -621,6 +621,18 @@ quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `mash models install` once to install the FP32 asset and compile its Core ML
 cache.
 
+On Apple Silicon, contextual reranking also uses Core ML, with four-candidate
+batches and lazy 64-, 128-, 256-, and 512-token sessions. It uses the already
+installed Jina ONNX model; search never downloads assets. First use of a shape
+compiles it and later processes reuse its disk cache. A compilation or inference
+failure switches that loaded backend to CPU without retrying acceleration on
+each batch. Other platforms use CPU reranking.
+
+Search diagnostics include `reranker_engine` on the rerank stage: `core-ml`,
+`cpu`, `cpu-fallback`, or `mixed` when separate passes used different engines.
+`core-ml` means the complete ONNX graph ran through Core ML; Apple chooses its
+CPU, GPU, or Neural Engine placement. It does not certify a particular device.
+
 Core ML cache construction is serialized across processes for each shape.
 If an SDK compilation fails, mash tries one fresh cache directory and publishes
 it only after successful model construction. Loaded sessions retain their old

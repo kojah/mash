@@ -24,9 +24,21 @@ pub(crate) enum Stage {
 }
 const COUNT: usize = 10;
 
+/// Execution provider, not a claim about Core ML's chosen physical device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum RerankerEngine {
+    Cpu,
+    CoreMl,
+    CpuFallback,
+    Mixed,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Measurement {
     pub(crate) stage: Stage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reranker_engine: Option<RerankerEngine>,
     /// Placement of metadata/scope predicates, independent of call completion.
     #[serde(default)]
     pub(crate) filters_before_limit: bool,
@@ -122,6 +134,7 @@ impl Drop for Guard {
         if let Ok(mut items) = active.capture.0.lock() {
             let item = items[active.stage as usize].get_or_insert(Measurement {
                 stage: active.stage,
+                reranker_engine: None,
                 filters_before_limit: matches!(
                     active.stage,
                     Stage::LocalExact
@@ -152,6 +165,18 @@ impl Drop for Guard {
                 }
             }
         }
+    }
+}
+
+pub(crate) fn record_reranker(engine: RerankerEngine) {
+    if let Some(capture) = current()
+        && let Ok(mut items) = capture.0.lock()
+        && let Some(item) = &mut items[Stage::Rerank as usize]
+    {
+        item.reranker_engine = Some(match item.reranker_engine {
+            Some(previous) if previous != engine => RerankerEngine::Mixed,
+            _ => engine,
+        });
     }
 }
 

@@ -29,8 +29,11 @@ const RERANKER_MODEL: RerankerModel = RerankerModel::JINARerankerV1TurboEn;
 const MARKER_NAME: &str = "installed.json";
 const EMBEDDING_REPOSITORY: &str = "models--Xenova--all-MiniLM-L6-v2";
 const RERANKER_REPOSITORY: &str = "models--jinaai--jina-reranker-v1-turbo-en";
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 const EMBEDDING_BATCH_SIZE: usize = 8;
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 const EMBEDDING_WORKERS: usize = 8;
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 const EMBEDDING_THREADS_PER_WORKER: usize = 2;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const COREML_BATCH_SIZE: usize = 32;

@@ -209,7 +209,10 @@ fn assert_source_independent_views_rebuild(
         assert_eq!(indexed["realized_mode"], "hybrid");
         assert_eq!(indexed["scanned_files"], 0);
         assert_eq!(indexed["ingestion_milliseconds"], 0);
-        assert_eq!(indexed["model_inferences"], if full { 2 } else { 0 });
+        // A full replay rewrites every projection, while still reusing vectors
+        // whose text/model/recipe evidence matches the retained silver.
+        assert_eq!(indexed["model_inferences"], 0);
+        assert_eq!(indexed["reused_embeddings"], 2);
         assert!(indexed["shared"].is_null());
         for table in silver_tables {
             let unchanged = connection.query_row(&format!(
@@ -230,16 +233,19 @@ fn assert_source_independent_views_rebuild(
 
 fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
     let build_config = std::fs::read_to_string(config).unwrap();
-    for (recipe, budget) in [
-        ("title-and-dialogue", ""),
-        ("title-and-dialogue", "max_embedding_chars=256\n"),
-        ("dialogue", "max_embedding_chars=512\n"),
-        ("dialogue", "text_preparation='collapse-whitespace'\n"),
+    // Budget/whitespace changes leave these short, already normalized texts
+    // identical. Title inclusion changes the actual model input.
+    for (recipe, budget, inferences) in [
+        ("title-and-dialogue", "", 2),
+        ("title-and-dialogue", "max_embedding_chars=256\n", 0),
+        ("dialogue", "max_embedding_chars=512\n", 2),
+        ("dialogue", "text_preparation='collapse-whitespace'\n", 0),
         (
             "title-and-dialogue",
             "text_preparation='collapse-whitespace'\n",
+            2,
         ),
-        ("dialogue", ""),
+        ("dialogue", "", 2),
     ] {
         std::fs::write(
             config,
@@ -293,7 +299,8 @@ fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
                 _ => Value::Null,
             }
         );
-        assert_eq!(indexed["model_inferences"], 2);
+        assert_eq!(indexed["model_inferences"], inferences);
+        assert_eq!(indexed["reused_embeddings"], 2 - inferences);
         assert_eq!(indexed["scanned_files"], 0);
         assert!(indexed["shared"].is_null());
         if recipe == "title-and-dialogue" {
@@ -322,6 +329,9 @@ fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
 }
 
 fn assert_views_rebuild_recovers_without_sources(config: &Path, database: &Path, models: &str) {
+    // Remove this fixture's gold so valid retained vectors cannot mask broken
+    // inference assets. Recovery must reconstruct gold from source-free silver.
+    cleanup_local_gold(database, "local");
     let broken = database.with_file_name("broken-models");
     create_valid_model_marker(&broken);
     let failed = Command::cargo_bin("mash")
@@ -516,6 +526,14 @@ fn assert_views_ranking_defaults(config: &Path, database: &Path, models: &str) {
                 stages.iter().any(|s| s["stage"] == "rerank"),
                 expected == "contextual-rerank"
             );
+            if let Some(stage) = stages.iter().find(|stage| stage["stage"] == "rerank") {
+                assert!(matches!(
+                    stage["reranker_engine"].as_str(),
+                    Some("cpu" | "core-ml" | "cpu-fallback" | "mixed")
+                ));
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                assert_eq!(stage["reranker_engine"], "cpu");
+            }
             assert_eq!(
                 std::fs::read(database).unwrap(),
                 before,

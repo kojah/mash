@@ -139,6 +139,7 @@ fn small_rerank_batches_preserve_scores_and_document_indices() {
         .reranker
         .as_mut()
         .unwrap()
+        .cpu
         .rerank("cbioportal importer", documents, false, None)
         .unwrap();
     let actual = backend.rerank("cbioportal importer", &documents).unwrap();

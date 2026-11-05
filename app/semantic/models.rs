@@ -20,6 +20,7 @@ mod downloads;
 mod generations;
 pub(crate) mod indexer;
 mod install;
+mod reranker;
 use assets::InstallMarker;
 pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
 
@@ -31,7 +32,7 @@ pub(crate) struct Models {
 pub(crate) struct Backend {
     embedding: Option<TextEmbedding>,
     remote: Option<remote::Client>,
-    reranker: Option<TextRerank>,
+    reranker: Option<reranker::Reranker>,
     // Retained with cached models and lazy Core ML sessions until their drop.
     assets_lease: Option<fs::File>,
 }
@@ -174,7 +175,7 @@ impl Models {
                     remote: Some(remote::Client::new(config.clone())?),
                     reranker: match ranking {
                         crate::views::config::Ranking::ContextualRerank => {
-                            Some(load_reranker(&asset_root)?)
+                            Some(reranker::Reranker::load(&asset_root)?)
                         }
                         crate::views::config::Ranking::Fusion => None,
                     },
@@ -306,7 +307,9 @@ impl Backend {
     ) -> Result<Self, AppError> {
         let embedding = load_local_embedding(root, None)?;
         let reranker = match ranking {
-            crate::views::config::Ranking::ContextualRerank => Some(load_reranker(root)?),
+            crate::views::config::Ranking::ContextualRerank => {
+                Some(reranker::Reranker::load(root)?)
+            }
             crate::views::config::Ranking::Fusion => None,
         };
         Ok(Self {
@@ -352,11 +355,15 @@ impl Backend {
         query: S,
         documents: &[S],
     ) -> Result<Vec<fastembed::RerankResult>, AppError> {
-        crate::observability::retrieval::measure_vec(
+        let result = crate::observability::retrieval::measure_vec(
             crate::observability::retrieval::Stage::Rerank,
             Some(documents.len()),
             || self.rerank_batched(query, documents, 4),
-        )
+        );
+        if let Some(reranker) = &self.reranker {
+            crate::observability::retrieval::record_reranker(reranker.engine());
+        }
+        result
     }
 
     fn rerank_batched<S: AsRef<str> + Send + Sync>(
@@ -384,11 +391,7 @@ impl Backend {
                     .iter()
                     .map(|&index| documents[index].as_ref())
                     .collect::<Vec<_>>();
-                let results = reranker
-                    .rerank(query.as_ref(), &refs, false, Some(batch_size))
-                    .map_err(|error| {
-                        AppError::model(format!("reranking inference failed: {error}"))
-                    })?;
+                let results = reranker.run(query.as_ref(), &refs)?;
                 for mut result in results {
                     result.index = *indices.get(result.index).ok_or_else(|| {
                         AppError::model("reranker returned an invalid document index")

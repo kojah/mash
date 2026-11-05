@@ -74,3 +74,33 @@ async fn non_retrieval_stages_do_not_claim_filter_placement() {
         .await;
     assert!(!capture.finish()[0].filters_before_limit);
 }
+#[test]
+fn reranker_diagnostics_distinguish_cpu_coreml_and_fallback() {
+    let capture = super::Capture::default();
+    super::on_blocking_thread(Some(capture.clone()), || {
+        let _: Result<Vec<()>, crate::AppError> =
+            super::measure_vec(super::Stage::Rerank, Some(0), || Ok(vec![]));
+        super::record_reranker(super::RerankerEngine::Cpu);
+    });
+    assert_eq!(
+        capture.finish()[0].reranker_engine,
+        Some(super::RerankerEngine::Cpu)
+    );
+    super::on_blocking_thread(Some(capture.clone()), || {
+        super::record_reranker(super::RerankerEngine::CoreMl);
+    });
+    assert_eq!(
+        capture.finish()[0].reranker_engine,
+        Some(super::RerankerEngine::Mixed)
+    );
+    let capture = super::Capture::default();
+    super::on_blocking_thread(Some(capture.clone()), || {
+        let _: Result<Vec<()>, crate::AppError> =
+            super::measure_vec(super::Stage::Rerank, Some(0), || Ok(vec![]));
+        super::record_reranker(super::RerankerEngine::CpuFallback);
+    });
+    assert_eq!(
+        capture.finish()[0].reranker_engine,
+        Some(super::RerankerEngine::CpuFallback)
+    );
+}
