@@ -602,6 +602,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         gold.configuration.embeddings.as_ref(),
         "hello",
         crate::views::config::Ranking::default(),
+        false,
     )
     .await
     .unwrap();

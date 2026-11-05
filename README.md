@@ -621,8 +621,23 @@ quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `mash models install` once to install the FP32 asset and compile its Core ML
 cache.
 
-On Apple Silicon, contextual reranking also uses Core ML, with four-candidate
-batches and lazy 64-, 128-, 256-, and 512-token sessions. It uses the already
+Contextual reranking uses CPU by default on every platform. **Experimental GPU
+reranking** is opt-in through strict TOML:
+
+```toml
+[views.query]
+experimental_gpu_reranking = true
+```
+
+This enables Core ML on Apple Silicon; other platforms continue to use CPU.
+It applies to local and shared searches through both CLI and MCP. No reindex or
+MCP restart is needed after changing the setting. Warm MCP searches can benefit,
+but first-use compilation and model loading can make fresh CLI searches much
+slower than CPU, even with an existing disk cache. Leave it off for ordinary CLI
+use.
+
+The experimental path uses four-candidate batches and lazy 64-, 128-, 256-, and
+512-token sessions. It uses the already
 installed Jina ONNX model; search never downloads assets. First use of a shape
 compiles it and later processes reuse its disk cache. A compilation or inference
 failure switches that loaded backend to CPU without retrying acceleration on

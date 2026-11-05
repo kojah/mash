@@ -2,6 +2,28 @@ use super::assets::write_marker;
 use super::*;
 use crate::semantic::shared_query_vector;
 
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+#[ignore = "requires Apple Silicon and explicitly installed MASH_TEST_MODELS_DIR"]
+fn gpu_reranking_opt_in_changes_cached_backend() {
+    let root: PathBuf = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
+    for enabled in [false, true, false] {
+        let models = Models::new(root.clone()).with_experimental_gpu_reranking(enabled);
+        let mut backend = models.load().unwrap().unwrap();
+        backend
+            .rerank("vector search", &["Qdrant vector search", "garden carrots"])
+            .unwrap();
+        assert_eq!(
+            backend.reranker.as_ref().unwrap().engine(),
+            if enabled {
+                crate::observability::retrieval::RerankerEngine::CoreMl
+            } else {
+                crate::observability::retrieval::RerankerEngine::Cpu
+            }
+        );
+    }
+}
+
 #[test]
 fn remote_fusion_requires_no_local_model_assets_and_cannot_rerank() {
     let root = tempfile::tempdir().unwrap();

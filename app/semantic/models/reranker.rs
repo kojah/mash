@@ -13,13 +13,13 @@ pub(super) struct Reranker {
 mod tests;
 
 impl Reranker {
-    pub(super) fn load(root: &Path) -> Result<Self, AppError> {
+    pub(super) fn load(root: &Path, experimental_gpu_reranking: bool) -> Result<Self, AppError> {
         let cpu = load_reranker(root)?;
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        let accelerated = Some(crate::semantic::coreml::reranker::Pool::new(
-            root,
-            cpu.tokenizer.clone(),
-        ));
+        let accelerated = experimental_gpu_reranking
+            .then(|| crate::semantic::coreml::reranker::Pool::new(root, cpu.tokenizer.clone()));
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let _ = experimental_gpu_reranking;
         Ok(Self {
             cpu,
             engine: RerankerEngine::Cpu,

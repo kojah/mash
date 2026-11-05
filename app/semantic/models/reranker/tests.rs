@@ -5,7 +5,7 @@ use super::*;
 fn reranker_cpu_scores_and_empty_inputs_preserve_contract() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap();
     let selected = super::super::generations::select(Path::new(&root), false).unwrap();
-    let mut model = Reranker::load(&selected.root).unwrap();
+    let mut model = Reranker::load(&selected.root, false).unwrap();
     assert_eq!(model.run("query", &[]).unwrap().len(), 0);
     let documents = ["vector search in Qdrant", "garden carrots", "good morning"];
     let expected = model
@@ -18,8 +18,9 @@ fn reranker_cpu_scores_and_empty_inputs_preserve_contract() {
         assert_eq!(expected.index, actual.index);
         assert!((expected.score - actual.score).abs() < 0.001);
     }
-    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     assert_eq!(model.engine(), RerankerEngine::Cpu);
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    assert!(model.accelerated.is_none());
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -28,7 +29,7 @@ fn reranker_cpu_scores_and_empty_inputs_preserve_contract() {
 fn coreml_reranker_matches_cpu_across_shapes_and_measures_warm_latency() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap();
     let selected = super::super::generations::select(Path::new(&root), false).unwrap();
-    let mut model = Reranker::load(&selected.root).unwrap();
+    let mut model = Reranker::load(&selected.root, true).unwrap();
     let query = "vector search";
     for repetitions in [1, 12, 24, 60, 140, 700] {
         let documents = [
@@ -96,7 +97,7 @@ fn coreml_reranker_matches_cpu_across_shapes_and_measures_warm_latency() {
 fn coreml_reranker_failure_uses_cpu_and_does_not_retry_acceleration() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap();
     let selected = super::super::generations::select(Path::new(&root), false).unwrap();
-    let mut model = Reranker::load(&selected.root).unwrap();
+    let mut model = Reranker::load(&selected.root, true).unwrap();
     let missing = tempfile::tempdir().unwrap();
     model.accelerated = Some(crate::semantic::coreml::reranker::Pool::new(
         missing.path(),
