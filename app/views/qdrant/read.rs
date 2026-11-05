@@ -1,7 +1,6 @@
 //! Group-scoped retrieval over the documents of nodes with compatible views.
 use super::{
-    AppError, Document, Scope, Store, Stored, VectorIndex, api, collection, connector_hit,
-    document_id, failure, sparse, tokens,
+    AppError, Document, Scope, Store, VectorIndex, api, collection, document_hit, failure, sparse,
 };
 use crate::storage::SearchHit;
 use crate::views::retrieval as protocol;
@@ -33,18 +32,6 @@ pub(crate) fn validate_search(input: &protocol::Search, identity: &Scope) -> Res
     Ok(())
 }
 
-fn metadata(
-    c: &crate::views::documents::ConversationRecord,
-) -> crate::search_results::ChatMetadata {
-    crate::search_results::ChatMetadata {
-        enrichment: c.enrichment.clone(),
-        title: c.title.clone(),
-        project: c.project.clone(),
-        repository: c.repository.clone(),
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-    }
-}
 fn condition(input: &crate::search_filter::Filter) -> api::Condition {
     use crate::search_filter::Filter as F;
     let field = match input {
@@ -99,7 +86,7 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         F::Repository(values) => ("repository", values.clone()),
         // Native points carry no source_id, so they never match.
         F::Source(values) => ("source_id", values.clone()),
-        F::Kind(values) => return kind_condition(values),
+        F::Kind(values) => ("object.kind", values.clone()),
     };
     if field.1.is_empty() {
         api::impossible()
@@ -107,25 +94,6 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         api::matches(field.0, field.1)
     }
 }
-/// Connector points record their kind; a native point's kind follows from
-/// its provider, so stored points need no rewrite.
-fn kind_condition(values: &[String]) -> api::Condition {
-    let providers: Vec<String> = values
-        .iter()
-        .filter_map(|kind| kind.strip_suffix(":message"))
-        .filter(|provider| provider.parse::<crate::provider::Provider>().is_ok())
-        .map(str::to_owned)
-        .collect();
-    let mut should = vec![api::matches("object.kind", values.to_vec())];
-    if !providers.is_empty() {
-        should.push(api::matches("provider", providers));
-    }
-    api::Condition::Nested(api::Filter {
-        should,
-        ..api::Filter::default()
-    })
-}
-
 pub(super) fn search_filter(
     input: &protocol::Search,
     active: &BTreeSet<String>,
@@ -196,7 +164,7 @@ impl Store {
             }
         };
         let original_request = request(&original);
-        let strict = self.api.query::<Stored<Document>>(&name, &original_request);
+        let strict = self.api.query::<Document>(&name, &original_request);
         let expand = async {
             if input.match_mode == crate::views::matching::Mode::Strict
                 || (input.query.trim().starts_with('"') && input.query.trim().ends_with('"'))
@@ -206,10 +174,7 @@ impl Store {
             let vocabulary = self.api.terms(&name, filter).await?;
             let plan =
                 crate::views::matching::Plan::new(&input.query, input.match_mode, &vocabulary)?;
-            let points = self
-                .api
-                .query::<Stored<Document>>(&name, &request(&plan))
-                .await?;
+            let points = self.api.query::<Document>(&name, &request(&plan)).await?;
             Ok::<_, AppError>((plan, points))
         };
         let (points, (plan, expanded)) = tokio::try_join!(strict, expand)?;
@@ -276,7 +241,7 @@ impl Store {
         let lexical_query = self.lexical(identity, &input, &active, &filter, ef);
         let (lexical, semantic) = tokio::try_join!(
             lexical_query,
-            self.api.query::<Stored<Document>>(&name, &semantic_query)
+            self.api.query::<Document>(&name, &semantic_query)
         )?;
         let semantic = hits(semantic, false, identity, &active, &self.build)?;
         let documents: BTreeMap<_, _> = lexical
@@ -304,7 +269,7 @@ impl Store {
     }
 }
 fn hits(
-    points: Vec<api::Scored<Stored<Document>>>,
+    points: Vec<api::Scored<Document>>,
     lexical: bool,
     identity: &Scope,
     active: &BTreeSet<String>,
@@ -313,73 +278,18 @@ fn hits(
     let mut output = Vec::new();
     let mut seen = BTreeSet::new();
     for point in points {
-        let d = match point.payload {
-            Stored::Native(document) => document,
-            Stored::Connector(document) => {
-                // Every connector unit is embedded whenever dense views are built.
-                let generation = build
-                    .dense_enabled()
-                    .then_some(identity.generation.as_str());
-                let mut hit = connector_hit(&point.id, document, active, generation)?;
-                if !seen.insert((hit.node_id.clone().unwrap_or_default(), hit.id.clone())) {
-                    return Err(failure());
-                }
-                hit.lexical_score = lexical.then_some(-f64::from(point.score));
-                hit.semantic_score = (!lexical).then_some(point.score);
-                output.push(hit);
-                continue;
-            }
-        };
-        let m = d.message;
-        if point.id != document_id(&d.node_id, &m.id)
-            || !active.contains(&d.node_id)
-            || d.conversation_id != m.conversation_id
-            || d.conversation.id != m.conversation_id
-            || d.provider != d.conversation.provider
-            || d.role != m.role
-            || d.project != d.conversation.project
-            || d.repository != d.conversation.repository
-            || d.created_at != m.created_at
-            || d.tokens != tokens(&m.projection)
-            || m.projection.is_empty()
-            || if build.includes_dense(&m.role, &m.projection) {
-                m.generation.as_deref() != Some(&identity.generation)
-                    || m.vector
-                        .as_ref()
-                        .is_none_or(|v| !protocol::valid_vector(v, identity.dimensions))
-            } else {
-                !lexical || m.vector.is_some() || m.generation.is_some()
-            }
-            || !seen.insert((d.node_id.clone(), m.id.clone()))
-        {
+        let mut hit = document_hit(
+            &point.id,
+            point.payload,
+            active,
+            Some((identity, build, lexical)),
+        )?;
+        if !seen.insert((hit.node_id.clone(), hit.id.clone())) {
             return Err(failure());
         }
-        output.push(SearchHit {
-            node_id: Some(d.node_id),
-            id: m.id,
-            conversation_id: m.conversation_id,
-            source: crate::source::Source::Provider(d.provider),
-            object: crate::source::ObjectType::native_message(d.provider),
-            ancestors: crate::source::native_ancestors(
-                d.provider,
-                &d.conversation.id,
-                d.conversation.title.as_deref(),
-            ),
-            role: Some(m.role.clone()),
-            author_kind: None,
-            author: crate::source::author(Some(m.role), None),
-            sequence: Some(m.ordinal),
-            content: m.projection,
-            copies: vec![],
-            created_at: m.created_at,
-            metadata: metadata(&d.conversation),
-            lexical_score: lexical.then_some(-f64::from(point.score)),
-            lookup: None,
-            lexical_match: None,
-            semantic_score: (!lexical).then_some(point.score),
-            fusion_score: 0.0,
-            rerank_score: None,
-        });
+        hit.lexical_score = lexical.then_some(-f64::from(point.score));
+        hit.semantic_score = (!lexical).then_some(point.score);
+        output.push(hit);
     }
     Ok(output)
 }
@@ -388,17 +298,14 @@ fn hits(
 mod kind_tests {
     #[test]
     fn kinds_match_connector_payloads_and_native_providers() {
-        let condition = super::kind_condition(&[
+        let condition = super::condition(&crate::search_filter::Filter::Kind(vec![
             "codex:message".to_owned(),
             "slack:message".to_owned(),
             "codex:chat".to_owned(),
-        ]);
+        ]));
         assert_eq!(
             serde_json::to_value(condition).unwrap(),
-            serde_json::json!({"should": [
-                {"key": "object.kind", "match": {"any": ["codex:message", "slack:message", "codex:chat"]}},
-                {"key": "provider", "match": {"any": ["codex"]}},
-            ]})
+            serde_json::json!({"key": "object.kind", "match": {"any": ["codex:message", "slack:message", "codex:chat"]}})
         );
     }
 }

@@ -444,15 +444,13 @@ fn schema_fields_mode(
             ("provider", "keyword"),
             ("role", "keyword"),
             ("conversation_id", "keyword"),
-            ("message.id", "keyword"),
+            ("unit.anchor", "keyword"),
             ("project", "keyword"),
             ("repository", "keyword"),
             ("tokens", "keyword"),
             ("created_at", "integer"),
-            ("message.ordinal", "integer"),
-            ("message.context.ordinal", "integer"),
-            // Connector points: source and kind filters. Qdrant indexes the
-            // points already stored when these are added to a collection.
+            ("unit.sequence", "integer"),
+            // Source ownership and object kind apply to the common payload.
             ("source_id", "keyword"),
             ("object.kind", "keyword"),
         ]

@@ -200,7 +200,8 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
                     },
                     group_anchor: anchor.into(),
                     created_at: None,
-                    unit: ConnectorUnit {
+                    unit: SearchUnit {
+                        enrichment: None,
                         anchor: anchor.into(),
                         text: "needle connector".into(),
                         content: "needle connector".into(),
@@ -247,7 +248,7 @@ async fn qdrant_native_cleanup_preserves_connectors_and_other_nodes() {
     let connectors = fixture
         .store
         .api
-        .retrieve::<ConnectorDocument>(
+        .retrieve::<Document>(
             &name,
             &[
                 connector_id(&fixture.identity.node_id, anchor),
@@ -283,7 +284,7 @@ async fn assert_connector_cleanup_is_scoped(fixture: &Fixture, other: &Scope, an
     let connectors = fixture
         .store
         .api
-        .retrieve::<ConnectorDocument>(
+        .retrieve::<Document>(
             &name,
             &[
                 connector_id(&fixture.identity.node_id, anchor),

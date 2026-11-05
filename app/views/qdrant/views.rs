@@ -1,8 +1,8 @@
 //! Per-node views state and in-place document synchronization. No staging versions:
 //! silver in SQLite is authoritative and any lost or partial views are replayed.
 use super::{
-    AppError, ConnectorDocument, ConnectorUnit, Document, PointKind, Scope, Store, api, collection,
-    connector_id, document_id, failure, point_id, sparse, tokens,
+    AppError, Document, PointKind, Scope, SearchUnit, Store, api, collection, connector_id,
+    document_id, failure, point_id, sparse, tokens,
 };
 use crate::silver::revision::State;
 use crate::views::documents::{ConversationRecord, MessageRecord};
@@ -150,7 +150,7 @@ impl Store {
             ..api::Filter::default()
         };
         if !current.is_empty() {
-            filter.must_not.push(api::matches("message.id", current));
+            filter.must_not.push(api::matches("unit.anchor", current));
         }
         self.api
             .delete_filtered(&collection(&identity.group_id, false), filter)
@@ -266,13 +266,11 @@ impl Documents {
         store: &Store,
         identity: &Scope,
         conversation: &ConversationRecord,
-        mut message: MessageRecord,
+        message: MessageRecord,
     ) -> Result<u64, AppError> {
         if message.conversation_id != conversation.id {
             return Err(failure());
         }
-        // Retrieval documents need no tool activity; view reads shared silver.
-        message.tools = crate::tools::Activity::default();
         let words = tokens(&message.projection);
         let embedded = u64::from(message.vector.is_some());
         let vector = Self::vectors(
@@ -289,15 +287,34 @@ impl Documents {
                 vector,
                 payload: Document {
                     node_id: identity.node_id.clone(),
-                    provider: conversation.provider,
-                    role: message.role.clone(),
+                    source: crate::source::Source::Provider(conversation.provider),
+                    provider: Some(conversation.provider),
+                    source_id: None,
+                    role: Some(message.role),
+                    object: crate::source::ObjectType::native_message(conversation.provider),
                     conversation_id: conversation.id.clone(),
                     project: conversation.project.clone(),
                     repository: conversation.repository.clone(),
                     created_at: message.created_at,
                     tokens: words,
-                    conversation: conversation.clone(),
-                    message,
+                    unit: SearchUnit {
+                        anchor: message.id,
+                        text: message.projection.clone(),
+                        content: message.projection,
+                        title: conversation.title.clone(),
+                        enrichment: conversation.enrichment.clone(),
+                        author_kind: None,
+                        sequence: message.ordinal,
+                        chat_created_at: conversation.created_at,
+                        chat_updated_at: conversation.updated_at,
+                        ancestors: crate::source::native_ancestors(
+                            conversation.provider,
+                            &conversation.id,
+                            conversation.title.as_deref(),
+                        ),
+                        generation: message.generation,
+                    },
+                    vector: message.vector,
                 },
             },
         )
@@ -322,20 +339,26 @@ impl Documents {
         } = point;
         let words = tokens(&unit.text);
         unit.generation = vector.as_ref().map(|_| identity.generation.clone());
-        let vector = Self::vectors(store, identity, &unit.text, &words, vector);
+        let vectors = Self::vectors(store, identity, &unit.text, &words, vector.clone());
         self.push_point(
             store,
             api::Point {
                 id: connector_id(&identity.node_id, &unit.anchor),
-                vector,
-                payload: ConnectorDocument {
+                vector: vectors,
+                payload: Document {
                     node_id: identity.node_id.clone(),
-                    source_id,
+                    source: crate::source::Source::Connector(source_id.clone()),
+                    provider: None,
+                    source_id: Some(source_id),
+                    role: None,
+                    project: None,
+                    repository: None,
                     object,
                     conversation_id: group_anchor,
                     created_at,
                     tokens: words,
                     unit,
+                    vector,
                 },
             },
         )
@@ -376,6 +399,6 @@ pub(crate) struct ConnectorPoint {
     pub(crate) object: crate::source::ObjectType,
     pub(crate) group_anchor: String,
     pub(crate) created_at: Option<i64>,
-    pub(crate) unit: ConnectorUnit,
+    pub(crate) unit: SearchUnit,
     pub(crate) vector: Option<Vec<f64>>,
 }

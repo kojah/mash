@@ -69,7 +69,7 @@ async fn qdrant_connector_metadata_only_updates_refresh_search_evidence() {
         let points = fixture
             .store
             .api
-            .retrieve::<ConnectorDocument>(
+            .retrieve::<Document>(
                 &collection(&fixture.identity.group_id, false),
                 &[connector_id(
                     &fixture.identity.node_id,
@@ -135,6 +135,66 @@ async fn fixture(dense: bool) -> Fixture {
     fixture
 }
 
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_common_documents_search_and_filter_mixed_sources() {
+    use crate::search_filter::Filter;
+    let fixture = fixture(true).await;
+    fixture
+        .server
+        .index(&fixture.identity, fixture.file(2, "native"))
+        .await
+        .unwrap();
+    fixture
+        .server
+        .ingest_connector(&fixture.identity, batch(0, 1))
+        .await
+        .unwrap();
+    for (filter, expected) in [
+        (None, 3),
+        (Some(Filter::Kind(vec!["codex:message".into()])), 2),
+        (Some(Filter::Kind(vec!["notes:note".into()])), 1),
+        (Some(Filter::Source(vec!["notes".into()])), 1),
+        (
+            Some(Filter::Provider(vec![crate::provider::Provider::Codex])),
+            2,
+        ),
+        (Some(Filter::Role(vec![crate::role::Role::User])), 2),
+        (Some(Filter::Project(vec!["project".into()])), 2),
+    ] {
+        let mut query = fixture.query();
+        query.filter = filter.clone();
+        let ranked = fixture
+            .server
+            .search(&fixture.identity, query.clone())
+            .await
+            .unwrap();
+        assert_eq!(ranked.lexical.len(), expected, "ranked lexical: {filter:?}");
+        assert_eq!(ranked.semantic.len(), expected, "ranked dense: {filter:?}");
+        query.intent = crate::views::exact::Intent::ExactMention;
+        query.vector.clear();
+        query.generation.clear();
+        let literal = fixture
+            .server
+            .search(&fixture.identity, query)
+            .await
+            .unwrap();
+        assert_eq!(literal.lexical.len(), expected, "literal: {filter:?}");
+        for hit in &literal.lexical {
+            let other = ranked
+                .lexical
+                .iter()
+                .find(|other| other.id == hit.id)
+                .unwrap();
+            assert_eq!(hit.source, other.source);
+            assert_eq!(hit.content, other.content);
+            assert_eq!(hit.sequence, other.sequence);
+            assert_eq!(hit.metadata.title, other.metadata.title);
+        }
+    }
+    fixture.cleanup().await;
+}
+
 async fn exercise_mode(sequence: &[Operation], dense: bool) -> Result<(), TestCaseError> {
     let fixture = fixture(dense).await;
     let mut failure = None;
@@ -155,7 +215,7 @@ async fn exercise_mode(sequence: &[Operation], dense: bool) -> Result<(), TestCa
         let points = fixture
             .store
             .api
-            .retrieve::<ConnectorDocument>(
+            .retrieve::<Document>(
                 &collection(&fixture.identity.group_id, false),
                 &[connector_id(
                     &fixture.identity.node_id,

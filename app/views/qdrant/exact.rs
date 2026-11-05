@@ -1,13 +1,10 @@
 //! Bounded literal scanning of immutable lexical documents, without vectors.
-use super::{
-    AppError, Scope, Store, Stored, api, collection, connector_hit, document_id, failure, tokens,
-};
+use super::{AppError, Document, Scope, Store, api, collection, document_hit};
 use crate::{
     storage::SearchHit,
     views::exact::{self, Literal},
     views::retrieval as protocol,
 };
-use serde::Deserialize;
 use std::collections::BTreeSet;
 
 const MAX_CANDIDATES: usize = 10_000;
@@ -20,102 +17,16 @@ const FIELDS: &[&str] = &[
     "repository",
     "created_at",
     "tokens",
-    "conversation",
-    "message.id",
-    "message.conversation_id",
-    "message.role",
-    "message.projection",
-    "message.created_at",
+    "source",
     "source_id",
     "object",
     "unit",
 ];
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Message {
-    id: String,
-    conversation_id: String,
-    role: crate::role::Role,
-    projection: String,
-    created_at: Option<i64>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Document {
-    node_id: String,
-    provider: crate::provider::Provider,
-    role: crate::role::Role,
-    conversation_id: String,
-    project: Option<String>,
-    repository: Option<String>,
-    created_at: Option<i64>,
-    tokens: Vec<String>,
-    conversation: crate::views::documents::ConversationRecord,
-    message: Message,
-}
-
-fn hit(
-    point: api::Record<Stored<Document>>,
-    active: &BTreeSet<String>,
-) -> Result<SearchHit, AppError> {
-    let d = match point.payload {
-        Stored::Native(document) => document,
-        Stored::Connector(document) => {
-            // Exact search reads no vectors, so the generation is not checked here.
-            let mut hit = connector_hit(&point.id, document, active, None)?;
-            hit.lexical_score = Some(0.0);
-            return Ok(hit);
-        }
-    };
-    let m = d.message;
-    if point.id != document_id(&d.node_id, &m.id)
-        || !active.contains(&d.node_id)
-        || d.conversation_id != m.conversation_id
-        || d.conversation.id != m.conversation_id
-        || d.provider != d.conversation.provider
-        || d.role != m.role
-        || d.project != d.conversation.project
-        || d.repository != d.conversation.repository
-        || d.created_at != m.created_at
-        || d.tokens != tokens(&m.projection)
-        || m.projection.is_empty()
-    {
-        return Err(failure());
-    }
-    Ok(SearchHit {
-        node_id: Some(d.node_id),
-        id: m.id,
-        conversation_id: m.conversation_id,
-        source: crate::source::Source::Provider(d.provider),
-        object: crate::source::ObjectType::native_message(d.provider),
-        ancestors: crate::source::native_ancestors(
-            d.provider,
-            &d.conversation.id,
-            d.conversation.title.as_deref(),
-        ),
-        role: Some(m.role.clone()),
-        author_kind: None,
-        author: crate::source::author(Some(m.role), None),
-        sequence: None,
-        content: m.projection,
-        copies: vec![],
-        created_at: m.created_at,
-        metadata: crate::search_results::ChatMetadata {
-            enrichment: d.conversation.enrichment,
-            title: d.conversation.title,
-            project: d.project,
-            repository: d.repository,
-            created_at: d.conversation.created_at,
-            updated_at: d.conversation.updated_at,
-        },
-        lexical_score: Some(0.0),
-        lookup: None,
-        lexical_match: None,
-        semantic_score: None,
-        fusion_score: 0.0,
-        rerank_score: None,
-    })
+fn hit(point: api::Record<Document>, active: &BTreeSet<String>) -> Result<SearchHit, AppError> {
+    let mut hit = document_hit(&point.id, point.payload, active, None)?;
+    hit.lexical_score = Some(0.0);
+    Ok(hit)
 }
 
 impl Store {
@@ -156,7 +67,7 @@ impl Store {
             loop {
                 let page = self
                     .api
-                    .scroll_page::<Stored<Document>>(
+                    .scroll_page::<Document>(
                         &collection(&identity.group_id, false),
                         filter.clone(),
                         offset,
@@ -168,10 +79,7 @@ impl Store {
                 let mut page_hits = page
                     .points
                     .into_iter()
-                    .filter(|point| match &point.payload {
-                        Stored::Native(document) => !document.message.projection.is_empty(),
-                        Stored::Connector(_) => true,
-                    })
+                    .filter(|point| !point.payload.unit.text.is_empty())
                     .map(|point| hit(point, &active))
                     .collect::<Result<Vec<_>, _>>()?;
                 for hit in &mut page_hits {

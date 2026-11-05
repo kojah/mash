@@ -19,11 +19,12 @@ pub(crate) fn connector_point(
         object: unit.object.clone(),
         group_anchor: unit.group_anchor.clone(),
         created_at: unit.created_at,
-        unit: super::qdrant::ConnectorUnit {
+        unit: super::qdrant::SearchUnit {
             anchor: unit.anchor.clone(),
             text: unit.text.clone(),
             content: evidence.content().to_owned(),
             title: evidence.title().map(str::to_owned),
+            enrichment: None,
             author_kind: evidence.author(),
             sequence: unit.sequence,
             chat_created_at: group_created_at,

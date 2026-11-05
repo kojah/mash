@@ -3,7 +3,7 @@ use super::{AppError, PointKind, Scope, Store, api, collection, failure, point_i
 use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const SCHEMA_VERSION: u32 = 4;
+pub(crate) const SCHEMA_VERSION: u32 = 5;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

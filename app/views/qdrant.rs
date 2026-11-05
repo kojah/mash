@@ -2,6 +2,8 @@
 //! silver in SQLite. Every point here can be rebuilt by replaying silver.
 mod api;
 mod configuration;
+#[cfg(test)]
+mod document_tests;
 mod exact;
 mod read;
 #[cfg(test)]
@@ -80,46 +82,37 @@ pub(crate) struct Store {
     responses: crate::redaction::Policy,
 }
 
-/// One searchable message, denormalized with its thread metadata.
+/// The same searchable evidence shape for every source. Filter fields are
+/// denormalized from the source and checked when decoding a result.
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
     node_id: String,
-    provider: crate::provider::Provider,
-    role: crate::role::Role,
+    source: crate::source::Source,
+    provider: Option<crate::provider::Provider>,
+    source_id: Option<String>,
+    role: Option<crate::role::Role>,
+    object: crate::source::ObjectType,
     conversation_id: String,
     project: Option<String>,
     repository: Option<String>,
     created_at: Option<i64>,
     tokens: Vec<String>,
-    conversation: crate::views::documents::ConversationRecord,
-    message: crate::views::documents::MessageRecord,
-}
-
-/// One searchable connector entry or document with its display evidence.
-/// Provider, role, project and repository are absent, so filters on them never
-/// match; `source_id` and `object` are absent from native documents.
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct ConnectorDocument {
-    node_id: String,
-    source_id: String,
-    object: crate::source::ObjectType,
-    /// An entry's nearest container anchor, or a document's own anchor.
-    conversation_id: String,
-    created_at: Option<i64>,
-    tokens: Vec<String>,
-    unit: ConnectorUnit,
+    unit: SearchUnit,
+    /// Omitted by literal scans, which do not inspect dense evidence.
+    #[serde(default)]
+    vector: Option<Vec<f64>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ConnectorUnit {
+pub(crate) struct SearchUnit {
     pub(crate) anchor: String,
     /// Indexed and embedded text; synchronization also fingerprints the evidence.
     pub(crate) text: String,
     pub(crate) content: String,
     pub(crate) title: Option<String>,
+    pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
     pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     /// Position among the container's entries.
     pub(crate) sequence: i64,
@@ -131,26 +124,45 @@ pub(crate) struct ConnectorUnit {
     pub(crate) generation: Option<String>,
 }
 
-/// A stored point of either shape; each rejects the other's fields.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Stored<N> {
-    Native(N),
-    Connector(Box<ConnectorDocument>),
-}
-
 fn connector_id(node: &str, anchor: &str) -> String {
     point_id(&["connector", node, anchor])
 }
 
-/// A verified connector point as a search hit.
-fn connector_hit(
+/// Verify source identity, grouping and projection evidence for every query mode.
+fn document_hit(
     id: &str,
-    d: Box<ConnectorDocument>,
+    d: Document,
     active: &std::collections::BTreeSet<String>,
-    generation: Option<&str>,
+    dense: Option<(&Scope, &crate::views::config::Build, bool)>,
 ) -> Result<crate::storage::SearchHit, AppError> {
-    let d = *d;
+    let expected_id = match &d.source {
+        crate::source::Source::Provider(provider) => {
+            if d.provider != Some(*provider)
+                || d.source_id.is_some()
+                || d.role.is_none()
+                || d.unit.author_kind.is_some()
+                || d.object != crate::source::ObjectType::native_message(*provider)
+                || d.unit.content != d.unit.text
+            {
+                return Err(failure());
+            }
+            document_id(&d.node_id, &d.unit.anchor)
+        }
+        crate::source::Source::Connector(source) => {
+            if d.provider.is_some()
+                || d.source_id.as_ref() != Some(source)
+                || d.role.is_some()
+                || crate::storage::connector_views::parse_anchor(&d.unit.anchor).is_none_or(
+                    |(role, anchor_source, object_id)| {
+                        role != d.object.role || anchor_source != source || object_id.is_empty()
+                    },
+                )
+            {
+                return Err(failure());
+            }
+            connector_id(&d.node_id, &d.unit.anchor)
+        }
+    };
     let expected_group = match d.object.role {
         crate::connectors::Role::Entry => d
             .unit
@@ -160,42 +172,55 @@ fn connector_hit(
             .map_or("", |container| container.id.as_str()),
         _ => d.unit.anchor.as_str(),
     };
-    if id != connector_id(&d.node_id, &d.unit.anchor)
+    if id != expected_id
         || !active.contains(&d.node_id)
+        || d.conversation_id.is_empty()
         || d.conversation_id != expected_group
         || !matches!(
             d.object.role,
             crate::connectors::Role::Entry | crate::connectors::Role::Document
         )
-        || !d
-            .unit
-            .anchor
-            .starts_with(crate::storage::connector_views::ANCHOR_PREFIX)
         || d.tokens != tokens(&d.unit.text)
         || d.unit.text.is_empty()
-        || generation.is_some_and(|generation| d.unit.generation.as_deref() != Some(generation))
     {
         return Err(failure());
     }
+    if let Some((scope, build, lexical)) = dense {
+        let included = d.role.as_ref().map_or_else(
+            || build.dense_enabled(),
+            |role| build.includes_dense(role, &d.unit.text),
+        );
+        if if included {
+            d.unit.generation.as_deref() != Some(scope.generation.as_str())
+                || d.vector
+                    .as_ref()
+                    .is_none_or(|v| !crate::views::retrieval::valid_vector(v, scope.dimensions))
+        } else {
+            !lexical || d.vector.is_some() || d.unit.generation.is_some()
+        } {
+            return Err(failure());
+        }
+    }
+    let author = crate::source::author(d.role.clone(), d.unit.author_kind);
     Ok(crate::storage::SearchHit {
         node_id: Some(d.node_id),
         id: d.unit.anchor,
         conversation_id: d.conversation_id,
-        source: crate::source::Source::Connector(d.source_id),
+        source: d.source,
         object: d.object,
         ancestors: d.unit.ancestors,
-        role: None,
+        role: d.role,
         author_kind: d.unit.author_kind,
-        author: crate::source::author(None, d.unit.author_kind),
+        author,
         sequence: Some(d.unit.sequence),
         content: d.unit.content,
         copies: vec![],
         created_at: d.created_at,
         metadata: crate::search_results::ChatMetadata {
-            enrichment: None,
+            enrichment: d.unit.enrichment,
             title: d.unit.title,
-            project: None,
-            repository: None,
+            project: d.project,
+            repository: d.repository,
             created_at: d.unit.chat_created_at,
             updated_at: d.unit.chat_updated_at,
         },
