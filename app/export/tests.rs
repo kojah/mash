@@ -2,11 +2,11 @@ use super::*;
 use rusqlite::{Connection, types::Value};
 
 #[test]
-fn portable_v1_parent_positions_resolve_after_out_of_order_records() {
+fn portable_v2_parent_positions_resolve_after_out_of_order_records() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());
     connection.execute_batch(
-        "INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,fingerprint)
+        "INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection,context_parent,created_at,fingerprint)
          VALUES('reply','thread',2,'assistant','Reply','Reply','message',12,'reply-hash');"
     ).unwrap();
     crate::storage::turns::derive(&connection, "thread").unwrap();
@@ -169,12 +169,12 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
     let connection = crate::storage::test_support::connect(&path);
     connection.execute_batch(
         "PRAGMA foreign_keys=ON;
-         INSERT INTO sessions(id,provider,title,project,repository,created_at,updated_at,source_path,source_key,source_fingerprint)
+         INSERT INTO chats(id,provider,title,project,repository,created_at,updated_at,source_path,source_key,source_fingerprint)
          VALUES('thread','codex','Useful thread','/project','https://example.test/repo',10,20,'/missing/session','file:/missing/session','source-hash');
-         INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata,fingerprint)
+         INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata,fingerprint)
          VALUES('message','thread',0,'user','Canonical evidence','visible evidence','',11,
            '{\"tool_calls\":[{\"name\":\"exec\",\"call_id\":\"c1\",\"input\":{\"cmd\":[\"ls\"]}}],\"tool_results\":[{\"call_id\":\"c0\",\"is_error\":true}]}','message-hash');
-         INSERT INTO conversation_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');
+         INSERT INTO chat_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');
          INSERT INTO tombstones VALUES('codex','forgotten-thread',30);
          INSERT INTO claude_sources VALUES('branch','/missing/branch','thread','Branch title','/other-project',NULL);
          INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content_packed,projection,created_at,metadata)
@@ -271,7 +271,7 @@ fn export_rejects_unresolved_provider_attachments_in_stored_claude_evidence() {
 fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {
     let sql = match table {
         "messages" => {
-            "SELECT id,conversation_id,ordinal,role,context_parent,turn_id,content,
+            "SELECT id,chat_id,ordinal,role,context_parent,turn_id,content,
             search_projection,created_at,metadata,attachments,fingerprint FROM messages ORDER BY id"
                 .to_owned()
         }
@@ -331,7 +331,7 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
     let (database, writer) = fixture(root.path());
     // A live WAL writer has an uncommitted edit. Only committed silver is copied.
     writer
-        .execute_batch("BEGIN IMMEDIATE; UPDATE sessions SET title='not committed';")
+        .execute_batch("BEGIN IMMEDIATE; UPDATE chats SET title='not committed';")
         .unwrap();
     let before = Storage::open_silver(&database)
         .unwrap()
@@ -351,10 +351,10 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_vie
     ));
     let imported = crate::storage::test_support::connect(&destination);
     for table in [
-        "sessions",
+        "chats",
         "messages",
         "turns",
-        "conversation_enrichment",
+        "chat_enrichment",
         "tombstones",
         "claude_sources",
         "claude_source_messages",
@@ -533,7 +533,7 @@ fn empty_history_preserves_unverified_state_without_storage_engine_sequences() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());
     connection
-        .execute_batch("DELETE FROM sessions; DELETE FROM silver_scans; UPDATE silver_state SET interpretation_version=0;")
+        .execute_batch("DELETE FROM chats; DELETE FROM silver_scans; UPDATE silver_state SET interpretation_version=0;")
         .unwrap();
     let export = root.path().join("export");
     write(&database, &export, None).unwrap();

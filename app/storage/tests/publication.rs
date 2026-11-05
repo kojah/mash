@@ -9,7 +9,7 @@ fn journal_pruning_waits_for_baseline_completion_and_contiguous_coverage() {
     let path = directory.path().join("index.sqlite3");
     let mut writer = Storage::open_writer(&path).unwrap();
     for index in 0..4 {
-        let mut chat = conversation(&format!("edit-{index}"));
+        let mut chat = chat(&format!("edit-{index}"));
         chat.id = format!("session-{index}");
         chat.source = crate::silver::SourceIdentity::file(PathBuf::from(format!(
             "/tmp/session-{index}.jsonl"
@@ -27,7 +27,7 @@ fn journal_pruning_waits_for_baseline_completion_and_contiguous_coverage() {
                 tools: crate::tools::Activity::default(),
             }])
             .unwrap();
-        writer.replace_conversation(&chat).unwrap();
+        writer.replace_chat(&chat).unwrap();
     }
     writer.commit_writer().unwrap();
     drop(writer);
@@ -117,7 +117,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     let mut writer = Storage::open_writer(&path).unwrap();
-    writer.replace_conversation(&conversation("first")).unwrap();
+    writer.replace_chat(&chat("first")).unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let storage = Storage::open_existing(&path).unwrap();
@@ -132,9 +132,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         .unwrap();
     drop(storage);
     let mut writer = Storage::open_writer(&path).unwrap();
-    writer
-        .replace_conversation(&conversation("changed"))
-        .unwrap();
+    writer.replace_chat(&chat("changed")).unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let storage = Storage::open_existing(&path).unwrap();
@@ -154,7 +152,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         .unwrap();
     storage
         .connection
-        .execute("UPDATE sessions SET title='newer' WHERE id='session-1'", [])
+        .execute("UPDATE chats SET title='newer' WHERE id='session-1'", [])
         .unwrap();
     storage
         .acknowledge_publication(
@@ -167,7 +165,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
     storage
         .with_publication_snapshot(|snapshot| {
             let mut threads = 0;
-            snapshot.visit_changed(BatchKind::Conversations, sent, |batch| {
+            snapshot.visit_changed(BatchKind::Chats, sent, |batch| {
                 threads += batch.len();
                 Ok(())
             })?;
@@ -177,11 +175,11 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         .unwrap();
     storage
         .connection
-        .execute("DELETE FROM sessions WHERE id='session-1'", [])
+        .execute("DELETE FROM chats WHERE id='session-1'", [])
         .unwrap();
     storage
         .with_publication_snapshot(|snapshot| {
-            assert_eq!(snapshot.removed_threads(sent)?, vec!["session-1"]);
+            assert_eq!(snapshot.removed_chats(sent)?, vec!["session-1"]);
             assert_eq!(snapshot.delta_base(Some("other-instance"), sent)?, None);
             Ok(())
         })
@@ -207,7 +205,7 @@ fn journal_changes_roll_back_with_the_source_mutation() {
         let transaction = storage.connection.unchecked_transaction().unwrap();
         transaction
             .execute(
-                "INSERT INTO sessions(id,provider) VALUES('rollback','codex')",
+                "INSERT INTO chats(id,provider) VALUES('rollback','codex')",
                 [],
             )
             .unwrap();

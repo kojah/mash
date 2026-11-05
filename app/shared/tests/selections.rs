@@ -11,7 +11,7 @@ async fn local_message_candidates_intersect_thread_provider_and_time_selections(
     for provider in [Provider::Codex, Provider::ClaudeCode, Provider::Opencode] {
         let id = provider.as_str();
         storage
-            .replace_conversation(&Conversation {
+            .replace_chat(&Chat {
                 id: id.into(),
                 provider,
                 title_origin: None,
@@ -50,7 +50,7 @@ async fn local_message_candidates_intersect_thread_provider_and_time_selections(
         for after in [2, 3] {
             let scope = Selection {
                 provider: vec![Provider::Codex, Provider::ClaudeCode],
-                conversation: threads.iter().map(|id| (*id).into()).collect(),
+                chat: threads.iter().map(|id| (*id).into()).collect(),
                 after: Some(after),
                 before: Some(3),
                 ..Default::default()
@@ -70,7 +70,7 @@ async fn local_message_candidates_intersect_thread_provider_and_time_selections(
                 .into_iter()
                 .map(|hit| {
                     assert!(hit.lexical_score.is_some() && hit.semantic_score.is_some());
-                    hit.conversation_id
+                    hit.chat_id
                 })
                 .collect();
             ids.sort();

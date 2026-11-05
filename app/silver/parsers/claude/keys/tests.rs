@@ -146,10 +146,10 @@ fn native_dialogue_spill_keeps_forward_parents_duplicates_and_context() {
     output.flush().unwrap();
     drop(output);
     let parsed = parse_claude(&path).unwrap();
-    let conversation = parsed.conversation.unwrap();
-    assert_eq!(conversation.messages.len(), expected.len());
+    let chat = parsed.chat.unwrap();
+    assert_eq!(chat.messages.len(), expected.len());
     let mut ordinals = BTreeMap::new();
-    for message in conversation.messages.into_rows().unwrap() {
+    for message in chat.messages.into_rows().unwrap() {
         let message = message.unwrap();
         let (content, parent) = &expected[&message.id];
         assert_eq!(&message.content, content);
@@ -161,7 +161,7 @@ fn native_dialogue_spill_keeps_forward_parents_duplicates_and_context() {
     }
     assert_eq!(ordinals.len(), expected.len());
     assert_eq!(
-        conversation.claude_lineage.unwrap(),
+        chat.claude_lineage.unwrap(),
         expected
             .into_iter()
             .map(|(id, (_, parent))| (id, parent))

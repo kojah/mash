@@ -65,7 +65,7 @@ fn codex_paginated_large_file_change_preserves_tool_context_and_dialogue() {
             .is_empty()
     );
     let source = sources(vec![HistorySource::file(&path)]).unwrap().remove(0);
-    let parsed = parse(&source.identity).unwrap().conversation.unwrap();
+    let parsed = parse(&source.identity).unwrap().chat.unwrap();
     assert!(matches!(
         parsed.messages,
         super::super::messages::Messages::Staged(_)
@@ -106,7 +106,7 @@ proptest! {
                 rusqlite::params![id,i64::try_from(ordinal).unwrap(),json]).unwrap();
         }
         let source=sources(vec![HistorySource::file(&path)]).unwrap().remove(0);
-        let parsed=parse(&source.identity).unwrap().conversation.unwrap();
+        let parsed=parse(&source.identity).unwrap().chat.unwrap();
         let messages=parsed.messages.inline();
         prop_assert_eq!(messages.len(),texts.len());
         let ids=messages.iter().map(|m| m.id.clone()).collect::<BTreeSet<_>>();
@@ -115,7 +115,7 @@ proptest! {
             prop_assert_eq!(&message.content,text);
         }
         history.execute("UPDATE thread_items SET rollout_ordinal=-rollout_ordinal",[]).unwrap();
-        let reordered=parse(&source.identity).unwrap().conversation.unwrap();
+        let reordered=parse(&source.identity).unwrap().chat.unwrap();
         let reordered_ids=reordered.messages.inline().iter().map(|m| m.id.clone()).collect::<BTreeSet<_>>();
         prop_assert_eq!(ids,reordered_ids);
     }
@@ -134,12 +134,12 @@ fn codex_paginated_replaces_jsonl_mirror_without_purging_same_native_chat() {
     let mut writer = Storage::open_writer(&database).unwrap();
     index(&mut writer, &options(&mirror)).unwrap();
     writer.commit_writer().unwrap();
-    assert_eq!(writer.counts().unwrap().conversations, 1);
+    assert_eq!(writer.counts().unwrap().chats, 1);
     drop(writer);
     let mut writer = Storage::open_writer(&database).unwrap();
     index(&mut writer, &options(directory.path())).unwrap();
     writer.commit_writer().unwrap();
-    assert_eq!(writer.counts().unwrap().conversations, 1);
+    assert_eq!(writer.counts().unwrap().chats, 1);
     assert_eq!(
         crate::storage::test_support::projections_with_text(
             &writer,
@@ -167,7 +167,7 @@ fn codex_paginated_history_reads_wal_preserves_identity_and_hides_context() {
     let sources = sources(vec![HistorySource::file(&path)]).unwrap();
     assert_eq!(sources.len(), 1);
     let stamp = sources[0].stamp().unwrap();
-    let parsed = parse(&sources[0].identity).unwrap().conversation.unwrap();
+    let parsed = parse(&sources[0].identity).unwrap().chat.unwrap();
     assert_eq!(parsed.id, "alpha");
     assert_eq!(parsed.title.as_deref(), Some("SQLite history"));
     assert_eq!(parsed.created_at, Some(1000));
@@ -198,7 +198,7 @@ fn codex_paginated_history_reads_wal_preserves_identity_and_hides_context() {
     assert_eq!(
         parse(&sources[0].identity)
             .unwrap()
-            .conversation
+            .chat
             .unwrap()
             .messages
             .inline()[0]
@@ -249,7 +249,7 @@ fn codex_paginated_index_refresh_and_rejection_keep_committed_history() {
     let mut writer = Storage::open_writer(&database).unwrap();
     index(&mut writer, &options(&path)).unwrap();
     writer.commit_writer().unwrap();
-    assert_eq!(writer.counts().unwrap().conversations, 1);
+    assert_eq!(writer.counts().unwrap().chats, 1);
     assert_eq!(
         crate::storage::test_support::projections_with_text(
             &writer,
@@ -359,7 +359,7 @@ fn codex_paginated_realtime_transcripts_interleave_without_repeating_promoted_it
             .unwrap();
     }
     let source = sources(vec![HistorySource::file(path)]).unwrap().remove(0);
-    let parsed = parse(&source.identity).unwrap().conversation.unwrap();
+    let parsed = parse(&source.identity).unwrap().chat.unwrap();
     let messages = parsed.messages.inline();
     assert_eq!(messages.len(), 8);
     assert_eq!(messages[0].dialogue(), "");

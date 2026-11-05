@@ -13,7 +13,7 @@ pub(super) async fn verify_thread_provider_scopes(service: &Service, vector: &[f
     for (threads, expected) in selections {
         let scope = Selection {
             provider: vec![Provider::Codex, Provider::ClaudeCode],
-            conversation: threads.into_iter().map(str::to_owned).collect(),
+            chat: threads.into_iter().map(str::to_owned).collect(),
             ..Default::default()
         }
         .resolve("first")
@@ -55,10 +55,7 @@ async fn assert_candidates(service: &Service, token: &str, input: &Search, expec
         .await
         .unwrap();
     for candidates in [result.lexical, result.semantic] {
-        let mut ids: Vec<_> = candidates
-            .into_iter()
-            .map(|hit| hit.conversation_id)
-            .collect();
+        let mut ids: Vec<_> = candidates.into_iter().map(|hit| hit.chat_id).collect();
         ids.sort();
         let mut expected = expected.to_vec();
         expected.sort_unstable();

@@ -78,7 +78,7 @@ pub(crate) fn restore(
     let mut state_seen = false;
     let mut identity_seen = false;
     transaction.execute_batch(
-        "CREATE TEMP TABLE archive_context(id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, parent_ordinal INTEGER NOT NULL);"
+        "CREATE TEMP TABLE archive_context(id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, parent_ordinal INTEGER NOT NULL);"
     ).map_err(AppError::database)?;
     loop {
         line.clear();
@@ -251,7 +251,7 @@ fn resolve_archive_context(transaction: &rusqlite::Transaction<'_>) -> Result<()
     let missing = transaction
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM archive_context a WHERE NOT EXISTS(
-            SELECT 1 FROM messages p WHERE p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal))",
+            SELECT 1 FROM messages p WHERE p.chat_id=a.chat_id AND p.ordinal=a.parent_ordinal))",
             [],
             |row| row.get::<_, bool>(0),
         )
@@ -262,7 +262,7 @@ fn resolve_archive_context(transaction: &rusqlite::Transaction<'_>) -> Result<()
     transaction
         .execute_batch(
             "UPDATE messages SET context_parent=(SELECT p.id FROM archive_context a JOIN messages p
-             ON p.conversation_id=a.conversation_id AND p.ordinal=a.parent_ordinal
+             ON p.chat_id=a.chat_id AND p.ordinal=a.parent_ordinal
              WHERE a.id=messages.id)
          WHERE id IN (SELECT id FROM archive_context);
          DROP TABLE archive_context;",

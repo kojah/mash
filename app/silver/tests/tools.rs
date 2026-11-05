@@ -12,7 +12,7 @@ fn parsed(provider: Provider, fixture: &str) -> Vec<NormalizedMessage> {
     }
     .unwrap();
     parsed
-        .conversation
+        .chat
         .unwrap()
         .messages
         .into_rows()

@@ -12,12 +12,12 @@ use crate::shared::protocol::{self, Event};
 use prost::Message;
 use std::io::Read;
 
-pub(crate) const PROTOCOL_VERSION: u32 = 2;
+pub(crate) const PROTOCOL_VERSION: u32 = 3;
 pub(crate) const MAX_CONTROL_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_ENVELOPE_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;
 pub(crate) const NORMAL_BATCH_TARGET: usize = 1024 * 1024;
-pub(crate) const MAX_BATCH_CONVERSATIONS: usize = 128;
+pub(crate) const MAX_BATCH_CHATS: usize = 128;
 pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
 /// The largest decoded publication batch a client builds and asks a server to
 /// accept; servers cap it at their own `max_upload_mib`. Batches group many
@@ -158,7 +158,7 @@ pub(crate) struct BeginBackfill {
     #[prost(string, tag = "5")]
     pub manifest_digest: String,
     #[prost(uint64, tag = "6")]
-    pub total_conversations: u64,
+    pub total_chats: u64,
     #[prost(uint64, tag = "7")]
     pub decoded_bytes: u64,
 }
@@ -237,12 +237,12 @@ pub(crate) struct BeginAttachment {
 }
 
 /// One baseline member in a backfill manifest. `digest` identifies the
-/// conversation content the client froze; a tombstone digest is produced by
+/// chat content the client froze; a tombstone digest is produced by
 /// [`tombstone_member_digest`].
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct BackfillMember {
     #[prost(string, tag = "1")]
-    pub conversation_id: String,
+    pub chat_id: String,
     #[prost(string, tag = "2")]
     pub digest: String,
 }
@@ -370,7 +370,7 @@ pub(crate) struct BackfillComplete {
     #[prost(string, tag = "1")]
     pub backfill_id: String,
     #[prost(uint64, tag = "2")]
-    pub covered_conversations: u64,
+    pub covered_chats: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
@@ -476,7 +476,7 @@ pub(crate) mod native_record {
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub(crate) enum Body {
         #[prost(message, tag = "1")]
-        Conversation(super::Conversation),
+        Chat(super::Chat),
         #[prost(message, tag = "2")]
         Message(super::NativeMessage),
         #[prost(message, tag = "3")]
@@ -487,7 +487,7 @@ pub(crate) mod native_record {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Conversation {
+pub(crate) struct Chat {
     #[prost(message, optional, tag = "1")]
     pub enrichment: Option<Enrichment>,
     #[prost(string, tag = "2")]
@@ -513,7 +513,7 @@ pub(crate) struct NativeMessage {
     #[prost(string, tag = "2")]
     pub id: String,
     #[prost(string, tag = "3")]
-    pub conversation_id: String,
+    pub chat_id: String,
     #[prost(int64, tag = "4")]
     pub ordinal: i64,
     #[prost(message, optional, tag = "5")]
@@ -599,7 +599,7 @@ pub(crate) struct Tombstone {
     #[prost(string, tag = "1")]
     pub provider: String,
     #[prost(string, tag = "2")]
-    pub conversation_id: String,
+    pub chat_id: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -788,7 +788,7 @@ pub(crate) struct Piece {
 pub(crate) struct EncodedBatch {
     pub decoded_bytes: u64,
     pub record_count: u32,
-    pub conversation_count: u32,
+    pub chat_count: u32,
     pub manifest_digest: String,
     pub pieces: Vec<Piece>,
 }
@@ -842,15 +842,15 @@ pub(crate) fn encode_publication(
 ) -> Result<EncodedBatch, AppError> {
     let mut decoded = Vec::new();
     let mut records = 0u32;
-    let mut conversations = 0u32;
+    let mut chats = 0u32;
     for event in events {
         match event {
-            Event::Batch(protocol::Batch::Conversations { records }) => {
+            Event::Batch(protocol::Batch::Chats { records }) => {
                 for record in records {
                     NativeRecord::from(record)
                         .encode_length_delimited(&mut decoded)
-                        .map_err(|_| AppError::internal("encode conversation record"))?;
-                    conversations = conversations
+                        .map_err(|_| AppError::internal("encode chat record"))?;
+                    chats = chats
                         .checked_add(1)
                         .ok_or_else(|| invalid("too many publication records"))?;
                 }
@@ -923,7 +923,7 @@ pub(crate) fn encode_publication(
     Ok(EncodedBatch {
         decoded_bytes: decoded.len() as u64,
         record_count: records,
-        conversation_count: conversations,
+        chat_count: chats,
         manifest_digest: manifest_digest(decoded.len() as u64, records, &entries),
         pieces,
     })
@@ -987,8 +987,8 @@ pub(crate) fn decode_bytes(pieces: &[Piece], max_decoded: usize) -> Result<Vec<u
     Ok(decoded)
 }
 
-/// Baseline membership digest for a conversation record.
-pub(crate) fn member_digest(record: &protocol::ConversationRecord) -> Result<String, AppError> {
+/// Baseline membership digest for a chat record.
+pub(crate) fn member_digest(record: &protocol::ChatRecord) -> Result<String, AppError> {
     let mut bytes = Vec::new();
     NativeRecord::from(record)
         .encode_length_delimited(&mut bytes)
@@ -997,11 +997,11 @@ pub(crate) fn member_digest(record: &protocol::ConversationRecord) -> Result<Str
 }
 
 /// Baseline membership digest for a tombstone, independent of the changed
-/// conversation record that may arrive later.
-pub(crate) fn tombstone_member_digest(conversation_id: &str) -> String {
+/// chat record that may arrive later.
+pub(crate) fn tombstone_member_digest(chat_id: &str) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"mash-backfill-tombstone-v1\0");
-    hasher.update(conversation_id.as_bytes());
+    hasher.update(chat_id.as_bytes());
     hasher.finalize().to_hex().to_string()
 }
 
@@ -1017,7 +1017,7 @@ pub(crate) fn decode_backfill_manifest(
         }
         let member = BackfillMember::decode_length_delimited(&mut input)
             .map_err(|_| invalid("invalid backfill manifest member"))?;
-        if member.conversation_id.is_empty()
+        if member.chat_id.is_empty()
             || member.digest.len() != 64
             || !member.digest.bytes().all(|b| b.is_ascii_hexdigit())
         {
@@ -1038,11 +1038,9 @@ fn decode_records(mut input: &[u8]) -> Result<Vec<Event>, AppError> {
             .body
             .ok_or_else(|| invalid("empty native publication record"))?
         {
-            native_record::Body::Conversation(record) => {
-                Event::Batch(protocol::Batch::Conversations {
-                    records: vec![record.try_into()?],
-                })
-            }
+            native_record::Body::Chat(record) => Event::Batch(protocol::Batch::Chats {
+                records: vec![record.try_into()?],
+            }),
             native_record::Body::Message(record) => Event::Batch(protocol::Batch::Messages {
                 records: vec![record.try_into()?],
             }),
@@ -1062,8 +1060,8 @@ fn decode_records(mut input: &[u8]) -> Result<Vec<Event>, AppError> {
 fn merge_event(pending: &mut Option<Event>, next: Event, output: &mut Vec<Event>) {
     let merged = match (pending.as_mut(), &next) {
         (
-            Some(Event::Batch(protocol::Batch::Conversations { records: left })),
-            Event::Batch(protocol::Batch::Conversations { records: right }),
+            Some(Event::Batch(protocol::Batch::Chats { records: left })),
+            Event::Batch(protocol::Batch::Chats { records: right }),
         ) if left.len() < 128 => {
             left.extend(right.iter().cloned());
             true
@@ -1092,10 +1090,10 @@ fn merge_event(pending: &mut Option<Event>, next: Event, output: &mut Vec<Event>
     }
 }
 
-impl From<&protocol::ConversationRecord> for NativeRecord {
-    fn from(record: &protocol::ConversationRecord) -> Self {
+impl From<&protocol::ChatRecord> for NativeRecord {
+    fn from(record: &protocol::ChatRecord) -> Self {
         Self {
-            body: Some(native_record::Body::Conversation(Conversation {
+            body: Some(native_record::Body::Chat(Chat {
                 enrichment: record.enrichment.as_ref().map(Enrichment::from),
                 id: record.id.clone(),
                 provider: record.provider.as_str().to_owned(),
@@ -1109,9 +1107,9 @@ impl From<&protocol::ConversationRecord> for NativeRecord {
     }
 }
 
-impl TryFrom<Conversation> for protocol::ConversationRecord {
+impl TryFrom<Chat> for protocol::ChatRecord {
     type Error = AppError;
-    fn try_from(record: Conversation) -> Result<Self, Self::Error> {
+    fn try_from(record: Chat) -> Result<Self, Self::Error> {
         Ok(Self {
             enrichment: record.enrichment.map(TryInto::try_into).transpose()?,
             id: record.id,
@@ -1132,7 +1130,7 @@ impl TryFrom<&protocol::MessageRecord> for NativeRecord {
             body: Some(native_record::Body::Message(NativeMessage {
                 attachments: record.attachments.iter().map(Attachment::from).collect(),
                 id: record.id.clone(),
-                conversation_id: record.conversation_id.clone(),
+                chat_id: record.chat_id.clone(),
                 ordinal: record.ordinal,
                 context: Some(MessageContext::from(&record.context)),
                 role: record.role.as_str().to_owned(),
@@ -1159,7 +1157,7 @@ impl TryFrom<NativeMessage> for protocol::MessageRecord {
                 .map(TryInto::try_into)
                 .collect::<Result<_, _>>()?,
             id: record.id,
-            conversation_id: record.conversation_id,
+            chat_id: record.chat_id,
             ordinal: record.ordinal,
             context: record
                 .context
@@ -1183,7 +1181,7 @@ impl From<&protocol::Tombstone> for NativeRecord {
         Self {
             body: Some(native_record::Body::Tombstone(Tombstone {
                 provider: record.provider.as_str().to_owned(),
-                conversation_id: record.conversation_id.clone(),
+                chat_id: record.chat_id.clone(),
             })),
         }
     }
@@ -1194,7 +1192,7 @@ impl TryFrom<Tombstone> for protocol::Tombstone {
     fn try_from(record: Tombstone) -> Result<Self, Self::Error> {
         Ok(Self {
             provider: record.provider.parse()?,
-            conversation_id: record.conversation_id,
+            chat_id: record.chat_id,
         })
     }
 }
@@ -1684,8 +1682,8 @@ mod tests {
 
     fn events() -> Vec<Event> {
         vec![
-            Event::Batch(protocol::Batch::Conversations {
-                records: vec![protocol::ConversationRecord {
+            Event::Batch(protocol::Batch::Chats {
+                records: vec![protocol::ChatRecord {
                     enrichment: None,
                     id: "chat".into(),
                     provider: crate::provider::Provider::Codex,
@@ -1700,7 +1698,7 @@ mod tests {
                 records: vec![protocol::MessageRecord {
                     attachments: Vec::new(),
                     id: "message".into(),
-                    conversation_id: "chat".into(),
+                    chat_id: "chat".into(),
                     ordinal: 0,
                     context: crate::message_context::MessageContext::Linear,
                     role: crate::role::Role::User,
@@ -1720,7 +1718,7 @@ mod tests {
     fn typed_publication_round_trip_preserves_records_and_optional_fields() {
         let encoded = encode_publication(&events(), DEFAULT_MAX_DECODED_BYTES).unwrap();
         assert_eq!(encoded.record_count, 3);
-        assert_eq!(encoded.conversation_count, 1);
+        assert_eq!(encoded.chat_count, 1);
         let decoded = decode_publication(&encoded.pieces, DEFAULT_MAX_DECODED_BYTES).unwrap();
         assert_eq!(decoded.len(), 3); // removal separates the two record groups
         let rendered = serde_json::to_value(decoded).unwrap();

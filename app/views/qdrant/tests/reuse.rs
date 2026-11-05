@@ -16,10 +16,10 @@ fn model() -> crate::semantic::remote::Configuration {
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
-async fn qdrant_materializer_reuses_session_vectors_after_metadata_edits_without_a_model() {
+async fn qdrant_materializer_reuses_chat_vectors_after_metadata_edits_without_a_model() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let model = model();
-    let mut chat = Fixture::conversation();
+    let mut chat = Fixture::chat();
     let mut messages = fixture.messages("native");
     let mut writer = Writer::new(
         &fixture.store,
@@ -76,7 +76,7 @@ async fn qdrant_materializer_reuse_tracks_prepared_title_and_parent_context() {
         });
     store.select_views(&fixture.identity, true).await.unwrap();
     let model = model();
-    let mut chat = Fixture::conversation();
+    let mut chat = Fixture::chat();
     let mut messages = fixture.messages("native");
     for step in 0..4 {
         if step == 1 {
@@ -117,7 +117,7 @@ async fn qdrant_materializer_reuse_requires_matching_source_model_and_input() {
         Some((Path::new(""), Some(&model))),
     );
     writer
-        .write_chat(&Fixture::conversation(), &fixture.messages("native"))
+        .write_chat(&Fixture::chat(), &fixture.messages("native"))
         .await
         .unwrap();
     writer.finish().await.unwrap();
@@ -170,7 +170,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
         Some((Path::new(""), Some(&model))),
     );
     writer
-        .write_chat(&Fixture::conversation(), &fixture.messages("native"))
+        .write_chat(&Fixture::chat(), &fixture.messages("native"))
         .await
         .unwrap();
     writer.finish().await.unwrap();
@@ -249,7 +249,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
             Some((Path::new(""), Some(&model))),
         );
         writer
-            .write_chat(&Fixture::conversation(), &fixture.messages("native"))
+            .write_chat(&Fixture::chat(), &fixture.messages("native"))
             .await
             .unwrap();
         let result = writer.finish().await.unwrap();

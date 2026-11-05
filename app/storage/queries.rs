@@ -86,10 +86,10 @@ impl Storage {
 
     /// Native history counts without consulting derived embedding coverage.
     pub(crate) fn silver_counts(&self) -> Result<Counts, AppError> {
-        let (conversations, messages, searchable): (i64, i64, i64) = self
+        let (chats, messages, searchable): (i64, i64, i64) = self
             .connection
             .query_row(
-                "SELECT (SELECT count(*) FROM sessions),
+                "SELECT (SELECT count(*) FROM chats),
                         (SELECT count(*) FROM messages),
                         (SELECT count(*) FROM messages INDEXED BY messages_searchable_role
                          WHERE COALESCE(search_projection,content)<>'')",
@@ -101,7 +101,7 @@ impl Storage {
             u64::try_from(value).map_err(|_| AppError::database_data("negative silver count"))
         };
         Ok(Counts {
-            conversations: count(conversations)?,
+            chats: count(chats)?,
             messages: count(messages)?,
             searchable_messages: count(searchable)?,
             ..Counts::default()
@@ -132,7 +132,7 @@ impl Storage {
             return self.view_branch(&anchor, anchor_ordinal, context, representation);
         }
         let rows = sql::ViewMessages::builder()
-            .conversation_id(&anchor.conversation_id)
+            .chat_id(&anchor.chat_id)
             .first_ordinal(anchor_ordinal.saturating_sub(context))
             .last_ordinal(anchor_ordinal.saturating_add(context))
             .build()
@@ -165,7 +165,7 @@ impl Storage {
     ) -> Result<Vec<Message>, AppError> {
         let read = |id: &str| {
             sql::ContextMessage::builder()
-                .conversation_id(&anchor.conversation_id)
+                .chat_id(&anchor.chat_id)
                 .id(id)
                 .build()
                 .query_opt(&self.connection)
@@ -192,7 +192,7 @@ impl Storage {
         id.clone_from(&anchor.id);
         for _ in 0..context {
             let Some(child) = sql::FirstChild::builder()
-                .conversation_id(&anchor.conversation_id)
+                .chat_id(&anchor.chat_id)
                 .parent(Some(&id))
                 .build()
                 .query_opt(&self.connection)

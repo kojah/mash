@@ -6,7 +6,7 @@ fn fixture() -> rusqlite::Connection {
     connection
         .execute_batch(
             "CREATE TABLE claude_sources (
-                source_key TEXT PRIMARY KEY, source_path TEXT, conversation_id TEXT,
+                source_key TEXT PRIMARY KEY, source_path TEXT, chat_id TEXT,
                 title TEXT, project TEXT, repository TEXT);
              CREATE TABLE claude_source_messages (
                 source_key TEXT, message_id TEXT, parent_id TEXT, role TEXT,
@@ -29,7 +29,7 @@ fn fixture() -> rusqlite::Connection {
 #[test]
 fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     let connection = fixture();
-    let all = claude_thread(&connection, "thread", None).unwrap().unwrap();
+    let all = claude_chat(&connection, "thread", None).unwrap().unwrap();
     assert_eq!(all.messages.len(), 3);
     assert_eq!(all.messages.inline()[0].id, "root");
     for message in &all.messages.inline()[1..] {
@@ -46,7 +46,7 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     );
     assert_eq!(all.messages.inline()[2].dialogue_text.as_deref(), Some(""));
     let selected = BTreeSet::from(["b".to_owned()]);
-    let selected = claude_thread(&connection, "thread", Some(&selected))
+    let selected = claude_chat(&connection, "thread", Some(&selected))
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -63,7 +63,7 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     assert_eq!(selected.project.as_deref(), Some("project b"));
     assert_eq!(selected.repository.as_deref(), Some("repository b"));
     assert!(
-        claude_thread(&connection, "thread", Some(&BTreeSet::new()))
+        claude_chat(&connection, "thread", Some(&BTreeSet::new()))
             .unwrap()
             .is_none()
     );
@@ -73,11 +73,11 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
 fn streamed_contributions_reject_conflicts_and_late_decode_failures() {
     let connection = fixture();
     connection.execute("UPDATE claude_source_messages SET content_packed='conflict' WHERE source_key='b' AND message_id='root'", []).unwrap();
-    assert!(claude_thread(&connection, "thread", None).is_err());
+    assert!(claude_chat(&connection, "thread", None).is_err());
     // A conflicting copy outside the routed subset is not a canonical conflict.
     let selected = BTreeSet::from(["a".to_owned()]);
     assert_eq!(
-        claude_thread(&connection, "thread", Some(&selected))
+        claude_chat(&connection, "thread", Some(&selected))
             .unwrap()
             .unwrap()
             .messages
@@ -98,17 +98,17 @@ fn streamed_contributions_reject_conflicts_and_late_decode_failures() {
         )
         .unwrap();
     // Never return a partial thread after earlier rows were successfully decoded.
-    assert!(claude_thread(&connection, "thread", None).is_err());
+    assert!(claude_chat(&connection, "thread", None).is_err());
     // Keep the prior typed-query contract: malformed rows are errors even when
     // their source would otherwise be excluded by the selected-source filter.
-    assert!(claude_thread(&connection, "thread", Some(&selected)).is_err());
+    assert!(claude_chat(&connection, "thread", Some(&selected)).is_err());
 }
 
 #[test]
 fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    let mut source = Conversation {
+    let mut source = Chat {
         id: "thread".to_owned(),
         provider: Provider::ClaudeCode,
         source: SourceIdentity::file(directory.path().join("a.jsonl")),
@@ -139,7 +139,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
             })
             .collect(),
     };
-    storage.replace_conversation(&source).unwrap();
+    storage.replace_chat(&source).unwrap();
     storage.commit_and_continue_writer().unwrap();
     storage
         .connection
@@ -156,7 +156,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
         ("branch".to_owned(), Some("root".to_owned())),
     ]));
     let error = storage
-        .replace_conversation(&source)
+        .replace_chat(&source)
         .err()
         .expect("corrupt contribution must fail reconciliation");
     assert_eq!(error.error.kind, crate::ErrorKind::Database);
@@ -177,7 +177,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
             [],
         )
         .unwrap();
-    storage.replace_conversation(&source).unwrap();
+    storage.replace_chat(&source).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 3);
     let sources: i64 = storage

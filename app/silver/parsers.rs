@@ -1,6 +1,6 @@
 //! Normalize Claude Code and Codex JSONL histories into canonical records.
 use super::json::{Kind, Record};
-use super::{Conversation, NormalizedMessage, ParsedFile};
+use super::{Chat, NormalizedMessage, ParsedFile};
 use crate::AppError;
 use crate::provider::Provider;
 use chrono::DateTime;
@@ -151,7 +151,7 @@ fn parse_jsonl(
             session_id = extracted.session_id.take();
         }
         let ordinal = i64::try_from(messages.len())
-            .map_err(|_| AppError::internal("conversation contains too many messages"))?;
+            .map_err(|_| AppError::internal("chat contains too many messages"))?;
         if provider == Provider::ClaudeCode
             && let Err(error) = claude_identity.push_key(extracted.source_id.clone())
         {
@@ -172,7 +172,7 @@ fn parse_jsonl(
     // readable records are applied and the skipped ones still reported.
     if (rejected.count != 0 && !rejected.readable_after) || messages.len() == 0 {
         return Ok(ParsedFile {
-            conversation: None,
+            chat: None,
             malformed_records: rejected.count,
             first_record_issue: rejected.first,
         });
@@ -196,7 +196,7 @@ fn parse_jsonl(
     };
     let summary = messages.summary()?;
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id,
             provider,
             claude_lineage,
@@ -231,7 +231,7 @@ impl RejectedRecords {
             return Err(error);
         }
         Ok(ParsedFile {
-            conversation: None,
+            chat: None,
             malformed_records: self.count,
             first_record_issue: self.first,
         })

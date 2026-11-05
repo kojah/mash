@@ -60,7 +60,7 @@ impl<'a> ListChats<'a> {
     CAST(?8 AS TEXT) AS sort_key,
     CAST(?9 AS INTEGER) AS descending)
 SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
-FROM sessions c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+FROM chats c CROSS JOIN scope s LEFT JOIN chat_enrichment e ON e.chat_id=c.id
 WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
@@ -772,12 +772,12 @@ impl<'a>
         }
     }
 }
-pub struct ConversationMessageStateRow {
+pub struct ChatMessageStateRow {
     pub id: String,
     pub fingerprint: String,
     pub ordinal: i64,
 }
-impl ConversationMessageStateRow {
+impl ChatMessageStateRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
@@ -786,23 +786,22 @@ impl ConversationMessageStateRow {
         })
     }
 }
-pub struct ConversationMessageState<'a> {
-    conversation_id: &'a str,
+pub struct ChatMessageState<'a> {
+    chat_id: &'a str,
 }
-impl<'a> ConversationMessageState<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT id,fingerprint,ordinal FROM messages WHERE conversation_id=?1";
+impl<'a> ChatMessageState<'a> {
+    pub const QUERY: &'static str = r"SELECT id,fingerprint,ordinal FROM messages WHERE chat_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> ConversationMessageState<'a> {
+impl<'a> ChatMessageState<'a> {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<ConversationMessageStateRow>> {
+    ) -> rusqlite::Result<Vec<ChatMessageStateRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), ConversationMessageStateRow::from_row)?
+            .query_map(self.as_params(), ChatMessageStateRow::from_row)?
             .collect()
     }
     pub fn prepare<'conn>(
@@ -812,74 +811,67 @@ impl<'a> ConversationMessageState<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
-impl<'a> ConversationMessageState<'a> {
-    pub const fn builder() -> ConversationMessageStateBuilder<'a, ((),)> {
-        ConversationMessageStateBuilder {
+impl<'a> ChatMessageState<'a> {
+    pub const fn builder() -> ChatMessageStateBuilder<'a, ((),)> {
+        ChatMessageStateBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ConversationMessageStateBuilder<'a, Fields = ((),)> {
+pub struct ChatMessageStateBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> ConversationMessageStateBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> ConversationMessageStateBuilder<'a, (&'a str,)> {
+impl<'a> ChatMessageStateBuilder<'a, ((),)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ChatMessageStateBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        ConversationMessageStateBuilder {
-            fields: (conversation_id,),
+        ChatMessageStateBuilder {
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
-impl<'a> ConversationMessageStateBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> ConversationMessageState<'a> {
-        let (conversation_id,) = self.fields;
-        ConversationMessageState { conversation_id }
+impl<'a> ChatMessageStateBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatMessageState<'a> {
+        let (chat_id,) = self.fields;
+        ChatMessageState { chat_id }
     }
 }
-pub struct ClaudeSourceThreadRow {
-    pub conversation_id: String,
+pub struct ClaudeSourceChatRow {
+    pub chat_id: String,
 }
-impl ClaudeSourceThreadRow {
+impl ClaudeSourceChatRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            conversation_id: row.get(0)?,
+            chat_id: row.get(0)?,
         })
     }
 }
-pub struct ClaudeSourceThread<'a> {
+pub struct ClaudeSourceChat<'a> {
     source_key: &'a str,
 }
-impl<'a> ClaudeSourceThread<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT conversation_id FROM claude_sources WHERE source_key=?1";
+impl<'a> ClaudeSourceChat<'a> {
+    pub const QUERY: &'static str = r"SELECT chat_id FROM claude_sources WHERE source_key=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> ClaudeSourceThread<'a> {
-    pub fn query_one(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<ClaudeSourceThreadRow> {
+impl<'a> ClaudeSourceChat<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ClaudeSourceChatRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), ClaudeSourceThreadRow::from_row)
+            .query_row(self.as_params(), ClaudeSourceChatRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<ClaudeSourceThreadRow>> {
+    ) -> rusqlite::Result<Option<ClaudeSourceChatRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), ClaudeSourceThreadRow::from_row)?
+            .query_map(self.as_params(), ClaudeSourceChatRow::from_row)?
             .next()
             .transpose()
     }
@@ -893,32 +885,32 @@ impl<'a> ClaudeSourceThread<'a> {
         (self.source_key,)
     }
 }
-impl<'a> ClaudeSourceThread<'a> {
-    pub const fn builder() -> ClaudeSourceThreadBuilder<'a, ((),)> {
-        ClaudeSourceThreadBuilder {
+impl<'a> ClaudeSourceChat<'a> {
+    pub const fn builder() -> ClaudeSourceChatBuilder<'a, ((),)> {
+        ClaudeSourceChatBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ClaudeSourceThreadBuilder<'a, Fields = ((),)> {
+pub struct ClaudeSourceChatBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> ClaudeSourceThreadBuilder<'a, ((),)> {
-    pub fn source_key(self, source_key: &'a str) -> ClaudeSourceThreadBuilder<'a, (&'a str,)> {
+impl<'a> ClaudeSourceChatBuilder<'a, ((),)> {
+    pub fn source_key(self, source_key: &'a str) -> ClaudeSourceChatBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        ClaudeSourceThreadBuilder {
+        ClaudeSourceChatBuilder {
             fields: (source_key,),
             _phantom,
         }
     }
 }
-impl<'a> ClaudeSourceThreadBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> ClaudeSourceThread<'a> {
+impl<'a> ClaudeSourceChatBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ClaudeSourceChat<'a> {
         let (source_key,) = self.fields;
-        ClaudeSourceThread { source_key }
+        ClaudeSourceChat { source_key }
     }
 }
 pub struct ClaudeSourceMetadataRow {
@@ -940,11 +932,11 @@ impl ClaudeSourceMetadataRow {
     }
 }
 pub struct ClaudeSourceMetadata<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
 }
 impl<'a> ClaudeSourceMetadata<'a> {
     pub const QUERY: &'static str = r"SELECT source_key,source_path,title,project,repository FROM claude_sources
-WHERE conversation_id=?1 ORDER BY source_key";
+WHERE chat_id=?1 ORDER BY source_key";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -965,7 +957,7 @@ impl<'a> ClaudeSourceMetadata<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
 impl<'a> ClaudeSourceMetadata<'a> {
@@ -981,42 +973,39 @@ pub struct ClaudeSourceMetadataBuilder<'a, Fields = ((),)> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a> ClaudeSourceMetadataBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> ClaudeSourceMetadataBuilder<'a, (&'a str,)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ClaudeSourceMetadataBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
         ClaudeSourceMetadataBuilder {
-            fields: (conversation_id,),
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
 impl<'a> ClaudeSourceMetadataBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ClaudeSourceMetadata<'a> {
-        let (conversation_id,) = self.fields;
-        ClaudeSourceMetadata { conversation_id }
+        let (chat_id,) = self.fields;
+        ClaudeSourceMetadata { chat_id }
     }
 }
 pub struct ClaudeSourceReferencesRow {
     pub source_key: String,
     pub source_path: String,
-    pub conversation_id: String,
+    pub chat_id: String,
 }
 impl ClaudeSourceReferencesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             source_key: row.get(0)?,
             source_path: row.get(1)?,
-            conversation_id: row.get(2)?,
+            chat_id: row.get(2)?,
         })
     }
 }
 pub struct ClaudeSourceReferences;
 impl ClaudeSourceReferences {
     pub const QUERY: &'static str =
-        r"SELECT source_key,source_path,conversation_id FROM claude_sources ORDER BY source_key";
+        r"SELECT source_key,source_path,chat_id FROM claude_sources ORDER BY source_key";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1085,12 +1074,12 @@ impl ClaudeContributionMessagesRow {
     }
 }
 pub struct ClaudeContributionMessages<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
 }
 impl<'a> ClaudeContributionMessages<'a> {
     pub const QUERY: &'static str = r"SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments,m.metadata
 FROM claude_source_messages m JOIN claude_sources s USING(source_key)
-WHERE s.conversation_id=?1 ORDER BY m.message_id,m.source_key";
+WHERE s.chat_id=?1 ORDER BY m.message_id,m.source_key";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1111,7 +1100,7 @@ impl<'a> ClaudeContributionMessages<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
 impl<'a> ClaudeContributionMessages<'a> {
@@ -1127,22 +1116,19 @@ pub struct ClaudeContributionMessagesBuilder<'a, Fields = ((),)> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a> ClaudeContributionMessagesBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> ClaudeContributionMessagesBuilder<'a, (&'a str,)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ClaudeContributionMessagesBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
         ClaudeContributionMessagesBuilder {
-            fields: (conversation_id,),
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
 impl<'a> ClaudeContributionMessagesBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ClaudeContributionMessages<'a> {
-        let (conversation_id,) = self.fields;
-        ClaudeContributionMessages { conversation_id }
+        let (chat_id,) = self.fields;
+        ClaudeContributionMessages { chat_id }
     }
 }
 pub struct ClaudeSourceScopeRow {
@@ -1213,17 +1199,17 @@ impl UpsertClaudeSourceRow {
 pub struct UpsertClaudeSource<'a> {
     source_key: &'a str,
     source_path: &'a str,
-    conversation_id: &'a str,
+    chat_id: &'a str,
     title: Option<&'a str>,
     project: Option<&'a str>,
     repository: Option<&'a str>,
 }
 impl<'a> UpsertClaudeSource<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO claude_sources(source_key,source_path,conversation_id,title,project,repository)
+    pub const QUERY: &'static str = r"INSERT INTO claude_sources(source_key,source_path,chat_id,title,project,repository)
 VALUES(?1,?2,?3,?4,?5,?6)
 ON CONFLICT(source_key) DO UPDATE SET source_path=excluded.source_path,
-conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.project,repository=excluded.repository
-WHERE source_path IS NOT excluded.source_path OR conversation_id IS NOT excluded.conversation_id
+chat_id=excluded.chat_id,title=excluded.title,project=excluded.project,repository=excluded.repository
+WHERE source_path IS NOT excluded.source_path OR chat_id IS NOT excluded.chat_id
    OR title IS NOT excluded.title OR project IS NOT excluded.project OR repository IS NOT excluded.repository";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1243,7 +1229,7 @@ impl<'a> UpsertClaudeSource<'a> {
         (
             self.source_key,
             self.source_path,
-            self.conversation_id,
+            self.chat_id,
             self.title,
             self.project,
             self.repository,
@@ -1262,66 +1248,34 @@ pub struct UpsertClaudeSourceBuilder<'a, Fields = ((), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, SourcePath, ConversationId, Title, Project, Repository>
-    UpsertClaudeSourceBuilder<'a, ((), SourcePath, ConversationId, Title, Project, Repository)>
+impl<'a, SourcePath, ChatId, Title, Project, Repository>
+    UpsertClaudeSourceBuilder<'a, ((), SourcePath, ChatId, Title, Project, Repository)>
 {
     pub fn source_key(
         self,
         source_key: &'a str,
-    ) -> UpsertClaudeSourceBuilder<
-        'a,
-        (
-            &'a str,
-            SourcePath,
-            ConversationId,
-            Title,
-            Project,
-            Repository,
-        ),
-    > {
-        let ((), source_path, conversation_id, title, project, repository) = self.fields;
+    ) -> UpsertClaudeSourceBuilder<'a, (&'a str, SourcePath, ChatId, Title, Project, Repository)>
+    {
+        let ((), source_path, chat_id, title, project, repository) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceBuilder {
-            fields: (
-                source_key,
-                source_path,
-                conversation_id,
-                title,
-                project,
-                repository,
-            ),
+            fields: (source_key, source_path, chat_id, title, project, repository),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, ConversationId, Title, Project, Repository>
-    UpsertClaudeSourceBuilder<'a, (SourceKey, (), ConversationId, Title, Project, Repository)>
+impl<'a, SourceKey, ChatId, Title, Project, Repository>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, (), ChatId, Title, Project, Repository)>
 {
     pub fn source_path(
         self,
         source_path: &'a str,
-    ) -> UpsertClaudeSourceBuilder<
-        'a,
-        (
-            SourceKey,
-            &'a str,
-            ConversationId,
-            Title,
-            Project,
-            Repository,
-        ),
-    > {
-        let (source_key, (), conversation_id, title, project, repository) = self.fields;
+    ) -> UpsertClaudeSourceBuilder<'a, (SourceKey, &'a str, ChatId, Title, Project, Repository)>
+    {
+        let (source_key, (), chat_id, title, project, repository) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceBuilder {
-            fields: (
-                source_key,
-                source_path,
-                conversation_id,
-                title,
-                project,
-                repository,
-            ),
+            fields: (source_key, source_path, chat_id, title, project, repository),
             _phantom,
         }
     }
@@ -1329,38 +1283,21 @@ impl<'a, SourceKey, ConversationId, Title, Project, Repository>
 impl<'a, SourceKey, SourcePath, Title, Project, Repository>
     UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, (), Title, Project, Repository)>
 {
-    pub fn conversation_id(
+    pub fn chat_id(
         self,
-        conversation_id: &'a str,
+        chat_id: &'a str,
     ) -> UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, &'a str, Title, Project, Repository)>
     {
         let (source_key, source_path, (), title, project, repository) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceBuilder {
-            fields: (
-                source_key,
-                source_path,
-                conversation_id,
-                title,
-                project,
-                repository,
-            ),
+            fields: (source_key, source_path, chat_id, title, project, repository),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, SourcePath, ConversationId, Project, Repository>
-    UpsertClaudeSourceBuilder<
-        'a,
-        (
-            SourceKey,
-            SourcePath,
-            ConversationId,
-            (),
-            Project,
-            Repository,
-        ),
-    >
+impl<'a, SourceKey, SourcePath, ChatId, Project, Repository>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ChatId, (), Project, Repository)>
 {
     pub fn title(
         self,
@@ -1370,29 +1307,22 @@ impl<'a, SourceKey, SourcePath, ConversationId, Project, Repository>
         (
             SourceKey,
             SourcePath,
-            ConversationId,
+            ChatId,
             Option<&'a str>,
             Project,
             Repository,
         ),
     > {
-        let (source_key, source_path, conversation_id, (), project, repository) = self.fields;
+        let (source_key, source_path, chat_id, (), project, repository) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceBuilder {
-            fields: (
-                source_key,
-                source_path,
-                conversation_id,
-                title,
-                project,
-                repository,
-            ),
+            fields: (source_key, source_path, chat_id, title, project, repository),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, SourcePath, ConversationId, Title, Repository>
-    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ConversationId, Title, (), Repository)>
+impl<'a, SourceKey, SourcePath, ChatId, Title, Repository>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ChatId, Title, (), Repository)>
 {
     pub fn project(
         self,
@@ -1402,29 +1332,22 @@ impl<'a, SourceKey, SourcePath, ConversationId, Title, Repository>
         (
             SourceKey,
             SourcePath,
-            ConversationId,
+            ChatId,
             Title,
             Option<&'a str>,
             Repository,
         ),
     > {
-        let (source_key, source_path, conversation_id, title, (), repository) = self.fields;
+        let (source_key, source_path, chat_id, title, (), repository) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceBuilder {
-            fields: (
-                source_key,
-                source_path,
-                conversation_id,
-                title,
-                project,
-                repository,
-            ),
+            fields: (source_key, source_path, chat_id, title, project, repository),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, SourcePath, ConversationId, Title, Project>
-    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ConversationId, Title, Project, ())>
+impl<'a, SourceKey, SourcePath, ChatId, Title, Project>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ChatId, Title, Project, ())>
 {
     pub fn repository(
         self,
@@ -1434,23 +1357,16 @@ impl<'a, SourceKey, SourcePath, ConversationId, Title, Project>
         (
             SourceKey,
             SourcePath,
-            ConversationId,
+            ChatId,
             Title,
             Project,
             Option<&'a str>,
         ),
     > {
-        let (source_key, source_path, conversation_id, title, project, ()) = self.fields;
+        let (source_key, source_path, chat_id, title, project, ()) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceBuilder {
-            fields: (
-                source_key,
-                source_path,
-                conversation_id,
-                title,
-                project,
-                repository,
-            ),
+            fields: (source_key, source_path, chat_id, title, project, repository),
             _phantom,
         }
     }
@@ -1469,11 +1385,11 @@ impl<'a>
     >
 {
     pub fn build(self) -> UpsertClaudeSource<'a> {
-        let (source_key, source_path, conversation_id, title, project, repository) = self.fields;
+        let (source_key, source_path, chat_id, title, project, repository) = self.fields;
         UpsertClaudeSource {
             source_key,
             source_path,
-            conversation_id,
+            chat_id,
             title,
             project,
             repository,
@@ -2340,22 +2256,22 @@ impl<'a> DeleteClaudeSourceBuilder<'a, (&'a str,)> {
         DeleteClaudeSource { source_key }
     }
 }
-pub struct DeleteClaudeThreadSourcesRow {}
-impl DeleteClaudeThreadSourcesRow {
+pub struct DeleteClaudeChatSourcesRow {}
+impl DeleteClaudeChatSourcesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct DeleteClaudeThreadSources<'a> {
-    conversation_id: &'a str,
+pub struct DeleteClaudeChatSources<'a> {
+    chat_id: &'a str,
 }
-impl<'a> DeleteClaudeThreadSources<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM claude_sources WHERE conversation_id=?1";
+impl<'a> DeleteClaudeChatSources<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM claude_sources WHERE chat_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteClaudeThreadSources<'a> {
+impl<'a> DeleteClaudeChatSources<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -2366,55 +2282,53 @@ impl<'a> DeleteClaudeThreadSources<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
-impl<'a> DeleteClaudeThreadSources<'a> {
-    pub const fn builder() -> DeleteClaudeThreadSourcesBuilder<'a, ((),)> {
-        DeleteClaudeThreadSourcesBuilder {
+impl<'a> DeleteClaudeChatSources<'a> {
+    pub const fn builder() -> DeleteClaudeChatSourcesBuilder<'a, ((),)> {
+        DeleteClaudeChatSourcesBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteClaudeThreadSourcesBuilder<'a, Fields = ((),)> {
+pub struct DeleteClaudeChatSourcesBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> DeleteClaudeThreadSourcesBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> DeleteClaudeThreadSourcesBuilder<'a, (&'a str,)> {
+impl<'a> DeleteClaudeChatSourcesBuilder<'a, ((),)> {
+    pub fn chat_id(self, chat_id: &'a str) -> DeleteClaudeChatSourcesBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        DeleteClaudeThreadSourcesBuilder {
-            fields: (conversation_id,),
+        DeleteClaudeChatSourcesBuilder {
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
-impl<'a> DeleteClaudeThreadSourcesBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> DeleteClaudeThreadSources<'a> {
-        let (conversation_id,) = self.fields;
-        DeleteClaudeThreadSources { conversation_id }
+impl<'a> DeleteClaudeChatSourcesBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteClaudeChatSources<'a> {
+        let (chat_id,) = self.fields;
+        DeleteClaudeChatSources { chat_id }
     }
 }
 pub struct ClaudeTombstoneRow {
-    pub conversation_id: String,
+    pub chat_id: String,
 }
 impl ClaudeTombstoneRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            conversation_id: row.get(0)?,
+            chat_id: row.get(0)?,
         })
     }
 }
 pub struct ClaudeTombstone<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
 }
 impl<'a> ClaudeTombstone<'a> {
-    pub const QUERY: &'static str = r"SELECT conversation_id FROM tombstones WHERE provider='claude-code' AND conversation_id=?1";
+    pub const QUERY: &'static str =
+        r"SELECT chat_id FROM tombstones WHERE provider='claude-code' AND chat_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2440,7 +2354,7 @@ impl<'a> ClaudeTombstone<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
 impl<'a> ClaudeTombstone<'a> {
@@ -2456,58 +2370,54 @@ pub struct ClaudeTombstoneBuilder<'a, Fields = ((),)> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a> ClaudeTombstoneBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> ClaudeTombstoneBuilder<'a, (&'a str,)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ClaudeTombstoneBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
         ClaudeTombstoneBuilder {
-            fields: (conversation_id,),
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
 impl<'a> ClaudeTombstoneBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ClaudeTombstone<'a> {
-        let (conversation_id,) = self.fields;
-        ClaudeTombstone { conversation_id }
+        let (chat_id,) = self.fields;
+        ClaudeTombstone { chat_id }
     }
 }
-pub struct CanonicalThreadMessageCountRow {
+pub struct CanonicalChatMessageCountRow {
     pub messages: i64,
 }
-impl CanonicalThreadMessageCountRow {
+impl CanonicalChatMessageCountRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             messages: row.get(0)?,
         })
     }
 }
-pub struct CanonicalThreadMessageCount<'a> {
-    conversation_id: &'a str,
+pub struct CanonicalChatMessageCount<'a> {
+    chat_id: &'a str,
 }
-impl<'a> CanonicalThreadMessageCount<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT count(*) AS messages FROM messages WHERE conversation_id=?1";
+impl<'a> CanonicalChatMessageCount<'a> {
+    pub const QUERY: &'static str = r"SELECT count(*) AS messages FROM messages WHERE chat_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> CanonicalThreadMessageCount<'a> {
+impl<'a> CanonicalChatMessageCount<'a> {
     pub fn query_one(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<CanonicalThreadMessageCountRow> {
+    ) -> rusqlite::Result<CanonicalChatMessageCountRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), CanonicalThreadMessageCountRow::from_row)
+            .query_row(self.as_params(), CanonicalChatMessageCountRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<CanonicalThreadMessageCountRow>> {
+    ) -> rusqlite::Result<Option<CanonicalChatMessageCountRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), CanonicalThreadMessageCountRow::from_row)?
+            .query_map(self.as_params(), CanonicalChatMessageCountRow::from_row)?
             .next()
             .transpose()
     }
@@ -2518,38 +2428,35 @@ impl<'a> CanonicalThreadMessageCount<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
-impl<'a> CanonicalThreadMessageCount<'a> {
-    pub const fn builder() -> CanonicalThreadMessageCountBuilder<'a, ((),)> {
-        CanonicalThreadMessageCountBuilder {
+impl<'a> CanonicalChatMessageCount<'a> {
+    pub const fn builder() -> CanonicalChatMessageCountBuilder<'a, ((),)> {
+        CanonicalChatMessageCountBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct CanonicalThreadMessageCountBuilder<'a, Fields = ((),)> {
+pub struct CanonicalChatMessageCountBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> CanonicalThreadMessageCountBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> CanonicalThreadMessageCountBuilder<'a, (&'a str,)> {
+impl<'a> CanonicalChatMessageCountBuilder<'a, ((),)> {
+    pub fn chat_id(self, chat_id: &'a str) -> CanonicalChatMessageCountBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        CanonicalThreadMessageCountBuilder {
-            fields: (conversation_id,),
+        CanonicalChatMessageCountBuilder {
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
-impl<'a> CanonicalThreadMessageCountBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> CanonicalThreadMessageCount<'a> {
-        let (conversation_id,) = self.fields;
-        CanonicalThreadMessageCount { conversation_id }
+impl<'a> CanonicalChatMessageCountBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> CanonicalChatMessageCount<'a> {
+        let (chat_id,) = self.fields;
+        CanonicalChatMessageCount { chat_id }
     }
 }
 pub struct ParkMessageOrdinalRow {}
@@ -2560,12 +2467,12 @@ impl ParkMessageOrdinalRow {
 }
 pub struct ParkMessageOrdinal<'a> {
     ordinal: i64,
-    conversation_id: &'a str,
+    chat_id: &'a str,
     message_id: &'a str,
 }
 impl<'a> ParkMessageOrdinal<'a> {
     pub const QUERY: &'static str = r"UPDATE messages SET ordinal=?1
-WHERE conversation_id=?2 AND id=?3";
+WHERE chat_id=?2 AND id=?3";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2581,7 +2488,7 @@ impl<'a> ParkMessageOrdinal<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.ordinal, self.conversation_id, self.message_id)
+        (self.ordinal, self.chat_id, self.message_id)
     }
 }
 impl<'a> ParkMessageOrdinal<'a> {
@@ -2596,58 +2503,55 @@ pub struct ParkMessageOrdinalBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, ConversationId, MessageId> ParkMessageOrdinalBuilder<'a, ((), ConversationId, MessageId)> {
-    pub fn ordinal(
-        self,
-        ordinal: i64,
-    ) -> ParkMessageOrdinalBuilder<'a, (i64, ConversationId, MessageId)> {
-        let ((), conversation_id, message_id) = self.fields;
+impl<'a, ChatId, MessageId> ParkMessageOrdinalBuilder<'a, ((), ChatId, MessageId)> {
+    pub fn ordinal(self, ordinal: i64) -> ParkMessageOrdinalBuilder<'a, (i64, ChatId, MessageId)> {
+        let ((), chat_id, message_id) = self.fields;
         let _phantom = self._phantom;
         ParkMessageOrdinalBuilder {
-            fields: (ordinal, conversation_id, message_id),
+            fields: (ordinal, chat_id, message_id),
             _phantom,
         }
     }
 }
 impl<'a, Ordinal, MessageId> ParkMessageOrdinalBuilder<'a, (Ordinal, (), MessageId)> {
-    pub fn conversation_id(
+    pub fn chat_id(
         self,
-        conversation_id: &'a str,
+        chat_id: &'a str,
     ) -> ParkMessageOrdinalBuilder<'a, (Ordinal, &'a str, MessageId)> {
         let (ordinal, (), message_id) = self.fields;
         let _phantom = self._phantom;
         ParkMessageOrdinalBuilder {
-            fields: (ordinal, conversation_id, message_id),
+            fields: (ordinal, chat_id, message_id),
             _phantom,
         }
     }
 }
-impl<'a, Ordinal, ConversationId> ParkMessageOrdinalBuilder<'a, (Ordinal, ConversationId, ())> {
+impl<'a, Ordinal, ChatId> ParkMessageOrdinalBuilder<'a, (Ordinal, ChatId, ())> {
     pub fn message_id(
         self,
         message_id: &'a str,
-    ) -> ParkMessageOrdinalBuilder<'a, (Ordinal, ConversationId, &'a str)> {
-        let (ordinal, conversation_id, ()) = self.fields;
+    ) -> ParkMessageOrdinalBuilder<'a, (Ordinal, ChatId, &'a str)> {
+        let (ordinal, chat_id, ()) = self.fields;
         let _phantom = self._phantom;
         ParkMessageOrdinalBuilder {
-            fields: (ordinal, conversation_id, message_id),
+            fields: (ordinal, chat_id, message_id),
             _phantom,
         }
     }
 }
 impl<'a> ParkMessageOrdinalBuilder<'a, (i64, &'a str, &'a str)> {
     pub fn build(self) -> ParkMessageOrdinal<'a> {
-        let (ordinal, conversation_id, message_id) = self.fields;
+        let (ordinal, chat_id, message_id) = self.fields;
         ParkMessageOrdinal {
             ordinal,
-            conversation_id,
+            chat_id,
             message_id,
         }
     }
 }
 pub struct AnchorRow {
     pub id: String,
-    pub conversation_id: String,
+    pub chat_id: String,
     pub ordinal: i64,
     pub context_parent: Option<String>,
 }
@@ -2655,7 +2559,7 @@ impl AnchorRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
-            conversation_id: row.get(1)?,
+            chat_id: row.get(1)?,
             ordinal: row.get(2)?,
             context_parent: row.get(3)?,
         })
@@ -2666,7 +2570,7 @@ pub struct Anchor<'a> {
 }
 impl<'a> Anchor<'a> {
     pub const QUERY: &'static str =
-        r"SELECT id,conversation_id,ordinal,context_parent FROM messages WHERE id=?1";
+        r"SELECT id,chat_id,ordinal,context_parent FROM messages WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2990,13 +2894,13 @@ impl ViewMessagesRow {
     }
 }
 pub struct ViewMessages<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
     first_ordinal: i64,
     last_ordinal: i64,
 }
 impl<'a> ViewMessages<'a> {
     pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM messages
-WHERE conversation_id=?1 AND ordinal>=?2 AND ordinal<=?3 ORDER BY ordinal";
+WHERE chat_id=?1 AND ordinal>=?2 AND ordinal<=?3 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3017,7 +2921,7 @@ impl<'a> ViewMessages<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id, self.first_ordinal, self.last_ordinal)
+        (self.chat_id, self.first_ordinal, self.last_ordinal)
     }
 }
 impl<'a> ViewMessages<'a> {
@@ -3033,49 +2937,49 @@ pub struct ViewMessagesBuilder<'a, Fields = ((), (), ())> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, FirstOrdinal, LastOrdinal> ViewMessagesBuilder<'a, ((), FirstOrdinal, LastOrdinal)> {
-    pub fn conversation_id(
+    pub fn chat_id(
         self,
-        conversation_id: &'a str,
+        chat_id: &'a str,
     ) -> ViewMessagesBuilder<'a, (&'a str, FirstOrdinal, LastOrdinal)> {
         let ((), first_ordinal, last_ordinal) = self.fields;
         let _phantom = self._phantom;
         ViewMessagesBuilder {
-            fields: (conversation_id, first_ordinal, last_ordinal),
+            fields: (chat_id, first_ordinal, last_ordinal),
             _phantom,
         }
     }
 }
-impl<'a, ConversationId, LastOrdinal> ViewMessagesBuilder<'a, (ConversationId, (), LastOrdinal)> {
+impl<'a, ChatId, LastOrdinal> ViewMessagesBuilder<'a, (ChatId, (), LastOrdinal)> {
     pub fn first_ordinal(
         self,
         first_ordinal: i64,
-    ) -> ViewMessagesBuilder<'a, (ConversationId, i64, LastOrdinal)> {
-        let (conversation_id, (), last_ordinal) = self.fields;
+    ) -> ViewMessagesBuilder<'a, (ChatId, i64, LastOrdinal)> {
+        let (chat_id, (), last_ordinal) = self.fields;
         let _phantom = self._phantom;
         ViewMessagesBuilder {
-            fields: (conversation_id, first_ordinal, last_ordinal),
+            fields: (chat_id, first_ordinal, last_ordinal),
             _phantom,
         }
     }
 }
-impl<'a, ConversationId, FirstOrdinal> ViewMessagesBuilder<'a, (ConversationId, FirstOrdinal, ())> {
+impl<'a, ChatId, FirstOrdinal> ViewMessagesBuilder<'a, (ChatId, FirstOrdinal, ())> {
     pub fn last_ordinal(
         self,
         last_ordinal: i64,
-    ) -> ViewMessagesBuilder<'a, (ConversationId, FirstOrdinal, i64)> {
-        let (conversation_id, first_ordinal, ()) = self.fields;
+    ) -> ViewMessagesBuilder<'a, (ChatId, FirstOrdinal, i64)> {
+        let (chat_id, first_ordinal, ()) = self.fields;
         let _phantom = self._phantom;
         ViewMessagesBuilder {
-            fields: (conversation_id, first_ordinal, last_ordinal),
+            fields: (chat_id, first_ordinal, last_ordinal),
             _phantom,
         }
     }
 }
 impl<'a> ViewMessagesBuilder<'a, (&'a str, i64, i64)> {
     pub fn build(self) -> ViewMessages<'a> {
-        let (conversation_id, first_ordinal, last_ordinal) = self.fields;
+        let (chat_id, first_ordinal, last_ordinal) = self.fields;
         ViewMessages {
-            conversation_id,
+            chat_id,
             first_ordinal,
             last_ordinal,
         }
@@ -3106,12 +3010,12 @@ impl ContextMessageRow {
     }
 }
 pub struct ContextMessage<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
     id: &'a str,
 }
 impl<'a> ContextMessage<'a> {
     pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM messages
-WHERE conversation_id=?1 AND id=?2";
+WHERE chat_id=?1 AND id=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3137,7 +3041,7 @@ impl<'a> ContextMessage<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id, self.id)
+        (self.chat_id, self.id)
     }
 }
 impl<'a> ContextMessage<'a> {
@@ -3153,35 +3057,29 @@ pub struct ContextMessageBuilder<'a, Fields = ((), ())> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, Id> ContextMessageBuilder<'a, ((), Id)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> ContextMessageBuilder<'a, (&'a str, Id)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ContextMessageBuilder<'a, (&'a str, Id)> {
         let ((), id) = self.fields;
         let _phantom = self._phantom;
         ContextMessageBuilder {
-            fields: (conversation_id, id),
+            fields: (chat_id, id),
             _phantom,
         }
     }
 }
-impl<'a, ConversationId> ContextMessageBuilder<'a, (ConversationId, ())> {
-    pub fn id(self, id: &'a str) -> ContextMessageBuilder<'a, (ConversationId, &'a str)> {
-        let (conversation_id, ()) = self.fields;
+impl<'a, ChatId> ContextMessageBuilder<'a, (ChatId, ())> {
+    pub fn id(self, id: &'a str) -> ContextMessageBuilder<'a, (ChatId, &'a str)> {
+        let (chat_id, ()) = self.fields;
         let _phantom = self._phantom;
         ContextMessageBuilder {
-            fields: (conversation_id, id),
+            fields: (chat_id, id),
             _phantom,
         }
     }
 }
 impl<'a> ContextMessageBuilder<'a, (&'a str, &'a str)> {
     pub fn build(self) -> ContextMessage<'a> {
-        let (conversation_id, id) = self.fields;
-        ContextMessage {
-            conversation_id,
-            id,
-        }
+        let (chat_id, id) = self.fields;
+        ContextMessage { chat_id, id }
     }
 }
 pub struct FirstChildRow {
@@ -3197,11 +3095,11 @@ impl FirstChildRow {
     }
 }
 pub struct FirstChild<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
     parent: Option<&'a str>,
 }
 impl<'a> FirstChild<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal FROM messages WHERE conversation_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
+    pub const QUERY: &'static str = r"SELECT id,ordinal FROM messages WHERE chat_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3227,7 +3125,7 @@ impl<'a> FirstChild<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id, self.parent)
+        (self.chat_id, self.parent)
     }
 }
 impl<'a> FirstChild<'a> {
@@ -3243,38 +3141,32 @@ pub struct FirstChildBuilder<'a, Fields = ((), ())> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, Parent> FirstChildBuilder<'a, ((), Parent)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> FirstChildBuilder<'a, (&'a str, Parent)> {
+    pub fn chat_id(self, chat_id: &'a str) -> FirstChildBuilder<'a, (&'a str, Parent)> {
         let ((), parent) = self.fields;
         let _phantom = self._phantom;
         FirstChildBuilder {
-            fields: (conversation_id, parent),
+            fields: (chat_id, parent),
             _phantom,
         }
     }
 }
-impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
+impl<'a, ChatId> FirstChildBuilder<'a, (ChatId, ())> {
     pub fn parent(
         self,
         parent: Option<&'a str>,
-    ) -> FirstChildBuilder<'a, (ConversationId, Option<&'a str>)> {
-        let (conversation_id, ()) = self.fields;
+    ) -> FirstChildBuilder<'a, (ChatId, Option<&'a str>)> {
+        let (chat_id, ()) = self.fields;
         let _phantom = self._phantom;
         FirstChildBuilder {
-            fields: (conversation_id, parent),
+            fields: (chat_id, parent),
             _phantom,
         }
     }
 }
 impl<'a> FirstChildBuilder<'a, (&'a str, Option<&'a str>)> {
     pub fn build(self) -> FirstChild<'a> {
-        let (conversation_id, parent) = self.fields;
-        FirstChild {
-            conversation_id,
-            parent,
-        }
+        let (chat_id, parent) = self.fields;
+        FirstChild { chat_id, parent }
     }
 }
 pub struct SilverCertificateRow {
@@ -3306,7 +3198,7 @@ impl SilverCertificate {
     CAST(s.interpretation_version<>?1
         OR EXISTS(SELECT 1 FROM silver_scans WHERE interpretation_version<>?1)
         OR EXISTS(SELECT 1 FROM source_checkpoints WHERE interpretation_version<>?1)
-        OR EXISTS(SELECT 1 FROM sessions c WHERE NOT EXISTS(
+        OR EXISTS(SELECT 1 FROM chats c WHERE NOT EXISTS(
             SELECT 1 FROM silver_scans p WHERE p.provider=c.provider
               AND p.interpretation_version=?1)) AS INTEGER) AS unverified,
     CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=2) AS INTEGER) AS incomplete,
@@ -3468,7 +3360,7 @@ pub struct SourceEnrichment<'a> {
 }
 impl<'a> SourceEnrichment<'a> {
     pub const QUERY: &'static str = r"SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at
-FROM sessions c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+FROM chats c LEFT JOIN chat_enrichment e ON e.chat_id=c.id
 WHERE c.provider=?1 AND c.source_key=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -3537,40 +3429,36 @@ impl<'a> SourceEnrichmentBuilder<'a, (&'a str, Option<&'a str>)> {
         }
     }
 }
-pub struct ConversationEnrichmentRow {
+pub struct ChatEnrichmentRow {
     pub evidence: String,
 }
-impl ConversationEnrichmentRow {
+impl ChatEnrichmentRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             evidence: row.get(0)?,
         })
     }
 }
-pub struct ConversationEnrichment<'a> {
-    conversation_id: &'a str,
+pub struct ChatEnrichment<'a> {
+    chat_id: &'a str,
 }
-impl<'a> ConversationEnrichment<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT evidence FROM conversation_enrichment WHERE conversation_id=?1";
+impl<'a> ChatEnrichment<'a> {
+    pub const QUERY: &'static str = r"SELECT evidence FROM chat_enrichment WHERE chat_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> ConversationEnrichment<'a> {
-    pub fn query_one(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<ConversationEnrichmentRow> {
+impl<'a> ChatEnrichment<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatEnrichmentRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), ConversationEnrichmentRow::from_row)
+            .query_row(self.as_params(), ChatEnrichmentRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<ConversationEnrichmentRow>> {
+    ) -> rusqlite::Result<Option<ChatEnrichmentRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), ConversationEnrichmentRow::from_row)?
+            .query_map(self.as_params(), ChatEnrichmentRow::from_row)?
             .next()
             .transpose()
     }
@@ -3581,73 +3469,70 @@ impl<'a> ConversationEnrichment<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
-impl<'a> ConversationEnrichment<'a> {
-    pub const fn builder() -> ConversationEnrichmentBuilder<'a, ((),)> {
-        ConversationEnrichmentBuilder {
+impl<'a> ChatEnrichment<'a> {
+    pub const fn builder() -> ChatEnrichmentBuilder<'a, ((),)> {
+        ChatEnrichmentBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ConversationEnrichmentBuilder<'a, Fields = ((),)> {
+pub struct ChatEnrichmentBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> ConversationEnrichmentBuilder<'a, ((),)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> ConversationEnrichmentBuilder<'a, (&'a str,)> {
+impl<'a> ChatEnrichmentBuilder<'a, ((),)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ChatEnrichmentBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        ConversationEnrichmentBuilder {
-            fields: (conversation_id,),
+        ChatEnrichmentBuilder {
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
-impl<'a> ConversationEnrichmentBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> ConversationEnrichment<'a> {
-        let (conversation_id,) = self.fields;
-        ConversationEnrichment { conversation_id }
+impl<'a> ChatEnrichmentBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatEnrichment<'a> {
+        let (chat_id,) = self.fields;
+        ChatEnrichment { chat_id }
     }
 }
-pub struct SessionSourceFingerprintRow {
+pub struct ChatSourceFingerprintRow {
     pub source_fingerprint: String,
 }
-impl SessionSourceFingerprintRow {
+impl ChatSourceFingerprintRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             source_fingerprint: row.get(0)?,
         })
     }
 }
-pub struct SessionSourceFingerprint<'a> {
+pub struct ChatSourceFingerprint<'a> {
     id: &'a str,
 }
-impl<'a> SessionSourceFingerprint<'a> {
-    pub const QUERY: &'static str = r"SELECT source_fingerprint FROM sessions WHERE id=?1";
+impl<'a> ChatSourceFingerprint<'a> {
+    pub const QUERY: &'static str = r"SELECT source_fingerprint FROM chats WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> SessionSourceFingerprint<'a> {
+impl<'a> ChatSourceFingerprint<'a> {
     pub fn query_one(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<SessionSourceFingerprintRow> {
+    ) -> rusqlite::Result<ChatSourceFingerprintRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), SessionSourceFingerprintRow::from_row)
+            .query_row(self.as_params(), ChatSourceFingerprintRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<SessionSourceFingerprintRow>> {
+    ) -> rusqlite::Result<Option<ChatSourceFingerprintRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), SessionSourceFingerprintRow::from_row)?
+            .query_map(self.as_params(), ChatSourceFingerprintRow::from_row)?
             .next()
             .transpose()
     }
@@ -3661,41 +3546,41 @@ impl<'a> SessionSourceFingerprint<'a> {
         (self.id,)
     }
 }
-impl<'a> SessionSourceFingerprint<'a> {
-    pub const fn builder() -> SessionSourceFingerprintBuilder<'a, ((),)> {
-        SessionSourceFingerprintBuilder {
+impl<'a> ChatSourceFingerprint<'a> {
+    pub const fn builder() -> ChatSourceFingerprintBuilder<'a, ((),)> {
+        ChatSourceFingerprintBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SessionSourceFingerprintBuilder<'a, Fields = ((),)> {
+pub struct ChatSourceFingerprintBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> SessionSourceFingerprintBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> SessionSourceFingerprintBuilder<'a, (&'a str,)> {
+impl<'a> ChatSourceFingerprintBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> ChatSourceFingerprintBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        SessionSourceFingerprintBuilder {
+        ChatSourceFingerprintBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> SessionSourceFingerprintBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> SessionSourceFingerprint<'a> {
+impl<'a> ChatSourceFingerprintBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatSourceFingerprint<'a> {
         let (id,) = self.fields;
-        SessionSourceFingerprint { id }
+        ChatSourceFingerprint { id }
     }
 }
-pub struct UpsertSessionRow {}
-impl UpsertSessionRow {
+pub struct UpsertChatRow {}
+impl UpsertChatRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct UpsertSession<'a> {
+pub struct UpsertChat<'a> {
     id: &'a str,
     provider: &'a str,
     title: Option<&'a str>,
@@ -3704,8 +3589,8 @@ pub struct UpsertSession<'a> {
     project: Option<&'a str>,
     repository: Option<&'a str>,
 }
-impl<'a> UpsertSession<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO sessions(id,provider,title,created_at,updated_at,project,repository)
+impl<'a> UpsertChat<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO chats(id,provider,title,created_at,updated_at,project,repository)
 VALUES(?1,?2,?3,?4,?5,?6,?7)
 ON CONFLICT(id) DO UPDATE SET title=excluded.title,created_at=excluded.created_at,
 updated_at=excluded.updated_at,project=excluded.project,repository=excluded.repository";
@@ -3713,7 +3598,7 @@ updated_at=excluded.updated_at,project=excluded.project,repository=excluded.repo
         Self::QUERY
     }
 }
-impl<'a> UpsertSession<'a> {
+impl<'a> UpsertChat<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -3735,20 +3620,20 @@ impl<'a> UpsertSession<'a> {
         )
     }
 }
-impl<'a> UpsertSession<'a> {
-    pub const fn builder() -> UpsertSessionBuilder<'a, ((), (), (), (), (), (), ())> {
-        UpsertSessionBuilder {
+impl<'a> UpsertChat<'a> {
+    pub const fn builder() -> UpsertChatBuilder<'a, ((), (), (), (), (), (), ())> {
+        UpsertChatBuilder {
             fields: ((), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertSessionBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+pub struct UpsertChatBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertSessionBuilder<
+    UpsertChatBuilder<
         'a,
         (
             (),
@@ -3764,7 +3649,7 @@ impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
     pub fn id(
         self,
         id: &'a str,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             &'a str,
@@ -3778,7 +3663,7 @@ impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
     > {
         let ((), provider, title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3787,12 +3672,12 @@ impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
     }
 }
 impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertSessionBuilder<'a, (Id, (), Title, CreatedAt, UpdatedAt, Project, Repository)>
+    UpsertChatBuilder<'a, (Id, (), Title, CreatedAt, UpdatedAt, Project, Repository)>
 {
     pub fn provider(
         self,
         provider: &'a str,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             Id,
@@ -3806,7 +3691,7 @@ impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
     > {
         let (id, (), title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3815,12 +3700,12 @@ impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
     }
 }
 impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
-    UpsertSessionBuilder<'a, (Id, Provider, (), CreatedAt, UpdatedAt, Project, Repository)>
+    UpsertChatBuilder<'a, (Id, Provider, (), CreatedAt, UpdatedAt, Project, Repository)>
 {
     pub fn title(
         self,
         title: Option<&'a str>,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             Id,
@@ -3834,7 +3719,7 @@ impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
     > {
         let (id, provider, (), created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3843,12 +3728,12 @@ impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
     }
 }
 impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
-    UpsertSessionBuilder<'a, (Id, Provider, Title, (), UpdatedAt, Project, Repository)>
+    UpsertChatBuilder<'a, (Id, Provider, Title, (), UpdatedAt, Project, Repository)>
 {
     pub fn created_at(
         self,
         created_at: Option<i64>,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             Id,
@@ -3862,7 +3747,7 @@ impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
     > {
         let (id, provider, title, (), updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3871,12 +3756,12 @@ impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
     }
 }
 impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
-    UpsertSessionBuilder<'a, (Id, Provider, Title, CreatedAt, (), Project, Repository)>
+    UpsertChatBuilder<'a, (Id, Provider, Title, CreatedAt, (), Project, Repository)>
 {
     pub fn updated_at(
         self,
         updated_at: Option<i64>,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             Id,
@@ -3890,7 +3775,7 @@ impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
     > {
         let (id, provider, title, created_at, (), project, repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3899,12 +3784,12 @@ impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
     }
 }
 impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
-    UpsertSessionBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, (), Repository)>
+    UpsertChatBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, (), Repository)>
 {
     pub fn project(
         self,
         project: Option<&'a str>,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             Id,
@@ -3918,7 +3803,7 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
     > {
         let (id, provider, title, created_at, updated_at, (), repository) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3927,12 +3812,12 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
     }
 }
 impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
-    UpsertSessionBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, Project, ())>
+    UpsertChatBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, Project, ())>
 {
     pub fn repository(
         self,
         repository: Option<&'a str>,
-    ) -> UpsertSessionBuilder<
+    ) -> UpsertChatBuilder<
         'a,
         (
             Id,
@@ -3946,7 +3831,7 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
     > {
         let (id, provider, title, created_at, updated_at, project, ()) = self.fields;
         let _phantom = self._phantom;
-        UpsertSessionBuilder {
+        UpsertChatBuilder {
             fields: (
                 id, provider, title, created_at, updated_at, project, repository,
             ),
@@ -3955,7 +3840,7 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
     }
 }
 impl<'a>
-    UpsertSessionBuilder<
+    UpsertChatBuilder<
         'a,
         (
             &'a str,
@@ -3968,9 +3853,9 @@ impl<'a>
         ),
     >
 {
-    pub fn build(self) -> UpsertSession<'a> {
+    pub fn build(self) -> UpsertChat<'a> {
         let (id, provider, title, created_at, updated_at, project, repository) = self.fields;
-        UpsertSession {
+        UpsertChat {
             id,
             provider,
             title,
@@ -3981,28 +3866,28 @@ impl<'a>
         }
     }
 }
-pub struct SetSessionSourceRow {}
-impl SetSessionSourceRow {
+pub struct SetChatSourceRow {}
+impl SetChatSourceRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct SetSessionSource<'a> {
+pub struct SetChatSource<'a> {
     source_path: &'a str,
     source_fingerprint: &'a str,
     source_key: Option<&'a str>,
     source_session: Option<&'a str>,
     id: &'a str,
 }
-impl<'a> SetSessionSource<'a> {
-    pub const QUERY: &'static str = r"UPDATE sessions SET source_path=?1,source_fingerprint=?2,
+impl<'a> SetChatSource<'a> {
+    pub const QUERY: &'static str = r"UPDATE chats SET source_path=?1,source_fingerprint=?2,
 source_key=?3,source_session=?4
 WHERE id=?5";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> SetSessionSource<'a> {
+impl<'a> SetChatSource<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -4022,29 +3907,28 @@ impl<'a> SetSessionSource<'a> {
         )
     }
 }
-impl<'a> SetSessionSource<'a> {
-    pub const fn builder() -> SetSessionSourceBuilder<'a, ((), (), (), (), ())> {
-        SetSessionSourceBuilder {
+impl<'a> SetChatSource<'a> {
+    pub const fn builder() -> SetChatSourceBuilder<'a, ((), (), (), (), ())> {
+        SetChatSourceBuilder {
             fields: ((), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SetSessionSourceBuilder<'a, Fields = ((), (), (), (), ())> {
+pub struct SetChatSourceBuilder<'a, Fields = ((), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, SourceFingerprint, SourceKey, SourceSession, Id>
-    SetSessionSourceBuilder<'a, ((), SourceFingerprint, SourceKey, SourceSession, Id)>
+    SetChatSourceBuilder<'a, ((), SourceFingerprint, SourceKey, SourceSession, Id)>
 {
     pub fn source_path(
         self,
         source_path: &'a str,
-    ) -> SetSessionSourceBuilder<'a, (&'a str, SourceFingerprint, SourceKey, SourceSession, Id)>
-    {
+    ) -> SetChatSourceBuilder<'a, (&'a str, SourceFingerprint, SourceKey, SourceSession, Id)> {
         let ((), source_fingerprint, source_key, source_session, id) = self.fields;
         let _phantom = self._phantom;
-        SetSessionSourceBuilder {
+        SetChatSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4057,15 +3941,15 @@ impl<'a, SourceFingerprint, SourceKey, SourceSession, Id>
     }
 }
 impl<'a, SourcePath, SourceKey, SourceSession, Id>
-    SetSessionSourceBuilder<'a, (SourcePath, (), SourceKey, SourceSession, Id)>
+    SetChatSourceBuilder<'a, (SourcePath, (), SourceKey, SourceSession, Id)>
 {
     pub fn source_fingerprint(
         self,
         source_fingerprint: &'a str,
-    ) -> SetSessionSourceBuilder<'a, (SourcePath, &'a str, SourceKey, SourceSession, Id)> {
+    ) -> SetChatSourceBuilder<'a, (SourcePath, &'a str, SourceKey, SourceSession, Id)> {
         let (source_path, (), source_key, source_session, id) = self.fields;
         let _phantom = self._phantom;
-        SetSessionSourceBuilder {
+        SetChatSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4078,12 +3962,12 @@ impl<'a, SourcePath, SourceKey, SourceSession, Id>
     }
 }
 impl<'a, SourcePath, SourceFingerprint, SourceSession, Id>
-    SetSessionSourceBuilder<'a, (SourcePath, SourceFingerprint, (), SourceSession, Id)>
+    SetChatSourceBuilder<'a, (SourcePath, SourceFingerprint, (), SourceSession, Id)>
 {
     pub fn source_key(
         self,
         source_key: Option<&'a str>,
-    ) -> SetSessionSourceBuilder<
+    ) -> SetChatSourceBuilder<
         'a,
         (
             SourcePath,
@@ -4095,7 +3979,7 @@ impl<'a, SourcePath, SourceFingerprint, SourceSession, Id>
     > {
         let (source_path, source_fingerprint, (), source_session, id) = self.fields;
         let _phantom = self._phantom;
-        SetSessionSourceBuilder {
+        SetChatSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4108,12 +3992,12 @@ impl<'a, SourcePath, SourceFingerprint, SourceSession, Id>
     }
 }
 impl<'a, SourcePath, SourceFingerprint, SourceKey, Id>
-    SetSessionSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, (), Id)>
+    SetChatSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, (), Id)>
 {
     pub fn source_session(
         self,
         source_session: Option<&'a str>,
-    ) -> SetSessionSourceBuilder<
+    ) -> SetChatSourceBuilder<
         'a,
         (
             SourcePath,
@@ -4125,7 +4009,7 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, Id>
     > {
         let (source_path, source_fingerprint, source_key, (), id) = self.fields;
         let _phantom = self._phantom;
-        SetSessionSourceBuilder {
+        SetChatSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4138,12 +4022,12 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, Id>
     }
 }
 impl<'a, SourcePath, SourceFingerprint, SourceKey, SourceSession>
-    SetSessionSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, SourceSession, ())>
+    SetChatSourceBuilder<'a, (SourcePath, SourceFingerprint, SourceKey, SourceSession, ())>
 {
     pub fn id(
         self,
         id: &'a str,
-    ) -> SetSessionSourceBuilder<
+    ) -> SetChatSourceBuilder<
         'a,
         (
             SourcePath,
@@ -4155,7 +4039,7 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, SourceSession>
     > {
         let (source_path, source_fingerprint, source_key, source_session, ()) = self.fields;
         let _phantom = self._phantom;
-        SetSessionSourceBuilder {
+        SetChatSourceBuilder {
             fields: (
                 source_path,
                 source_fingerprint,
@@ -4167,12 +4051,10 @@ impl<'a, SourcePath, SourceFingerprint, SourceKey, SourceSession>
         }
     }
 }
-impl<'a>
-    SetSessionSourceBuilder<'a, (&'a str, &'a str, Option<&'a str>, Option<&'a str>, &'a str)>
-{
-    pub fn build(self) -> SetSessionSource<'a> {
+impl<'a> SetChatSourceBuilder<'a, (&'a str, &'a str, Option<&'a str>, Option<&'a str>, &'a str)> {
+    pub fn build(self) -> SetChatSource<'a> {
         let (source_path, source_fingerprint, source_key, source_session, id) = self.fields;
-        SetSessionSource {
+        SetChatSource {
             source_path,
             source_fingerprint,
             source_key,
@@ -4181,42 +4063,42 @@ impl<'a>
         }
     }
 }
-pub struct DisplacedSessionMessagesRow {
+pub struct DisplacedChatMessagesRow {
     pub messages: i64,
 }
-impl DisplacedSessionMessagesRow {
+impl DisplacedChatMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             messages: row.get(0)?,
         })
     }
 }
-pub struct DisplacedSessionMessages<'a> {
+pub struct DisplacedChatMessages<'a> {
     provider: &'a str,
     source_key: Option<&'a str>,
     id: &'a str,
 }
-impl<'a> DisplacedSessionMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM messages m WHERE m.conversation_id=n.id) AS messages
-FROM sessions n WHERE n.provider=?1 AND n.source_key=?2 AND n.id<>?3";
+impl<'a> DisplacedChatMessages<'a> {
+    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM messages m WHERE m.chat_id=n.id) AS messages
+FROM chats n WHERE n.provider=?1 AND n.source_key=?2 AND n.id<>?3";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DisplacedSessionMessages<'a> {
+impl<'a> DisplacedChatMessages<'a> {
     pub fn query_one(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<DisplacedSessionMessagesRow> {
+    ) -> rusqlite::Result<DisplacedChatMessagesRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), DisplacedSessionMessagesRow::from_row)
+            .query_row(self.as_params(), DisplacedChatMessagesRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<DisplacedSessionMessagesRow>> {
+    ) -> rusqlite::Result<Option<DisplacedChatMessagesRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), DisplacedSessionMessagesRow::from_row)?
+            .query_map(self.as_params(), DisplacedChatMessagesRow::from_row)?
             .next()
             .transpose()
     }
@@ -4230,61 +4112,61 @@ impl<'a> DisplacedSessionMessages<'a> {
         (self.provider, self.source_key, self.id)
     }
 }
-impl<'a> DisplacedSessionMessages<'a> {
-    pub const fn builder() -> DisplacedSessionMessagesBuilder<'a, ((), (), ())> {
-        DisplacedSessionMessagesBuilder {
+impl<'a> DisplacedChatMessages<'a> {
+    pub const fn builder() -> DisplacedChatMessagesBuilder<'a, ((), (), ())> {
+        DisplacedChatMessagesBuilder {
             fields: ((), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DisplacedSessionMessagesBuilder<'a, Fields = ((), (), ())> {
+pub struct DisplacedChatMessagesBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, SourceKey, Id> DisplacedSessionMessagesBuilder<'a, ((), SourceKey, Id)> {
+impl<'a, SourceKey, Id> DisplacedChatMessagesBuilder<'a, ((), SourceKey, Id)> {
     pub fn provider(
         self,
         provider: &'a str,
-    ) -> DisplacedSessionMessagesBuilder<'a, (&'a str, SourceKey, Id)> {
+    ) -> DisplacedChatMessagesBuilder<'a, (&'a str, SourceKey, Id)> {
         let ((), source_key, id) = self.fields;
         let _phantom = self._phantom;
-        DisplacedSessionMessagesBuilder {
+        DisplacedChatMessagesBuilder {
             fields: (provider, source_key, id),
             _phantom,
         }
     }
 }
-impl<'a, Provider, Id> DisplacedSessionMessagesBuilder<'a, (Provider, (), Id)> {
+impl<'a, Provider, Id> DisplacedChatMessagesBuilder<'a, (Provider, (), Id)> {
     pub fn source_key(
         self,
         source_key: Option<&'a str>,
-    ) -> DisplacedSessionMessagesBuilder<'a, (Provider, Option<&'a str>, Id)> {
+    ) -> DisplacedChatMessagesBuilder<'a, (Provider, Option<&'a str>, Id)> {
         let (provider, (), id) = self.fields;
         let _phantom = self._phantom;
-        DisplacedSessionMessagesBuilder {
+        DisplacedChatMessagesBuilder {
             fields: (provider, source_key, id),
             _phantom,
         }
     }
 }
-impl<'a, Provider, SourceKey> DisplacedSessionMessagesBuilder<'a, (Provider, SourceKey, ())> {
+impl<'a, Provider, SourceKey> DisplacedChatMessagesBuilder<'a, (Provider, SourceKey, ())> {
     pub fn id(
         self,
         id: &'a str,
-    ) -> DisplacedSessionMessagesBuilder<'a, (Provider, SourceKey, &'a str)> {
+    ) -> DisplacedChatMessagesBuilder<'a, (Provider, SourceKey, &'a str)> {
         let (provider, source_key, ()) = self.fields;
         let _phantom = self._phantom;
-        DisplacedSessionMessagesBuilder {
+        DisplacedChatMessagesBuilder {
             fields: (provider, source_key, id),
             _phantom,
         }
     }
 }
-impl<'a> DisplacedSessionMessagesBuilder<'a, (&'a str, Option<&'a str>, &'a str)> {
-    pub fn build(self) -> DisplacedSessionMessages<'a> {
+impl<'a> DisplacedChatMessagesBuilder<'a, (&'a str, Option<&'a str>, &'a str)> {
+    pub fn build(self) -> DisplacedChatMessages<'a> {
         let (provider, source_key, id) = self.fields;
-        DisplacedSessionMessages {
+        DisplacedChatMessages {
             provider,
             source_key,
             id,
@@ -4299,7 +4181,7 @@ impl UpsertMessageRow {
 }
 pub struct UpsertMessage<'a> {
     id: &'a str,
-    conversation_id: &'a str,
+    chat_id: &'a str,
     ordinal: i64,
     role: &'a str,
     content: &'a str,
@@ -4310,10 +4192,10 @@ pub struct UpsertMessage<'a> {
     metadata: Option<&'a str>,
 }
 impl<'a> UpsertMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
+    pub const QUERY: &'static str = r"INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection,created_at,context_parent,attachments,metadata)
 VALUES(?1,?2,?3,?4,silver_pack(CAST(?5 AS TEXT)),
 ?6,?7,?8,?9,?10)
-ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
+ON CONFLICT(id) DO UPDATE SET chat_id=excluded.chat_id,ordinal=excluded.ordinal,role=excluded.role,
 content_packed=excluded.content_packed,search_projection=excluded.search_projection,created_at=excluded.created_at,
 context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata";
     pub fn query_str(&self) -> &str {
@@ -4333,7 +4215,7 @@ impl<'a> UpsertMessage<'a> {
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
             self.id,
-            self.conversation_id,
+            self.chat_id,
             self.ordinal,
             self.role,
             self.content,
@@ -4359,7 +4241,7 @@ pub struct UpsertMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ()
 }
 impl<
     'a,
-    ConversationId,
+    ChatId,
     Ordinal,
     Role,
     Content,
@@ -4373,7 +4255,7 @@ impl<
         'a,
         (
             (),
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4392,7 +4274,7 @@ impl<
         'a,
         (
             &'a str,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4405,7 +4287,7 @@ impl<
     > {
         let (
             (),
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -4419,7 +4301,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4461,9 +4343,9 @@ impl<
         ),
     >
 {
-    pub fn conversation_id(
+    pub fn chat_id(
         self,
-        conversation_id: &'a str,
+        chat_id: &'a str,
     ) -> UpsertMessageBuilder<
         'a,
         (
@@ -4495,7 +4377,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4512,7 +4394,7 @@ impl<
 impl<
     'a,
     Id,
-    ConversationId,
+    ChatId,
     Role,
     Content,
     SearchProjection,
@@ -4525,7 +4407,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             (),
             Role,
             Content,
@@ -4544,7 +4426,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             i64,
             Role,
             Content,
@@ -4557,7 +4439,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             (),
             role,
             content,
@@ -4571,7 +4453,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4588,7 +4470,7 @@ impl<
 impl<
     'a,
     Id,
-    ConversationId,
+    ChatId,
     Ordinal,
     Content,
     SearchProjection,
@@ -4601,7 +4483,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             (),
             Content,
@@ -4620,7 +4502,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             &'a str,
             Content,
@@ -4633,7 +4515,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             (),
             content,
@@ -4647,7 +4529,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4664,7 +4546,7 @@ impl<
 impl<
     'a,
     Id,
-    ConversationId,
+    ChatId,
     Ordinal,
     Role,
     SearchProjection,
@@ -4677,7 +4559,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             (),
@@ -4696,7 +4578,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             &'a str,
@@ -4709,7 +4591,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             (),
@@ -4723,7 +4605,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4737,23 +4619,12 @@ impl<
         }
     }
 }
-impl<
-    'a,
-    Id,
-    ConversationId,
-    Ordinal,
-    Role,
-    Content,
-    CreatedAt,
-    ContextParent,
-    Attachments,
-    Metadata,
->
+impl<'a, Id, ChatId, Ordinal, Role, Content, CreatedAt, ContextParent, Attachments, Metadata>
     UpsertMessageBuilder<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4772,7 +4643,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4785,7 +4656,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -4799,7 +4670,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4813,23 +4684,12 @@ impl<
         }
     }
 }
-impl<
-    'a,
-    Id,
-    ConversationId,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    ContextParent,
-    Attachments,
-    Metadata,
->
+impl<'a, Id, ChatId, Ordinal, Role, Content, SearchProjection, ContextParent, Attachments, Metadata>
     UpsertMessageBuilder<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4848,7 +4708,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4861,7 +4721,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -4875,7 +4735,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4889,23 +4749,12 @@ impl<
         }
     }
 }
-impl<
-    'a,
-    Id,
-    ConversationId,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    Attachments,
-    Metadata,
->
+impl<'a, Id, ChatId, Ordinal, Role, Content, SearchProjection, CreatedAt, Attachments, Metadata>
     UpsertMessageBuilder<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4924,7 +4773,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -4937,7 +4786,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -4951,7 +4800,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -4965,23 +4814,12 @@ impl<
         }
     }
 }
-impl<
-    'a,
-    Id,
-    ConversationId,
-    Ordinal,
-    Role,
-    Content,
-    SearchProjection,
-    CreatedAt,
-    ContextParent,
-    Metadata,
->
+impl<'a, Id, ChatId, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent, Metadata>
     UpsertMessageBuilder<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -5000,7 +4838,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -5013,7 +4851,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -5027,7 +4865,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -5044,7 +4882,7 @@ impl<
 impl<
     'a,
     Id,
-    ConversationId,
+    ChatId,
     Ordinal,
     Role,
     Content,
@@ -5057,7 +4895,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -5076,7 +4914,7 @@ impl<
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Ordinal,
             Role,
             Content,
@@ -5089,7 +4927,7 @@ impl<
     > {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -5103,7 +4941,7 @@ impl<
         UpsertMessageBuilder {
             fields: (
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -5137,7 +4975,7 @@ impl<'a>
     pub fn build(self) -> UpsertMessage<'a> {
         let (
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -5149,7 +4987,7 @@ impl<'a>
         ) = self.fields;
         UpsertMessage {
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -5232,22 +5070,22 @@ impl<'a> SetMessageFingerprintBuilder<'a, (&'a str, &'a str)> {
         SetMessageFingerprint { fingerprint, id }
     }
 }
-pub struct DeleteSessionRow {}
-impl DeleteSessionRow {
+pub struct DeleteChatRow {}
+impl DeleteChatRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct DeleteSession<'a> {
+pub struct DeleteChat<'a> {
     id: &'a str,
 }
-impl<'a> DeleteSession<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM sessions WHERE id=?1";
+impl<'a> DeleteChat<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM chats WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteSession<'a> {
+impl<'a> DeleteChat<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -5261,32 +5099,32 @@ impl<'a> DeleteSession<'a> {
         (self.id,)
     }
 }
-impl<'a> DeleteSession<'a> {
-    pub const fn builder() -> DeleteSessionBuilder<'a, ((),)> {
-        DeleteSessionBuilder {
+impl<'a> DeleteChat<'a> {
+    pub const fn builder() -> DeleteChatBuilder<'a, ((),)> {
+        DeleteChatBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteSessionBuilder<'a, Fields = ((),)> {
+pub struct DeleteChatBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> DeleteSessionBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> DeleteSessionBuilder<'a, (&'a str,)> {
+impl<'a> DeleteChatBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> DeleteChatBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        DeleteSessionBuilder {
+        DeleteChatBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> DeleteSessionBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> DeleteSession<'a> {
+impl<'a> DeleteChatBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteChat<'a> {
         let (id,) = self.fields;
-        DeleteSession { id }
+        DeleteChat { id }
     }
 }
 pub struct DeleteMessageRow {}
@@ -5346,13 +5184,13 @@ impl<'a> DeleteMessageBuilder<'a, (&'a str,)> {
         DeleteMessage { id }
     }
 }
-pub struct SessionsForPurgeRow {
+pub struct ChatsForPurgeRow {
     pub id: String,
     pub source_path: String,
     pub source_key: Option<String>,
     pub modified_ns: Option<i64>,
 }
-impl SessionsForPurgeRow {
+impl ChatsForPurgeRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
@@ -5362,24 +5200,24 @@ impl SessionsForPurgeRow {
         })
     }
 }
-pub struct SessionsForPurge<'a> {
+pub struct ChatsForPurge<'a> {
     provider: &'a str,
 }
-impl<'a> SessionsForPurge<'a> {
-    pub const QUERY: &'static str = r"SELECT n.id,n.source_path,n.source_key,k.modified_ns FROM sessions n
+impl<'a> ChatsForPurge<'a> {
+    pub const QUERY: &'static str = r"SELECT n.id,n.source_path,n.source_key,k.modified_ns FROM chats n
 LEFT JOIN source_checkpoints k ON k.provider=n.provider AND k.source_key=n.source_key
 WHERE n.provider=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> SessionsForPurge<'a> {
+impl<'a> ChatsForPurge<'a> {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<SessionsForPurgeRow>> {
+    ) -> rusqlite::Result<Vec<ChatsForPurgeRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), SessionsForPurgeRow::from_row)?
+            .query_map(self.as_params(), ChatsForPurgeRow::from_row)?
             .collect()
     }
     pub fn prepare<'conn>(
@@ -5392,63 +5230,63 @@ impl<'a> SessionsForPurge<'a> {
         (self.provider,)
     }
 }
-impl<'a> SessionsForPurge<'a> {
-    pub const fn builder() -> SessionsForPurgeBuilder<'a, ((),)> {
-        SessionsForPurgeBuilder {
+impl<'a> ChatsForPurge<'a> {
+    pub const fn builder() -> ChatsForPurgeBuilder<'a, ((),)> {
+        ChatsForPurgeBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SessionsForPurgeBuilder<'a, Fields = ((),)> {
+pub struct ChatsForPurgeBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> SessionsForPurgeBuilder<'a, ((),)> {
-    pub fn provider(self, provider: &'a str) -> SessionsForPurgeBuilder<'a, (&'a str,)> {
+impl<'a> ChatsForPurgeBuilder<'a, ((),)> {
+    pub fn provider(self, provider: &'a str) -> ChatsForPurgeBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        SessionsForPurgeBuilder {
+        ChatsForPurgeBuilder {
             fields: (provider,),
             _phantom,
         }
     }
 }
-impl<'a> SessionsForPurgeBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> SessionsForPurge<'a> {
+impl<'a> ChatsForPurgeBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatsForPurge<'a> {
         let (provider,) = self.fields;
-        SessionsForPurge { provider }
+        ChatsForPurge { provider }
     }
 }
-pub struct SessionBySourceRow {
+pub struct ChatBySourceRow {
     pub id: String,
 }
-impl SessionBySourceRow {
+impl ChatBySourceRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self { id: row.get(0)? })
     }
 }
-pub struct SessionBySource<'a> {
+pub struct ChatBySource<'a> {
     provider: &'a str,
     source_key: Option<&'a str>,
 }
-impl<'a> SessionBySource<'a> {
-    pub const QUERY: &'static str = r"SELECT id FROM sessions WHERE provider=?1 AND source_key=?2";
+impl<'a> ChatBySource<'a> {
+    pub const QUERY: &'static str = r"SELECT id FROM chats WHERE provider=?1 AND source_key=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> SessionBySource<'a> {
-    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<SessionBySourceRow> {
+impl<'a> ChatBySource<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatBySourceRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), SessionBySourceRow::from_row)
+            .query_row(self.as_params(), ChatBySourceRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<SessionBySourceRow>> {
+    ) -> rusqlite::Result<Option<ChatBySourceRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), SessionBySourceRow::from_row)?
+            .query_map(self.as_params(), ChatBySourceRow::from_row)?
             .next()
             .transpose()
     }
@@ -5462,80 +5300,80 @@ impl<'a> SessionBySource<'a> {
         (self.provider, self.source_key)
     }
 }
-impl<'a> SessionBySource<'a> {
-    pub const fn builder() -> SessionBySourceBuilder<'a, ((), ())> {
-        SessionBySourceBuilder {
+impl<'a> ChatBySource<'a> {
+    pub const fn builder() -> ChatBySourceBuilder<'a, ((), ())> {
+        ChatBySourceBuilder {
             fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SessionBySourceBuilder<'a, Fields = ((), ())> {
+pub struct ChatBySourceBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, SourceKey> SessionBySourceBuilder<'a, ((), SourceKey)> {
-    pub fn provider(self, provider: &'a str) -> SessionBySourceBuilder<'a, (&'a str, SourceKey)> {
+impl<'a, SourceKey> ChatBySourceBuilder<'a, ((), SourceKey)> {
+    pub fn provider(self, provider: &'a str) -> ChatBySourceBuilder<'a, (&'a str, SourceKey)> {
         let ((), source_key) = self.fields;
         let _phantom = self._phantom;
-        SessionBySourceBuilder {
+        ChatBySourceBuilder {
             fields: (provider, source_key),
             _phantom,
         }
     }
 }
-impl<'a, Provider> SessionBySourceBuilder<'a, (Provider, ())> {
+impl<'a, Provider> ChatBySourceBuilder<'a, (Provider, ())> {
     pub fn source_key(
         self,
         source_key: Option<&'a str>,
-    ) -> SessionBySourceBuilder<'a, (Provider, Option<&'a str>)> {
+    ) -> ChatBySourceBuilder<'a, (Provider, Option<&'a str>)> {
         let (provider, ()) = self.fields;
         let _phantom = self._phantom;
-        SessionBySourceBuilder {
+        ChatBySourceBuilder {
             fields: (provider, source_key),
             _phantom,
         }
     }
 }
-impl<'a> SessionBySourceBuilder<'a, (&'a str, Option<&'a str>)> {
-    pub fn build(self) -> SessionBySource<'a> {
+impl<'a> ChatBySourceBuilder<'a, (&'a str, Option<&'a str>)> {
+    pub fn build(self) -> ChatBySource<'a> {
         let (provider, source_key) = self.fields;
-        SessionBySource {
+        ChatBySource {
             provider,
             source_key,
         }
     }
 }
-pub struct SessionProviderRow {
+pub struct ChatProviderRow {
     pub provider: String,
 }
-impl SessionProviderRow {
+impl ChatProviderRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             provider: row.get(0)?,
         })
     }
 }
-pub struct SessionProvider<'a> {
+pub struct ChatProvider<'a> {
     id: &'a str,
 }
-impl<'a> SessionProvider<'a> {
-    pub const QUERY: &'static str = r"SELECT provider FROM sessions WHERE id=?1";
+impl<'a> ChatProvider<'a> {
+    pub const QUERY: &'static str = r"SELECT provider FROM chats WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> SessionProvider<'a> {
-    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<SessionProviderRow> {
+impl<'a> ChatProvider<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatProviderRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), SessionProviderRow::from_row)
+            .query_row(self.as_params(), ChatProviderRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<SessionProviderRow>> {
+    ) -> rusqlite::Result<Option<ChatProviderRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), SessionProviderRow::from_row)?
+            .query_map(self.as_params(), ChatProviderRow::from_row)?
             .next()
             .transpose()
     }
@@ -5549,32 +5387,32 @@ impl<'a> SessionProvider<'a> {
         (self.id,)
     }
 }
-impl<'a> SessionProvider<'a> {
-    pub const fn builder() -> SessionProviderBuilder<'a, ((),)> {
-        SessionProviderBuilder {
+impl<'a> ChatProvider<'a> {
+    pub const fn builder() -> ChatProviderBuilder<'a, ((),)> {
+        ChatProviderBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SessionProviderBuilder<'a, Fields = ((),)> {
+pub struct ChatProviderBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> SessionProviderBuilder<'a, ((),)> {
-    pub fn id(self, id: &'a str) -> SessionProviderBuilder<'a, (&'a str,)> {
+impl<'a> ChatProviderBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> ChatProviderBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        SessionProviderBuilder {
+        ChatProviderBuilder {
             fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a> SessionProviderBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> SessionProvider<'a> {
+impl<'a> ChatProviderBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatProvider<'a> {
         let (id,) = self.fields;
-        SessionProvider { id }
+        ChatProvider { id }
     }
 }
 pub struct TurnSourcesRow {
@@ -5598,11 +5436,11 @@ impl TurnSourcesRow {
     }
 }
 pub struct TurnSources<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
 }
 impl<'a> TurnSources<'a> {
     pub const QUERY: &'static str = r"SELECT id,ordinal,role,COALESCE(search_projection,content) AS projection,context_parent,created_at
-FROM messages WHERE conversation_id=?1
+FROM messages WHERE chat_id=?1
 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -5624,7 +5462,7 @@ impl<'a> TurnSources<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
 impl<'a> TurnSources<'a> {
@@ -5640,19 +5478,19 @@ pub struct TurnSourcesBuilder<'a, Fields = ((),)> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a> TurnSourcesBuilder<'a, ((),)> {
-    pub fn conversation_id(self, conversation_id: &'a str) -> TurnSourcesBuilder<'a, (&'a str,)> {
+    pub fn chat_id(self, chat_id: &'a str) -> TurnSourcesBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
         TurnSourcesBuilder {
-            fields: (conversation_id,),
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
 impl<'a> TurnSourcesBuilder<'a, (&'a str,)> {
     pub fn build(self) -> TurnSources<'a> {
-        let (conversation_id,) = self.fields;
-        TurnSources { conversation_id }
+        let (chat_id,) = self.fields;
+        TurnSources { chat_id }
     }
 }
 pub struct ChatTurnsRow {
@@ -5664,10 +5502,10 @@ impl ChatTurnsRow {
     }
 }
 pub struct ChatTurns<'a> {
-    conversation_id: &'a str,
+    chat_id: &'a str,
 }
 impl<'a> ChatTurns<'a> {
-    pub const QUERY: &'static str = r"SELECT id FROM turns WHERE conversation_id=?1";
+    pub const QUERY: &'static str = r"SELECT id FROM turns WHERE chat_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -5685,7 +5523,7 @@ impl<'a> ChatTurns<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.conversation_id,)
+        (self.chat_id,)
     }
 }
 impl<'a> ChatTurns<'a> {
@@ -5701,19 +5539,19 @@ pub struct ChatTurnsBuilder<'a, Fields = ((),)> {
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a> ChatTurnsBuilder<'a, ((),)> {
-    pub fn conversation_id(self, conversation_id: &'a str) -> ChatTurnsBuilder<'a, (&'a str,)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ChatTurnsBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
         ChatTurnsBuilder {
-            fields: (conversation_id,),
+            fields: (chat_id,),
             _phantom,
         }
     }
 }
 impl<'a> ChatTurnsBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ChatTurns<'a> {
-        let (conversation_id,) = self.fields;
-        ChatTurns { conversation_id }
+        let (chat_id,) = self.fields;
+        ChatTurns { chat_id }
     }
 }
 pub struct UpsertTurnRow {}
@@ -5724,7 +5562,7 @@ impl UpsertTurnRow {
 }
 pub struct UpsertTurn<'a> {
     id: &'a str,
-    conversation_id: &'a str,
+    chat_id: &'a str,
     revision: &'a str,
     boundary: &'a str,
     closed: i64,
@@ -5732,7 +5570,7 @@ pub struct UpsertTurn<'a> {
     updated_at: Option<i64>,
 }
 impl<'a> UpsertTurn<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO turns(id,conversation_id,revision,boundary,closed,created_at,updated_at)
+    pub const QUERY: &'static str = r"INSERT INTO turns(id,chat_id,revision,boundary,closed,created_at,updated_at)
 VALUES(?1,?2,?3,?4,
        ?5,?6,?7)
 ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,boundary=excluded.boundary,
@@ -5757,7 +5595,7 @@ impl<'a> UpsertTurn<'a> {
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
             self.id,
-            self.conversation_id,
+            self.chat_id,
             self.revision,
             self.boundary,
             self.closed,
@@ -5778,19 +5616,8 @@ pub struct UpsertTurnBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, ConversationId, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
-    UpsertTurnBuilder<
-        'a,
-        (
-            (),
-            ConversationId,
-            Revision,
-            Boundary,
-            Closed,
-            CreatedAt,
-            UpdatedAt,
-        ),
-    >
+impl<'a, ChatId, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<'a, ((), ChatId, Revision, Boundary, Closed, CreatedAt, UpdatedAt)>
 {
     pub fn id(
         self,
@@ -5799,7 +5626,7 @@ impl<'a, ConversationId, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
         'a,
         (
             &'a str,
-            ConversationId,
+            ChatId,
             Revision,
             Boundary,
             Closed,
@@ -5807,17 +5634,11 @@ impl<'a, ConversationId, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
             UpdatedAt,
         ),
     > {
-        let ((), conversation_id, revision, boundary, closed, created_at, updated_at) = self.fields;
+        let ((), chat_id, revision, boundary, closed, created_at, updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
@@ -5826,9 +5647,9 @@ impl<'a, ConversationId, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
 impl<'a, Id, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
     UpsertTurnBuilder<'a, (Id, (), Revision, Boundary, Closed, CreatedAt, UpdatedAt)>
 {
-    pub fn conversation_id(
+    pub fn chat_id(
         self,
-        conversation_id: &'a str,
+        chat_id: &'a str,
     ) -> UpsertTurnBuilder<
         'a,
         (
@@ -5845,166 +5666,65 @@ impl<'a, Id, Revision, Boundary, Closed, CreatedAt, UpdatedAt>
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, ConversationId, Boundary, Closed, CreatedAt, UpdatedAt>
-    UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            (),
-            Boundary,
-            Closed,
-            CreatedAt,
-            UpdatedAt,
-        ),
-    >
+impl<'a, Id, ChatId, Boundary, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<'a, (Id, ChatId, (), Boundary, Closed, CreatedAt, UpdatedAt)>
 {
     pub fn revision(
         self,
         revision: &'a str,
-    ) -> UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            &'a str,
-            Boundary,
-            Closed,
-            CreatedAt,
-            UpdatedAt,
-        ),
-    > {
-        let (id, conversation_id, (), boundary, closed, created_at, updated_at) = self.fields;
+    ) -> UpsertTurnBuilder<'a, (Id, ChatId, &'a str, Boundary, Closed, CreatedAt, UpdatedAt)> {
+        let (id, chat_id, (), boundary, closed, created_at, updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, ConversationId, Revision, Closed, CreatedAt, UpdatedAt>
-    UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            Revision,
-            (),
-            Closed,
-            CreatedAt,
-            UpdatedAt,
-        ),
-    >
+impl<'a, Id, ChatId, Revision, Closed, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<'a, (Id, ChatId, Revision, (), Closed, CreatedAt, UpdatedAt)>
 {
     pub fn boundary(
         self,
         boundary: &'a str,
-    ) -> UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            Revision,
-            &'a str,
-            Closed,
-            CreatedAt,
-            UpdatedAt,
-        ),
-    > {
-        let (id, conversation_id, revision, (), closed, created_at, updated_at) = self.fields;
+    ) -> UpsertTurnBuilder<'a, (Id, ChatId, Revision, &'a str, Closed, CreatedAt, UpdatedAt)> {
+        let (id, chat_id, revision, (), closed, created_at, updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, ConversationId, Revision, Boundary, CreatedAt, UpdatedAt>
-    UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            Revision,
-            Boundary,
-            (),
-            CreatedAt,
-            UpdatedAt,
-        ),
-    >
+impl<'a, Id, ChatId, Revision, Boundary, CreatedAt, UpdatedAt>
+    UpsertTurnBuilder<'a, (Id, ChatId, Revision, Boundary, (), CreatedAt, UpdatedAt)>
 {
     pub fn closed(
         self,
         closed: i64,
-    ) -> UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            Revision,
-            Boundary,
-            i64,
-            CreatedAt,
-            UpdatedAt,
-        ),
-    > {
-        let (id, conversation_id, revision, boundary, (), created_at, updated_at) = self.fields;
+    ) -> UpsertTurnBuilder<'a, (Id, ChatId, Revision, Boundary, i64, CreatedAt, UpdatedAt)> {
+        let (id, chat_id, revision, boundary, (), created_at, updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, ConversationId, Revision, Boundary, Closed, UpdatedAt>
-    UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            Revision,
-            Boundary,
-            Closed,
-            (),
-            UpdatedAt,
-        ),
-    >
+impl<'a, Id, ChatId, Revision, Boundary, Closed, UpdatedAt>
+    UpsertTurnBuilder<'a, (Id, ChatId, Revision, Boundary, Closed, (), UpdatedAt)>
 {
     pub fn created_at(
         self,
@@ -6013,7 +5733,7 @@ impl<'a, Id, ConversationId, Revision, Boundary, Closed, UpdatedAt>
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Revision,
             Boundary,
             Closed,
@@ -6021,35 +5741,18 @@ impl<'a, Id, ConversationId, Revision, Boundary, Closed, UpdatedAt>
             UpdatedAt,
         ),
     > {
-        let (id, conversation_id, revision, boundary, closed, (), updated_at) = self.fields;
+        let (id, chat_id, revision, boundary, closed, (), updated_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, ConversationId, Revision, Boundary, Closed, CreatedAt>
-    UpsertTurnBuilder<
-        'a,
-        (
-            Id,
-            ConversationId,
-            Revision,
-            Boundary,
-            Closed,
-            CreatedAt,
-            (),
-        ),
-    >
+impl<'a, Id, ChatId, Revision, Boundary, Closed, CreatedAt>
+    UpsertTurnBuilder<'a, (Id, ChatId, Revision, Boundary, Closed, CreatedAt, ())>
 {
     pub fn updated_at(
         self,
@@ -6058,7 +5761,7 @@ impl<'a, Id, ConversationId, Revision, Boundary, Closed, CreatedAt>
         'a,
         (
             Id,
-            ConversationId,
+            ChatId,
             Revision,
             Boundary,
             Closed,
@@ -6066,17 +5769,11 @@ impl<'a, Id, ConversationId, Revision, Boundary, Closed, CreatedAt>
             Option<i64>,
         ),
     > {
-        let (id, conversation_id, revision, boundary, closed, created_at, ()) = self.fields;
+        let (id, chat_id, revision, boundary, closed, created_at, ()) = self.fields;
         let _phantom = self._phantom;
         UpsertTurnBuilder {
             fields: (
-                id,
-                conversation_id,
-                revision,
-                boundary,
-                closed,
-                created_at,
-                updated_at,
+                id, chat_id, revision, boundary, closed, created_at, updated_at,
             ),
             _phantom,
         }
@@ -6097,10 +5794,10 @@ impl<'a>
     >
 {
     pub fn build(self) -> UpsertTurn<'a> {
-        let (id, conversation_id, revision, boundary, closed, created_at, updated_at) = self.fields;
+        let (id, chat_id, revision, boundary, closed, created_at, updated_at) = self.fields;
         UpsertTurn {
             id,
-            conversation_id,
+            chat_id,
             revision,
             boundary,
             closed,
@@ -6117,12 +5814,12 @@ impl SetMessageTurnRow {
 }
 pub struct SetMessageTurn<'a> {
     turn_id: Option<&'a str>,
-    conversation_id: &'a str,
+    chat_id: &'a str,
     id: &'a str,
 }
 impl<'a> SetMessageTurn<'a> {
     pub const QUERY: &'static str = r"UPDATE messages SET turn_id=?1
-WHERE conversation_id=?2
+WHERE chat_id=?2
   AND id=?3 AND turn_id IS NOT ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -6139,7 +5836,7 @@ impl<'a> SetMessageTurn<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.turn_id, self.conversation_id, self.id)
+        (self.turn_id, self.chat_id, self.id)
     }
 }
 impl<'a> SetMessageTurn<'a> {
@@ -6154,48 +5851,45 @@ pub struct SetMessageTurnBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, ConversationId, Id> SetMessageTurnBuilder<'a, ((), ConversationId, Id)> {
+impl<'a, ChatId, Id> SetMessageTurnBuilder<'a, ((), ChatId, Id)> {
     pub fn turn_id(
         self,
         turn_id: Option<&'a str>,
-    ) -> SetMessageTurnBuilder<'a, (Option<&'a str>, ConversationId, Id)> {
-        let ((), conversation_id, id) = self.fields;
+    ) -> SetMessageTurnBuilder<'a, (Option<&'a str>, ChatId, Id)> {
+        let ((), chat_id, id) = self.fields;
         let _phantom = self._phantom;
         SetMessageTurnBuilder {
-            fields: (turn_id, conversation_id, id),
+            fields: (turn_id, chat_id, id),
             _phantom,
         }
     }
 }
 impl<'a, TurnId, Id> SetMessageTurnBuilder<'a, (TurnId, (), Id)> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> SetMessageTurnBuilder<'a, (TurnId, &'a str, Id)> {
+    pub fn chat_id(self, chat_id: &'a str) -> SetMessageTurnBuilder<'a, (TurnId, &'a str, Id)> {
         let (turn_id, (), id) = self.fields;
         let _phantom = self._phantom;
         SetMessageTurnBuilder {
-            fields: (turn_id, conversation_id, id),
+            fields: (turn_id, chat_id, id),
             _phantom,
         }
     }
 }
-impl<'a, TurnId, ConversationId> SetMessageTurnBuilder<'a, (TurnId, ConversationId, ())> {
-    pub fn id(self, id: &'a str) -> SetMessageTurnBuilder<'a, (TurnId, ConversationId, &'a str)> {
-        let (turn_id, conversation_id, ()) = self.fields;
+impl<'a, TurnId, ChatId> SetMessageTurnBuilder<'a, (TurnId, ChatId, ())> {
+    pub fn id(self, id: &'a str) -> SetMessageTurnBuilder<'a, (TurnId, ChatId, &'a str)> {
+        let (turn_id, chat_id, ()) = self.fields;
         let _phantom = self._phantom;
         SetMessageTurnBuilder {
-            fields: (turn_id, conversation_id, id),
+            fields: (turn_id, chat_id, id),
             _phantom,
         }
     }
 }
 impl<'a> SetMessageTurnBuilder<'a, (Option<&'a str>, &'a str, &'a str)> {
     pub fn build(self) -> SetMessageTurn<'a> {
-        let (turn_id, conversation_id, id) = self.fields;
+        let (turn_id, chat_id, id) = self.fields;
         SetMessageTurn {
             turn_id,
-            conversation_id,
+            chat_id,
             id,
         }
     }
@@ -6257,25 +5951,25 @@ impl<'a> DeleteTurnBuilder<'a, (&'a str,)> {
         DeleteTurn { id }
     }
 }
-pub struct SessionIdsRow {
+pub struct ChatIdsRow {
     pub id: String,
 }
-impl SessionIdsRow {
+impl ChatIdsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self { id: row.get(0)? })
     }
 }
-pub struct SessionIds;
-impl SessionIds {
-    pub const QUERY: &'static str = r"SELECT id FROM sessions ORDER BY id";
+pub struct ChatIds;
+impl ChatIds {
+    pub const QUERY: &'static str = r"SELECT id FROM chats ORDER BY id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl SessionIds {
-    pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<SessionIdsRow>> {
+impl ChatIds {
+    pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<ChatIdsRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), SessionIdsRow::from_row)?
+            .query_map(self.as_params(), ChatIdsRow::from_row)?
             .collect()
     }
     pub fn prepare<'conn>(
@@ -6288,21 +5982,21 @@ impl SessionIds {
         ()
     }
 }
-impl SessionIds {
-    pub const fn builder() -> SessionIdsBuilder<'static, ()> {
-        SessionIdsBuilder {
+impl ChatIds {
+    pub const fn builder() -> ChatIdsBuilder<'static, ()> {
+        ChatIdsBuilder {
             fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SessionIdsBuilder<'a, Fields = ()> {
+pub struct ChatIdsBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> SessionIdsBuilder<'a, ()> {
-    pub fn build(self) -> SessionIds {
+impl<'a> ChatIdsBuilder<'a, ()> {
+    pub fn build(self) -> ChatIds {
         let () = self.fields;
-        SessionIds {}
+        ChatIds {}
     }
 }

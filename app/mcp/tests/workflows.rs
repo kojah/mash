@@ -43,7 +43,7 @@ pub(super) fn decision_history(root: &std::path::Path) -> Paths {
     )
     .collect::<Vec<_>>();
     writer
-        .replace_conversation(&crate::silver::Conversation {
+        .replace_chat(&crate::silver::Chat {
             id: "decision-thread".into(),
             provider: Provider::Codex,
             source: crate::silver::SourceIdentity::file("fixture"),

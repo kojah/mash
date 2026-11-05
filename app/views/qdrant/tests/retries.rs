@@ -23,8 +23,8 @@ async fn qdrant_retry_rejects_changed_or_missing_canonical_messages() {
     for messages in [fixture.messages("changed"), Vec::new()] {
         let file = Fixture::upload(&[
             Event::Start(Fixture::start(1)),
-            Event::Batch(Batch::Conversations {
-                records: vec![Fixture::conversation()],
+            Event::Batch(Batch::Chats {
+                records: vec![Fixture::chat()],
             }),
             Event::Batch(Batch::Messages { records: messages }),
             Event::Finish,
@@ -64,12 +64,12 @@ async fn qdrant_retry_removes_documents_deleted_by_an_interrupted_publication() 
         .unwrap();
     // A failed newer write can leave points absent from both silver and the
     // last recorded chat map. Reconciliation must remove these too.
-    let mut chat = Fixture::conversation();
+    let mut chat = Fixture::chat();
     chat.id = "untracked".into();
     let mut partial = Documents::new(&fixture.identity);
     for mut message in fixture.messages("partial") {
         message.id = format!("untracked-{}", message.id);
-        message.conversation_id.clone_from(&chat.id);
+        message.chat_id.clone_from(&chat.id);
         partial
             .push(&fixture.store, &fixture.identity, &chat, message)
             .await
@@ -176,14 +176,14 @@ async fn qdrant_native_cleanup_preserves_other_nodes() {
         node_id: "other".into(),
         ..fixture.identity.clone()
     };
-    let conversation = Fixture::conversation();
+    let chat = Fixture::chat();
     for operation in 0..3 {
         for identity in [&fixture.identity, &other] {
             let mut documents = Documents::new(identity);
             let mut message = fixture.messages("native").remove(0);
-            message.conversation_id.clone_from(&conversation.id);
+            message.chat_id.clone_from(&chat.id);
             documents
-                .push(&fixture.store, identity, &conversation, message)
+                .push(&fixture.store, identity, &chat, message)
                 .await
                 .unwrap();
             documents.finish(&fixture.store).await.unwrap();
@@ -191,12 +191,12 @@ async fn qdrant_native_cleanup_preserves_other_nodes() {
         match operation {
             0 => fixture
                 .store
-                .retain_node_conversations(&fixture.identity, Vec::new())
+                .retain_node_chats(&fixture.identity, Vec::new())
                 .await
                 .unwrap(),
             1 => fixture
                 .store
-                .retain_documents(&fixture.identity, &conversation.id, Vec::new())
+                .retain_documents(&fixture.identity, &chat.id, Vec::new())
                 .await
                 .unwrap(),
             _ => fixture

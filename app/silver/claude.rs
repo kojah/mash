@@ -86,7 +86,7 @@ pub(crate) fn reconcile(
             message.tools = activity;
         }
         message.ordinal = i64::try_from(messages.len())
-            .map_err(|_| AppError::internal("Claude conversation contains too many messages"))?;
+            .map_err(|_| AppError::internal("Claude chat contains too many messages"))?;
         message.context = parent
             .as_ref()
             .filter(|id| positions.contains_key(*id))

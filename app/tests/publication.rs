@@ -187,7 +187,7 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
         .expect("open transfer catalog");
     let (state, total): (String, i64) = catalog
         .query_row(
-            "SELECT state, total_conversations FROM backfills WHERE backfill_id LIKE '%]cli-baseline'",
+            "SELECT state, total_chats FROM backfills WHERE backfill_id LIKE '%]cli-baseline'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -494,7 +494,7 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
             models.to_str().unwrap(),
             "index",
         ])
-        // One conversation is "large" for this test; debug builds honour it.
+        // One chat is "large" for this test; debug builds honour it.
         .env("MASH_TEST_AUTO_BACKFILL_MIN", "1")
         .env(
             "MASH_TEST_SHARED_CLIENT_TOKEN",
@@ -515,7 +515,7 @@ fn index_chooses_a_baseline_automatically_for_a_large_first_publish() {
         .expect("open transfer catalog");
     let (state, total): (String, i64) = catalog
         .query_row(
-            "SELECT state, total_conversations FROM backfills WHERE backfill_id LIKE '%]auto-%'",
+            "SELECT state, total_chats FROM backfills WHERE backfill_id LIKE '%]auto-%'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

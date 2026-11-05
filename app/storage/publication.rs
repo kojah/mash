@@ -1,5 +1,5 @@
 use crate::provider::Provider;
-use crate::shared::protocol::{Batch, BatchKind, ConversationRecord, MessageRecord, Tombstone};
+use crate::shared::protocol::{Batch, BatchKind, ChatRecord, MessageRecord, Tombstone};
 use rusqlite::{Connection, OpenFlags};
 
 use super::Storage;
@@ -32,8 +32,8 @@ impl Snapshot<'_> {
             .then_some(revision))
     }
 
-    pub(crate) fn removed_threads(&self, after: i64) -> Result<Vec<String>, AppError> {
-        let mut statement = self.connection.prepare("SELECT j.conversation_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM sessions c WHERE c.id=j.conversation_id) ORDER BY j.conversation_id").map_err(AppError::database)?;
+    pub(crate) fn removed_chats(&self, after: i64) -> Result<Vec<String>, AppError> {
+        let mut statement = self.connection.prepare("SELECT j.chat_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM chats c WHERE c.id=j.chat_id) ORDER BY j.chat_id").map_err(AppError::database)?;
         statement
             .query_map([after], |row| row.get(0))
             .map_err(AppError::database)?
@@ -64,45 +64,45 @@ impl Snapshot<'_> {
     fn visit_ordered(
         &self,
         kind: BatchKind,
-        by_thread: bool,
+        by_chat: bool,
         accept: impl FnMut(Batch) -> Result<(), AppError>,
     ) -> Result<(), AppError> {
-        self.visit_selected(kind, by_thread, None, accept)
+        self.visit_selected(kind, by_chat, None, accept)
     }
 
     pub(crate) fn visit_selected(
         &self,
         kind: BatchKind,
-        by_thread: bool,
+        by_chat: bool,
         after: Option<i64>,
         mut accept: impl FnMut(Batch) -> Result<(), AppError>,
     ) -> Result<(), AppError> {
         let sql = match kind {
-            BatchKind::Conversations => {
+            BatchKind::Chats => {
                 "SELECT c.id,c.provider,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
-                 FROM sessions c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+                 FROM chats c LEFT JOIN chat_enrichment e ON e.chat_id=c.id
                  ORDER BY c.id"
             }
-            BatchKind::Messages if by_thread => {
-                "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
+            BatchKind::Messages if by_chat => {
+                "SELECT m.id, m.chat_id, m.ordinal, m.role, m.content,
                 COALESCE(m.search_projection, m.content), m.created_at, m.context_parent, m.attachments, m.metadata
-                FROM messages m ORDER BY m.conversation_id, m.ordinal, m.id"
+                FROM messages m ORDER BY m.chat_id, m.ordinal, m.id"
             }
             BatchKind::Messages => {
-                "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
+                "SELECT m.id, m.chat_id, m.ordinal, m.role, m.content,
                 COALESCE(m.search_projection, m.content), m.created_at, m.context_parent, m.attachments, m.metadata
                 FROM messages m
                 ORDER BY m.id"
             }
             BatchKind::Tombstones => {
-                "SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id"
+                "SELECT provider, chat_id FROM tombstones ORDER BY provider, chat_id"
             }
         };
         let sql = selected_query(sql, kind, after)?;
         let mut statement = self.connection.prepare(&sql).map_err(AppError::database)?;
         let mut rows = statement.query([]).map_err(AppError::database)?;
         let mut batch = match kind {
-            BatchKind::Conversations => Batch::Conversations {
+            BatchKind::Chats => Batch::Chats {
                 records: Vec::new(),
             },
             BatchKind::Messages => Batch::Messages {
@@ -115,8 +115,8 @@ impl Snapshot<'_> {
         let mut bytes = 0;
         while let Some(row) = rows.next().map_err(AppError::database)? {
             let size = match &mut batch {
-                Batch::Conversations { records } => {
-                    let record = ConversationRecord {
+                Batch::Chats { records } => {
+                    let record = ChatRecord {
                         enrichment: row
                             .get::<_, Option<String>>(7)
                             .map_err(AppError::database)?
@@ -153,7 +153,7 @@ impl Snapshot<'_> {
                 Batch::Tombstones { records } => {
                     let record = Tombstone {
                         provider: row.get::<_, Provider>(0).map_err(AppError::database)?,
-                        conversation_id: row.get::<_, String>(1).map_err(AppError::database)?,
+                        chat_id: row.get::<_, String>(1).map_err(AppError::database)?,
                     };
                     let size = serde_json::to_vec(&record)
                         .map_err(|_| AppError::internal("serialize index record"))?
@@ -179,16 +179,16 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
     let Some(after) = after else {
         return Ok(sql.to_owned());
     };
-    // A delta reads only changed sessions. Keep message selection on its
-    // session index rather than scanning canonical bodies.
+    // A delta reads only changed chats. Keep message selection on its
+    // chat index rather than scanning canonical bodies.
     let (id, table, indexed) = match kind {
-        BatchKind::Conversations => ("c.id", "FROM sessions c", "FROM sessions c"),
+        BatchKind::Chats => ("c.id", "FROM chats c", "FROM chats c"),
         BatchKind::Messages => (
-            "m.conversation_id",
+            "m.chat_id",
             "FROM messages m",
-            "FROM messages m INDEXED BY messages_conversation",
+            "FROM messages m INDEXED BY messages_chat",
         ),
-        BatchKind::Tombstones => ("conversation_id", "", ""),
+        BatchKind::Tombstones => ("chat_id", "", ""),
     };
     let sql = if table.is_empty() {
         sql.to_owned()
@@ -206,7 +206,7 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
         "WHERE"
     };
     Ok(format!(
-        "{query} {join} {id} IN (SELECT conversation_id FROM shared_changes WHERE revision>{after}) ORDER BY{order}"
+        "{query} {join} {id} IN (SELECT chat_id FROM shared_changes WHERE revision>{after}) ORDER BY{order}"
     ))
 }
 
@@ -218,7 +218,7 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
         )
         .map_err(|_| AppError::database_data("invalid attachment metadata"))?,
         id: row.get::<_, String>(0).map_err(AppError::database)?,
-        conversation_id: row.get::<_, String>(1).map_err(AppError::database)?,
+        chat_id: row.get::<_, String>(1).map_err(AppError::database)?,
         ordinal: row.get::<_, i64>(2).map_err(AppError::database)?,
         context: crate::message_context::MessageContext::from_parent(
             row.get("context_parent").map_err(AppError::database)?,

@@ -41,7 +41,7 @@ pub(crate) struct Selection {
     pub(crate) role: Vec<crate::role::Role>,
     /// Canonical chat IDs from search or `list_chats`; omitted or empty selects all chats.
     #[serde(rename = "chat")]
-    pub(crate) conversation: Vec<String>,
+    pub(crate) chat: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
     pub(crate) project: Vec<String>,
     /// Exact Git origin URL; repeat for alternatives.
@@ -82,7 +82,7 @@ impl Selection {
             (!self.provider.is_empty(), Field::Provider),
             (!self.node.is_empty(), Field::Node),
             (!self.role.is_empty(), Field::Role),
-            (!self.conversation.is_empty(), Field::Chat),
+            (!self.chat.is_empty(), Field::Chat),
             (!self.project.is_empty(), Field::Project),
             (!self.repository.is_empty(), Field::Repository),
             (self.after.is_some() || self.days.is_some(), Field::After),
@@ -108,7 +108,7 @@ impl Selection {
         }
         for (values, constructor) in [
             (self.node, Filter::Node as fn(Vec<String>) -> Filter),
-            (self.conversation, Filter::Chat),
+            (self.chat, Filter::Chat),
             (self.project, Filter::Project),
             (self.repository, Filter::Repository),
         ] {
@@ -299,7 +299,7 @@ impl Columns {
         node: "m.node_id",
         provider: "c.provider",
         role: "m.role",
-        chat: "m.conversation_id",
+        chat: "m.chat_id",
         project: "c.project",
         repository: "c.repository",
         created_at: "m.created_at",

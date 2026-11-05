@@ -185,11 +185,11 @@ pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
             let ids = match &response.results {
                 Results::Messages(hits) => hits
                     .iter()
-                    .map(|hit| hit.conversation_id.as_str())
+                    .map(|hit| hit.chat_id.as_str())
                     .collect::<Vec<_>>(),
                 Results::Chats(hits) => hits
                     .iter()
-                    .map(|hit| hit.conversation_id.as_str())
+                    .map(|hit| hit.chat_id.as_str())
                     .collect::<Vec<_>>(),
             };
             eprintln!(

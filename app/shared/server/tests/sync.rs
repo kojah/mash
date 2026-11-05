@@ -472,11 +472,11 @@ async fn websocket_installs_backfill_manifests_and_refuses_premature_completion(
     let service = Service::canonical().await;
     let members = vec![
         wire::BackfillMember {
-            conversation_id: "a".into(),
+            chat_id: "a".into(),
             digest: "1".repeat(64),
         },
         wire::BackfillMember {
-            conversation_id: "b".into(),
+            chat_id: "b".into(),
             digest: "2".repeat(64),
         },
     ];
@@ -498,7 +498,7 @@ async fn websocket_installs_backfill_manifests_and_refuses_premature_completion(
             baseline_revision: 1,
             views_fingerprint: "generation".into(),
             manifest_digest: manifest.clone(),
-            total_conversations: members.len() as u64,
+            total_chats: members.len() as u64,
             decoded_bytes: bytes.len() as u64,
         }),
     )
@@ -542,7 +542,7 @@ async fn websocket_installs_backfill_manifests_and_refuses_premature_completion(
         .backfill("baseline", &service.first.group_id, "first")
         .unwrap();
     assert_eq!(backfill.state, "ready");
-    assert_eq!(backfill.total_conversations, 2);
+    assert_eq!(backfill.total_chats, 2);
     assert_eq!(backfill.covered, 0);
 
     // Completing an uncovered baseline fails closed.
@@ -588,10 +588,10 @@ async fn websocket_installs_backfill_manifests_and_refuses_premature_completion(
     drop(client);
 }
 
-/// A non-snapshot baseline batch for the standard fixture conversation.
+/// A non-snapshot baseline batch for the standard fixture chat.
 fn baseline_batch() -> (Start, Vec<Event>, Vec<wire::BackfillMember>) {
     let values = snapshot(1);
-    let record: crate::shared::protocol::ConversationRecord =
+    let record: crate::shared::protocol::ChatRecord =
         serde_json::from_value(values[1]["records"][0].clone()).unwrap();
     let messages = values[2]["records"]
         .as_array()
@@ -611,11 +611,11 @@ fn baseline_batch() -> (Start, Vec<Event>, Vec<wire::BackfillMember>) {
         forgets: Vec::new(),
     };
     let members = vec![wire::BackfillMember {
-        conversation_id: record.id.clone(),
+        chat_id: record.id.clone(),
         digest: wire::member_digest(&record).unwrap(),
     }];
     let events = vec![
-        Event::Batch(crate::shared::protocol::Batch::Conversations {
+        Event::Batch(crate::shared::protocol::Batch::Chats {
             records: vec![record],
         }),
         Event::Batch(crate::shared::protocol::Batch::Messages { records: messages }),
@@ -658,7 +658,7 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
             baseline_revision: 1,
             views_fingerprint: "generation".into(),
             manifest_digest: manifest.clone(),
-            total_conversations: members.len() as u64,
+            total_chats: members.len() as u64,
             decoded_bytes: manifest_bytes.len() as u64,
         }),
     )
@@ -749,7 +749,7 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
     let backfill = catalog
         .backfill("baseline", &service.first.group_id, "first")
         .unwrap();
-    assert_eq!(backfill.covered, backfill.total_conversations);
+    assert_eq!(backfill.covered, backfill.total_chats);
 
     client
         .send(
@@ -765,7 +765,7 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
     let Some(wire::server_frame::Body::BackfillComplete(completed)) = completed.body else {
         panic!("expected completed baseline");
     };
-    assert_eq!(completed.covered_conversations, 1);
+    assert_eq!(completed.covered_chats, 1);
 
     drop(client);
     service.cleanup().await;
@@ -920,7 +920,7 @@ async fn qdrant_startup_recovery_resumes_queued_publications() {
     service.cleanup().await;
 }
 
-/// One complete-conversation delta with a stable id and changed content, in
+/// One complete-chat delta with a stable id and changed content, in
 /// both wire shapes the two transports take.
 #[allow(clippy::cast_precision_loss)]
 fn delta(revision: i64, messages: usize) -> (Start, Vec<Value>, Vec<Event>) {
@@ -945,7 +945,7 @@ fn delta(revision: i64, messages: usize) -> (Start, Vec<Value>, Vec<Event>) {
         .map(|ordinal| {
             serde_json::json!({
                 "id": format!("message-{ordinal}"),
-                "conversation_id": "conversation",
+                "chat_id": "conversation",
                 "ordinal": ordinal,
                 "role": "user",
                 "content": format!("revision {revision} message {ordinal} payload"),
@@ -969,7 +969,7 @@ fn delta(revision: i64, messages: usize) -> (Start, Vec<Value>, Vec<Event>) {
         }),
         serde_json::json!({
             "type": "batch",
-            "kind": "conversations",
+            "kind": "chats",
             "records": [{
                 "id": "conversation",
                 "provider": "codex",
@@ -1216,7 +1216,7 @@ async fn publish_over_socket(
 }
 
 /// Baseline records that arrive after a newer live publication must not apply:
-/// the live conversation wins, and a live tombstone keeps the deletion.
+/// the live chat wins, and a live tombstone keeps the deletion.
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 #[allow(
@@ -1232,7 +1232,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
         values[0] = seed;
         values
     };
-    let conversation = |id: &str, title: &str| {
+    let chat = |id: &str, title: &str| {
         serde_json::json!({
             "id": id,
             "provider": "codex",
@@ -1243,10 +1243,10 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
             "updated_at": 1
         })
     };
-    let message = |id: &str, conversation: &str, ordinal: i64, content: &str, seed: f64| {
+    let message = |id: &str, chat: &str, ordinal: i64, content: &str, seed: f64| {
         serde_json::json!({
             "id": id,
-            "conversation_id": conversation,
+            "chat_id": chat,
             "ordinal": ordinal,
             "role": "user",
             "content": content,
@@ -1257,12 +1257,12 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
         })
     };
 
-    // Frozen baseline revision 1: conversations a and b.
+    // Frozen baseline revision 1: chats a and b.
     let baseline = vec![
         serde_json::json!({"type":"start","instance":"snapshot-instance","revision":1,"base_revision":null,"snapshot":true,"forgets":[]}),
-        serde_json::json!({"type":"batch","kind":"conversations","records":[
-            conversation("a", "baseline a"),
-            conversation("b", "baseline b")
+        serde_json::json!({"type":"batch","kind":"chats","records":[
+            chat("a", "baseline a"),
+            chat("b", "baseline b")
         ]}),
         serde_json::json!({"type":"batch","kind":"messages","records":[
             message("a-1", "a", 0, "baseline a message", 1.0),
@@ -1278,12 +1278,10 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     let members = ["a", "b"]
         .iter()
         .map(|id| wire::BackfillMember {
-            conversation_id: (*id).into(),
+            chat_id: (*id).into(),
             digest: wire::member_digest(
-                &serde_json::from_value::<crate::shared::protocol::ConversationRecord>(
-                    conversation(id, "unused"),
-                )
-                .unwrap(),
+                &serde_json::from_value::<crate::shared::protocol::ChatRecord>(chat(id, "unused"))
+                    .unwrap(),
             )
             .unwrap(),
         })
@@ -1307,7 +1305,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
             baseline_revision: 1,
             views_fingerprint: "generation".into(),
             manifest_digest: manifest.clone(),
-            total_conversations: members.len() as u64,
+            total_chats: members.len() as u64,
             decoded_bytes: manifest_bytes.len() as u64,
         }),
     )
@@ -1320,10 +1318,8 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     // Live edit of a at revision 2, then a live deletion of b at revision 3,
     // both through the native transport that records ordering evidence.
     let edit = vec![
-        Event::Batch(crate::shared::protocol::Batch::Conversations {
-            records: vec![
-                serde_json::from_value(conversation("a", "live a")).expect("live conversation"),
-            ],
+        Event::Batch(crate::shared::protocol::Batch::Chats {
+            records: vec![serde_json::from_value(chat("a", "live a")).expect("live conversation")],
         }),
         Event::Batch(crate::shared::protocol::Batch::Messages {
             records: vec![
@@ -1356,7 +1352,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
         records: vec![
             serde_json::from_value(serde_json::json!({
                 "provider": "codex",
-                "conversation_id": "b"
+                "chat_id": "b"
             }))
             .unwrap(),
         ],
@@ -1387,13 +1383,13 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     assert_eq!(before.revision, 3);
     assert_eq!(before.tombstones.len(), 1);
 
-    // The late baseline batch carries the revision-1 conversation records.
+    // The late baseline batch carries the revision-1 chat records.
     let late = vec![
-        Event::Batch(crate::shared::protocol::Batch::Conversations {
+        Event::Batch(crate::shared::protocol::Batch::Chats {
             records: ["a", "b"]
                 .into_iter()
                 .map(|id| {
-                    serde_json::from_value(conversation(id, "baseline"))
+                    serde_json::from_value(chat(id, "baseline"))
                         .expect("baseline conversation record")
                 })
                 .collect(),
@@ -1474,13 +1470,13 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     let after = service.state().await;
     assert_eq!(after.revision, before.revision);
     assert_eq!(after.tombstones.len(), 1);
-    assert_eq!(after.tombstones[0].conversation_id, "b");
+    assert_eq!(after.tombstones[0].chat_id, "b");
 
     let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
     let backfill = catalog
         .backfill("baseline", &service.first.group_id, "first")
         .unwrap();
-    assert_eq!(backfill.covered, backfill.total_conversations);
+    assert_eq!(backfill.covered, backfill.total_chats);
 
     client
         .send(
@@ -1496,7 +1492,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
     let Some(wire::server_frame::Body::BackfillComplete(completed)) = completed.body else {
         panic!("expected baseline completion");
     };
-    assert_eq!(completed.covered_conversations, 2);
+    assert_eq!(completed.covered_chats, 2);
 
     // A baseline frozen behind the node's current revision is refused instead
     // of being rebased over newer live state.
@@ -1509,7 +1505,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
                 baseline_revision: 1,
                 views_fingerprint: "generation".into(),
                 manifest_digest: "d".repeat(64),
-                total_conversations: 1,
+                total_chats: 1,
                 decoded_bytes: 1,
             }),
         )
@@ -1598,8 +1594,8 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
         .backfill("baseline", &service.first.group_id, "first")
         .unwrap();
     assert_eq!(backfill.state, "complete");
-    assert_eq!(backfill.covered, backfill.total_conversations);
-    assert_eq!(backfill.total_conversations, 1);
+    assert_eq!(backfill.covered, backfill.total_chats);
+    assert_eq!(backfill.total_chats, 1);
 
     // The published batch is searchable through certified views.
     let freshness: crate::shared::Freshness =
@@ -1899,7 +1895,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
         values[0] = seed;
         values
     };
-    let chat = |id: &str, updated_at: i64| crate::shared::protocol::ConversationRecord {
+    let chat = |id: &str, updated_at: i64| crate::shared::protocol::ChatRecord {
         enrichment: None,
         id: id.into(),
         provider: crate::provider::Provider::Codex,
@@ -1909,21 +1905,20 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
         created_at: Some(1),
         updated_at: Some(updated_at),
     };
-    let message =
-        |conversation: &str, id: &str, seed: f64| crate::shared::protocol::MessageRecord {
-            attachments: Vec::new(),
-            id: id.into(),
-            conversation_id: conversation.into(),
-            ordinal: 0,
-            context: crate::message_context::MessageContext::Linear,
-            role: crate::role::Role::User,
-            content: format!("{conversation} content"),
-            projection: format!("{conversation} content"),
-            created_at: Some(1),
-            generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()),
-            vector: Some(vector(seed)),
-            tools: crate::tools::Activity::default(),
-        };
+    let message = |chat: &str, id: &str, seed: f64| crate::shared::protocol::MessageRecord {
+        attachments: Vec::new(),
+        id: id.into(),
+        chat_id: chat.into(),
+        ordinal: 0,
+        context: crate::message_context::MessageContext::Linear,
+        role: crate::role::Role::User,
+        content: format!("{chat} content"),
+        projection: format!("{chat} content"),
+        created_at: Some(1),
+        generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()),
+        vector: Some(vector(seed)),
+        tools: crate::tools::Activity::default(),
+    };
     let start = Start {
         views_build: None,
         source_silver: None,
@@ -1934,7 +1929,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
         forgets: Vec::new(),
     };
     let events = vec![
-        Event::Batch(crate::shared::protocol::Batch::Conversations {
+        Event::Batch(crate::shared::protocol::Batch::Chats {
             records: vec![chat("newer", 20), chat("older", 10)],
         }),
         Event::Batch(crate::shared::protocol::Batch::Messages {
@@ -1944,12 +1939,12 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
             ],
         }),
     ];
-    // One conversation per batch keeps the assertion deterministic.
+    // One chat per batch keeps the assertion deterministic.
     let plan = plan_backfill(
         start,
         events,
         BackfillLimits {
-            conversations: 1,
+            chats: 1,
             decoded_bytes: 1024 * 1024,
         },
     )
@@ -1991,7 +1986,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
                         // The gate holds the sender here: the second batch has
                         // not been sent, yet the first one is already durable.
                         let counts = service.counts(FIRST).await;
-                        assert_eq!(counts.conversations, 1, "first batch committed alone");
+                        assert_eq!(counts.chats, 1, "first batch committed alone");
                         assert_eq!(counts.messages, 1);
                         assert_eq!(service.state().await.revision, event.revision);
                         // Coverage is visible while the baseline is incomplete.
@@ -2013,7 +2008,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
     }
     assert_eq!(batches, 2, "each batch reported its own commit");
     let counts = service.counts(FIRST).await;
-    assert_eq!(counts.conversations, 2);
+    assert_eq!(counts.chats, 2);
     assert_eq!(counts.messages, 2);
 
     let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
@@ -2021,7 +2016,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
         .backfill("progressive", &service.first.group_id, "first")
         .unwrap();
     assert_eq!(backfill.state, "complete");
-    assert_eq!(backfill.covered, backfill.total_conversations);
+    assert_eq!(backfill.covered, backfill.total_chats);
     let freshness: crate::shared::Freshness =
         serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
     let baseline = freshness.baseline.expect("baseline coverage");
@@ -2162,10 +2157,10 @@ async fn two_nodes_publish_concurrently_without_interference() {
     );
 
     // The fixture publishes identical content from both nodes, so concurrent
-    // writers must still be folded into one duplicate conversation.
+    // writers must still be folded into one duplicate chat.
     let report: crate::shared::FingerprintReport =
         serde_json::from_value(service.get("fingerprints", FIRST).await).unwrap();
-    assert_eq!(report.duplicated_conversations, 1, "{report:?}");
+    assert_eq!(report.duplicated_chats, 1, "{report:?}");
     assert_eq!(report.nodes.len(), 2, "{report:?}");
     service.cleanup().await;
 }
@@ -2187,7 +2182,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
         values[0] = seed;
         values
     };
-    let chat = |id: &str| crate::shared::protocol::ConversationRecord {
+    let chat = |id: &str| crate::shared::protocol::ChatRecord {
         enrichment: None,
         id: id.into(),
         provider: crate::provider::Provider::Codex,
@@ -2197,15 +2192,15 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
         created_at: Some(1),
         updated_at: Some(1),
     };
-    let message = |conversation: &str, seed: f64| crate::shared::protocol::MessageRecord {
+    let message = |chat: &str, seed: f64| crate::shared::protocol::MessageRecord {
         attachments: Vec::new(),
-        id: format!("{conversation}-1"),
-        conversation_id: conversation.into(),
+        id: format!("{chat}-1"),
+        chat_id: chat.into(),
         ordinal: 0,
         context: crate::message_context::MessageContext::Linear,
         role: crate::role::Role::User,
-        content: format!("{conversation} content"),
-        projection: format!("{conversation} content"),
+        content: format!("{chat} content"),
+        projection: format!("{chat} content"),
         created_at: Some(1),
         generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()),
         vector: Some(vector(seed)),
@@ -2222,7 +2217,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
         forgets: Vec::new(),
     };
     let events = vec![
-        Event::Batch(crate::shared::protocol::Batch::Conversations {
+        Event::Batch(crate::shared::protocol::Batch::Chats {
             records: ids.iter().map(|id| chat(id)).collect(),
         }),
         Event::Batch(crate::shared::protocol::Batch::Messages {
@@ -2233,12 +2228,12 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
                 .collect(),
         }),
     ];
-    // One conversation per batch: four batches, two lanes.
+    // One chat per batch: four batches, two lanes.
     let plan = plan_backfill(
         start,
         events,
         BackfillLimits {
-            conversations: 1,
+            chats: 1,
             decoded_bytes: 1024 * 1024,
         },
     )
@@ -2273,7 +2268,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
     // so the head is the batch count and no two commits shared a revision.
     assert_eq!(revision, 4);
     let counts = service.counts(FIRST).await;
-    assert_eq!(counts.conversations, 4);
+    assert_eq!(counts.chats, 4);
     assert_eq!(counts.messages, 4);
 
     let catalog = Catalog::open(&service.silver_dir.path().join("sync")).unwrap();
@@ -2281,7 +2276,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
         .backfill("lanes", &service.first.group_id, "first")
         .unwrap();
     assert_eq!(backfill.state, "complete");
-    assert_eq!(backfill.covered, backfill.total_conversations);
+    assert_eq!(backfill.covered, backfill.total_chats);
 
     let freshness: crate::shared::Freshness =
         serde_json::from_value(service.get("freshness", FIRST).await).unwrap();
@@ -2434,7 +2429,7 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
             .unwrap()
             .unwrap();
         assert_eq!(
-            merged.projections.sessions().count(),
+            merged.projections.chats().count(),
             2,
             "a stale marker must not suppress valid coverage"
         );

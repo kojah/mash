@@ -36,7 +36,7 @@ fn private_spans_never_reach_silver_or_its_views() {
     }
     let connection = super::support::open_silver(&db);
     for query in [
-        "SELECT group_concat(COALESCE(title,''), ' ') FROM sessions",
+        "SELECT group_concat(COALESCE(title,''), ' ') FROM chats",
         "SELECT group_concat(content || COALESCE(search_projection,''), ' ') FROM messages",
         "SELECT group_concat(content || COALESCE(projection,''), ' ') FROM claude_source_messages",
         "SELECT group_concat(COALESCE(title,''), ' ') FROM claude_sources",

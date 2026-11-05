@@ -182,8 +182,8 @@ async fn qdrant_search_remains_available_during_other_node_publication() {
         .collect();
     let mut events = vec![
         Event::Start(Fixture::start(1)),
-        Event::Batch(Batch::Conversations {
-            records: vec![Fixture::conversation()],
+        Event::Batch(Batch::Chats {
+            records: vec![Fixture::chat()],
         }),
     ];
     events.extend(messages.chunks(128).map(|records| {

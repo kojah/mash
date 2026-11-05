@@ -80,7 +80,7 @@ pub(crate) struct Member {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Retained {
-    pub(crate) conversations: u64,
+    pub(crate) chats: u64,
     pub(crate) messages: u64,
     /// Observed message bounds in Unix milliseconds, not a completeness interval.
     pub(crate) earliest_message_at: Option<i64>,

@@ -35,7 +35,7 @@ fn native_metadata_origins_preserve_absence_and_detect_mislabelled_fields() {
         .execute_batch("UPDATE project SET vcs=NULL; UPDATE session SET directory='';")
         .unwrap();
     let source = discover(&path).unwrap().remove(0).identity;
-    let parsed = parse(&source).unwrap().conversation.unwrap();
+    let parsed = parse(&source).unwrap().chat.unwrap();
     let evidence = Evidence::capture(&parsed).unwrap();
     assert_eq!(evidence.title, expected().title);
     assert!(parsed.project.is_none() && evidence.project.is_none());
@@ -62,7 +62,7 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
         )
         .unwrap();
     let source = discover(&path).unwrap().remove(0).identity;
-    let parsed = parse(&source).unwrap().conversation.unwrap();
+    let parsed = parse(&source).unwrap().chat.unwrap();
     assert_eq!(Evidence::capture(&parsed).unwrap(), expected());
     let local = directory.path().join("silver.sqlite3");
     let mut storage = Storage::open_writer(&local).unwrap();
@@ -73,7 +73,7 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
     drop(storage);
     let stored = Storage::open_silver(&local).unwrap();
     assert_eq!(
-        stored.conversation_enrichment(&parsed.id).unwrap(),
+        stored.chat_enrichment(&parsed.id).unwrap(),
         Some(expected())
     );
     assert!(
@@ -91,13 +91,13 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
     let connection = Connection::open(&local).unwrap();
     connection
         .execute(
-            "UPDATE conversation_enrichment SET evidence=?1",
+            "UPDATE chat_enrichment SET evidence=?1",
             [serde_json::to_string(&old).unwrap()],
         )
         .unwrap();
     drop(connection);
     assert_eq!(
-        stored.conversation_enrichment(&parsed.id).unwrap(),
+        stored.chat_enrichment(&parsed.id).unwrap(),
         Some(old.clone())
     );
     assert_publication(&stored, &old);
@@ -113,7 +113,7 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
     assert_eq!(replayed.checkpoint_skipped_sources, 0);
     assert_eq!(replayed.changed_messages, 0);
     assert_eq!(
-        storage.conversation_enrichment(&parsed.id).unwrap(),
+        storage.chat_enrichment(&parsed.id).unwrap(),
         Some(expected())
     );
     assert!(storage.silver_certificate().unwrap().revision > before.revision);
@@ -139,7 +139,7 @@ fn missing_timestamp_evidence_alone_requires_replay_without_changing_history() {
     let _upstream = fixture(&path);
     let discovered = discover(&path).unwrap().remove(0);
     let source = discovered.identity;
-    let parsed = parse(&source).unwrap().conversation.unwrap();
+    let parsed = parse(&source).unwrap().chat.unwrap();
     let local = directory.path().join("silver.sqlite3");
     let mut storage = Storage::open_writer(&local).unwrap();
     index(&mut storage, &options(&path)).unwrap();
@@ -151,7 +151,7 @@ fn missing_timestamp_evidence_alone_requires_replay_without_changing_history() {
     let connection = Connection::open(&local).unwrap();
     connection
         .execute(
-            "UPDATE conversation_enrichment SET evidence=?1 WHERE conversation_id=?2",
+            "UPDATE chat_enrichment SET evidence=?1 WHERE chat_id=?2",
             rusqlite::params![serde_json::to_string(&legacy).unwrap(), parsed.id],
         )
         .unwrap();
@@ -165,8 +165,8 @@ fn missing_timestamp_evidence_alone_requires_replay_without_changing_history() {
     );
     storage
         .with_publication_snapshot(|snapshot| {
-            snapshot.visit(crate::shared::protocol::BatchKind::Conversations, |batch| {
-                let crate::shared::protocol::Batch::Conversations { records } = batch else {
+            snapshot.visit(crate::shared::protocol::BatchKind::Chats, |batch| {
+                let crate::shared::protocol::Batch::Chats { records } = batch else {
                     panic!("conversation batch")
                 };
                 assert_eq!(
@@ -188,7 +188,7 @@ fn missing_timestamp_evidence_alone_requires_replay_without_changing_history() {
     assert_eq!(replay.changed_messages, 0);
     assert_eq!(replay.checkpoint_skipped_sources, 1);
     assert_eq!(
-        storage.conversation_enrichment(&parsed.id).unwrap(),
+        storage.chat_enrichment(&parsed.id).unwrap(),
         Some(expected())
     );
     assert_eq!(
@@ -205,8 +205,8 @@ fn missing_timestamp_evidence_alone_requires_replay_without_changing_history() {
 fn assert_publication(storage: &Storage, expected: &Evidence) {
     storage
         .with_publication_snapshot(|snapshot| {
-            snapshot.visit(crate::shared::protocol::BatchKind::Conversations, |batch| {
-                let crate::shared::protocol::Batch::Conversations { records } = batch else {
+            snapshot.visit(crate::shared::protocol::BatchKind::Chats, |batch| {
+                let crate::shared::protocol::Batch::Chats { records } = batch else {
                     panic!("conversation batch")
                 };
                 assert!(

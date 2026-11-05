@@ -13,7 +13,7 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
         request.filters.provider,
         [Provider::Codex, Provider::ClaudeCode]
     );
-    assert_eq!(request.filters.conversation, ["thread-a", "thread-b"]);
+    assert_eq!(request.filters.chat, ["thread-a", "thread-b"]);
     assert_eq!(request.filters.after, Some(2));
     assert_eq!(request.filters.before, Some(3));
     assert!(matches!(
@@ -62,5 +62,5 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
         serde_json::from_value::<Search>(json!({"query":"model", "intent":"decisions"})).is_err()
     );
     assert_eq!(empty.filters.provider, [] as [Provider; 0]);
-    assert_eq!(empty.filters.conversation, [] as [String; 0]);
+    assert_eq!(empty.filters.chat, [] as [String; 0]);
 }

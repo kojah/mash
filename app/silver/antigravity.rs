@@ -1,6 +1,6 @@
-//! Native per-conversation SQLite snapshots; provider processes are never needed.
+//! Native per-chat SQLite snapshots; provider processes are never needed.
 use super::native::{location, timestamp};
-use super::{Conversation, HistorySource, ParsedFile, SourceIdentity, parsers};
+use super::{Chat, HistorySource, ParsedFile, SourceIdentity, parsers};
 use crate::{AppError, provider::Provider, role::Role, silver::dialogue};
 use std::path::Path;
 
@@ -69,7 +69,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         .filter(|m| m.role == Role::User)
         .find_map(|m| dialogue::title(m.dialogue_text.as_deref().unwrap_or_default()));
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: parsers::stable_id("session", &[Provider::Antigravity.as_str(), &root.cascade]),
             provider: Provider::Antigravity,
             title_origin: None,

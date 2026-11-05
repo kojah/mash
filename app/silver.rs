@@ -110,14 +110,14 @@ pub(crate) struct IndexSummary {
     pub(crate) unchanged_sources: u64,
     pub(crate) checkpoint_skipped_sources: u64,
     pub(crate) tombstoned_sources: u64,
-    pub(crate) purged_conversations: u64,
+    pub(crate) purged_chats: u64,
     pub(crate) committed_batches: u64,
     pub(crate) discovered_bytes: u64,
     pub(crate) processed_bytes: u64,
     pub(crate) processed_files: u64,
 }
 
-pub(crate) struct Conversation {
+pub(crate) struct Chat {
     pub(crate) id: String,
     pub(crate) provider: Provider,
     pub(crate) source: SourceIdentity,
@@ -162,7 +162,7 @@ impl NormalizedMessage {
 }
 
 pub(crate) struct ParsedFile {
-    pub(crate) conversation: Option<Conversation>,
+    pub(crate) chat: Option<Chat>,
     pub(crate) malformed_records: u64,
     pub(crate) first_record_issue: Option<diagnostics::RecordIssue>,
 }
@@ -219,7 +219,7 @@ fn index_at(
         unchanged_sources: 0,
         checkpoint_skipped_sources: 0,
         tombstoned_sources: 0,
-        purged_conversations: 0,
+        purged_chats: 0,
         committed_batches: 0,
         discovered_bytes: 0,
         processed_bytes: 0,
@@ -453,7 +453,7 @@ fn index_provider_pipeline(
     if authoritative {
         verify_authoritative_discovery(provider, roots, &observed_layout)?;
     }
-    summary.purged_conversations += reconcile_complete_sources(
+    summary.purged_chats += reconcile_complete_sources(
         storage,
         complete,
         provider,
@@ -641,7 +641,7 @@ fn apply_parsed_source(
         )?;
     }
     summary.malformed_records += parsed.malformed_records;
-    if parsed.conversation.is_some()
+    if parsed.chat.is_some()
         && let Some(issue) = &parsed.first_record_issue
     {
         // Permanent interior damage: the readable records are applied and the
@@ -656,7 +656,7 @@ fn apply_parsed_source(
     // leave ancestry unprovable, cannot establish a complete source snapshot.
     // Applying its fragments would replace prior messages and vectors while
     // retaining an old checkpoint, so leave the contribution untouched.
-    if parsed.malformed_records != 0 && parsed.conversation.is_none() {
+    if parsed.malformed_records != 0 && parsed.chat.is_none() {
         summary.rejected_sources += 1;
         storage.reject_silver_source(
             provider,
@@ -678,10 +678,10 @@ fn apply_parsed_source(
         }
         return Ok(false);
     }
-    if let Some(conversation) = parsed.conversation {
-        apply_conversation(storage, &conversation, summary)?;
+    if let Some(chat) = parsed.chat {
+        apply_chat(storage, &chat, summary)?;
     } else if storage.remove_source(provider, &result.source.history.identity)? {
-        summary.purged_conversations += 1;
+        summary.purged_chats += 1;
     }
     storage.record_source_checkpoint(
         provider,
@@ -749,12 +749,12 @@ fn parser_worker_count(source_count: usize) -> usize {
     source_count.min(available.saturating_sub(1).max(1)).min(8)
 }
 
-fn apply_conversation(
+fn apply_chat(
     storage: &mut Storage,
-    conversation: &Conversation,
+    chat: &Chat,
     summary: &mut IndexSummary,
 ) -> Result<(), AppError> {
-    let change = storage.replace_conversation(conversation)?;
+    let change = storage.replace_chat(chat)?;
     summary.changed_messages += u64::try_from(change.changed_message_ids.len())
         .map_err(|_| AppError::internal("too many changed messages"))?;
     summary.removed_messages += change.removed_messages;

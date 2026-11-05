@@ -30,10 +30,10 @@ const OTHER: &str = "test-api-token-other-32-bytes-long";
 
 fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
     use crate::provider::Provider;
-    use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start};
-    let conversations = Provider::ALL
+    use crate::shared::protocol::{Batch, ChatRecord, Event, MessageRecord, Start};
+    let chats = Provider::ALL
         .iter()
-        .map(|provider| ConversationRecord {
+        .map(|provider| ChatRecord {
             enrichment: None,
             id: provider.as_str().into(),
             provider: *provider,
@@ -49,7 +49,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
         .map(|provider| MessageRecord {
             attachments: Vec::new(),
             id: format!("{provider}-message"),
-            conversation_id: provider.as_str().into(),
+            chat_id: provider.as_str().into(),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
@@ -71,9 +71,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
             snapshot: true,
             forgets: Vec::new(),
         }),
-        Event::Batch(Batch::Conversations {
-            records: conversations,
-        }),
+        Event::Batch(Batch::Chats { records: chats }),
         Event::Batch(Batch::Messages { records: messages }),
         Event::Finish,
     ]
@@ -769,11 +767,11 @@ fn snapshot(revision: i64) -> Vec<Value> {
     opposite[0] = -127.0;
     vec![
         json!({"type":"start","instance":"snapshot-instance","revision":revision,"base_revision":null,"snapshot":true,"forgets":[]}),
-        json!({"type":"batch","kind":"conversations","records":[{"id":"conversation","provider":"codex","title":"Shared history","project":"/work/mash","repository":"repo://mash","created_at":1,"updated_at":2}]}),
+        json!({"type":"batch","kind":"chats","records":[{"id":"conversation","provider":"codex","title":"Shared history","project":"/work/mash","repository":"repo://mash","created_at":1,"updated_at":2}]}),
         json!({"type":"batch","kind":"messages","records":[
-            {"id":"searchable","conversation_id":"conversation","ordinal":0,"role":"user","content":"hello shared history","projection":"hello shared history","created_at":1,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"vector":vector},
-            {"id":"opposite","conversation_id":"conversation","ordinal":1,"role":"user","content":"opposite direction","projection":"opposite direction","created_at":2,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"vector":opposite},
-            {"id":"context","conversation_id":"conversation","ordinal":2,"role":"tool","content":"raw context","projection":"","created_at":2,"generation":null,"vector":null}
+            {"id":"searchable","chat_id":"conversation","ordinal":0,"role":"user","content":"hello shared history","projection":"hello shared history","created_at":1,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"vector":vector},
+            {"id":"opposite","chat_id":"conversation","ordinal":1,"role":"user","content":"opposite direction","projection":"opposite direction","created_at":2,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"vector":opposite},
+            {"id":"context","chat_id":"conversation","ordinal":2,"role":"tool","content":"raw context","projection":"","created_at":2,"generation":null,"vector":null}
         ]}),
         json!({"type":"finish"}),
     ]
@@ -1049,7 +1047,7 @@ async fn http_storage_contract(service: Service) {
 /// Two nodes holding the same history are reported, not silently duplicated.
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
-async fn fingerprint_report_counts_conversations_shared_by_two_nodes() {
+async fn fingerprint_report_counts_chats_shared_by_two_nodes() {
     let service = Service::qdrant(384).await;
     assert_eq!(
         service.upload(FIRST, &snapshot(1)).await.status(),
@@ -1061,27 +1059,27 @@ async fn fingerprint_report_counts_conversations_shared_by_two_nodes() {
     );
     let report: crate::shared::FingerprintReport =
         serde_json::from_value(service.get("fingerprints", FIRST).await).unwrap();
-    assert_eq!(report.duplicated_conversations, 1, "{report:?}");
+    assert_eq!(report.duplicated_chats, 1, "{report:?}");
     assert_eq!(report.redundant_copies, 1);
-    // The fixture conversation carries three messages; vectors are estimated
+    // The fixture chat carries three messages; vectors are estimated
     // at one f32 per message at the group's width.
     assert_eq!(report.redundant_messages, 3, "{report:?}");
     assert_eq!(report.duplicate_vector_bytes, 3 * 384 * 4);
     assert_eq!(report.nodes.len(), 2);
     for node in &report.nodes {
-        assert_eq!(node.conversations, 1, "{node:?}");
+        assert_eq!(node.chats, 1, "{node:?}");
         assert_eq!(node.duplicated, 1, "{node:?}");
     }
 
     // The report is available to every group member, including the second one.
     let from_second: crate::shared::FingerprintReport =
         serde_json::from_value(service.get("fingerprints", SECOND).await).unwrap();
-    assert_eq!(from_second.duplicated_conversations, 1);
+    assert_eq!(from_second.duplicated_chats, 1);
 
     // Another group sees only its own membership.
     let other: crate::shared::FingerprintReport =
         serde_json::from_value(service.get("fingerprints", OTHER).await).unwrap();
-    assert_eq!(other.duplicated_conversations, 0);
+    assert_eq!(other.duplicated_chats, 0);
     assert_eq!(other.nodes.len(), 1);
     service.cleanup().await;
 }

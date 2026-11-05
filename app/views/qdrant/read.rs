@@ -81,7 +81,7 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
             "role",
             values.iter().map(|r| r.as_str().to_owned()).collect(),
         ),
-        F::Chat(values) => ("conversation_id", values.clone()),
+        F::Chat(values) => ("chat_id", values.clone()),
         F::Project(values) => ("project", values.clone()),
         F::Repository(values) => ("repository", values.clone()),
     };

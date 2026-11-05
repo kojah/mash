@@ -86,7 +86,7 @@ impl Search {
 #[serde(deny_unknown_fields)]
 struct Status {
     /// Optional provider/node/message-time scope. Reports retained rows and scan evidence;
-    /// unknown coverage never proves that matching conversations do not exist.
+    /// unknown coverage never proves that matching chats do not exist.
     coverage: Option<core::coverage::Scope>,
     /// compact (default) shows readiness and freshness; extended includes manifests/configuration.
     #[serde(default)]
@@ -452,7 +452,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
+        description = "Find past chats or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         let detail = request.detail;
@@ -525,7 +525,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = true),
-        description = "Forget a conversation owned by this node in its configured indexes. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
+        description = "Forget a chat owned by this node in its configured indexes. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
     )]
     async fn forget(&self, Parameters(request): Parameters<Forget>) -> CallToolResult {
         self.execute(Operation::Forget {
@@ -555,7 +555,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Query silver with a typed, declarative request (preferred): target messages/sessions/turns, filter by provider, session, role, time or substring, group by provider/role/session, order and limit. Identifiers come from an allowlist and values are bound, so a request cannot name a table, column or SQL fragment. Set shared=true to read the configured shared index, optionally naming a node in this token's group; otherwise the request reads this machine. The local-only sql escape hatch runs one read-only statement with query_only, a read-only authorizer, row and payload caps and a wall-clock budget, and is never sent to shared silver. Provide exactly one of request or sql. SQL reads the canonical sessions, messages and turns tables; the raw schema is release-specific."
+        description = "Query silver with a typed, declarative request (preferred): target messages/chats/turns, filter by provider, chat, role, time or substring, group by provider/role/chat, order and limit. Identifiers come from an allowlist and values are bound, so a request cannot name a table, column or SQL fragment. Set shared=true to read the configured shared index, optionally naming a node in this token's group; otherwise the request reads this machine. The local-only sql escape hatch runs one read-only statement with query_only, a read-only authorizer, row and payload caps and a wall-clock budget, and is never sent to shared silver. Provide exactly one of request or sql. SQL reads the canonical chats, messages and turns tables; the raw schema is release-specific."
     )]
     async fn query_silver(&self, Parameters(input): Parameters<QuerySilver>) -> CallToolResult {
         if input.shared {

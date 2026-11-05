@@ -34,7 +34,7 @@ fn codex_paginated_timestamp_provenance_preserves_field_and_provider_boundaries(
 
 #[test]
 fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented() {
-    let mut thread = Conversation {
+    let mut thread = Chat {
         id: "thread".into(),
         provider: Provider::Codex,
         source: super::super::SourceIdentity::file("fixture"),

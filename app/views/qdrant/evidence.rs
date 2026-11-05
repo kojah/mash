@@ -1,4 +1,4 @@
-//! Per-session evidence that retrieval views match canonical agent history.
+//! Per-chat evidence that retrieval views match canonical agent history.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -40,18 +40,18 @@ impl Projections {
         self.0.values().map(|evidence| evidence.embeddings).sum()
     }
 
-    pub(crate) fn sessions(&self) -> impl Iterator<Item = (&String, &ProjectionEvidence)> {
+    pub(crate) fn chats(&self) -> impl Iterator<Item = (&String, &ProjectionEvidence)> {
         self.0.iter()
     }
 
-    /// Discard evidence that no longer describes the committed session.
+    /// Discard evidence that no longer describes the committed chat.
     pub(crate) fn retain_matching(&mut self, current: &BTreeMap<String, String>) {
         self.0
             .retain(|id, evidence| current.get(id) == Some(&evidence.fingerprint));
     }
 
     pub(crate) fn merge_matching(&mut self, other: &Self, current: &BTreeMap<String, String>) {
-        for (id, evidence) in other.sessions() {
+        for (id, evidence) in other.chats() {
             let scope = id.clone();
             if self
                 .get(&scope)

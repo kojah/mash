@@ -88,7 +88,7 @@ fn compact_listing_keeps_pagination_and_view_never_truncates() {
     let response = Response::ListChats(super::super::chats::Response {
         page: crate::chat_catalog::Page {
             chats: vec![crate::chat_catalog::Chat {
-                conversation_id: "thread".into(),
+                chat_id: "thread".into(),
                 provider: crate::provider::Provider::Codex,
                 node_id: "peer".into(),
                 metadata: ChatMetadata::default(),
@@ -218,7 +218,7 @@ fn compact_shared_status_preserves_freshness_coverage_and_readiness() {
         "group_id":"group", "unpublished_nodes":["missing-peer"], "nodes":[{
             "node_id":"peer","instance":"instance","revision":4,
             "last_synced_at":"2026-10-08T12:00:00Z","last_updated_at":"2026-10-08T11:00:00Z",
-            "conversations":2,"messages":20,"lexical_current":true,"views_current":false
+            "chats":2,"messages":20,"lexical_current":true,"views_current":false
         }]
     }))
     .unwrap();

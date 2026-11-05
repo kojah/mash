@@ -11,7 +11,7 @@ fn evidence(fingerprint: &str, embeddings: u64, complete: bool) -> ProjectionEvi
 
 proptest! {
     #[test]
-    fn session_evidence_roundtrips_and_invalidates_changed_history(id in ".{0,100}", count in 0u64..100) {
+    fn chat_evidence_roundtrips_and_invalidates_changed_history(id in ".{0,100}", count in 0u64..100) {
         let mut projections = Projections::default();
         let native = id.clone();
         projections.insert(native.clone(), evidence("native", count, true));
@@ -29,7 +29,7 @@ proptest! {
 }
 
 #[test]
-fn session_merge_preserves_preferred_current_evidence() {
+fn chat_merge_preserves_preferred_current_evidence() {
     let scope = "chat".to_owned();
     let current = BTreeMap::from([("chat".into(), "current".into())]);
     let mut preferred = Projections::default();

@@ -78,7 +78,7 @@ impl Storage {
         {
             // A root-policy change must replay sources even when history files are
             // unchanged. Keep embeddings when visible dialogue remains identical.
-            self.connection.execute_batch("UPDATE source_checkpoints SET interpretation_version=0; UPDATE sessions SET source_fingerprint=''; UPDATE messages SET fingerprint='' WHERE attachments<>'[]';").map_err(AppError::database)?;
+            self.connection.execute_batch("UPDATE source_checkpoints SET interpretation_version=0; UPDATE chats SET source_fingerprint=''; UPDATE messages SET fingerprint='' WHERE attachments<>'[]';").map_err(AppError::database)?;
         }
         sql::SetAttachmentPolicy::builder()
             .fingerprint(&fingerprint)

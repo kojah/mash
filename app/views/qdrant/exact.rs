@@ -12,7 +12,7 @@ const FIELDS: &[&str] = &[
     "node_id",
     "provider",
     "role",
-    "conversation_id",
+    "chat_id",
     "project",
     "repository",
     "created_at",

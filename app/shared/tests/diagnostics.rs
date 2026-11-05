@@ -82,7 +82,7 @@ async fn fixture() -> Fixture {
         .lexical
         .remove(0);
     remote.id = "peer-message".into();
-    remote.conversation_id = "peer-thread".into();
+    remote.chat_id = "peer-thread".into();
     remote.node_id = Some("peer".into());
     let document = protocol::Document {
         node_id: "peer".into(),

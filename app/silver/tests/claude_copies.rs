@@ -56,7 +56,7 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
             }
             let parsed = paths
                 .iter()
-                .map(|path| parse_claude(path).unwrap().conversation.unwrap())
+                .map(|path| parse_claude(path).unwrap().chat.unwrap())
                 .collect::<Vec<_>>();
             let common = stable_id("claude-message", &["copied-thread", "common"]);
             assert_eq!(parsed[0].messages.inline()[0].id, common);
@@ -64,7 +64,7 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
             let database = directory.path().join("index.sqlite3");
             let mut storage = Storage::open_writer(&database).unwrap();
             for index in if reverse { [1, 0] } else { [0, 1] } {
-                storage.replace_conversation(&parsed[index]).unwrap();
+                storage.replace_chat(&parsed[index]).unwrap();
             }
             let hits =
                 crate::storage::test_support::projections_with_text(&storage, "sentinel", None);
@@ -101,7 +101,7 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
             );
             storage.commit_writer().unwrap();
             assert_eq!(storage.counts().unwrap().messages, 0);
-            assert_eq!(storage.counts().unwrap().conversations, 0);
+            assert_eq!(storage.counts().unwrap().chats, 0);
         }
     }
 }
@@ -122,7 +122,7 @@ fn claude_checkpointed_survivor_is_retained_after_owner_deletion_and_restart() {
     drop(storage);
     let owner: String = rusqlite::Connection::open(&database)
         .unwrap()
-        .query_row("SELECT source_path FROM sessions", [], |row| row.get(0))
+        .query_row("SELECT source_path FROM chats", [], |row| row.get(0))
         .unwrap();
     fs::remove_file(owner).unwrap();
     for _ in 0..2 {
@@ -130,7 +130,7 @@ fn claude_checkpointed_survivor_is_retained_after_owner_deletion_and_restart() {
         let summary = index(&mut storage, &options(&root)).unwrap();
         assert_eq!(summary.checkpoint_skipped_sources, 1);
         storage.commit_writer().unwrap();
-        assert_eq!(storage.counts().unwrap().conversations, 1);
+        assert_eq!(storage.counts().unwrap().chats, 1);
         assert_eq!(
             crate::storage::test_support::projections_with_text(&storage, "common", None).len(),
             1
@@ -188,13 +188,13 @@ fn claude_rewinds_empty_files_and_identity_moves_preserve_other_copies() {
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(&root)).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.counts().unwrap().chats, 2);
     assert!(storage.forget("copied-thread").unwrap());
     drop(storage);
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(&root)).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 1);
+    assert_eq!(storage.counts().unwrap().chats, 1);
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn claude_native_ancestry_resolves_intermediate_events_and_rejects_cycles() {
         .unwrap()
         .write_all(b"\n{\"type\":\"progress\",\"uuid\":\"progress\",\"parentUuid\":\"root\"}\n")
         .unwrap();
-    let parsed = parse_claude(&path).unwrap().conversation.unwrap();
+    let parsed = parse_claude(&path).unwrap().chat.unwrap();
     assert_eq!(
         parsed.messages.inline()[1].context,
         MessageContext::Parent {
@@ -287,11 +287,11 @@ fn claude_ancestry_can_be_supplied_by_another_source_and_survives_missing_ancest
     let child = directory.path().join("child.jsonl");
     transcript(&root, &[("root", None, "root sentinel")]);
     transcript(&child, &[("child", Some("root"), "child sentinel")]);
-    let child = parse_claude(&child).unwrap().conversation.unwrap();
-    let root = parse_claude(&root).unwrap().conversation.unwrap();
+    let child = parse_claude(&child).unwrap().chat.unwrap();
+    let root = parse_claude(&root).unwrap().chat.unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    storage.replace_conversation(&child).unwrap();
-    storage.replace_conversation(&root).unwrap();
+    storage.replace_chat(&child).unwrap();
+    storage.replace_chat(&root).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(
         storage

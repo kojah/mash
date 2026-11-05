@@ -126,7 +126,7 @@ fn search(query: &str, intent: Intent) -> Search {
 pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
     let mut drill = search("Qdrant", Intent::ExactMention);
     drill.unit = Some(crate::search_results::SearchUnit::Messages);
-    drill.filters.conversation = vec!["RETURNED_CHAT_ID".into()];
+    drill.filters.chat = vec!["RETURNED_CHAT_ID".into()];
     drill.filters.match_mode = crate::views::matching::Mode::Strict;
     let named = crate::chat_catalog::Request {
         title_contains: Some("branding".into()),

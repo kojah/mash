@@ -18,7 +18,7 @@ fn file(content: Option<&str>, revision: i64) -> tempfile::NamedTempFile {
         .map(|text| MessageRecord {
             attachments: vec![],
             id: "message".into(),
-            conversation_id: "chat".into(),
+            chat_id: "chat".into(),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
@@ -40,8 +40,8 @@ fn file(content: Option<&str>, revision: i64) -> tempfile::NamedTempFile {
             snapshot: true,
             forgets: vec![],
         }),
-        Event::Batch(Batch::Conversations {
-            records: vec![ConversationRecord {
+        Event::Batch(Batch::Chats {
+            records: vec![ChatRecord {
                 enrichment: None,
                 id: "chat".into(),
                 provider: Provider::Codex,
@@ -76,7 +76,7 @@ fn retained(store: &SilverStore) -> Retained {
     let mut history = vec![];
     read::export(&connection, &mut history).unwrap();
     let storage_ids = connection
-        .prepare("SELECT 'session',rowid,id FROM sessions UNION ALL SELECT 'message',rowid,id FROM messages ORDER BY 1,2")
+        .prepare("SELECT 'session',rowid,id FROM chats UNION ALL SELECT 'message',rowid,id FROM messages ORDER BY 1,2")
         .unwrap()
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .unwrap()

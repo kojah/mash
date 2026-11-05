@@ -1,4 +1,4 @@
-//! Built-in views: result granularity and bounded conversation ranking across transports.
+//! Built-in views: result granularity and bounded chat ranking across transports.
 use crate::AppError;
 use crate::storage::SearchHit;
 use rmcp::schemars;
@@ -131,8 +131,7 @@ impl Results {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ChatHit {
-    #[serde(rename = "chat_id")]
-    pub(crate) conversation_id: String,
+    pub(crate) chat_id: String,
     pub(crate) provider: crate::provider::Provider,
     pub(crate) node_id: Option<String>,
     #[serde(flatten)]
@@ -199,7 +198,7 @@ pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
     let text = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
     (
         hit.provider,
-        hit.conversation_id.clone(),
+        hit.chat_id.clone(),
         hit.role.clone(),
         blake3::hash(text.as_bytes()),
     )
@@ -261,7 +260,7 @@ pub(crate) fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchH
     unique
 }
 
-/// Round-robin the best candidates from each conversation before bounded reranking.
+/// Round-robin the best candidates from each chat before bounded reranking.
 /// Identical content (including copies on other nodes) earns no additional evidence.
 pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
     let hits = deduplicate(hits, unit);
@@ -271,7 +270,7 @@ pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit
     let mut counts = HashMap::new();
     let mut rounds: [Vec<SearchHit>; 6] = Default::default();
     for hit in hits {
-        let key = (hit.provider, hit.conversation_id.clone());
+        let key = (hit.provider, hit.chat_id.clone());
         let count = counts.entry(key).or_insert(0);
         if *count < rounds.len() {
             rounds[*count].push(hit);
@@ -323,7 +322,7 @@ pub(crate) fn collect_exact(
 /// A chat result seeded from its best hit; matches and score accrue later.
 fn chat_for(hit: &SearchHit, redaction: crate::redaction::Policy) -> ChatHit {
     ChatHit {
-        conversation_id: hit.conversation_id.clone(),
+        chat_id: hit.chat_id.clone(),
         provider: hit.provider,
         node_id: hit.node_id.clone(),
         metadata: ChatMetadata {
@@ -384,7 +383,7 @@ fn collect_inner(
     {
         redaction.metadata(&mut hit.metadata);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
-        let key = (hit.provider, hit.conversation_id.clone());
+        let key = (hit.provider, hit.chat_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
             threads.push(chat_for(&hit, redaction));
             (threads.len() - 1, rank)
@@ -439,7 +438,7 @@ fn collect_inner(
         b.score
             .total_cmp(&a.score)
             .then_with(|| a.provider.to_string().cmp(&b.provider.to_string()))
-            .then_with(|| a.conversation_id.cmp(&b.conversation_id))
+            .then_with(|| a.chat_id.cmp(&b.chat_id))
     });
     let (threads, next_offset) = page.take(threads.into_iter(), unit.result_window());
     Collected {

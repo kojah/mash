@@ -438,7 +438,7 @@ fn schema_fields_mode(
             ("node_id", "keyword"),
             ("provider", "keyword"),
             ("role", "keyword"),
-            ("conversation_id", "keyword"),
+            ("chat_id", "keyword"),
             ("unit.anchor", "keyword"),
             ("project", "keyword"),
             ("repository", "keyword"),

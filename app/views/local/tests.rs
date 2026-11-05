@@ -1,6 +1,6 @@
 //! Direct-local lifecycle acceptance against a disposable Qdrant instance.
 use super::*;
-use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
+use crate::silver::{Chat, NormalizedMessage, SourceIdentity};
 use std::path::PathBuf;
 
 struct Fixture {
@@ -33,7 +33,7 @@ impl Fixture {
             .begin_silver_scan(crate::provider::Provider::Codex)
             .unwrap();
         storage
-            .replace_conversation(&Conversation {
+            .replace_chat(&Chat {
                 id: "thread".into(),
                 provider: crate::provider::Provider::Codex,
                 title_origin: None,

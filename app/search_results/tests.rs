@@ -64,7 +64,7 @@ fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
     assert_eq!(rows[1].id, "repeated-message");
     assert_eq!(rows[2].content, "changed history");
     assert_eq!(rows[3].provider, Provider::ClaudeCode);
-    assert_eq!(rows[4].conversation_id, "other-thread");
+    assert_eq!(rows[4].chat_id, "other-thread");
 }
 
 #[test]
@@ -102,15 +102,11 @@ fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
         let results = collect(vec![weak, useful], unit, 5, "keep the model warm");
         match results {
             Results::Chats(hits) => assert_eq!(
-                hits.iter()
-                    .map(|h| h.conversation_id.as_str())
-                    .collect::<Vec<_>>(),
+                hits.iter().map(|h| h.chat_id.as_str()).collect::<Vec<_>>(),
                 ["useful"]
             ),
             Results::Messages(hits) => assert_eq!(
-                hits.iter()
-                    .map(|h| h.conversation_id.as_str())
-                    .collect::<Vec<_>>(),
+                hits.iter().map(|h| h.chat_id.as_str()).collect::<Vec<_>>(),
                 ["useful"]
             ),
         }
@@ -120,7 +116,7 @@ fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
 fn hit(thread: &str, id: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
-        conversation_id: thread.into(),
+        chat_id: thread.into(),
         provider: Provider::Codex,
         turn_id: None,
         role: crate::role::Role::User,
@@ -164,7 +160,7 @@ fn explicit_references_cannot_be_replaced_by_nearby_issue_numbers() {
         match collect(vec![wrong, correct], unit, 5, "PR 180") {
             Results::Chats(results) => {
                 assert_eq!(results.len(), 1);
-                assert_eq!(results[0].conversation_id, "correct");
+                assert_eq!(results[0].chat_id, "correct");
             }
             Results::Messages(results) => {
                 assert_eq!(results.len(), 1);
@@ -184,8 +180,8 @@ fn strongest_evidence_dominates_corroboration_and_excerpts_are_capped() {
         hit("multiple", "fifth"),
     ];
     let results = threads(hits, 2);
-    assert_eq!(results[0].conversation_id, "single");
-    assert_eq!(results[1].conversation_id, "multiple");
+    assert_eq!(results[0].chat_id, "single");
+    assert_eq!(results[1].chat_id, "multiple");
     assert_eq!(
         results[1]
             .matches
@@ -369,12 +365,12 @@ fn replicas_and_context_do_not_shift_other_threads_or_hide_real_requests() {
     let actual = threads(vec![excluded, first, copy, second], 20);
     assert_eq!(actual.len(), baseline.len());
     for (actual, expected) in actual.iter().zip(baseline) {
-        assert_eq!(actual.conversation_id, expected.conversation_id);
+        assert_eq!(actual.chat_id, expected.chat_id);
         assert_eq!(actual.score, expected.score);
     }
     assert_eq!(actual[0].matches[0].copies.len(), 1);
     assert_eq!(actual[0].matches[0].snippet, "first");
-    // Independently asked identical questions remain distinct conversations.
+    // Independently asked identical questions remain distinct chats.
     let mut independent = hit("independent", "new-message");
     independent.content = "first".into();
     assert_eq!(threads(vec![hit("a", "first"), independent], 20).len(), 2);
@@ -541,7 +537,7 @@ fn thread_metadata_and_view_anchors_survive_worker_serialization() {
 
 fn keys(results: &Results) -> Vec<String> {
     match results {
-        Results::Chats(chats) => chats.iter().map(|c| c.conversation_id.clone()).collect(),
+        Results::Chats(chats) => chats.iter().map(|c| c.chat_id.clone()).collect(),
         Results::Messages(hits) => hits.iter().map(|h| h.id.clone()).collect(),
     }
 }

@@ -160,7 +160,7 @@ impl Builder {
             State::Inline { messages, .. } => Ok(Messages::Inline(messages)),
             State::Staged(mut writer) => {
                 // A failed flush must abort parsing/reconciliation rather than
-                // returning a successfully staged but incomplete conversation.
+                // returning a successfully staged but incomplete chat.
                 writer.output.flush().map_err(AppError::io)?;
                 Ok(Messages::Staged(Spool {
                     path: writer.path,
@@ -364,16 +364,16 @@ impl Messages {
     pub(crate) fn inline(&self) -> &[NormalizedMessage] {
         match self {
             Self::Inline(messages) => messages,
-            Self::Staged(_) => panic!(
-                "fixture expects a small inline conversation; use fallible rows for staged messages"
-            ),
+            Self::Staged(_) => {
+                panic!("fixture expects a small inline chat; use fallible rows for staged messages")
+            }
         }
     }
     #[cfg(test)]
     pub(crate) fn inline_mut(&mut self) -> &mut Vec<NormalizedMessage> {
         match self {
             Self::Inline(messages) => messages,
-            Self::Staged(_) => panic!("fixture expects a small inline conversation"),
+            Self::Staged(_) => panic!("fixture expects a small inline chat"),
         }
     }
 }

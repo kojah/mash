@@ -55,7 +55,7 @@ fn benchmark_claude_contribution_memory() {
             // The prior production algorithm: collect all physical payloads
             // before moving rows into native-identity reconciliation.
             let rows = sql::ClaudeContributionMessages::builder()
-                .conversation_id("thread")
+                .chat_id("thread")
                 .build()
                 .query_many(&connection)
                 .unwrap();
@@ -78,8 +78,8 @@ fn benchmark_claude_contribution_memory() {
             .unwrap()
         }
         Mode::Streamed => {
-            let conversation = claude_thread(&connection, "thread", None).unwrap().unwrap();
-            (conversation.messages, conversation.claude_lineage.unwrap())
+            let chat = claude_chat(&connection, "thread", None).unwrap().unwrap();
+            (chat.messages, chat.claude_lineage.unwrap())
         }
     };
     let elapsed_milliseconds = crate::progress::milliseconds(started);

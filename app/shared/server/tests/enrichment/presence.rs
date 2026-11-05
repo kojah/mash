@@ -1,5 +1,5 @@
 use super::*;
-use crate::shared::protocol::{Batch, ConversationRecord, Event};
+use crate::shared::protocol::{Batch, ChatRecord, Event};
 use crate::silver::enrichment::{TimestampOrigin, Timestamps};
 
 #[derive(Clone, Copy)]
@@ -11,8 +11,8 @@ enum Field {
     Updated,
 }
 
-fn conversation(events: &mut [Event]) -> &mut ConversationRecord {
-    let Event::Batch(Batch::Conversations { records }) = &mut events[1] else {
+fn chat(events: &mut [Event]) -> &mut ChatRecord {
+    let Event::Batch(Batch::Chats { records }) = &mut events[1] else {
         panic!("conversation fixture")
     };
     &mut records[0]
@@ -23,11 +23,11 @@ fn snapshot_with_evidence(revision: i64, evidence: Option<Evidence>) -> Vec<Even
         .into_iter()
         .map(|event| serde_json::from_value(event).unwrap())
         .collect::<Vec<Event>>();
-    conversation(&mut events).enrichment = evidence;
+    chat(&mut events).enrichment = evidence;
     events
 }
 
-fn remove_origin(record: &mut ConversationRecord, field: Field) {
+fn remove_origin(record: &mut ChatRecord, field: Field) {
     let evidence = record.enrichment.as_mut().unwrap();
     match field {
         Field::Title => evidence.title = None,
@@ -38,7 +38,7 @@ fn remove_origin(record: &mut ConversationRecord, field: Field) {
     }
 }
 
-fn remove_value(record: &mut ConversationRecord, field: Field) {
+fn remove_value(record: &mut ChatRecord, field: Field) {
     match field {
         Field::Title => record.title = None,
         Field::Project => record.project = None,
@@ -81,7 +81,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
     ] {
         for origin_missing in [false, true] {
             let mut invalid = snapshot_with_evidence(2, Some(unknown.clone()));
-            let record = conversation(&mut invalid);
+            let record = chat(&mut invalid);
             if origin_missing {
                 remove_origin(record, field);
             } else {
@@ -100,7 +100,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
     }
     // Empty strings remain present values; unknown provenance is still explicit.
     let mut empty_text = snapshot_with_evidence(2, Some(unknown.clone()));
-    conversation(&mut empty_text).title = Some(String::new());
+    chat(&mut empty_text).title = Some(String::new());
     assert_eq!(
         publish(&service, &empty_text).await.status(),
         StatusCode::OK
@@ -126,7 +126,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
         assert_eq!(metadata(&service).await.chats[0].metadata.enrichment, proof);
     }
     let mut absent = snapshot_with_evidence(5, Some(unknown));
-    let record = conversation(&mut absent);
+    let record = chat(&mut absent);
     for field in [
         Field::Title,
         Field::Project,

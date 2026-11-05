@@ -14,12 +14,12 @@
 )]
 
 use super::wire;
-use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord};
+use crate::shared::protocol::{Batch, ChatRecord, Event, MessageRecord};
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
-const CONVERSATIONS: usize = 48;
-const MESSAGES_PER_CONVERSATION: usize = 16;
+const CHATS: usize = 48;
+const MESSAGES_PER_CHAT: usize = 16;
 const ITERATIONS: usize = 12;
 const LINK_MBPS: &[f64] = &[10.0, 50.0, 200.0];
 
@@ -154,29 +154,29 @@ fn vector(seed: u64) -> Vec<f64> {
     reason = "one deterministic corpus definition documents every field the codec carries"
 )]
 fn corpus() -> Vec<Event> {
-    let mut conversations = Vec::with_capacity(CONVERSATIONS);
-    let mut messages = Vec::with_capacity(CONVERSATIONS * MESSAGES_PER_CONVERSATION);
-    for conversation in 0..CONVERSATIONS {
-        let id = format!("conversation-{conversation:03}");
-        conversations.push(ConversationRecord {
+    let mut chats = Vec::with_capacity(CHATS);
+    let mut messages = Vec::with_capacity(CHATS * MESSAGES_PER_CHAT);
+    for chat in 0..CHATS {
+        let id = format!("conversation-{chat:03}");
+        chats.push(ChatRecord {
             enrichment: None,
             id: id.clone(),
             provider: crate::provider::Provider::Codex,
-            title: Some(format!("Refactor slice {conversation}")),
+            title: Some(format!("Refactor slice {chat}")),
             project: Some("/work/mash".into()),
             repository: Some("repo://mash".into()),
-            created_at: Some(1_760_000_000 + conversation as i64),
-            updated_at: Some(1_760_100_000 + conversation as i64),
+            created_at: Some(1_760_000_000 + chat as i64),
+            updated_at: Some(1_760_100_000 + chat as i64),
         });
-        for ordinal in 0..MESSAGES_PER_CONVERSATION {
+        for ordinal in 0..MESSAGES_PER_CHAT {
             let agent = ordinal % 3 != 0;
-            let seed = (conversation as u64) << 32 | ordinal as u64;
+            let seed = (chat as u64) << 32 | ordinal as u64;
             let tokens = 90 + (seed as usize * 37) % 150;
             let text = body(seed, tokens);
             messages.push(MessageRecord {
                 attachments: if ordinal == 3 {
                     vec![crate::attachments::Metadata {
-                        id: format!("attachment-{conversation}-{ordinal}"),
+                        id: format!("attachment-{chat}-{ordinal}"),
                         name: "patch.diff".into(),
                         media_type: "text/x-diff".into(),
                         availability: crate::attachments::Availability::Retained,
@@ -187,8 +187,8 @@ fn corpus() -> Vec<Event> {
                 } else {
                     Vec::new()
                 },
-                id: format!("message-{conversation:03}-{ordinal:02}"),
-                conversation_id: id.clone(),
+                id: format!("message-{chat:03}-{ordinal:02}"),
+                chat_id: id.clone(),
                 ordinal: ordinal as i64,
                 context: crate::message_context::MessageContext::Linear,
                 role: if agent {
@@ -198,24 +198,24 @@ fn corpus() -> Vec<Event> {
                 },
                 content: text.clone(),
                 projection: text,
-                created_at: Some(1_760_000_000 + conversation as i64 + ordinal as i64),
+                created_at: Some(1_760_000_000 + chat as i64 + ordinal as i64),
                 generation: agent.then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
                 vector: agent.then(|| vector(seed ^ 0x0005_deec_e66d)),
                 tools: if agent && ordinal % 5 == 1 {
                     crate::tools::Activity {
                         tool_calls: vec![crate::tools::ToolCall {
                             name: Some("shell".into()),
-                            call_id: Some(format!("call-{conversation}-{ordinal}")),
+                            call_id: Some(format!("call-{chat}-{ordinal}")),
                             input: Some(serde_json::json!({
                                 "command": format!(
-                                    "cargo test --lib shared::sync::case_{conversation}_{ordinal}"
+                                    "cargo test --lib shared::sync::case_{chat}_{ordinal}"
                                 ),
                                 "workdir": "/home/james/scratch/mash",
                                 "timeout_ms": 1000 + ordinal * 250
                             })),
                         }],
                         tool_results: vec![crate::tools::ToolResult {
-                            call_id: Some(format!("call-{conversation}-{ordinal}")),
+                            call_id: Some(format!("call-{chat}-{ordinal}")),
                             is_error: Some(false),
                         }],
                     }
@@ -226,9 +226,7 @@ fn corpus() -> Vec<Event> {
         }
     }
     vec![
-        Event::Batch(Batch::Conversations {
-            records: conversations,
-        }),
+        Event::Batch(Batch::Chats { records: chats }),
         Event::Batch(Batch::Messages { records: messages }),
     ]
 }
@@ -273,7 +271,7 @@ fn records(events: &[Event]) -> Vec<(String, serde_json::Value)> {
                     push("tombstone", serde_json::to_value(record).unwrap());
                 }
             }
-            Event::Batch(Batch::Conversations { records: batch }) => {
+            Event::Batch(Batch::Chats { records: batch }) => {
                 for record in batch {
                     push("conversation", serde_json::to_value(record).unwrap());
                 }
@@ -338,8 +336,8 @@ fn equivalent(left: &serde_json::Value, right: &serde_json::Value) -> bool {
 fn sync_codec_reduces_wire_bytes_and_round_trip_latency() {
     let events = corpus();
     let records = wire::record_count(&events);
-    let conversations = match &events[0] {
-        Event::Batch(Batch::Conversations { records }) => records.len(),
+    let chats = match &events[0] {
+        Event::Batch(Batch::Chats { records }) => records.len(),
         _ => panic!("conversation batch"),
     };
 
@@ -391,7 +389,7 @@ fn sync_codec_reduces_wire_bytes_and_round_trip_latency() {
     let decoded = new.decoded_bytes as usize;
 
     println!(
-        "\nsync codec benchmark: {conversations} conversations, {records} records, {:.2} MiB decoded, {} pieces",
+        "\nsync codec benchmark: {chats} conversations, {records} records, {:.2} MiB decoded, {} pieces",
         decoded as f64 / (1024.0 * 1024.0),
         new.pieces.len()
     );

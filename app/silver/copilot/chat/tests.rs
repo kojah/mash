@@ -56,8 +56,8 @@ impl Fixture {
         discover_history_files(Provider::Copilot, std::slice::from_ref(&self.db), true)
             .map(|d| d.sources)
     }
-    fn parse(&self) -> Result<Conversation, AppError> {
-        parse(&self.sources()?.remove(0)).map(|p| p.conversation.unwrap())
+    fn parse(&self) -> Result<Chat, AppError> {
+        parse(&self.sources()?.remove(0)).map(|p| p.chat.unwrap())
     }
     fn options(&self) -> IndexOptions {
         IndexOptions {
@@ -101,14 +101,14 @@ fn catalog_snapshot_projects_prose_and_keeps_cli_identity_distinct() {
         f.catalog(&json!({"chat-session":{"sessionId":"chat-session","title":"Catalog title","lastMessageDate":1000},
             "copilotcli:/external":{"sessionId":"external","title":"CLI bridge","lastMessageDate":1000,"isExternal":true}}));
         let before = std::fs::read(f.chats.join("chat-session.json")).unwrap();
-        let conversation = f.parse().unwrap();
-        assert_eq!(conversation.project.as_deref(), Some("/work/cbioportal"));
+        let chat = f.parse().unwrap();
+        assert_eq!(chat.project.as_deref(), Some("/work/cbioportal"));
         assert_eq!(
-            conversation.repository.as_deref(),
+            chat.repository.as_deref(),
             Some("https://github.com/cBioPortal/cbioportal")
         );
-        assert_eq!(conversation.title.as_deref(), Some("Native Chat"));
-        let rows = conversation.messages.inline();
+        assert_eq!(chat.title.as_deref(), Some("Native Chat"));
+        let rows = chat.messages.inline();
         assert_eq!(rows.len(), 2);
         assert_eq!(
             rows[1].dialogue_text.as_deref(),
@@ -120,7 +120,7 @@ fn catalog_snapshot_projects_prose_and_keeps_cli_identity_distinct() {
         assert!(rows[1].content.contains("privateoutputmarker"));
         assert!(rows[1].content.contains("privateresultmarker"));
         assert_ne!(
-            conversation.id,
+            chat.id,
             crate::silver::parsers::stable_id("session", &["copilot", "chat-session"])
         );
         assert_eq!(
@@ -341,10 +341,10 @@ fn old_snapshots_and_hidden_or_non_copilot_requests_preserve_context_only() {
         .extend([hidden, automatic, other_agent]);
     snapshot["pendingRequests"] = json!([{"request":request("unsent", "privateunsentrequest")}]);
     f.write("json", &snapshot.to_string());
-    let conversation = f.parse().unwrap();
-    assert_eq!(conversation.title.as_deref(), Some("Older native title"));
-    assert_eq!(conversation.project.as_deref(), Some("/work/other project"));
-    let rows = conversation.messages.inline();
+    let chat = f.parse().unwrap();
+    assert_eq!(chat.title.as_deref(), Some("Older native title"));
+    assert_eq!(chat.project.as_deref(), Some("/work/other project"));
+    let rows = chat.messages.inline();
     assert_eq!(rows.len(), 8);
     assert_eq!(rows[0].content, "Older plain-string prompt");
     assert!(
@@ -382,19 +382,19 @@ fn one_provider_root_discovers_chat_and_cli_without_merging_sessions() {
         .unwrap()
         .sources;
     assert_eq!(sources.len(), 2);
-    let conversations: Vec<_> = sources
+    let chats: Vec<_> = sources
         .iter()
         .map(|s| {
             crate::silver::copilot::parse_source(s)
                 .unwrap()
-                .conversation
+                .chat
                 .unwrap()
         })
         .collect();
-    assert_ne!(conversations[0].id, conversations[1].id);
+    assert_ne!(chats[0].id, chats[1].id);
     assert_ne!(
-        conversations[0].messages.inline()[0].id,
-        conversations[1].messages.inline()[0].id
+        chats[0].messages.inline()[0].id,
+        chats[1].messages.inline()[0].id
     );
     assert!(sources.iter().any(|s| s.identity.path == cli));
     assert!(sources.iter().any(|s| s.identity.path == f.db));

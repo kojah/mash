@@ -134,7 +134,7 @@ async fn metadata(service: &Service) -> crate::chat_catalog::Page {
 async fn contract(service: Service, provider: crate::provider::Provider, expected: Evidence) {
     let mut events = snapshot(1);
     let mut batch: protocol::Event = serde_json::from_value(events[1].clone()).unwrap();
-    let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
+    let protocol::Event::Batch(protocol::Batch::Chats { records }) = &mut batch else {
         panic!("conversation fixture")
     };
     records[0].title = Some("hello shared history".into());
@@ -195,7 +195,7 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
     let mut cleared = events;
     cleared[0]["revision"] = json!(2);
     let mut batch: protocol::Event = serde_json::from_value(cleared[1].clone()).unwrap();
-    let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
+    let protocol::Event::Batch(protocol::Batch::Chats { records }) = &mut batch else {
         panic!("conversation fixture")
     };
     records[0].enrichment = None;
@@ -223,7 +223,7 @@ async fn reject_invalid_message_references(service: &Service, events: &[Value]) 
         let mut rejected = events.to_vec();
         rejected[0]["revision"] = json!(2);
         let mut batch: protocol::Event = serde_json::from_value(rejected[1].clone()).unwrap();
-        let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
+        let protocol::Event::Batch(protocol::Batch::Chats { records }) = &mut batch else {
             panic!("conversation fixture")
         };
         records[0].enrichment.as_mut().unwrap().timestamps = Some(Timestamps {

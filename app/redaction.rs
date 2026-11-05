@@ -154,7 +154,7 @@ pub(crate) fn metadata(metadata: &mut crate::search_results::ChatMetadata) {
     }
 }
 
-pub(crate) fn conversation(record: &mut crate::shared::protocol::ConversationRecord) {
+pub(crate) fn chat(record: &mut crate::shared::protocol::ChatRecord) {
     let mut changed = false;
     for value in [
         &mut record.title,
@@ -176,7 +176,7 @@ pub(crate) fn conversation(record: &mut crate::shared::protocol::ConversationRec
 pub(crate) fn batch(batch: &mut crate::shared::protocol::Batch) {
     use crate::shared::protocol::Batch;
     match batch {
-        Batch::Conversations { records } => records.iter_mut().for_each(conversation),
+        Batch::Chats { records } => records.iter_mut().for_each(chat),
         Batch::Messages { records } => {
             for record in records {
                 record.content = text(&record.content);

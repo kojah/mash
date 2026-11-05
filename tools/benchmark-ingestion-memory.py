@@ -157,13 +157,13 @@ def run(args):
             identities = connection.execute(
                 "SELECT id,role FROM messages ORDER BY id"
             ).fetchall()
-            conversations = connection.execute(
-                "SELECT COUNT(*) FROM sessions"
+            chats = connection.execute(
+                "SELECT COUNT(*) FROM chats"
             ).fetchone()[0]
         rows = [(message_id, role, canonical_content(base, message_id))
                 for message_id, role in identities]
         vectors = stored_vectors(base)
-        if (len(rows), vectors, conversations) != (sources, sources, sources):
+        if (len(rows), vectors, chats) != (sources, sources, sources):
             raise ValueError('canonical/vector counts do not match the complete fixture')
         if any(role != 'user' or content != CONTENT for _, role, content in rows):
             raise ValueError('canonical message changed')

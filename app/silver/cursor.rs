@@ -1,5 +1,5 @@
 //! Native Cursor Agent and IDE histories, selected by their physical schemas.
-use super::{Conversation, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, records};
+use super::{Chat, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use std::{collections::HashMap, path::Path};
 
@@ -220,7 +220,7 @@ fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 })
         });
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: super::parsers::stable_id(
                 "session",
                 &[Provider::Cursor.as_str(), &metadata.agent_id],

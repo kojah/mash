@@ -80,14 +80,14 @@ impl Publication {
     }
 }
 
-/// Duplicate-history report across the group, keyed by canonical conversation
+/// Duplicate-history report across the group, keyed by canonical chat
 /// fingerprint. Fingerprints are content hashes; no plaintext is exposed.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct FingerprintReport {
-    /// Conversation identifiers that appear with the same fingerprint in more
+    /// Chat identifiers that appear with the same fingerprint in more
     /// than one node.
-    pub(crate) duplicated_conversations: u64,
-    /// Extra copies beyond the first, per duplicated conversation.
+    pub(crate) duplicated_chats: u64,
+    /// Extra copies beyond the first, per duplicated chat.
     pub(crate) redundant_copies: u64,
     /// Messages carried by those redundant copies.
     pub(crate) redundant_messages: u64,
@@ -100,7 +100,7 @@ pub(crate) struct FingerprintReport {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct NodeFingerprintSummary {
     pub(crate) node_id: String,
-    pub(crate) conversations: u64,
+    pub(crate) chats: u64,
     pub(crate) duplicated: u64,
 }
 
@@ -154,7 +154,7 @@ pub(crate) struct NodeFreshness {
     pub(crate) revision: i64,
     pub(crate) last_synced_at: Option<String>,
     pub(crate) last_updated_at: Option<String>,
-    pub(crate) conversations: i64,
+    pub(crate) chats: i64,
     pub(crate) messages: i64,
 }
 

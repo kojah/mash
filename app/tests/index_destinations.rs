@@ -255,7 +255,7 @@ fn local_destination_never_publishes() {
     let fixture = Fixture::new();
     fixture.configure("local", "local");
     let response = fixture.json(&["index"], false);
-    assert_eq!(response["indexed_conversations"], 2);
+    assert_eq!(response["indexed_chats"], 2);
     assert!(response.get("shared").is_none());
     assert!(fixture.json(&["status"], false).get("shared").is_none());
     fixture.cleanup();
@@ -305,7 +305,7 @@ fn qdrant_publication_forget_before_initial_delivery_is_durable() {
     );
     // Only the Claude thread remains; the forgotten Codex thread never arrives.
     assert_eq!(
-        fixture.remote_node("first-delivery")["conversations"],
+        fixture.remote_node("first-delivery")["chats"],
         1,
         "forget before first upload is durable"
     );

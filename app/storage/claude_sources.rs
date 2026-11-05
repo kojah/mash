@@ -4,18 +4,18 @@ use std::path::PathBuf;
 
 use super::generated as sql;
 use super::indexing::source_is_in_reconciliation_scope;
-use super::{ConversationChange, Storage};
+use super::{ChatChange, Storage};
 use crate::AppError;
 use crate::provider::Provider;
-use crate::silver::{Conversation, NormalizedMessage, SourceIdentity, claude};
+use crate::silver::{Chat, NormalizedMessage, SourceIdentity, claude};
 
-pub(super) fn claude_thread(
+pub(super) fn claude_chat(
     connection: &rusqlite::Connection,
     id: &str,
     sources: Option<&BTreeSet<String>>,
-) -> Result<Option<Conversation>, AppError> {
+) -> Result<Option<Chat>, AppError> {
     let metadata = sql::ClaudeSourceMetadata::builder()
-        .conversation_id(id)
+        .chat_id(id)
         .build()
         .query_many(connection)
         .map_err(AppError::database)?
@@ -25,7 +25,7 @@ pub(super) fn claude_thread(
         return Ok(None);
     };
     let query = sql::ClaudeContributionMessages::builder()
-        .conversation_id(id)
+        .chat_id(id)
         .build();
     let mut statement = query.prepare(connection).map_err(AppError::database)?;
     // Reconciliation retains each distinct native message, but matching copies
@@ -62,7 +62,7 @@ pub(super) fn claude_thread(
         }),
     )?;
     let summary = messages.summary()?;
-    Ok(Some(Conversation {
+    Ok(Some(Chat {
         id: id.to_owned(),
         provider: Provider::ClaudeCode,
         source: SourceIdentity::file(metadata.source_path),
@@ -83,39 +83,36 @@ mod tests;
 
 impl Storage {
     #[tracing::instrument(name = "reconcile_claude_source", skip_all)]
-    pub(super) fn replace_claude_source(
-        &mut self,
-        source: &Conversation,
-    ) -> Result<ConversationChange, AppError> {
+    pub(super) fn replace_claude_source(&mut self, source: &Chat) -> Result<ChatChange, AppError> {
         self.require_writer()?;
         if sql::ClaudeTombstone::builder()
-            .conversation_id(&source.id)
+            .chat_id(&source.id)
             .build()
             .query_opt(&self.connection)
             .map_err(AppError::database)?
             .is_some()
         {
-            return Ok(ConversationChange {
+            return Ok(ChatChange {
                 tombstoned: true,
-                ..ConversationChange::default()
+                ..ChatChange::default()
             });
         }
         self.with_claude_savepoint(|storage| {
             let key = source.source.key();
-            let mut moved = ConversationChange::default();
-            if let Some(previous) = sql::ClaudeSourceThread::builder()
+            let mut moved = ChatChange::default();
+            if let Some(previous) = sql::ClaudeSourceChat::builder()
                 .source_key(&key)
                 .build()
                 .query_opt(&storage.connection)
                 .map_err(AppError::database)?
-                .filter(|previous| previous.conversation_id != source.id)
+                .filter(|previous| previous.chat_id != source.id)
             {
                 sql::DeleteClaudeSource::builder()
                     .source_key(&key)
                     .build()
                     .execute(&storage.connection)
                     .map_err(AppError::database)?;
-                moved = storage.refresh_claude_thread(&previous.conversation_id)?;
+                moved = storage.refresh_claude_chat(&previous.chat_id)?;
             }
             let repaired = storage.repair_claude_source_identity(source)?;
             let title = source.title.clone().map(|mut title| {
@@ -125,7 +122,7 @@ impl Storage {
             sql::UpsertClaudeSource::builder()
                 .source_key(&key)
                 .source_path(&source.source.path.to_string_lossy())
-                .conversation_id(&source.id)
+                .chat_id(&source.id)
                 .title(title.as_deref())
                 .project(source.project.as_deref())
                 .repository(source.repository.as_deref())
@@ -133,7 +130,7 @@ impl Storage {
                 .execute(&storage.connection)
                 .map_err(AppError::database)?;
             storage.write_claude_contribution(&key, source)?;
-            let mut change = storage.refresh_claude_thread(&source.id)?;
+            let mut change = storage.refresh_claude_chat(&source.id)?;
             change.removed_messages += repaired + moved.removed_messages;
             change.changed_message_ids.extend(moved.changed_message_ids);
             Ok(change)
@@ -143,7 +140,7 @@ impl Storage {
     /// Replace a source's contribution row by row: an active transcript grows
     /// by appending, and rewriting every unchanged row would cost each refresh
     /// the whole transcript in writes.
-    fn write_claude_contribution(&self, key: &str, source: &Conversation) -> Result<(), AppError> {
+    fn write_claude_contribution(&self, key: &str, source: &Chat) -> Result<(), AppError> {
         let mut stale = sql::ClaudeSourceMessageIds::builder()
             .source_key(key)
             .build()
@@ -232,28 +229,28 @@ impl Storage {
         }
     }
 
-    fn refresh_claude_thread(&mut self, id: &str) -> Result<ConversationChange, AppError> {
-        let conversation = claude_thread(&self.connection, id, None)?;
-        let Some(conversation) = conversation else {
-            let count = sql::CanonicalThreadMessageCount::builder()
-                .conversation_id(id)
+    fn refresh_claude_chat(&mut self, id: &str) -> Result<ChatChange, AppError> {
+        let chat = claude_chat(&self.connection, id, None)?;
+        let Some(chat) = chat else {
+            let count = sql::CanonicalChatMessageCount::builder()
+                .chat_id(id)
                 .build()
                 .query_one(&self.connection)
                 .map_err(AppError::database)?
                 .messages;
-            self.remove_canonical_conversation(id)?;
-            return Ok(ConversationChange {
+            self.remove_canonical_chat(id)?;
+            return Ok(ChatChange {
                 removed_messages: u64::try_from(count)
                     .map_err(|_| AppError::database_data("negative Claude message count"))?,
-                ..ConversationChange::default()
+                ..ChatChange::default()
             });
         };
-        self.replace_canonical_conversation(&conversation)
+        self.replace_canonical_chat(&chat)
     }
 
     #[tracing::instrument(name = "remove_claude_contribution", skip_all)]
     pub(super) fn remove_claude_source(&mut self, key: &str) -> Result<Option<bool>, AppError> {
-        let previous = sql::ClaudeSourceThread::builder()
+        let previous = sql::ClaudeSourceChat::builder()
             .source_key(key)
             .build()
             .query_opt(&self.connection)
@@ -267,9 +264,9 @@ impl Storage {
                 .build()
                 .execute(&storage.connection)
                 .map_err(AppError::database)?;
-            storage.refresh_claude_thread(&previous.conversation_id)?;
+            storage.refresh_claude_chat(&previous.chat_id)?;
             let retained = sql::ClaudeSourceMetadata::builder()
-                .conversation_id(&previous.conversation_id)
+                .chat_id(&previous.chat_id)
                 .build()
                 .query_many(&storage.connection)
                 .map_err(AppError::database)?;

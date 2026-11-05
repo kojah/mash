@@ -227,7 +227,7 @@ pub(crate) async fn build(
     // Persist stale metadata before any document mutation, including deletions.
     store.put_node_views(&scope, &node).await?;
     store
-        .retain_node_conversations(&scope, input.chats.keys().cloned().collect())
+        .retain_node_chats(&scope, input.chats.keys().cloned().collect())
         .await?;
     let mut writer = super::materialize::Writer::new(
         &store,

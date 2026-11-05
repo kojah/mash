@@ -4,7 +4,7 @@ mod fixture;
 use super::{FIRST, OTHER, SECOND};
 use crate::provider::Provider;
 use crate::search_filter::Filter;
-use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
+use crate::shared::protocol::{self, Batch, ChatRecord, Event, MessageRecord, Start};
 use fixture::{Api, Database};
 
 fn vector() -> Vec<f64> {
@@ -33,9 +33,9 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     } else {
         vec![Provider::Codex, Provider::ClaudeCode]
     };
-    let conversations = providers
+    let chats = providers
         .iter()
-        .map(|provider| ConversationRecord {
+        .map(|provider| ChatRecord {
             enrichment: None,
             id: provider.as_str().into(),
             provider: *provider,
@@ -58,7 +58,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
                 "anchor"
             }
             .into(),
-            conversation_id: provider.as_str().into(),
+            chat_id: provider.as_str().into(),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
@@ -79,7 +79,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
         messages.push(MessageRecord {
             attachments: Vec::new(),
             id: "context".into(),
-            conversation_id: "codex".into(),
+            chat_id: "codex".into(),
             ordinal: 1,
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::Tool,
@@ -101,9 +101,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
             snapshot: true,
             forgets: Vec::new(),
         }),
-        Event::Batch(Batch::Conversations {
-            records: conversations,
-        }),
+        Event::Batch(Batch::Chats { records: chats }),
         Event::Batch(Batch::Messages { records: messages }),
         Event::Finish,
     ];
@@ -168,7 +166,7 @@ async fn verify_search(api: &Api) {
         for hits in [result.lexical, result.semantic] {
             assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].provider, Provider::Codex);
-            assert_eq!(hits[0].conversation_id, "codex");
+            assert_eq!(hits[0].chat_id, "codex");
             assert_eq!(hits[0].node_id.as_deref(), Some("first"));
         }
         input.filter = None;
@@ -213,7 +211,7 @@ async fn verify_views(api: &Api) {
     assert!(exact.semantic.is_empty() && exact.documents.is_empty());
 }
 
-/// A published node's conversation and message counts; its views must be current.
+/// A published node's chat and message counts; its views must be current.
 async fn node_counts(api: &Api, token: &str, node: &str) -> Option<(i64, i64)> {
     let freshness: crate::shared::Freshness = api.get("freshness", token).await;
     let node = freshness
@@ -221,7 +219,7 @@ async fn node_counts(api: &Api, token: &str, node: &str) -> Option<(i64, i64)> {
         .into_iter()
         .find(|entry| entry.node_id == node)?;
     assert!(node.views_current && node.lexical_current);
-    Some((node.conversations, node.messages))
+    Some((node.chats, node.messages))
 }
 
 async fn verify(api: &Api, revision: i64) -> String {
@@ -256,7 +254,7 @@ async fn verify(api: &Api, revision: i64) -> String {
     };
     let page: crate::chat_catalog::Page = api.post_json("chats", FIRST, &request).await;
     assert_eq!(page.chats.len(), 1);
-    assert_eq!(page.chats[0].conversation_id, "codex");
+    assert_eq!(page.chats[0].chat_id, "codex");
     assert_eq!(
         page.chats[0].metadata.project.as_deref(),
         Some("/work/restart")

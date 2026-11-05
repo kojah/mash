@@ -70,7 +70,7 @@ fn source_upload(
     } else if include_other {
         for event in &mut events {
             match event {
-                Event::Batch(Batch::Conversations { records }) => {
+                Event::Batch(Batch::Chats { records }) => {
                     let mut other = records[0].clone();
                     other.id = "other".into();
                     records.push(other);
@@ -81,7 +81,7 @@ fn source_upload(
                         .cloned()
                         .map(|mut message| {
                             message.id = format!("other-{}", message.id);
-                            message.conversation_id = "other".into();
+                            message.chat_id = "other".into();
                             message
                         })
                         .collect::<Vec<_>>();

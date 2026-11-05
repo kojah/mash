@@ -74,7 +74,7 @@ async fn scoped_status_reports_scan_facts_without_proving_absence() {
 fn shared_aggregate_certificates_do_not_become_scoped_coverage() {
     let freshness: crate::shared::Freshness = serde_json::from_value(json!({
         "group_id":"group", "nodes":[{"node_id":"peer", "instance":"instance", "revision":1,
-            "last_synced_at":null,"last_updated_at":null,"conversations":2,"messages":20}]
+            "last_synced_at":null,"last_updated_at":null,"chats":2,"messages":20}]
     }))
     .unwrap();
     for scoped in [false, true] {

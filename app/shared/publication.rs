@@ -208,7 +208,7 @@ fn crash_point(_name: &str) {}
 /// Histories at least this large publish as a baseline when the node has
 /// nothing on the server yet: the first batches become searchable while the
 /// rest uploads.
-const AUTO_BACKFILL_MIN_CONVERSATIONS: u64 = 200;
+const AUTO_BACKFILL_MIN_CHATS: u64 = 200;
 
 fn auto_backfill_threshold() -> u64 {
     #[cfg(debug_assertions)]
@@ -217,7 +217,7 @@ fn auto_backfill_threshold() -> u64 {
     {
         return value;
     }
-    AUTO_BACKFILL_MIN_CONVERSATIONS
+    AUTO_BACKFILL_MIN_CHATS
 }
 
 /// Whether this publication should be a progressive baseline: a large local
@@ -226,7 +226,7 @@ fn auto_backfill_threshold() -> u64 {
 async fn should_auto_backfill(path: &Path, config: &SharedConfig) -> Result<bool, AppError> {
     let db = path.to_path_buf();
     let counts = crate::blocking(move || Storage::open_existing(&db)?.counts()).await?;
-    if counts.conversations < auto_backfill_threshold() {
+    if counts.chats < auto_backfill_threshold() {
         return Ok(false);
     }
     let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
@@ -603,7 +603,7 @@ fn destination_scoped(config: &SharedConfig, id: &str) -> String {
 }
 
 /// Spool the node's complete history as a non-snapshot batch frozen at the next
-/// local revision. The server merges it with per-conversation ordering.
+/// local revision. The server merges it with per-chat ordering.
 /// Recover a lost acknowledgement without reading or uploading canonical bodies.
 /// Readiness is read twice around the local check: a concurrent publication,
 /// forget or settings change falls back to a normal publication.

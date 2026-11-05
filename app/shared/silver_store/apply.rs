@@ -1,8 +1,6 @@
 //! Apply one validated node upload to shared silver inside a single transaction.
 use super::{Head, Identity, database, encode, head, now, provider, put_head, sql, token};
-use crate::shared::protocol::{
-    self, Batch, ConversationRecord, Event, MessageRecord, Start, Tombstone,
-};
+use crate::shared::protocol::{self, Batch, ChatRecord, Event, MessageRecord, Start, Tombstone};
 use crate::shared::reuse::Fingerprint;
 use crate::shared::validation::{conflict, valid_id};
 use crate::{AppError, provider::Provider, views::config::Build};
@@ -169,7 +167,7 @@ fn start(previous: Option<&Head>, input: &Start) -> Result<(i64, bool), AppError
 
 impl Upload<'_> {
     fn provider(&self, id: &str) -> Result<Option<Provider>, AppError> {
-        sql::ConversationProvider::builder()
+        sql::ChatProvider::builder()
             .id(id)
             .build()
             .query_opt(self.tx)
@@ -181,7 +179,7 @@ impl Upload<'_> {
     fn tombstoned(&self, provider: Provider, id: &str) -> Result<bool, AppError> {
         Ok(sql::Tombstoned::builder()
             .provider(provider.as_str())
-            .conversation_id(id)
+            .chat_id(id)
             .build()
             .query_opt(self.tx)
             .map_err(database)?
@@ -190,12 +188,12 @@ impl Upload<'_> {
 
     /// Remove one thread; returns removed messages and threads.
     fn remove(&mut self, id: &str) -> Result<(u64, u64), AppError> {
-        let messages = sql::DeleteThreadMessages::builder()
-            .conversation_id(id)
+        let messages = sql::DeleteChatMessages::builder()
+            .chat_id(id)
             .build()
             .execute(self.tx)
             .map_err(database)?;
-        let threads = sql::DeleteConversation::builder()
+        let threads = sql::DeleteChat::builder()
             .id(id)
             .build()
             .execute(self.tx)
@@ -214,7 +212,7 @@ impl Upload<'_> {
             .as_millis();
         sql::UpsertTombstone::builder()
             .provider(record.provider.as_str())
-            .conversation_id(&record.conversation_id)
+            .chat_id(&record.chat_id)
             .forgotten_at(i64::try_from(forgotten_at).unwrap_or(i64::MAX))
             .build()
             .execute(self.tx)
@@ -231,24 +229,24 @@ impl Upload<'_> {
         for provider in providers {
             self.tombstone(&Tombstone {
                 provider,
-                conversation_id: id.to_owned(),
+                chat_id: id.to_owned(),
             })?;
         }
         Ok(removed > 0)
     }
 
-    fn conversation(&mut self, record: ConversationRecord, snapshot: bool) -> Result<(), AppError> {
+    fn chat(&mut self, record: ChatRecord, snapshot: bool) -> Result<(), AppError> {
         record.validate_enrichment()?;
         valid_id(&record.id)?;
         if !snapshot {
             self.remove(&record.id)?;
         } else if self.provider(&record.id)?.is_some() {
-            return Err(AppError::usage("duplicate conversation"));
+            return Err(AppError::usage("duplicate chat"));
         }
         if self.tombstoned(record.provider, &record.id)? {
             return Ok(());
         }
-        sql::InsertConversation::builder()
+        sql::InsertChat::builder()
             .provider(record.provider.as_str())
             .id(&record.id)
             .title(record.title.as_deref())
@@ -261,7 +259,7 @@ impl Upload<'_> {
             .map_err(database)?;
         if let Some(evidence) = &record.enrichment {
             sql::InsertEnrichment::builder()
-                .conversation_id(&record.id)
+                .chat_id(&record.id)
                 .evidence(&encode(evidence)?)
                 .build()
                 .execute(self.tx)
@@ -276,7 +274,7 @@ impl Upload<'_> {
     /// Reject records views could not use under this recipe and model space.
     fn check_message(&self, record: &MessageRecord) -> Result<(), AppError> {
         valid_id(&record.id)?;
-        valid_id(&record.conversation_id)?;
+        valid_id(&record.chat_id)?;
         crate::attachments::validate_metadata(&record.attachments)?;
         record.tools.validate()?;
         if record.ordinal < 0
@@ -297,7 +295,7 @@ impl Upload<'_> {
 
     fn message(&mut self, mut record: MessageRecord) -> Result<(), AppError> {
         self.check_message(&record)?;
-        if self.provider(&record.conversation_id)?.is_none() {
+        if self.provider(&record.chat_id)?.is_none() {
             return Ok(());
         }
         // Vectors are views; silver keeps the canonical record only.
@@ -306,7 +304,7 @@ impl Upload<'_> {
         let inserted = sql::InsertMessage::builder()
             .attachments(&encode(&record.attachments)?)
             .id(&record.id)
-            .conversation_id(&record.conversation_id)
+            .chat_id(&record.chat_id)
             .ordinal(record.ordinal)
             .role(record.role.as_str())
             .content(&record.content)
@@ -335,10 +333,10 @@ impl Upload<'_> {
 
     /// Recompute dependency fingerprints for threads written by this upload.
     fn fingerprint(&self, id: &str) -> Result<String, AppError> {
-        let conversation = super::conversation(self.tx, id)?
+        let chat = super::chat(self.tx, id)?
             .ok_or_else(|| AppError::internal("fingerprinted thread is missing"))?;
-        let mut fingerprint = Fingerprint::new(&conversation)?;
-        for message in super::thread_messages(self.tx, id)? {
+        let mut fingerprint = Fingerprint::new(&chat)?;
+        for message in super::chat_messages(self.tx, id)? {
             fingerprint.push(&message)?;
         }
         Ok(fingerprint.finish())
@@ -347,7 +345,7 @@ impl Upload<'_> {
     fn missing_parents(&self) -> Result<bool, AppError> {
         for id in &self.applied.supplied {
             let missing = sql::MissingParent::builder()
-                .conversation_id(id)
+                .chat_id(id)
                 .build()
                 .query_opt(self.tx)
                 .map_err(database)?;
@@ -394,7 +392,7 @@ fn apply(
 ) -> Result<Applied, AppError> {
     let previous = head(tx)?;
     let (mut input, lines) = first_line(file)?;
-    // A baseline batch merges by conversation, so its ordering token only has
+    // A baseline batch merges by chat, so its ordering token only has
     // to follow whatever committed before it. The head captured while preparing
     // is stale when another lane committed first; rebase here, inside the write
     // transaction, so concurrent lanes still get strictly ordered revisions.
@@ -450,7 +448,7 @@ fn apply(
     if input.snapshot {
         let existing = super::fingerprints(tx)?;
         sql::DeleteNodeMessages.execute(tx).map_err(database)?;
-        sql::DeleteNodeConversations.execute(tx).map_err(database)?;
+        sql::DeleteNodeChats.execute(tx).map_err(database)?;
         upload.applied.deleted.extend(existing.into_keys());
         upload.applied.changed = true;
     }
@@ -477,18 +475,18 @@ fn apply(
                 match batch {
                     Batch::Tombstones { records } => {
                         for record in records {
-                            valid_id(&record.conversation_id)?;
-                            if upload.provider(&record.conversation_id)? == Some(record.provider) {
-                                upload.remove(&record.conversation_id)?;
+                            valid_id(&record.chat_id)?;
+                            if upload.provider(&record.chat_id)? == Some(record.provider) {
+                                upload.remove(&record.chat_id)?;
                             }
                             upload.tombstone(&record)?;
                             upload.applied.changed = true;
                             progress.advance(1);
                         }
                     }
-                    Batch::Conversations { records } => {
+                    Batch::Chats { records } => {
                         for record in records {
-                            upload.conversation(record, input.snapshot)?;
+                            upload.chat(record, input.snapshot)?;
                             progress.advance(1);
                         }
                     }

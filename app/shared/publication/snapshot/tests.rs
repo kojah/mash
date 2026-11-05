@@ -1,5 +1,5 @@
 use super::*;
-use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
+use crate::silver::{Chat, NormalizedMessage, SourceIdentity};
 
 fn publication_target(fixture: &crate::views::local::test_support::Fixture) -> Target {
     Target {
@@ -125,7 +125,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         .unwrap();
     crate::storage::test_support::write(
         &database,
-        "UPDATE sessions SET title='changed' WHERE id='a'; DELETE FROM sessions WHERE id='b';",
+        "UPDATE chats SET title='changed' WHERE id='a'; DELETE FROM chats WHERE id='b';",
     );
     let target = Target {
         build: crate::views::config::Build::default(),
@@ -136,7 +136,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         redaction: crate::redaction::Policy::ON,
     };
     let source = capture(&database, &target, Selection::Delta { journal_base: base }).unwrap();
-    assert_eq!(source.conversations.keys().collect::<Vec<_>>(), vec!["a"]);
+    assert_eq!(source.chats.keys().collect::<Vec<_>>(), vec!["a"]);
     let events: Vec<Event> = std::fs::read_to_string(source.file.path())
         .unwrap()
         .lines()
@@ -153,10 +153,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
     mapped.publication_revision = base - 1;
     let mapped_source =
         capture(&database, &mapped, Selection::Delta { journal_base: base }).unwrap();
-    assert_eq!(
-        mapped_source.conversations.keys().collect::<Vec<_>>(),
-        vec!["a"]
-    );
+    assert_eq!(mapped_source.chats.keys().collect::<Vec<_>>(), vec!["a"]);
     let first: Event = serde_json::from_str(
         std::fs::read_to_string(mapped_source.file.path())
             .unwrap()
@@ -178,7 +175,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
     let mut messages = 0;
     for event in events {
         if let Event::Batch(Batch::Messages { records }) = event {
-            assert!(records.iter().all(|record| record.conversation_id == "a"));
+            assert!(records.iter().all(|record| record.chat_id == "a"));
             messages += records.len();
         }
     }
@@ -193,7 +190,7 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     connection.execute("UPDATE messages SET content_packed='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE id='a-100'",[]).unwrap();
     connection
         .execute(
-            "UPDATE sessions SET title='password=\"rosebud\"' WHERE id='a'",
+            "UPDATE chats SET title='password=\"rosebud\"' WHERE id='a'",
             [],
         )
         .unwrap();
@@ -221,7 +218,7 @@ fn seed(directory: &Path) -> std::path::PathBuf {
     let mut storage = Storage::open_writer(&database).unwrap();
     for (thread, length) in [("a", 37), ("b", 2)] {
         storage
-            .replace_conversation(&Conversation {
+            .replace_chat(&Chat {
                 id: thread.into(),
                 provider: crate::provider::Provider::Codex,
                 title_origin: None,

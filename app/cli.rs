@@ -176,13 +176,13 @@ enum Command {
         #[arg(long)]
         shared: bool,
     },
-    /// Remove one conversation and its derived search rows.
+    /// Remove one chat and its derived search rows.
     Forget { id: String },
     /// Run one read-only query over local silver.
     ///
     /// Use --request for the typed contract (target, filter, `group_by`, order,
     /// limit) or --sql for a read-only SQL escape hatch. Stable views are
-    /// conversations, messages and documents.
+    /// chats, messages and documents.
     Query {
         /// SQL to run; the connection is read-only and bounded.
         #[arg(long, required_unless_present = "request", conflicts_with = "request")]
@@ -267,7 +267,7 @@ struct SearchArguments {
     #[arg(long)]
     role: Vec<crate::role::Role>,
     #[arg(long = "chat")]
-    conversation: Vec<String>,
+    chat: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
     #[arg(long)]
     project: Vec<String>,
@@ -304,7 +304,7 @@ impl SearchArguments {
             days: self.days,
             node: self.node,
             role: self.role,
-            conversation: self.conversation,
+            chat: self.chat,
             project: self.project,
             repository: self.repository,
             after: self

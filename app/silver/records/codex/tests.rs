@@ -21,7 +21,7 @@ fn oversized_compaction_replay_preserves_canonical_messages_and_line_numbers() {
     std::fs::write(&path, &input).unwrap();
     let parsed = crate::silver::parsers::parse_codex(&path)
         .unwrap()
-        .conversation
+        .chat
         .unwrap();
     let messages = parsed.messages.inline();
     assert_eq!(messages.len(), 2);
@@ -163,7 +163,7 @@ fn real_parser_and_index_preserve_history_across_large_lifecycle_envelopes() {
     let valid_length = file.metadata().unwrap().len();
     let parsed = crate::silver::parsers::parse_codex(&path)
         .unwrap()
-        .conversation
+        .chat
         .unwrap();
     assert_eq!(parsed.messages.len(), 1);
     assert_eq!(

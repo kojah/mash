@@ -50,7 +50,7 @@ fn assert_diagnostics(response: &core::SearchResponse, scope: Scope, fallback: b
 fn hit() -> SearchHit {
     SearchHit {
         id: "peer-message".into(),
-        conversation_id: "peer-thread".into(),
+        chat_id: "peer-thread".into(),
         provider: crate::provider::Provider::Codex,
         turn_id: None,
         role: crate::role::Role::User,

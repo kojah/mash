@@ -50,7 +50,7 @@ fn malformed_refresh_retains_canonical_messages_and_checkpoint_while_other_sourc
         record("second", "retained second sentinel")
     );
     fs::write(&source, &original).unwrap();
-    let parsed = parse_claude(&source).unwrap().conversation.unwrap();
+    let parsed = parse_claude(&source).unwrap().chat.unwrap();
     let first = parsed.messages.inline()[0].id.clone();
     let second = parsed.messages.inline()[1].id.clone();
     let checkpoint = source_stamp(&source).unwrap();

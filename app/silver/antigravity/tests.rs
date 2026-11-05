@@ -150,8 +150,8 @@ fn write_case(directory: &Path, case: &Case) -> PathBuf {
 fn source(path: &Path) -> SourceIdentity {
     discover(path).unwrap().remove(0).identity
 }
-fn conversation(path: &Path) -> Conversation {
-    parse(&source(path)).unwrap().conversation.unwrap()
+fn chat(path: &Path) -> Chat {
+    parse(&source(path)).unwrap().chat.unwrap()
 }
 fn options(path: &Path) -> IndexOptions {
     IndexOptions {

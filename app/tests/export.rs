@@ -39,7 +39,7 @@ fn export_imports_history_offline_and_requires_explicit_views_rebuild() {
         ]
         .concat(),
     );
-    assert_eq!(created["counts"]["conversations"], 1);
+    assert_eq!(created["counts"]["chats"], 1);
     assert_eq!(created["counts"]["messages"], 1);
     assert_eq!(std::fs::read(&views).unwrap(), b"unreadable gold fixture");
     std::fs::remove_dir_all(provider).unwrap();

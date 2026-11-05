@@ -114,7 +114,7 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
             safe(value.node_id.unwrap_or("unspecified"))
         ),
     );
-    line(out, &format!("  Chat: {}", safe(value.conversation_id)));
+    line(out, &format!("  Chat: {}", safe(value.chat_id)));
     metadata(out, &value.metadata);
     if let Some(score) = value.score {
         line(out, &format!("  Chat score: {score}"));
@@ -157,7 +157,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
     if count == 0 {
         line(
             out,
-            "No matches returned; this does not prove complete history or absence of conversations.",
+            "No matches returned; this does not prove complete history or absence of chats.",
         );
     }
     match &value.results {
@@ -182,7 +182,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                     out,
                     &format!(
                         "  Chat: {} · role: {} · time (Unix ms): {}",
-                        safe(hit.conversation_id),
+                        safe(hit.chat_id),
                         hit.role.as_str(),
                         time(hit.created_at)
                     ),
@@ -269,7 +269,7 @@ fn status(out: &mut String, value: &Status<'_>) -> Result<(), serde_json::Error>
         out,
         &format!(
             "Retained: {} chats, {} messages · searchable: {} · embeddings: {}",
-            value.conversations, value.messages, value.searchable_messages, value.embeddings
+            value.chats, value.messages, value.searchable_messages, value.embeddings
         ),
     );
     json(out, "Mode", value.realized_mode)?;
@@ -309,7 +309,7 @@ fn freshness(
                 "  Node {} · revision={} · {} chats, {} messages · lexical_current={} · views_current={}",
                 safe(node.node_id),
                 node.revision,
-                node.conversations,
+                node.chats,
                 node.messages,
                 node.lexical_current,
                 node.views_current
@@ -436,7 +436,7 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
             out,
             index + 1,
             &Chat {
-                conversation_id: &row.conversation_id,
+                chat_id: &row.chat_id,
                 provider: &row.provider,
                 node_id: Some(&row.node_id),
                 metadata: super::metadata(&row.metadata),
@@ -455,7 +455,7 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
     if value.page.chats.is_empty() {
         line(
             out,
-            "No chats returned; this does not prove complete history or absence of conversations.",
+            "No chats returned; this does not prove complete history or absence of chats.",
         );
     }
     if let Some(diagnostics) = &value.diagnostics {
@@ -475,7 +475,7 @@ mod tests {
             "group_id":"group", "unpublished_nodes":["missing-peer"], "nodes":[{
                 "node_id":"peer", "instance":"instance", "revision":4,
                 "last_synced_at":"2026-10-08T12:00:00Z", "last_updated_at":null,
-                "conversations":2,"messages":20,"lexical_current":true,"views_current":false
+                "chats":2,"messages":20,"lexical_current":true,"views_current":false
             }]
         }))
         .unwrap();

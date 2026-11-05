@@ -10,9 +10,8 @@ fn canonical_revision_survives_restart_and_changes_with_metadata() {
         storage.silver_certificate().unwrap().completeness,
         Completeness::Unverified
     );
-    let conversation =
-        crate::storage::tests::conversation_with_messages(&[("message-1", "qdrant vectors")]);
-    storage.replace_conversation(&conversation).unwrap();
+    let chat = crate::storage::tests::chat_with_messages(&[("message-1", "qdrant vectors")]);
+    storage.replace_chat(&chat).unwrap();
     storage.begin_silver_scan(Provider::Codex).unwrap();
     storage.finish_silver_scan(Provider::Codex, true).unwrap();
     storage.finish_silver_ingestion().unwrap();
@@ -23,9 +22,9 @@ fn canonical_revision_survives_restart_and_changes_with_metadata() {
     drop(storage);
     let mut storage = Storage::open_writer(&path).unwrap();
     assert_eq!(storage.silver_certificate().unwrap(), canonical);
-    let mut changed = conversation;
+    let mut changed = chat;
     changed.title = Some("new title".into());
-    storage.replace_conversation(&changed).unwrap();
+    storage.replace_chat(&changed).unwrap();
     assert!(storage.silver_certificate().unwrap().revision > canonical.revision);
     let before = storage.silver_certificate().unwrap();
     storage.commit_writer().unwrap();

@@ -18,7 +18,7 @@ fn catalog_snapshot(revision: i64) -> Vec<Value> {
         {"id":"d","provider":"opencode","title":"100%_literal","created_at":3000,"updated_at":1000},
         {"id":"e","provider":"codex","title":null,"created_at":null,"updated_at":null}
     ]);
-    events.remove(2); // Metadata-only conversations deliberately have no messages or vectors.
+    events.remove(2); // Metadata-only chats deliberately have no messages or vectors.
     events
 }
 
@@ -94,12 +94,7 @@ async fn verify_ordering_and_pages(service: &Service) {
                 if offset < 4 { Some(offset + 2) } else { None }
             );
             assert!(result.chats.iter().all(|thread| thread.node_id == "first"));
-            ids.extend(
-                result
-                    .chats
-                    .into_iter()
-                    .map(|thread| thread.conversation_id),
-            );
+            ids.extend(result.chats.into_iter().map(|thread| thread.chat_id));
         }
         assert_eq!(ids, expected);
     }
@@ -156,7 +151,7 @@ async fn verify_filters(service: &Service) {
         },
     )
     .await;
-    assert_eq!(literal.chats[0].conversation_id, "d");
+    assert_eq!(literal.chats[0].chat_id, "d");
 }
 
 #[tokio::test]

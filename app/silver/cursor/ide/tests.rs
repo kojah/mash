@@ -65,10 +65,10 @@ fn write<T: Serialize>(connection: &Connection, key: &str, value: &T) {
         )
         .unwrap();
 }
-fn parsed(path: &Path) -> Conversation {
+fn parsed(path: &Path) -> Chat {
     super::super::parse(&super::super::discover(path).unwrap().remove(0).identity)
         .unwrap()
-        .conversation
+        .chat
         .unwrap()
 }
 fn options(path: &Path) -> IndexOptions {
@@ -78,9 +78,8 @@ fn options(path: &Path) -> IndexOptions {
         roots_are_authoritative: true,
     }
 }
-fn searchable(conversation: &Conversation) -> Vec<&NormalizedMessage> {
-    conversation
-        .messages
+fn searchable(chat: &Chat) -> Vec<&NormalizedMessage> {
+    chat.messages
         .inline()
         .iter()
         .filter(|m| !m.dialogue_text.as_deref().unwrap_or_default().is_empty())
@@ -92,38 +91,31 @@ fn native_root_owns_order_metadata_and_distinct_repeated_requests() {
     let dir = tempfile::tempdir().unwrap();
     let path = path(dir.path());
     let connection = fixture(&path);
-    let conversation = parsed(&path);
-    assert_eq!(conversation.messages.len(), 6);
-    assert_eq!(searchable(&conversation).len(), 4);
-    assert_eq!(conversation.project.as_deref(), Some("/work/cbioportal"));
-    assert_eq!(conversation.repository.as_deref(), Some("/work/cbioportal"));
+    let chat = parsed(&path);
+    assert_eq!(chat.messages.len(), 6);
+    assert_eq!(searchable(&chat).len(), 4);
+    assert_eq!(chat.project.as_deref(), Some("/work/cbioportal"));
+    assert_eq!(chat.repository.as_deref(), Some("/work/cbioportal"));
+    assert_eq!(chat.title.as_deref(), Some("cBioPortal native IDE fixture"));
+    assert_eq!(chat.created_at, Some(1_790_762_400_000));
+    assert_eq!(chat.updated_at, Some(1_790_762_400_001));
     assert_eq!(
-        conversation.title.as_deref(),
-        Some("cBioPortal native IDE fixture")
+        chat.messages.inline()[0].content,
+        chat.messages.inline()[4].content
     );
-    assert_eq!(conversation.created_at, Some(1_790_762_400_000));
-    assert_eq!(conversation.updated_at, Some(1_790_762_400_001));
+    assert_ne!(chat.messages.inline()[0].id, chat.messages.inline()[4].id);
     assert_eq!(
-        conversation.messages.inline()[0].content,
-        conversation.messages.inline()[4].content
-    );
-    assert_ne!(
-        conversation.messages.inline()[0].id,
-        conversation.messages.inline()[4].id
-    );
-    assert_eq!(
-        conversation.messages.inline()[0].created_at,
+        chat.messages.inline()[0].created_at,
         Some(1_790_762_400_000)
     );
-    assert_eq!(conversation.messages.inline()[1].created_at, None);
+    assert_eq!(chat.messages.inline()[1].created_at, None);
     assert!(
-        conversation.messages.inline()[1]
+        chat.messages.inline()[1]
             .content
             .contains("private-ide-reasoning")
     );
     assert!(
-        conversation
-            .messages
+        chat.messages
             .inline()
             .iter()
             .all(|m| !m.content.contains("unsent-draft")
@@ -132,33 +124,25 @@ fn native_root_owns_order_metadata_and_distinct_repeated_requests() {
                 && !m.content.contains("AAAAAAAA"))
     );
     assert!(
-        searchable(&conversation).iter().all(|m| !m
-            .dialogue_text
-            .as_deref()
-            .unwrap()
-            .contains("private-"))
+        searchable(&chat)
+            .iter()
+            .all(|m| !m.dialogue_text.as_deref().unwrap().contains("private-"))
     );
     let mut bubble: Bubble = read(&connection, &bubble_key("request-1"));
     bubble.text = "Updated cBioPortal importer request".into();
     write(&connection, &bubble_key("request-1"), &bubble);
     let edited = parsed(&path);
-    assert_eq!(
-        edited.messages.inline()[0].id,
-        conversation.messages.inline()[0].id
-    );
+    assert_eq!(edited.messages.inline()[0].id, chat.messages.inline()[0].id);
     assert_ne!(
         edited.messages.inline()[0].content,
-        conversation.messages.inline()[0].content
+        chat.messages.inline()[0].content
     );
     let mut root: Root = read(&connection, root_key());
     root.full_conversation_headers_only.truncate(2);
     write(&connection, root_key(), &root);
     let rewind = parsed(&path);
     assert_eq!(rewind.messages.len(), 2);
-    assert_eq!(
-        rewind.messages.inline()[1].id,
-        conversation.messages.inline()[1].id
-    );
+    assert_eq!(rewind.messages.inline()[1].id, chat.messages.inline()[1].id);
     assert_eq!(
         connection
             .query_row(
@@ -192,7 +176,7 @@ fn logical_composers_are_discovered_independently_and_schema_detection_is_explic
     let mut storage = Storage::open_writer(&db).unwrap();
     index(&mut storage, &options(dir.path())).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.counts().unwrap().chats, 2);
     assert_eq!(storage.counts().unwrap().messages, 6);
     connection
         .execute_batch(
@@ -239,12 +223,9 @@ fn synthetic_operational_and_unknown_bubbles_remain_context_only() {
         let mut bubble: Bubble = serde_json::from_str(&original).unwrap();
         modify(&mut bubble);
         write(&connection, &key, &bubble);
-        let conversation = parsed(&path);
-        assert_eq!(searchable(&conversation).len(), 3);
-        assert_eq!(
-            conversation.messages.inline()[0].dialogue_text.as_deref(),
-            Some("")
-        );
+        let chat = parsed(&path);
+        assert_eq!(searchable(&chat).len(), 3);
+        assert_eq!(chat.messages.inline()[0].dialogue_text.as_deref(), Some(""));
     }
     let mut bubble: Bubble = serde_json::from_str(&original).unwrap();
     bubble.kind = Kind::Other(999);

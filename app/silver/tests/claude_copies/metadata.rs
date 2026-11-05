@@ -119,12 +119,12 @@ fn claude_repeated_consistent_metadata_still_bridges_dialogue_ancestry() {
         &path,
         &[("fallback", Some("root")), ("fallback", Some("root"))],
     );
-    let conversation = parse_claude(&path).unwrap().conversation.unwrap();
-    assert_eq!(conversation.messages.len(), 2);
+    let chat = parse_claude(&path).unwrap().chat.unwrap();
+    assert_eq!(chat.messages.len(), 2);
     assert_eq!(
-        conversation.messages.inline()[1].context,
+        chat.messages.inline()[1].context,
         MessageContext::Parent {
-            id: conversation.messages.inline()[0].id.clone()
+            id: chat.messages.inline()[0].id.clone()
         }
     );
 }

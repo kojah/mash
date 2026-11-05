@@ -24,14 +24,14 @@ fn check(storage: &Storage, expected: &[Row]) {
         .connection
         .query_row(
             "SELECT count(*) FROM messages m LEFT JOIN turns t ON t.id=m.turn_id
-         WHERE t.id IS NULL OR t.conversation_id <> m.conversation_id",
+         WHERE t.id IS NULL OR t.chat_id <> m.chat_id",
             [],
             |row| row.get(0),
         )
         .unwrap();
     assert_eq!(
         invalid, 0,
-        "every dialogue message has a turn in its own session"
+        "every dialogue message has a turn in its own chat"
     );
     let dangling: i64 = storage
         .connection
@@ -76,16 +76,16 @@ proptest! {
                     format!("answer {id} revision {version}"), "root".into()));
             }
             let pairs: Vec<_> = expected.iter().map(|row| (row.0.as_str(), row.2.as_str())).collect();
-            let mut session = conversation_with_messages(&pairs);
-            for (index, message) in session.messages.inline_mut().iter_mut().enumerate() {
+            let mut chat = chat_with_messages(&pairs);
+            for (index, message) in chat.messages.inline_mut().iter_mut().enumerate() {
                 message.context = if index == 0 { MessageContext::Root }
                     else { MessageContext::Parent { id: "root".into() } };
                 if index != 0 { message.role = crate::role::Role::Assistant; }
             }
-            storage.replace_conversation(&session).unwrap();
+            storage.replace_chat(&chat).unwrap();
             check(&storage, &expected);
             let revision = storage.silver_certificate().unwrap().revision;
-            let retry = storage.replace_conversation(&session).unwrap();
+            let retry = storage.replace_chat(&chat).unwrap();
             prop_assert!(retry.unchanged);
             prop_assert_eq!(storage.silver_certificate().unwrap().revision, revision);
             check(&storage, &expected);

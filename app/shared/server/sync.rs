@@ -641,7 +641,7 @@ async fn handle_begin_backfill(
         && !begin.views_fingerprint.is_empty()
         && begin.manifest_digest.len() == 64
         && begin.manifest_digest.bytes().all(|b| b.is_ascii_hexdigit())
-        && begin.total_conversations > 0
+        && begin.total_chats > 0
         && begin.decoded_bytes <= app.store.max_node_bytes();
     if !valid {
         return reject(
@@ -653,7 +653,7 @@ async fn handle_begin_backfill(
         )
         .await;
     }
-    let Ok(records) = u32::try_from(begin.total_conversations) else {
+    let Ok(records) = u32::try_from(begin.total_chats) else {
         return reject(
             sink,
             operation_id,
@@ -664,7 +664,7 @@ async fn handle_begin_backfill(
         .await;
     };
     // A baseline frozen at a revision the node has already moved past cannot be
-    // merged safely: silver no longer has per-conversation ordering for it.
+    // merged safely: silver no longer has per-chat ordering for it.
     let head = match app.store.head_revision(identity).await {
         Ok(head) => head,
         Err(error) => {
@@ -693,7 +693,7 @@ async fn handle_begin_backfill(
     let views_fingerprint = begin.views_fingerprint.clone();
     let manifest_digest = begin.manifest_digest.clone();
     let baseline_revision = begin.baseline_revision;
-    let total_conversations = begin.total_conversations;
+    let total_chats = begin.total_chats;
     let start_json = serde_json::json!({
         "backfill_id": backfill_id,
         "database_instance": database_instance,
@@ -718,7 +718,7 @@ async fn handle_begin_backfill(
             baseline_revision,
             views_fingerprint: &seed_fingerprint,
             manifest_digest: &seed_manifest,
-            total_conversations,
+            total_chats,
         })
     })
     .await;
@@ -1341,7 +1341,7 @@ async fn commit_publication(
     let catalog_handle = handle.clone();
     let operation_id = operation.operation_id.clone();
     let manifest_digest = operation.manifest_digest.clone();
-    let conversations = conversation_ids(events);
+    let chats = chat_ids(events);
     // Certification runs after the permit is released, so it needs its own
     // handles: the permit guards the silver commit, not the views write.
     let phase_store = store.clone();
@@ -1395,11 +1395,11 @@ async fn commit_publication(
                         code: "coverage_failed",
                     });
                 }
-            } else if !conversations.is_empty()
+            } else if !chats.is_empty()
                 && let Err(error) =
-                    record_live_evidence(&scope, &catalog_handle, conversations, revision).await
+                    record_live_evidence(&scope, &catalog_handle, chats, revision).await
             {
-                // The conversation committed but its ordering evidence did not.
+                // The chat committed but its ordering evidence did not.
                 // Fail the receipt so a retry records it rather than letting a
                 // later baseline overwrite the live state.
                 set_views_pending(&catalog_handle, &operation_id, revision).await;
@@ -1461,12 +1461,12 @@ struct BackfillCommit {
     members: Vec<(String, String)>,
 }
 
-/// Record committed live conversations against every active baseline, so a
+/// Record committed live chats against every active baseline, so a
 /// later baseline batch cannot overwrite them and their members are covered.
 async fn record_live_evidence(
     identity: &Identity,
     handle: &CatalogHandle,
-    conversations: Vec<String>,
+    chats: Vec<String>,
     revision: i64,
 ) -> Result<(), AppError> {
     let group = identity.group_id.clone();
@@ -1474,25 +1474,25 @@ async fn record_live_evidence(
     catalog(handle, move |catalog| {
         let backfills = catalog.active_backfills(&group, &node)?;
         for backfill in &backfills {
-            catalog.record_live(backfill, &group, &node, &conversations, revision)?;
+            catalog.record_live(backfill, &group, &node, &chats, revision)?;
         }
         Ok(())
     })
     .await
 }
 
-fn conversation_ids(events: &[Event]) -> Vec<String> {
+fn chat_ids(events: &[Event]) -> Vec<String> {
     let mut ids = std::collections::BTreeSet::new();
     for event in events {
         match event {
-            Event::Batch(protocol::Batch::Conversations { records }) => {
+            Event::Batch(protocol::Batch::Chats { records }) => {
                 ids.extend(records.iter().map(|record| record.id.clone()));
             }
             Event::Batch(protocol::Batch::Tombstones { records }) => {
-                ids.extend(records.iter().map(|record| record.conversation_id.clone()));
+                ids.extend(records.iter().map(|record| record.chat_id.clone()));
             }
             Event::Batch(protocol::Batch::Messages { records }) => {
-                ids.extend(records.iter().map(|record| record.conversation_id.clone()));
+                ids.extend(records.iter().map(|record| record.chat_id.clone()));
             }
             Event::Remove { .. } | Event::Start(_) | Event::Finish => {}
         }
@@ -1535,7 +1535,7 @@ fn covered_members(events: &[Event]) -> Result<Vec<(String, String)>, AppError> 
     let mut members = Vec::new();
     for event in events {
         match event {
-            Event::Batch(protocol::Batch::Conversations { records }) => {
+            Event::Batch(protocol::Batch::Chats { records }) => {
                 for record in records {
                     members.push((record.id.clone(), wire::member_digest(record)?));
                 }
@@ -1543,8 +1543,8 @@ fn covered_members(events: &[Event]) -> Result<Vec<(String, String)>, AppError> 
             Event::Batch(protocol::Batch::Tombstones { records }) => {
                 for record in records {
                     members.push((
-                        record.conversation_id.clone(),
-                        wire::tombstone_member_digest(&record.conversation_id),
+                        record.chat_id.clone(),
+                        wire::tombstone_member_digest(&record.chat_id),
                     ));
                 }
             }
@@ -1557,14 +1557,14 @@ fn covered_members(events: &[Event]) -> Result<Vec<(String, String)>, AppError> 
     Ok(members)
 }
 
-/// Outcome of applying per-conversation ordering to a baseline batch.
+/// Outcome of applying per-chat ordering to a baseline batch.
 enum BackfillPreparation {
     /// A newer live publication covers every record in this batch.
     Superseded {
         members: Vec<(String, String)>,
         revision: i64,
     },
-    /// Some conversations are still baseline-only; apply them at the current
+    /// Some chats are still baseline-only; apply them at the current
     /// node revision so silver's node-level ordering stays monotonic.
     Apply {
         start: protocol::Start,
@@ -1601,7 +1601,7 @@ async fn prepare_backfill(
     }
     let mut start = start;
     // Baseline state merges into current history; it is not a node revision
-    // rollback. Per-conversation ordering already removed stale records.
+    // rollback. Per-chat ordering already removed stale records.
     start.revision = Some(head.saturating_add(1));
     start.base_revision = Some(head);
     Ok(BackfillPreparation::Apply {
@@ -1611,8 +1611,8 @@ async fn prepare_backfill(
     })
 }
 
-/// Remove conversation records, their messages and their tombstones for
-/// conversations a newer live publication already owns.
+/// Remove chat records, their messages and their tombstones for
+/// chats a newer live publication already owns.
 fn filter_superseded(events: Vec<Event>, stale: &[String]) -> Vec<Event> {
     let stale = stale
         .iter()
@@ -1624,17 +1624,16 @@ fn filter_superseded(events: Vec<Event>, stale: &[String]) -> Vec<Event> {
     events
         .into_iter()
         .filter_map(|event| match event {
-            Event::Batch(protocol::Batch::Conversations { mut records }) => {
+            Event::Batch(protocol::Batch::Chats { mut records }) => {
                 records.retain(|record| !stale.contains(record.id.as_str()));
-                (!records.is_empty())
-                    .then_some(Event::Batch(protocol::Batch::Conversations { records }))
+                (!records.is_empty()).then_some(Event::Batch(protocol::Batch::Chats { records }))
             }
             Event::Batch(protocol::Batch::Messages { mut records }) => {
-                records.retain(|record| !stale.contains(record.conversation_id.as_str()));
+                records.retain(|record| !stale.contains(record.chat_id.as_str()));
                 (!records.is_empty()).then_some(Event::Batch(protocol::Batch::Messages { records }))
             }
             Event::Batch(protocol::Batch::Tombstones { mut records }) => {
-                records.retain(|record| !stale.contains(record.conversation_id.as_str()));
+                records.retain(|record| !stale.contains(record.chat_id.as_str()));
                 (!records.is_empty())
                     .then_some(Event::Batch(protocol::Batch::Tombstones { records }))
             }
@@ -1692,8 +1691,8 @@ async fn finish_manifest(
                 operation_id,
                 server_frame::Body::Progress(Progress {
                     phase: "baseline_manifest".into(),
-                    completed: backfill.total_conversations,
-                    total: backfill.total_conversations,
+                    completed: backfill.total_chats,
+                    total: backfill.total_chats,
                 }),
             )
             .await?;
@@ -1822,7 +1821,7 @@ async fn handle_finish_backfill(
                 operation_id,
                 server_frame::Body::BackfillComplete(BackfillComplete {
                     backfill_id: backfill.backfill_id,
-                    covered_conversations: backfill.covered,
+                    covered_chats: backfill.covered,
                 }),
             )
             .await

@@ -138,9 +138,12 @@ impl Request {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+#[allow(
+    clippy::struct_field_names,
+    reason = "chat_id is the public identity field shared with search results"
+)]
 pub(crate) struct Chat {
-    #[serde(rename = "chat_id")]
-    pub(crate) conversation_id: String,
+    pub(crate) chat_id: String,
     pub(crate) provider: crate::provider::Provider,
     pub(crate) node_id: String,
     #[serde(flatten)]
@@ -230,10 +233,10 @@ impl Collector {
             value,
             descending: matches!(self.request.direction, Direction::Desc),
             provider: thread.provider,
-            id: thread.conversation_id.clone(),
+            id: thread.chat_id.clone(),
             node: thread.node_id.clone(),
         };
-        let identity = (thread.provider, thread.conversation_id.clone());
+        let identity = (thread.provider, thread.chat_id.clone());
         if let Some(previous) = self.identities.get(&identity) {
             if key >= *previous {
                 return;
@@ -247,8 +250,7 @@ impl Collector {
                 .rows
                 .pop_last()
                 .expect("window contains at least one row");
-            self.identities
-                .remove(&(removed.provider, removed.conversation_id));
+            self.identities.remove(&(removed.provider, removed.chat_id));
         }
     }
 

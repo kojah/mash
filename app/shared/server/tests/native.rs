@@ -1,6 +1,6 @@
-//! Publish parsed native conversations through the same typed shared protocol.
+//! Publish parsed native chats through the same typed shared protocol.
 use super::*;
-use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start};
+use crate::shared::protocol::{Batch, ChatRecord, Event, MessageRecord, Start};
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
@@ -62,26 +62,26 @@ async fn qdrant_large_native_tool_context_survives_publication_and_view() {
     service.cleanup().await;
 }
 
-pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Value>, Vec<String>) {
-    let ids = conversation
+pub(super) fn publication(chat: crate::silver::Chat) -> (Vec<Value>, Vec<String>) {
+    let ids = chat
         .messages
         .inline()
         .iter()
         .map(|m| m.id.clone())
         .collect();
-    let record = ConversationRecord {
+    let record = ChatRecord {
         enrichment: None,
-        id: conversation.id.clone(),
-        provider: conversation.provider,
-        title: conversation.title,
-        project: conversation.project,
-        repository: conversation.repository,
-        created_at: conversation.created_at,
-        updated_at: conversation.updated_at,
+        id: chat.id.clone(),
+        provider: chat.provider,
+        title: chat.title,
+        project: chat.project,
+        repository: chat.repository,
+        created_at: chat.created_at,
+        updated_at: chat.updated_at,
     };
     let mut vector = vec![0.0; 384];
     vector[0] = 127.0;
-    let messages = conversation
+    let messages = chat
         .messages
         .inline()
         .to_vec()
@@ -92,7 +92,7 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
             MessageRecord {
                 attachments: Vec::new(),
                 id: m.id,
-                conversation_id: conversation.id.clone(),
+                chat_id: chat.id.clone(),
                 ordinal: m.ordinal,
                 context: m.context,
                 role: m.role,
@@ -109,13 +109,13 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
         Event::Start(Start {
             views_build: None,
             source_silver: None,
-            instance: format!("native-{}", conversation.provider),
+            instance: format!("native-{}", chat.provider),
             revision: Some(1),
             base_revision: None,
             snapshot: true,
             forgets: Vec::new(),
         }),
-        Event::Batch(Batch::Conversations {
+        Event::Batch(Batch::Chats {
             records: vec![record],
         }),
         Event::Batch(Batch::Messages { records: messages }),

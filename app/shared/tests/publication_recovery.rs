@@ -42,7 +42,7 @@ fn current_node(target: &reuse::Target) -> NodeFreshness {
         revision: target.publication_revision,
         last_synced_at: None,
         last_updated_at: None,
-        conversations: 1,
+        chats: 1,
         messages: 2,
     }
 }

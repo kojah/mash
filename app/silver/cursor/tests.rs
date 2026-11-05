@@ -55,10 +55,10 @@ fn options(path: &Path) -> IndexOptions {
         roots_are_authoritative: true,
     }
 }
-fn parsed(path: &Path) -> Conversation {
+fn parsed(path: &Path) -> Chat {
     parse(&discover(path).unwrap().remove(0).identity)
         .unwrap()
-        .conversation
+        .chat
         .unwrap()
 }
 fn metadata(connection: &Connection) -> models::Metadata {
@@ -96,9 +96,8 @@ fn set_metadata(connection: &Connection, meta: &models::Metadata) {
         .execute("UPDATE meta SET value=?1 WHERE key='0'", [value])
         .unwrap();
 }
-fn searchable(conversation: &Conversation) -> Vec<&NormalizedMessage> {
-    conversation
-        .messages
+fn searchable(chat: &Chat) -> Vec<&NormalizedMessage> {
+    chat.messages
         .inline()
         .iter()
         .filter(|m| !m.dialogue_text.as_deref().unwrap_or("").is_empty())
@@ -110,9 +109,9 @@ fn first_party_native_fixture_hydrates_archives_and_only_visible_prose() {
     let dir = tempfile::tempdir().unwrap();
     let path = path(dir.path());
     let connection = fixture(&path);
-    let conversation = parsed(&path);
-    assert_eq!(conversation.messages.len(), 6);
-    let searchable = searchable(&conversation);
+    let chat = parsed(&path);
+    assert_eq!(chat.messages.len(), 6);
+    let searchable = searchable(&chat);
     assert_eq!(searchable.len(), 4);
     assert_eq!(
         searchable[0].content,
@@ -129,19 +128,19 @@ fn first_party_native_fixture_hydrates_archives_and_only_visible_prose() {
             .all(|m| !m.dialogue_text.as_deref().unwrap().contains("private-"))
     );
     assert!(
-        conversation.messages.inline()[5]
+        chat.messages.inline()[5]
             .content
             .contains("private-reasoning-context")
     );
-    assert_eq!(conversation.project.as_deref(), Some("/work/cbioportal"));
-    assert_eq!(conversation.repository, None);
+    assert_eq!(chat.project.as_deref(), Some("/work/cbioportal"));
+    assert_eq!(chat.repository, None);
     assert_eq!(
         searchable[0].created_at, None,
         "do not invent archive timestamps"
     );
     assert_eq!(searchable[2].created_at, Some(1_790_762_400_001));
-    assert_eq!(conversation.created_at, Some(1_790_762_400_000));
-    assert_eq!(conversation.updated_at, Some(1_790_762_400_002));
+    assert_eq!(chat.created_at, Some(1_790_762_400_000));
+    assert_eq!(chat.updated_at, Some(1_790_762_400_002));
     assert_eq!(
         connection
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
@@ -155,8 +154,7 @@ fn first_party_native_fixture_hydrates_archives_and_only_visible_prose() {
             .iter()
             .map(|m| &m.id)
             .collect::<Vec<_>>(),
-        conversation
-            .messages
+        chat.messages
             .inline()
             .iter()
             .map(|m| &m.id)
@@ -265,11 +263,8 @@ fn simulated_users_and_subagent_sessions_stay_context_only() {
         .encode_to_vec(),
     );
     checkpoint(&connection, &root);
-    let conversation = parsed(&path);
-    assert_eq!(
-        conversation.messages.inline()[4].dialogue_text.as_deref(),
-        Some("")
-    );
+    let chat = parsed(&path);
+    assert_eq!(chat.messages.inline()[4].dialogue_text.as_deref(), Some(""));
     let mut meta = metadata(&connection);
     meta.subagent_info = Some(models::Subagent {
         parent_agent_id: "parent".into(),

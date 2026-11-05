@@ -11,10 +11,10 @@ async fn contract(service: Service) {
     let roots = vec![path.clone()];
     let sources = discovered_sources(Provider::Antigravity, &roots);
     let source = &sources[0];
-    let conversation = parse_test_source(Provider::Antigravity, source)
-        .conversation
+    let chat = parse_test_source(Provider::Antigravity, source)
+        .chat
         .unwrap();
-    let (events, ids) = super::native::publication(conversation);
+    let (events, ids) = super::native::publication(chat);
     assert_eq!(ids.len(), 9);
     service
         .upload(FIRST, &events)

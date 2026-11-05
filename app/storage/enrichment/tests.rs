@@ -7,7 +7,7 @@ use crate::silver::{
 #[test]
 fn native_history_retains_traceable_title_and_project_evidence_across_restart() {
     let directory = tempfile::tempdir().unwrap();
-    let source = directory.path().join("sessions");
+    let source = directory.path().join("chats");
     std::fs::create_dir(&source).unwrap();
     std::fs::write(source.join("session.jsonl"), concat!(
         "{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\",\"cwd\":\"/work/project\"}}\n",
@@ -25,12 +25,12 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     let (id, message): (String, String) = storage
         .connection
         .query_row(
-            "SELECT m.conversation_id,m.id FROM messages m WHERE m.ordinal=1",
+            "SELECT m.chat_id,m.id FROM messages m WHERE m.ordinal=1",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .unwrap();
-    let evidence = storage.conversation_enrichment(&id).unwrap().unwrap();
+    let evidence = storage.chat_enrichment(&id).unwrap().unwrap();
     assert_eq!(
         evidence.title,
         Some(Origin::FirstVisibleUserMessage {
@@ -48,7 +48,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     let hidden: String = storage
         .connection
         .query_row(
-            "SELECT id FROM messages WHERE conversation_id=?1 AND ordinal=0",
+            "SELECT id FROM messages WHERE chat_id=?1 AND ordinal=0",
             [&id],
             |row| row.get(0),
         )
@@ -75,10 +75,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     storage.commit_writer().unwrap();
     drop(storage);
     let stored = Storage::open_silver(&path).unwrap();
-    assert_eq!(
-        stored.conversation_enrichment(&id).unwrap(),
-        Some(evidence.clone())
-    );
+    assert_eq!(stored.chat_enrichment(&id).unwrap(), Some(evidence.clone()));
     let threads = stored
         .chat_candidates(&crate::chat_catalog::Request::default(), "local")
         .unwrap();
@@ -86,8 +83,8 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     stored
         .with_publication_snapshot(|snapshot| {
             assert_eq!(snapshot.source_silver, stored.silver_certificate().unwrap());
-            snapshot.visit(crate::shared::protocol::BatchKind::Conversations, |batch| {
-                let crate::shared::protocol::Batch::Conversations { records } = batch else {
+            snapshot.visit(crate::shared::protocol::BatchKind::Chats, |batch| {
+                let crate::shared::protocol::Batch::Chats { records } = batch else {
                     panic!("conversation batch")
                 };
                 assert_eq!(records[0].enrichment, Some(evidence.clone()));
@@ -102,8 +99,8 @@ fn missing_outdated_and_malformed_evidence_cannot_skip_replay_and_deletes_cascad
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("silver.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();
-    let thread = crate::storage::tests::conversation_with_messages(&[("message", "session")]);
-    storage.replace_conversation(&thread).unwrap();
+    let thread = crate::storage::tests::chat_with_messages(&[("message", "session")]);
+    storage.replace_chat(&thread).unwrap();
     let stamp = SourceStamp::file(10, 20);
     storage
         .record_source_checkpoint(thread.provider, &thread.source, &stamp)
@@ -113,15 +110,12 @@ fn missing_outdated_and_malformed_evidence_cannot_skip_replay_and_deletes_cascad
             .source_checkpoint_matches(thread.provider, &thread.source, &stamp)
             .unwrap()
     );
-    let evidence = storage
-        .conversation_enrichment(&thread.id)
-        .unwrap()
-        .unwrap();
+    let evidence = storage.chat_enrichment(&thread.id).unwrap().unwrap();
     assert!(evidence.is_current());
     let before = storage.silver_certificate().unwrap().revision;
     storage
         .connection
-        .execute("DELETE FROM conversation_enrichment", [])
+        .execute("DELETE FROM chat_enrichment", [])
         .unwrap();
     assert!(storage.silver_certificate().unwrap().revision > before);
     assert!(
@@ -129,9 +123,9 @@ fn missing_outdated_and_malformed_evidence_cannot_skip_replay_and_deletes_cascad
             .source_checkpoint_matches(thread.provider, &thread.source, &stamp)
             .unwrap()
     );
-    assert!(storage.replace_conversation(&thread).unwrap().unchanged);
+    assert!(storage.replace_chat(&thread).unwrap().unchanged);
     assert_eq!(
-        storage.conversation_enrichment(&thread.id).unwrap(),
+        storage.chat_enrichment(&thread.id).unwrap(),
         Some(evidence.clone())
     );
     let mut outdated = evidence;
@@ -144,7 +138,7 @@ fn missing_outdated_and_malformed_evidence_cannot_skip_replay_and_deletes_cascad
     );
     storage
         .connection
-        .execute("UPDATE conversation_enrichment SET evidence='{}'", [])
+        .execute("UPDATE chat_enrichment SET evidence='{}'", [])
         .unwrap();
     assert_eq!(
         storage
@@ -154,17 +148,12 @@ fn missing_outdated_and_malformed_evidence_cannot_skip_replay_and_deletes_cascad
             .kind,
         crate::ErrorKind::Database
     );
-    storage.replace_conversation(&thread).unwrap();
+    storage.replace_chat(&thread).unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
     let mut storage = Storage::open_existing(&path).unwrap();
     assert!(storage.forget(&thread.id).unwrap());
-    assert!(
-        storage
-            .conversation_enrichment(&thread.id)
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage.chat_enrichment(&thread.id).unwrap().is_none());
     assert!(
         storage
             .source_enrichment_is_current(thread.provider, &SourceIdentity::file("empty").key())

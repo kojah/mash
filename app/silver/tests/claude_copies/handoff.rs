@@ -108,7 +108,7 @@ fn claude_parser_handoff_orders_preserve_copies_prefixes_branches_and_restart_ch
             });
             storage.finish_provider_scan().unwrap();
             storage.commit_writer().unwrap();
-            assert_eq!(storage.counts().unwrap().conversations, 1);
+            assert_eq!(storage.counts().unwrap().chats, 1);
             let expected = 1 + u64::from(tails.0) + u64::from(tails.1);
             assert_eq!(storage.counts().unwrap().messages, expected);
             for path in &paths {

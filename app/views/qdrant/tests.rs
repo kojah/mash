@@ -1,5 +1,5 @@
 use super::*;
-use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
+use crate::shared::protocol::{self, Batch, ChatRecord, Event, MessageRecord, Start};
 use crate::shared::server::store::Store as Server;
 use crate::shared::silver_store::SilverStore;
 use std::io::Write;
@@ -116,8 +116,8 @@ impl Fixture {
         file
     }
 
-    fn conversation() -> ConversationRecord {
-        ConversationRecord {
+    fn chat() -> ChatRecord {
+        ChatRecord {
             enrichment: None,
             id: "thread".into(),
             provider: crate::provider::Provider::Codex,
@@ -134,7 +134,7 @@ impl Fixture {
             .map(|i| MessageRecord {
                 attachments: Vec::new(),
                 id: format!("message-{i}"),
-                conversation_id: "thread".into(),
+                chat_id: "thread".into(),
                 ordinal: i,
                 context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
@@ -163,8 +163,8 @@ impl Fixture {
     fn file(&self, revision: i64, marker: &str) -> tempfile::NamedTempFile {
         Self::upload(&[
             Event::Start(Self::start(revision)),
-            Event::Batch(Batch::Conversations {
-                records: vec![Self::conversation()],
+            Event::Batch(Batch::Chats {
+                records: vec![Self::chat()],
             }),
             Event::Batch(Batch::Messages {
                 records: self.messages(marker),

@@ -8,10 +8,10 @@ async fn qdrant_core_scoped_message_search_uses_thread_discovery() {
 }
 use crate::search_filter::Selection;
 use crate::search_results::{Results, SearchUnit};
-use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
+use crate::silver::{Chat, NormalizedMessage, SourceIdentity};
 
-fn conversation(id: &str, provider: Provider) -> Conversation {
-    Conversation {
+fn chat(id: &str, provider: Provider) -> Chat {
+    Chat {
         id: id.into(),
         provider,
         title_origin: None,
@@ -43,13 +43,10 @@ async fn seed(paths: &Paths) {
     crate::blocking(move || {
         let mut storage = Storage::open_writer(&database)?;
         for number in 0..150 {
-            storage.replace_conversation(&conversation(
-                &format!("unselected-{number:03}"),
-                Provider::Codex,
-            ))?;
+            storage.replace_chat(&chat(&format!("unselected-{number:03}"), Provider::Codex))?;
         }
         for provider in [Provider::Opencode, Provider::Codex, Provider::ClaudeCode] {
-            storage.replace_conversation(&conversation(provider.as_str(), provider))?;
+            storage.replace_chat(&chat(provider.as_str(), provider))?;
         }
         for provider in [Provider::Opencode, Provider::Codex, Provider::ClaudeCode] {
             storage.begin_silver_scan(provider)?;
@@ -83,7 +80,7 @@ async fn assert_scoped(
             unit: None,
             filters: Box::new(Selection {
                 provider: vec![Provider::Codex, Provider::ClaudeCode],
-                conversation: ids.to_vec(),
+                chat: ids.to_vec(),
                 after: Some(2),
                 before: Some(3),
                 ..Default::default()
@@ -121,7 +118,7 @@ async fn assert_scoped(
     };
     let mut found: Vec<_> = messages
         .iter()
-        .map(|message| message.conversation_id.as_str())
+        .map(|message| message.chat_id.as_str())
         .collect();
     found.sort_unstable();
     let mut expected = expected.to_vec();
@@ -218,8 +215,8 @@ async fn contract(service: Service) {
     let ids: Vec<_> = discovered
         .chats
         .iter()
-        .filter(|thread| ["codex", "claude-code"].contains(&thread.conversation_id.as_str()))
-        .map(|thread| thread.conversation_id.clone())
+        .filter(|thread| ["codex", "claude-code"].contains(&thread.chat_id.as_str()))
+        .map(|thread| thread.chat_id.clone())
         .collect();
     assert_eq!(ids.len(), 2);
     let before = std::fs::read(paths.db.as_ref().unwrap()).unwrap();

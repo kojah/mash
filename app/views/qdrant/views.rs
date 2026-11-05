@@ -5,7 +5,7 @@ use super::{
     point_id, sparse, tokens,
 };
 use crate::silver::revision::State;
-use crate::views::documents::{ConversationRecord, MessageRecord};
+use crate::views::documents::{ChatRecord, MessageRecord};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -65,7 +65,7 @@ impl NodeViews {
 
     pub(crate) fn embeddings(&self) -> u64 {
         self.projections
-            .sessions()
+            .chats()
             .map(|(_, evidence)| evidence.embeddings)
             .sum()
     }
@@ -167,13 +167,13 @@ impl Store {
     pub(crate) async fn retain_documents(
         &self,
         identity: &Scope,
-        conversation: &str,
+        chat: &str,
         current: Vec<String>,
     ) -> Result<(), AppError> {
         let mut filter = api::Filter {
             must: vec![
                 api::matches("node_id", vec![identity.node_id.clone()]),
-                api::matches("conversation_id", vec![conversation.to_owned()]),
+                api::matches("chat_id", vec![chat.to_owned()]),
             ],
             ..api::Filter::default()
         };
@@ -186,7 +186,7 @@ impl Store {
     }
 
     /// Reconcile native deletions even when previous request metadata was lost.
-    pub(crate) async fn retain_node_conversations(
+    pub(crate) async fn retain_node_chats(
         &self,
         identity: &Scope,
         current: Vec<String>,
@@ -196,9 +196,7 @@ impl Store {
             ..api::Filter::default()
         };
         if !current.is_empty() {
-            filter
-                .must_not
-                .push(api::matches("conversation_id", current));
+            filter.must_not.push(api::matches("chat_id", current));
         }
         self.api
             .delete_filtered(&collection(&identity.group_id, false), filter)
@@ -258,22 +256,21 @@ impl Documents {
         &mut self,
         store: &Store,
         identity: &Scope,
-        conversation: &ConversationRecord,
+        chat: &ChatRecord,
         message: MessageRecord,
     ) -> Result<u64, AppError> {
-        self.push_native(store, identity, conversation, message, None)
-            .await
+        self.push_native(store, identity, chat, message, None).await
     }
 
     pub(crate) async fn push_native(
         &mut self,
         store: &Store,
         identity: &Scope,
-        conversation: &ConversationRecord,
+        chat: &ChatRecord,
         message: MessageRecord,
         embedding_fingerprint: Option<String>,
     ) -> Result<u64, AppError> {
-        if message.conversation_id != conversation.id {
+        if message.chat_id != chat.id {
             return Err(failure());
         }
         let words = tokens(&message.projection);
@@ -292,22 +289,22 @@ impl Documents {
                 vector,
                 payload: Document {
                     node_id: identity.node_id.clone(),
-                    provider: conversation.provider,
+                    provider: chat.provider,
                     role: message.role,
-                    conversation_id: conversation.id.clone(),
-                    project: conversation.project.clone(),
-                    repository: conversation.repository.clone(),
+                    chat_id: chat.id.clone(),
+                    project: chat.project.clone(),
+                    repository: chat.repository.clone(),
                     created_at: message.created_at,
                     tokens: words,
                     unit: SearchUnit {
                         anchor: message.id,
                         text: message.projection.clone(),
                         content: message.projection,
-                        title: conversation.title.clone(),
-                        enrichment: conversation.enrichment.clone(),
+                        title: chat.title.clone(),
+                        enrichment: chat.enrichment.clone(),
                         sequence: message.ordinal,
-                        chat_created_at: conversation.created_at,
-                        chat_updated_at: conversation.updated_at,
+                        chat_created_at: chat.created_at,
+                        chat_updated_at: chat.updated_at,
                         generation: message.generation,
                     },
                     vector: message.vector,

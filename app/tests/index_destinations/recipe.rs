@@ -50,9 +50,9 @@ fn unfiltered(fixture: &Fixture) {
 fn local_witness(fixture: &Fixture) -> Vec<String> {
     let connection = open_silver(&fixture.database);
     [
-        "SELECT json_object('id',id,'provider',provider,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM sessions ORDER BY id",
-        "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM messages ORDER BY id",
-        "SELECT json_object('id',conversation_id,'evidence',evidence) AS witness FROM conversation_enrichment ORDER BY conversation_id",
+        "SELECT json_object('id',id,'provider',provider,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM chats ORDER BY id",
+        "SELECT json_object('id',id,'chat',chat_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM messages ORDER BY id",
+        "SELECT json_object('id',chat_id,'evidence',evidence) AS witness FROM chat_enrichment ORDER BY chat_id",
     ].into_iter().flat_map(|sql| {
         connection.prepare(sql).unwrap().query_map([], |row| row.get::<_, String>("witness")).unwrap()
             .collect::<Result<Vec<_>, _>>().unwrap()
@@ -117,11 +117,9 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     std::fs::remove_file(fixture.directory.path().join("claude/session.jsonl")).unwrap();
     let connection = open_silver(&fixture.database);
     let id: String = connection
-        .query_row(
-            "SELECT id FROM sessions WHERE provider='codex'",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT id FROM chats WHERE provider='codex'", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     drop(connection);
     let forgotten = fixture.json(&["forget", &id], true);

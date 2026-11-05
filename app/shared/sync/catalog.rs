@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
+const SCHEMA_VERSION: i64 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum State {
@@ -102,7 +103,7 @@ pub(crate) struct Backfill {
     pub(crate) baseline_revision: i64,
     pub(crate) views_fingerprint: String,
     pub(crate) manifest_digest: String,
-    pub(crate) total_conversations: u64,
+    pub(crate) total_chats: u64,
     pub(crate) covered: u64,
     pub(crate) state: String,
 }
@@ -115,7 +116,7 @@ pub(crate) struct BackfillBegin<'a> {
     pub(crate) baseline_revision: i64,
     pub(crate) views_fingerprint: &'a str,
     pub(crate) manifest_digest: &'a str,
-    pub(crate) total_conversations: u64,
+    pub(crate) total_chats: u64,
 }
 
 /// A durable operation left behind by a process that stopped mid-apply.
@@ -176,6 +177,21 @@ impl Catalog {
         let path = root.join("catalog.sqlite3");
         let connection = Connection::open(&path).map_err(database)?;
         connection.busy_timeout(BUSY_TIMEOUT).map_err(database)?;
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .map_err(database)?;
+        let populated: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(database)?;
+        if (populated || version != 0) && version != SCHEMA_VERSION {
+            return Err(AppError::schema(format!(
+                "unsupported sync catalog schema {version}; expected {SCHEMA_VERSION}"
+            )));
+        }
         connection
             .pragma_update(None, "journal_mode", "wal")
             .map_err(database)?;
@@ -221,27 +237,24 @@ impl Catalog {
                     baseline_revision INTEGER NOT NULL,
                     views_fingerprint TEXT NOT NULL,
                     manifest_digest TEXT NOT NULL,
-                    total_conversations INTEGER NOT NULL,
+                    total_chats INTEGER NOT NULL,
                     state TEXT NOT NULL,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS backfill_members (
                     backfill_id TEXT NOT NULL,
-                    conversation_id TEXT NOT NULL,
+                    chat_id TEXT NOT NULL,
                     digest TEXT NOT NULL,
                     covered INTEGER NOT NULL DEFAULT 0,
                     live_revision INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (backfill_id, conversation_id)
+                    PRIMARY KEY (backfill_id, chat_id)
                 );",
             )
             .map_err(database)?;
-        // Databases created before per-conversation live evidence existed gain
-        // the column in place; the table is transfer bookkeeping, not silver.
-        let _ = connection.execute(
-            "ALTER TABLE backfill_members ADD COLUMN live_revision INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
+        connection
+            .pragma_update(None, "user_version", SCHEMA_VERSION)
+            .map_err(database)?;
         Ok(Self {
             root: root.to_path_buf(),
             connection,
@@ -612,7 +625,7 @@ impl Catalog {
                 "INSERT OR IGNORE INTO backfills (
                     backfill_id, group_id, node_id, database_instance,
                     baseline_revision, views_fingerprint, manifest_digest,
-                    total_conversations, state, created_at, updated_at
+                    total_chats, state, created_at, updated_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'receiving_manifest', ?9, ?9)",
                 params![
                     input.backfill_id,
@@ -622,7 +635,7 @@ impl Catalog {
                     input.baseline_revision,
                     input.views_fingerprint,
                     input.manifest_digest,
-                    i64::try_from(input.total_conversations)
+                    i64::try_from(input.total_chats)
                         .map_err(|_| AppError::usage("backfill is too large"))?,
                     timestamp
                 ],
@@ -633,7 +646,7 @@ impl Catalog {
             || backfill.baseline_revision != input.baseline_revision
             || backfill.views_fingerprint != input.views_fingerprint
             || backfill.manifest_digest != input.manifest_digest
-            || backfill.total_conversations != input.total_conversations
+            || backfill.total_chats != input.total_chats
         {
             return Err(conflict(
                 "backfill identity was already used for a different baseline",
@@ -652,7 +665,7 @@ impl Catalog {
             .connection
             .prepare(
                 "SELECT b.database_instance, b.baseline_revision, b.views_fingerprint,
-                        b.manifest_digest, b.total_conversations, b.state,
+                        b.manifest_digest, b.total_chats, b.state,
                         (SELECT COUNT(*) FROM backfill_members m
                          WHERE m.backfill_id = b.backfill_id AND m.covered = 1)
                  FROM backfills b
@@ -667,7 +680,7 @@ impl Catalog {
                     baseline_revision: row.get(1)?,
                     views_fingerprint: row.get(2)?,
                     manifest_digest: row.get(3)?,
-                    total_conversations: row.get::<_, i64>(4)?.try_into().unwrap_or_default(),
+                    total_chats: row.get::<_, i64>(4)?.try_into().unwrap_or_default(),
                     covered: row.get::<_, i64>(6)?.try_into().unwrap_or_default(),
                     state: row.get(5)?,
                 })
@@ -687,7 +700,7 @@ impl Catalog {
         members: &[wire::BackfillMember],
     ) -> Result<Backfill, AppError> {
         let backfill = self.backfill(backfill_id, group_id, node_id)?;
-        if backfill.total_conversations != members.len() as u64 {
+        if backfill.total_chats != members.len() as u64 {
             return Err(conflict(
                 "backfill manifest member count does not match its declaration",
             ));
@@ -698,9 +711,9 @@ impl Catalog {
                 transaction
                     .execute(
                         "INSERT OR IGNORE INTO backfill_members (
-                            backfill_id, conversation_id, digest, covered
+                            backfill_id, chat_id, digest, covered
                          ) VALUES (?1, ?2, ?3, 0)",
-                        params![backfill_id, member.conversation_id, member.digest],
+                        params![backfill_id, member.chat_id, member.digest],
                     )
                     .map_err(database)?;
             }
@@ -742,12 +755,12 @@ impl Catalog {
             return Err(conflict("backfill manifest is not ready"));
         }
         let transaction = self.connection.unchecked_transaction().map_err(database)?;
-        for (conversation_id, digest) in members {
+        for (chat_id, digest) in members {
             transaction
                 .execute(
                     "UPDATE backfill_members SET covered = 1
-                     WHERE backfill_id = ?1 AND conversation_id = ?2 AND digest = ?3",
-                    params![backfill_id, conversation_id, digest],
+                     WHERE backfill_id = ?1 AND chat_id = ?2 AND digest = ?3",
+                    params![backfill_id, chat_id, digest],
                 )
                 .map_err(database)?;
         }
@@ -778,7 +791,7 @@ impl Catalog {
                 "backfill finish does not match the installed baseline",
             ));
         }
-        if backfill.covered != backfill.total_conversations {
+        if backfill.covered != backfill.total_chats {
             return Err(conflict("backfill baseline coverage is incomplete"));
         }
         self.connection
@@ -814,7 +827,7 @@ impl Catalog {
         Ok(rows)
     }
 
-    /// Record that a newer live publication carries these conversations. A
+    /// Record that a newer live publication carries these chats. A
     /// live record at a revision above the frozen baseline satisfies its
     /// baseline member, and a later baseline batch must not overwrite it.
     pub(crate) fn record_live(
@@ -822,7 +835,7 @@ impl Catalog {
         backfill_id: &str,
         group_id: &str,
         node_id: &str,
-        conversations: &[String],
+        chats: &[String],
         revision: i64,
     ) -> Result<(), AppError> {
         let backfill = self.backfill(backfill_id, group_id, node_id)?;
@@ -830,19 +843,14 @@ impl Catalog {
             return Ok(());
         }
         let transaction = self.connection.unchecked_transaction().map_err(database)?;
-        for conversation in conversations {
+        for chat in chats {
             transaction
                 .execute(
                     "UPDATE backfill_members
                      SET live_revision = MAX(live_revision, ?2),
                          covered = CASE WHEN ?2 > ?3 THEN 1 ELSE covered END
-                     WHERE backfill_id = ?1 AND conversation_id = ?4",
-                    params![
-                        backfill_id,
-                        revision,
-                        backfill.baseline_revision,
-                        conversation
-                    ],
+                     WHERE backfill_id = ?1 AND chat_id = ?4",
+                    params![backfill_id, revision, backfill.baseline_revision, chat],
                 )
                 .map_err(database)?;
         }
@@ -850,7 +858,7 @@ impl Catalog {
         Ok(())
     }
 
-    /// Baseline conversations already superseded by a live publication at or
+    /// Baseline chats already superseded by a live publication at or
     /// above `revision`. Their baseline records must not be applied.
     pub(crate) fn superseded(
         &self,
@@ -863,9 +871,9 @@ impl Catalog {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT conversation_id FROM backfill_members
+                "SELECT chat_id FROM backfill_members
                  WHERE backfill_id = ?1 AND live_revision > ?2
-                 ORDER BY conversation_id",
+                 ORDER BY chat_id",
             )
             .map_err(database)?;
         let rows = statement
@@ -1131,6 +1139,35 @@ impl Catalog {
 mod tests {
     use super::*;
 
+    #[test]
+    fn sync_catalog_rejects_other_schemas_without_modification() {
+        for version in [0, SCHEMA_VERSION + 1] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("catalog.sqlite3");
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE sentinel(value TEXT); INSERT INTO sentinel VALUES('retained');",
+                )
+                .unwrap();
+            connection
+                .pragma_update(None, "user_version", version)
+                .unwrap();
+            drop(connection);
+            let before = std::fs::read(&path).unwrap();
+            let error = Catalog::open(root.path())
+                .err()
+                .expect("foreign schema rejected");
+            assert!(
+                error
+                    .error
+                    .message
+                    .contains("unsupported sync catalog schema")
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+        }
+    }
+
     fn manifest(bytes: u64, pieces: &[(u64, u64, &str)]) -> String {
         let entries = pieces
             .iter()
@@ -1183,7 +1220,7 @@ mod tests {
                 baseline_revision: 7,
                 views_fingerprint: "generation",
                 manifest_digest: manifest,
-                total_conversations: total,
+                total_chats: total,
             })
             .unwrap();
         catalog.backfill(id, "group", "node").unwrap()
@@ -1206,7 +1243,7 @@ mod tests {
                     "group",
                     "node",
                     &[wire::BackfillMember {
-                        conversation_id: "a".into(),
+                        chat_id: "a".into(),
                         digest: "b".repeat(64),
                     }],
                 )
@@ -1215,11 +1252,11 @@ mod tests {
 
         let members = [
             wire::BackfillMember {
-                conversation_id: "a".into(),
+                chat_id: "a".into(),
                 digest: "b".repeat(64),
             },
             wire::BackfillMember {
-                conversation_id: "b".into(),
+                chat_id: "b".into(),
                 digest: "c".repeat(64),
             },
         ];
@@ -1290,16 +1327,16 @@ mod tests {
                 baseline_revision: 5,
                 views_fingerprint: "generation",
                 manifest_digest: &manifest,
-                total_conversations: 2,
+                total_chats: 2,
             })
             .unwrap();
         let members = [
             wire::BackfillMember {
-                conversation_id: "a".into(),
+                chat_id: "a".into(),
                 digest: "b".repeat(64),
             },
             wire::BackfillMember {
-                conversation_id: "b".into(),
+                chat_id: "b".into(),
                 digest: "c".repeat(64),
             },
         ];
@@ -1356,7 +1393,7 @@ mod tests {
                     baseline_revision: 8,
                     views_fingerprint: "generation",
                     manifest_digest: &manifest,
-                    total_conversations: 1,
+                    total_chats: 1,
                 })
                 .is_err()
         );

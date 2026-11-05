@@ -124,22 +124,19 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     let file = tempfile::NamedTempFile::new().unwrap();
     write(file.path(), &fixture());
     let original = std::fs::read(file.path()).unwrap();
-    let conversation = parse(file.path()).unwrap().conversation.unwrap();
-    assert_eq!(
-        conversation.title.as_deref(),
-        Some("Fix the cBioPortal importer")
-    );
-    assert_eq!(conversation.project.as_deref(), Some("/work/cbioportal"));
-    assert_eq!(conversation.repository.as_deref(), Some("team/cbioportal"));
-    assert_eq!(conversation.messages.len(), 10);
-    let canonical = conversation
+    let chat = parse(file.path()).unwrap().chat.unwrap();
+    assert_eq!(chat.title.as_deref(), Some("Fix the cBioPortal importer"));
+    assert_eq!(chat.project.as_deref(), Some("/work/cbioportal"));
+    assert_eq!(chat.repository.as_deref(), Some("team/cbioportal"));
+    assert_eq!(chat.messages.len(), 10);
+    let canonical = chat
         .messages
         .inline()
         .iter()
         .map(|m| m.content.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let projection = conversation
+    let projection = chat
         .messages
         .inline()
         .iter()
@@ -165,31 +162,24 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     }
     assert!(projection.contains("cBioPortal"));
     assert!(projection.contains("Validate mutation metadata"));
+    assert_eq!(chat.messages.inline()[5].context, MessageContext::Root);
     assert_eq!(
-        conversation.messages.inline()[5].context,
-        MessageContext::Root
-    );
-    assert_eq!(
-        conversation.messages.inline()[6].context,
+        chat.messages.inline()[6].context,
         MessageContext::Parent {
-            id: conversation.messages.inline()[5].id.clone()
+            id: chat.messages.inline()[5].id.clone()
         }
     );
+    assert_eq!(chat.messages.inline()[7].context, MessageContext::Root);
     assert_eq!(
-        conversation.messages.inline()[7].context,
-        MessageContext::Root
-    );
-    assert_eq!(
-        conversation.messages.inline()[8].context,
+        chat.messages.inline()[8].context,
         MessageContext::Parent {
-            id: conversation.messages.inline()[4].id.clone()
+            id: chat.messages.inline()[4].id.clone()
         }
     );
     assert_eq!(std::fs::read(file.path()).unwrap(), original);
-    let repeated = parse(file.path()).unwrap().conversation.unwrap();
+    let repeated = parse(file.path()).unwrap().chat.unwrap();
     assert_eq!(
-        conversation
-            .messages
+        chat.messages
             .inline()
             .iter()
             .map(|m| &m.id)
@@ -204,12 +194,9 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     let mut fork = fixture();
     fork[0] = header("forked-session");
     write(file.path(), &fork);
-    let forked = parse(file.path()).unwrap().conversation.unwrap();
-    assert_ne!(conversation.id, forked.id);
-    assert_ne!(
-        conversation.messages.inline()[0].id,
-        forked.messages.inline()[0].id
-    );
+    let forked = parse(file.path()).unwrap().chat.unwrap();
+    assert_ne!(chat.id, forked.id);
+    assert_ne!(chat.messages.inline()[0].id, forked.messages.inline()[0].id);
 }
 
 #[test]
@@ -232,7 +219,7 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 10);
     assert_eq!(storage.counts().unwrap().searchable_messages, 3);
-    let conversation = parse(&history).unwrap().conversation.unwrap();
+    let chat = parse(&history).unwrap().chat.unwrap();
     let followup = crate::storage::test_support::projections_with_text(
         &storage,
         "structural",
@@ -259,14 +246,14 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
                 };
                 assert_eq!(records.len(), 10);
                 for record in records {
-                    let native = conversation
+                    let native = chat
                         .messages
                         .inline()
                         .iter()
                         .find(|m| m.id == record.id)
                         .unwrap();
                     assert_eq!(record.context, native.context);
-                    assert_eq!(record.conversation_id, conversation.id);
+                    assert_eq!(record.chat_id, chat.id);
                 }
                 Ok(())
             })
@@ -374,7 +361,7 @@ fn clear_starts_a_new_context_chain_and_bad_native_envelopes_fail_closed() {
         json!({"content":"New independent question"}),
     ));
     write(file.path(), &valid);
-    let parsed = parse(file.path()).unwrap().conversation.unwrap();
+    let parsed = parse(file.path()).unwrap().chat.unwrap();
     assert_eq!(
         parsed.messages.inline().last().unwrap().context,
         MessageContext::Root
@@ -387,7 +374,7 @@ fn clear_starts_a_new_context_chain_and_bad_native_envelopes_fail_closed() {
     assert!(
         parse(file.path())
             .unwrap()
-            .conversation
+            .chat
             .unwrap()
             .messages
             .is_empty()
@@ -442,7 +429,7 @@ fn settled_workspace_and_complete_chunks_ignore_preliminary_and_ephemeral_events
             ),
         ],
     );
-    let parsed = parse(file.path()).unwrap().conversation.unwrap();
+    let parsed = parse(file.path()).unwrap().chat.unwrap();
     assert_eq!(parsed.project.as_deref(), Some("/settled"));
     assert_eq!(parsed.repository.as_deref(), Some("team/settled"));
     assert_eq!(parsed.messages.len(), 3);

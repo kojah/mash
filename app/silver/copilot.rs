@@ -1,6 +1,6 @@
 //! Native Copilot CLI events and the separate regular VS Code Chat store.
 //! CLI event parents describe chronology; each agent has its own context chain.
-use super::{Conversation, NormalizedMessage, ParsedFile, SourceIdentity, records};
+use super::{Chat, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use serde::Deserialize;
 use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
@@ -424,7 +424,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         )
     });
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: super::parsers::stable_id(
                 "session",
                 &[Provider::Copilot.as_str(), &start.session_id],

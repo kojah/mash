@@ -1,7 +1,7 @@
 //! Recipe-aware snapshot preparation from a consistent, read-only SQLite silver view.
 use super::{Inference, SnapshotWork, write_event};
 use crate::shared::{
-    protocol::{Batch, BatchKind, ConversationRecord, Event, MessageRecord, Start},
+    protocol::{Batch, BatchKind, ChatRecord, Event, MessageRecord, Start},
     reuse::Target,
 };
 use crate::{AppError, storage::Storage, views::shared as views};
@@ -35,7 +35,7 @@ pub(super) fn validate_owner(
 struct Source {
     file: tempfile::NamedTempFile,
     revision: i64,
-    conversations: BTreeMap<String, ConversationRecord>,
+    chats: BTreeMap<String, ChatRecord>,
     visible: u64,
 }
 
@@ -50,7 +50,7 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
     crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
         let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
         let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
-        let mut conversations = BTreeMap::new();
+        let mut chats = BTreeMap::new();
         let mut visible = 0;
         let revision = Storage::open_silver(path)?.with_publication_snapshot(|snapshot| {
             validate_owner(snapshot, target)?;
@@ -79,18 +79,18 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                 target.redaction,
             )?;
             if let Some(base) = base {
-                for id in snapshot.removed_threads(base)? {
+                for id in snapshot.removed_chats(base)? {
                     write_event(&mut writer, &Event::Remove { id }, target.redaction)?;
                 }
             }
             snapshot.visit_selected(BatchKind::Tombstones, false, base, |batch| {
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
-            snapshot.visit_selected(BatchKind::Conversations, false, base, |mut batch| {
+            snapshot.visit_selected(BatchKind::Chats, false, base, |mut batch| {
                 target.redaction.batch(&mut batch);
-                if let Batch::Conversations { records } = &batch {
-                    for conversation in records {
-                        conversations.insert(conversation.id.clone(), conversation.clone());
+                if let Batch::Chats { records } = &batch {
+                    for chat in records {
+                        chats.insert(chat.id.clone(), chat.clone());
                     }
                 }
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
@@ -119,7 +119,7 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
         Ok(Source {
             file,
             revision,
-            conversations,
+            chats,
             visible,
         })
     })
@@ -153,7 +153,7 @@ impl Reader {
                 || self.pending.front().is_some_and(|message| {
                     batch
                         .first()
-                        .is_some_and(|first| first.conversation_id != message.conversation_id)
+                        .is_some_and(|first| first.chat_id != message.chat_id)
                 })
             {
                 break;
@@ -194,7 +194,7 @@ async fn prepare_units(
             if let Some(text) = reader.units.prepare(
                 &recipe,
                 crate::views::units::Input {
-                    chat: &message.conversation_id,
+                    chat: &message.chat_id,
                     id: &message.id,
                     ordinal: message.ordinal,
                     context: &message.context,
@@ -230,7 +230,7 @@ fn validate_model(target: &Target, inference: &Inference<'_>) -> Result<(), AppE
 }
 
 struct Prepared<'a> {
-    conversation: &'a ConversationRecord,
+    chat: &'a ChatRecord,
     texts: &'a [String],
     cache: Option<&'a crate::views::local::Local>,
 }
@@ -259,7 +259,7 @@ async fn embed_batch(
         .iter()
         .zip(prepared.texts)
         .map(|(message, text)| crate::views::documents::EmbeddingInput {
-            provider: prepared.conversation.provider,
+            provider: prepared.chat.provider,
             anchor: &message.id,
             text,
         })
@@ -339,11 +339,11 @@ pub(super) async fn prepare(
             .iter()
             .any(|m| target.build.includes_dense(&m.role, &m.projection));
         if visible && target.build.dense_enabled() {
-            let conversation = source
-                .conversations
-                .get(&batch[0].conversation_id)
-                .ok_or_else(|| AppError::internal("publication message has no conversation"))?;
-            let title = conversation.title.clone();
+            let chat = source
+                .chats
+                .get(&batch[0].chat_id)
+                .ok_or_else(|| AppError::internal("publication message has no chat"))?;
+            let title = chat.title.clone();
             let (next, next_batch, prepared) =
                 prepare_units(reader, batch, &target.build, title).await?;
             reader = next;
@@ -352,7 +352,7 @@ pub(super) async fn prepare(
                 &mut batch,
                 target,
                 Prepared {
-                    conversation,
+                    chat,
                     texts: &prepared,
                     cache: cache.as_ref(),
                 },

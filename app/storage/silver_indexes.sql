@@ -1,20 +1,20 @@
 -- Keep context traversal and readiness counts off canonical body pages.
 CREATE INDEX IF NOT EXISTS messages_context_parent
-    ON messages(conversation_id, context_parent, ordinal) WHERE context_parent IS NOT NULL;
+    ON messages(chat_id, context_parent, ordinal) WHERE context_parent IS NOT NULL;
 CREATE INDEX IF NOT EXISTS messages_searchable_role ON messages(role)
     WHERE COALESCE(search_projection, content) <> '';
 CREATE INDEX IF NOT EXISTS messages_searchable_metadata
-    ON messages(created_at, conversation_id, role)
+    ON messages(created_at, chat_id, role)
     WHERE COALESCE(search_projection, content) <> '';
 CREATE INDEX IF NOT EXISTS messages_searchable_identity ON messages(id, role)
     WHERE COALESCE(search_projection, content) <> '';
-CREATE TRIGGER IF NOT EXISTS silver_sessions_INSERT AFTER INSERT ON sessions BEGIN
+CREATE TRIGGER IF NOT EXISTS silver_chats_INSERT AFTER INSERT ON chats BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;
-CREATE TRIGGER IF NOT EXISTS silver_sessions_UPDATE AFTER UPDATE ON sessions BEGIN
+CREATE TRIGGER IF NOT EXISTS silver_chats_UPDATE AFTER UPDATE ON chats BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;
-CREATE TRIGGER IF NOT EXISTS silver_sessions_DELETE AFTER DELETE ON sessions BEGIN
+CREATE TRIGGER IF NOT EXISTS silver_chats_DELETE AFTER DELETE ON chats BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;
 CREATE TRIGGER IF NOT EXISTS silver_messages_INSERT AFTER INSERT ON messages BEGIN
@@ -62,12 +62,12 @@ END;
 CREATE TRIGGER IF NOT EXISTS silver_claude_source_messages_DELETE AFTER DELETE ON claude_source_messages BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;
-CREATE TRIGGER IF NOT EXISTS silver_conversation_enrichment_INSERT AFTER INSERT ON conversation_enrichment BEGIN
+CREATE TRIGGER IF NOT EXISTS silver_chat_enrichment_INSERT AFTER INSERT ON chat_enrichment BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;
-CREATE TRIGGER IF NOT EXISTS silver_conversation_enrichment_UPDATE AFTER UPDATE ON conversation_enrichment BEGIN
+CREATE TRIGGER IF NOT EXISTS silver_chat_enrichment_UPDATE AFTER UPDATE ON chat_enrichment BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;
-CREATE TRIGGER IF NOT EXISTS silver_conversation_enrichment_DELETE AFTER DELETE ON conversation_enrichment BEGIN
+CREATE TRIGGER IF NOT EXISTS silver_chat_enrichment_DELETE AFTER DELETE ON chat_enrichment BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;

@@ -1,8 +1,8 @@
 //! Silver reads: thread metadata, canonical views and retained-history export.
-use super::{conversations, database, message_record, sql};
+use super::{chats, database, message_record, sql};
 #[cfg(test)]
 use super::{encode, tombstones};
-use crate::shared::protocol::{ConversationRecord, MessageRecord};
+use crate::shared::protocol::{ChatRecord, MessageRecord};
 use crate::{AppError, message_context::MessageContext, storage::Message};
 use rusqlite::Connection;
 #[cfg(test)]
@@ -11,16 +11,16 @@ use std::io::Write;
 /// One published thread's catalogue row.
 pub(crate) struct Chat {
     pub(crate) node_id: String,
-    pub(crate) conversation: ConversationRecord,
+    pub(crate) chat: ChatRecord,
 }
 
 /// Every thread of one node's silver.
-pub(crate) fn threads(connection: &Connection, node: &str) -> Result<Vec<Chat>, AppError> {
-    Ok(conversations(connection)?
+pub(crate) fn list_chats(connection: &Connection, node: &str) -> Result<Vec<Chat>, AppError> {
+    Ok(chats(connection)?
         .into_iter()
-        .map(|conversation| Chat {
+        .map(|chat| Chat {
             node_id: node.to_owned(),
-            conversation,
+            chat,
         })
         .collect())
 }
@@ -49,11 +49,11 @@ pub(crate) fn view(
         return Ok(Vec::new());
     };
     let anchor = message_record!(anchor)?;
-    let thread = anchor.conversation_id.clone();
+    let thread = anchor.chat_id.clone();
     let context = i64::from(context);
     if anchor.context == MessageContext::Linear {
         return sql::MessageWindow::builder()
-            .conversation_id(&thread)
+            .chat_id(&thread)
             .first_ordinal(anchor.ordinal.saturating_sub(context))
             .last_ordinal(anchor.ordinal.saturating_add(context))
             .build()
@@ -78,7 +78,7 @@ pub(crate) fn view(
             break;
         };
         let next = message_record!(next)?;
-        if next.conversation_id != thread || next.ordinal >= ordinal {
+        if next.chat_id != thread || next.ordinal >= ordinal {
             return Err(AppError::database_data("invalid message context parent"));
         }
         ordinal = next.ordinal;
@@ -88,7 +88,7 @@ pub(crate) fn view(
     let mut id = rows[0].id.clone();
     for _ in 0..context {
         let Some(child) = sql::FirstChild::builder()
-            .conversation_id(&thread)
+            .chat_id(&thread)
             .parent(Some(&id))
             .build()
             .query_opt(connection)
@@ -162,10 +162,10 @@ fn section<'a, W: Write>(
 }
 
 #[cfg(test)]
-/// Stream the retained history wire format: conversations, messages and tombstones.
+/// Stream the retained history wire format: chats, messages and tombstones.
 pub(crate) fn export(connection: &Connection, output: &mut impl Write) -> Result<(), AppError> {
-    let mut members = section(output, "conversations", true)?;
-    for record in conversations(connection)? {
+    let mut members = section(output, "chats", true)?;
+    for record in chats(connection)? {
         members.push(&record.id, &encode(&record)?)?;
     }
     let query = sql::NodeMessages;
@@ -181,7 +181,7 @@ pub(crate) fn export(connection: &Connection, output: &mut impl Write) -> Result
     drop(rows);
     let mut members = section(output, "tombstones", false)?;
     for tombstone in tombstones(connection)? {
-        let key = super::key(tombstone.provider, &tombstone.conversation_id);
+        let key = super::key(tombstone.provider, &tombstone.chat_id);
         members.push(&key, &encode(&tombstone)?)?;
     }
     output

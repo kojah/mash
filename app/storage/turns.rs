@@ -18,8 +18,8 @@ pub(crate) fn message_turn(
     use rusqlite::OptionalExtension;
     let row = connection
         .prepare_cached(
-            "SELECT c.provider, m.conversation_id, m.turn_id, t.conversation_id
-               FROM messages m JOIN sessions c ON c.id=m.conversation_id
+            "SELECT c.provider, m.chat_id, m.turn_id, t.chat_id
+               FROM messages m JOIN chats c ON c.id=m.chat_id
                LEFT JOIN turns t ON t.id = m.turn_id
               WHERE m.id = ?1",
         )
@@ -60,12 +60,7 @@ impl super::Storage {
             .iter_mut()
             .chain(&mut candidates.semantic)
         {
-            hit.turn_id = message_turn(
-                &self.connection,
-                hit.provider,
-                &hit.conversation_id,
-                &hit.id,
-            )?;
+            hit.turn_id = message_turn(&self.connection, hit.provider, &hit.chat_id, &hit.id)?;
         }
         Ok(())
     }
@@ -75,7 +70,7 @@ impl super::Storage {
 /// Deleting stale turns cannot delete canonical messages.
 pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppError> {
     let rows = sql::TurnSources::builder()
-        .conversation_id(chat_id)
+        .chat_id(chat_id)
         .build()
         .query_many(connection)
         .map_err(AppError::database)?;
@@ -132,7 +127,7 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
             .revision(&turn.revision)
             .boundary(boundary)
             .closed(i64::from(turn.closed))
-            .conversation_id(chat_id)
+            .chat_id(chat_id)
             .build()
             .execute(connection)
             .map_err(AppError::database)?;
@@ -143,7 +138,7 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
     for (row, turn_id) in rows.iter().zip(membership) {
         sql::SetMessageTurn::builder()
             .turn_id(turn_id)
-            .conversation_id(chat_id)
+            .chat_id(chat_id)
             .id(&row.id)
             .build()
             .execute(connection)
@@ -151,7 +146,7 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
     }
     let current: BTreeSet<&str> = derived.iter().map(|turn| turn.id.as_str()).collect();
     for stale in sql::ChatTurns::builder()
-        .conversation_id(chat_id)
+        .chat_id(chat_id)
         .build()
         .query_many(connection)
         .map_err(AppError::database)?
@@ -169,7 +164,7 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
 
 /// Derive every chat's turns, after an import has restored their messages.
 pub(crate) fn derive_all(connection: &Connection) -> Result<(), AppError> {
-    for chat in sql::SessionIds
+    for chat in sql::ChatIds
         .query_many(connection)
         .map_err(AppError::database)?
     {

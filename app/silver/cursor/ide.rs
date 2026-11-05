@@ -1,5 +1,5 @@
 //! Native IDE v18 composer roots own the ordered visible bubble history.
-use super::{Conversation, HistorySource, ParsedFile, SourceIdentity, proto};
+use super::{Chat, HistorySource, ParsedFile, SourceIdentity, proto};
 use crate::{AppError, provider::Provider, role::Role, silver::records};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use prost::Message;
@@ -141,7 +141,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 })
         });
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: crate::silver::parsers::stable_id(
                 "session",
                 &[Provider::Cursor.as_str(), "ide", id],

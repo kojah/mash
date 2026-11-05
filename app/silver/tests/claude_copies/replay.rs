@@ -60,7 +60,7 @@ fn claude_replay_accepts_linked_stop_hook_summary_but_rejects_other_interruption
         append_replay(&path, Some("hook"), tail, Some(&hook.to_string()));
         let parsed = parse_claude(&path);
         if valid {
-            assert_eq!(parsed.unwrap().conversation.unwrap().messages.len(), 5);
+            assert_eq!(parsed.unwrap().chat.unwrap().messages.len(), 5);
             let rows = fs::read_to_string(&path).unwrap();
             let last = rows.rfind("answer sentinel").unwrap();
             let mut conflict = rows.clone();
@@ -76,7 +76,7 @@ fn claude_replay_accepts_linked_stop_hook_summary_but_rejects_other_interruption
             );
             fs::write(&path, format!("{rows}{{broken\n")).unwrap();
             let malformed = parse_claude(&path).unwrap();
-            assert!(malformed.conversation.is_none());
+            assert!(malformed.chat.is_none());
             assert_eq!(malformed.malformed_records, 1);
         } else {
             assert!(
@@ -239,7 +239,7 @@ fn claude_compaction_replay_keeps_archived_context_copies_and_checkpointed_survi
     original(&archive);
     fs::copy(&archive, &current).unwrap();
     append_replay(&current, Some("tail"), "tail", None);
-    let parsed = parse_claude(&current).unwrap().conversation.unwrap();
+    let parsed = parse_claude(&current).unwrap().chat.unwrap();
     assert_eq!(
         parsed.messages.len(),
         5,
@@ -313,7 +313,7 @@ fn claude_replay_requires_uninterrupted_native_boundary_and_matching_tail() {
     append_replay(&path, Some("tail"), "tail", Some("{broken"));
     let incomplete = parse_claude(&path).unwrap();
     assert!(
-        incomplete.conversation.is_none(),
+        incomplete.chat.is_none(),
         "corruption cannot prove replay ancestry"
     );
     assert_eq!(incomplete.malformed_records, 1);

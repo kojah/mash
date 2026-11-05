@@ -1,8 +1,6 @@
 //! Codex paginated history: read-only `thread_history_1.sqlite` + `state_5.sqlite`.
 //! The metadata database is a documented sibling dependency, never a write target.
-use super::{
-    Conversation, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, sqlite_source,
-};
+use super::{Chat, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, sqlite_source};
 use crate::{AppError, provider::Provider};
 use rusqlite::{Connection, OptionalExtension};
 use std::{
@@ -216,7 +214,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         })?;
     }
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: session.into(),
             provider: Provider::Codex,
             source: source.clone(),

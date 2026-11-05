@@ -46,7 +46,7 @@ pub(crate) struct Storage {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub(crate) struct Counts {
-    pub(crate) conversations: u64,
+    pub(crate) chats: u64,
     pub(crate) messages: u64,
     pub(crate) searchable_messages: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -66,8 +66,7 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) id: String,
-    #[serde(rename = "chat_id")]
-    pub(crate) conversation_id: String,
+    pub(crate) chat_id: String,
     pub(crate) provider: crate::provider::Provider,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) turn_id: Option<String>,
@@ -124,7 +123,7 @@ impl MessageContent {
 }
 
 #[derive(Default)]
-pub(crate) struct ConversationChange {
+pub(crate) struct ChatChange {
     pub(crate) unchanged: bool,
     pub(crate) tombstoned: bool,
     pub(crate) changed_message_ids: Vec<String>,

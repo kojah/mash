@@ -51,7 +51,7 @@ impl Storage {
             .map(|row| {
                 let provider: crate::provider::Provider = row.provider.parse()?;
                 Ok(Chat {
-                    conversation_id: row.id,
+                    chat_id: row.id,
                     provider,
                     node_id: node.into(),
                     metadata: ChatMetadata {

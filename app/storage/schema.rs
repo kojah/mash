@@ -5,7 +5,7 @@ use crate::AppError;
 use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 61;
+pub(crate) const SCHEMA_VERSION: i64 = 62;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -64,12 +64,7 @@ pub(crate) fn unsupported(version: i64) -> AppError {
 pub(super) fn install_publication_triggers(connection: &Connection) -> Result<(), AppError> {
     let mut statements = String::new();
     // Publication journals canonical agent history; turns are derived on receipt.
-    for table in [
-        "sessions",
-        "messages",
-        "tombstones",
-        "conversation_enrichment",
-    ] {
+    for table in ["chats", "messages", "tombstones", "chat_enrichment"] {
         for operation in ["INSERT", "UPDATE", "DELETE"] {
             let references = match operation {
                 "INSERT" => vec!["NEW"],
@@ -78,14 +73,14 @@ pub(super) fn install_publication_triggers(connection: &Connection) -> Result<()
             };
             let mut changes = String::new();
             for reference in &references {
-                let id = if table == "sessions" {
+                let id = if table == "chats" {
                     format!("{reference}.id")
                 } else {
-                    format!("{reference}.conversation_id")
+                    format!("{reference}.chat_id")
                 };
                 write!(changes,
                     "INSERT INTO main.shared_changes SELECT {id},revision FROM main.shared_publication WHERE singleton=1 AND {id} IS NOT NULL
-                     ON CONFLICT(conversation_id) DO UPDATE SET revision=excluded.revision;"
+                     ON CONFLICT(chat_id) DO UPDATE SET revision=excluded.revision;"
                 ).map_err(|_|AppError::internal("format publication trigger"))?;
             }
             write!(

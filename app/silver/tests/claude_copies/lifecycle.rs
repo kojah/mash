@@ -16,7 +16,7 @@ fn claude_renaming_a_contribution_preserves_native_ids_and_context() {
         ],
     );
     transcript(&duplicate, &[("common", None, "common sentinel")]);
-    let parsed = parse_claude(&original).unwrap().conversation.unwrap();
+    let parsed = parse_claude(&original).unwrap().chat.unwrap();
     let database = directory.path().join("index.sqlite3");
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(&root)).unwrap();

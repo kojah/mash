@@ -283,8 +283,8 @@ impl Store {
         self.silver.nodes(group)
     }
 
-    /// Fingerprint and message count per conversation, for duplicate accounting.
-    async fn fingerprinted_conversations(
+    /// Fingerprint and message count per chat, for duplicate accounting.
+    async fn fingerprinted_chats(
         &self,
         identity: &Identity,
     ) -> Result<std::collections::BTreeMap<String, (String, u64)>, AppError> {
@@ -292,8 +292,8 @@ impl Store {
             let mut counts = std::collections::BTreeMap::new();
             let mut statement = connection
                 .prepare(
-                    "SELECT conversation_id, COUNT(*) FROM messages
-                     GROUP BY conversation_id",
+                    "SELECT chat_id, COUNT(*) FROM messages
+                     GROUP BY chat_id",
                 )
                 .map_err(AppError::database)?;
             let rows = statement
@@ -318,7 +318,7 @@ impl Store {
         .await
     }
 
-    /// Count conversations another node already holds with the same content.
+    /// Count chats another node already holds with the same content.
     pub(crate) async fn fingerprint_report(
         &self,
         group: &str,
@@ -330,7 +330,7 @@ impl Store {
         let mut per_node = Vec::new();
         for node in &nodes {
             let identity = silver_store::node_identity(group, node);
-            let fingerprints = self.fingerprinted_conversations(&identity).await?;
+            let fingerprints = self.fingerprinted_chats(&identity).await?;
             for (id, (fingerprint, messages)) in &fingerprints {
                 let copy = copies
                     .entry((id.clone(), fingerprint.clone()))
@@ -351,22 +351,22 @@ impl Store {
                 .count();
             summaries.push(crate::shared::NodeFingerprintSummary {
                 node_id: node,
-                conversations: u64::try_from(fingerprints.len()).unwrap_or(u64::MAX),
+                chats: u64::try_from(fingerprints.len()).unwrap_or(u64::MAX),
                 duplicated: u64::try_from(duplicated).unwrap_or(u64::MAX),
             });
         }
-        let mut duplicated_conversations = 0u64;
+        let mut duplicated_chats = 0u64;
         let mut redundant_copies = 0u64;
         let mut redundant_messages = 0u64;
         for (count, messages) in copies.values().filter(|(count, _)| *count > 1) {
-            duplicated_conversations += 1;
+            duplicated_chats += 1;
             let extra = count - 1;
             redundant_copies += extra;
             redundant_messages += extra.saturating_mul(*messages);
         }
         let dimensions = u64::try_from(dimensions).unwrap_or(0);
         Ok(crate::shared::FingerprintReport {
-            duplicated_conversations,
+            duplicated_chats,
             redundant_copies,
             redundant_messages,
             duplicate_vector_bytes: redundant_messages
@@ -480,7 +480,7 @@ impl Store {
                 revision: head.revision,
                 last_synced_at: head.last_synced_at.clone(),
                 last_updated_at: head.last_updated_at.clone(),
-                conversations: i64::try_from(counts.conversations).unwrap_or(i64::MAX),
+                chats: i64::try_from(counts.chats).unwrap_or(i64::MAX),
                 messages: i64::try_from(counts.messages).unwrap_or(i64::MAX),
             });
         }
@@ -560,7 +560,7 @@ impl Store {
                 wanted.entry(node.clone()).or_default().insert((
                     hit.id.clone(),
                     hit.provider,
-                    hit.conversation_id.clone(),
+                    hit.chat_id.clone(),
                 ));
             }
         }
@@ -613,15 +613,15 @@ impl Store {
             let scope = silver_store::node_identity(&identity.group_id, &node);
             threads.extend(
                 self.read(&scope, move |connection| {
-                    silver_store::read::threads(connection, &node)
+                    silver_store::read::list_chats(connection, &node)
                 })
                 .await?,
             );
         }
         for thread in threads {
-            let row = thread.conversation;
+            let row = thread.chat;
             collector.push(crate::chat_catalog::Chat {
-                conversation_id: row.id.clone(),
+                chat_id: row.id.clone(),
                 provider: row.provider,
                 node_id: thread.node_id,
                 metadata: crate::search_results::ChatMetadata {

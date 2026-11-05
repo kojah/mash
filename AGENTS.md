@@ -16,7 +16,7 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   neither views store may be certified against history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-views --full`,
   `serve --replay-views`).
-- Model agent history directly as sessions, messages, turns, and branch ancestry.
+- Model agent history directly as chats, messages, turns, and branch ancestry.
   Turns are derived from silver after every write, never archived or published.
   Keep message identity independent of display order and use stable message IDs
   for branch ancestry. Do not introduce a generic object model, external content

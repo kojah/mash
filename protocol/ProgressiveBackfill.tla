@@ -4,7 +4,7 @@ EXTENDS Naturals, FiniteSets
 \* PARTIALLY IMPLEMENTED contract. The manifest transfer, durable baseline
 \* membership and completion check exist in /v1/sync and the sync catalog.
 \* Version ordering, tombstone dominance and journal pruning are not implemented.
-\* Frozen baseline R=1 has two complete conversations. Live revision 2 edits a;
+\* Frozen baseline R=1 has two complete chats. Live revision 2 edits a;
 \* revision 3 deletes a. Every batch is independent.
 \* Source revisions are application ordering, not timestamps or silver revisions.
 CONSTANTS GuardVersions, KeepTombstones, EarlyFinish, SparseAck
@@ -99,7 +99,7 @@ FinishBackfill ==
                    certified, pending, phase, ack, journal, stable>>
 
 \* Baseline coverage and contiguous live coverage are distinct from the
-\* highest per-conversation version. Retain all source changes across holes.
+\* highest per-chat version. Retain all source changes across holes.
 CoveredThrough(r) == complete /\
     \A b \in {"live-2", "live-3"}: Version[b] <= r => b \in published
 Acknowledge ==

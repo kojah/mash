@@ -72,16 +72,16 @@ impl Store {
         let mut writer = Writer::new(&self.views, identity, Some((models, embeddings)));
         for (id, fingerprint) in &fingerprints {
             let chat = id.clone();
-            let (conversation, messages) = self
+            let (chat, messages) = self
                 .read(identity, move |connection| {
                     Ok((
-                        silver_store::conversation(connection, &chat)?
+                        silver_store::chat(connection, &chat)?
                             .ok_or_else(|| AppError::internal("silver chat disappeared"))?,
-                        silver_store::thread_messages(connection, &chat)?,
+                        silver_store::chat_messages(connection, &chat)?,
                     ))
                 })
                 .await?;
-            let built = writer.write_chat(&conversation, &messages).await?;
+            let built = writer.write_chat(&chat, &messages).await?;
             node.projections.insert(
                 id.clone(),
                 ProjectionEvidence {

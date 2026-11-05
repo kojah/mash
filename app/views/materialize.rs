@@ -1,6 +1,6 @@
 //! Silver projection and embedding shared by direct and server workflows.
 //! Callers own silver snapshots, mutation admission and final certification.
-use super::documents::{ConversationRecord, EmbeddingInput, MessageRecord};
+use super::documents::{ChatRecord, EmbeddingInput, MessageRecord};
 use super::qdrant::{Documents, Store};
 use super::scope::Scope;
 use super::shared::{self as embedding, Build};
@@ -39,11 +39,11 @@ impl<'a> Writer<'a> {
         }
     }
 
-    /// Input is canonical silver in conversation order. Hidden rows still define
+    /// Input is canonical silver in chat order. Hidden rows still define
     /// inference batch boundaries, which can affect quantized model output.
     pub(crate) async fn write_chat(
         &mut self,
-        conversation: &ConversationRecord,
+        chat: &ChatRecord,
         messages: &[MessageRecord],
     ) -> Result<ChatBuild, AppError> {
         let mut units = super::units::Stream::default();
@@ -51,7 +51,7 @@ impl<'a> Writer<'a> {
         let mut expected = 0;
         for batch in messages.chunks(embedding::BATCH_ROWS) {
             let rows = batch.to_vec();
-            let title = conversation.title.clone();
+            let title = chat.title.clone();
             let plan = self.store.build().clone();
             let (next, rows, prepared) = crate::blocking(move || {
                 let mut prepared = Vec::new();
@@ -59,7 +59,7 @@ impl<'a> Writer<'a> {
                     prepared.push(units.prepare(
                         &plan,
                         super::units::Input {
-                            chat: &message.conversation_id,
+                            chat: &message.chat_id,
                             id: &message.id,
                             ordinal: message.ordinal,
                             context: &message.context,
@@ -78,7 +78,7 @@ impl<'a> Writer<'a> {
                 .zip(&prepared)
                 .filter_map(|(message, text)| {
                     text.as_deref().map(|text| EmbeddingInput {
-                        provider: conversation.provider,
+                        provider: chat.provider,
                         anchor: &message.id,
                         text,
                     })
@@ -101,7 +101,7 @@ impl<'a> Writer<'a> {
                 };
                 stored += self
                     .documents
-                    .push_native(self.store, self.scope, conversation, message, fingerprint)
+                    .push_native(self.store, self.scope, chat, message, fingerprint)
                     .await?;
             }
         }

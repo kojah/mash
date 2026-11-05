@@ -29,10 +29,10 @@ class CanonicalWitnessTests(unittest.TestCase):
             connection.create_function("silver_text", 1, lambda _: "canonical text", deterministic=True)
             connection.executescript(schema.read_text())
             connection.execute(
-                "INSERT INTO sessions(id,provider) VALUES('thread','codex')"
+                "INSERT INTO chats(id,provider) VALUES('thread','codex')"
             )
             connection.execute(
-                "INSERT INTO messages(id,conversation_id,ordinal,role,content_packed) "
+                "INSERT INTO messages(id,chat_id,ordinal,role,content_packed) "
                 "VALUES('message','thread',0,'user',?)",
                 (b"opaque packed canonical bytes",),
             )
@@ -53,7 +53,7 @@ class CanonicalWitnessTests(unittest.TestCase):
     def test_storage_reports_silver_without_opening_gold(self) -> None:
         report = COST.storage(self.database)
         self.assertEqual(report["scope"], "sqlite-silver-only")
-        self.assertEqual(report["counts"]["sessions"], 1)
+        self.assertEqual(report["counts"]["chats"], 1)
         self.assertEqual(report["counts"]["messages"], 1)
         self.assertEqual(report["counts"]["turns"], 0)
         self.assertFalse(self.database.with_suffix(".views.sqlite3").exists())

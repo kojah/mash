@@ -44,7 +44,7 @@ async fn client_success_and_decode_failure_correlate_but_disabled_tracing_sends_
                         .push(headers.get(HEADER).map(|h| h.to_str().unwrap().into()));
                     Json(crate::storage::Counts {
                         searchable_user_messages: None,
-                        conversations: 3,
+                        chats: 3,
                         messages: 7,
                         searchable_messages: 7,
                         embeddings: 7,
@@ -77,7 +77,7 @@ async fn client_success_and_decode_failure_correlate_but_disabled_tracing_sends_
             .with_subscriber(tracing::subscriber::NoSubscriber::default())
             .await
             .unwrap();
-    assert_eq!(result.conversations, 3);
+    assert_eq!(result.chats, 3);
     server.abort();
     let received = headers.lock().unwrap();
     assert_eq!(received.len(), 2);

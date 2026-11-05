@@ -12,8 +12,8 @@ impl Freshness {
             .iter()
             .filter(|node| scope.includes(&node.node_id))
             .map(|node| {
-                let conversations = u64::try_from(node.conversations)
-                    .map_err(|_| AppError::shared("invalid shared conversation count"))?;
+                let chats = u64::try_from(node.chats)
+                    .map_err(|_| AppError::shared("invalid shared chat count"))?;
                 let messages = u64::try_from(node.messages)
                     .map_err(|_| AppError::shared("invalid shared message count"))?;
                 Ok(Member {
@@ -22,7 +22,7 @@ impl Freshness {
                     source_silver: node.source_silver.clone(),
                     providers: None,
                     retained: unscoped.then_some(Retained {
-                        conversations,
+                        chats,
                         messages,
                         earliest_message_at: None,
                         latest_message_at: None,

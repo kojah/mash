@@ -4,14 +4,14 @@
 \* request remains in flight across Crash; see the explicit limitation in README.
 EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS ClearBeforeInvalidate, CertifyBeforeFinish
-Items == {"session-a", "session-b"}
+Items == {"chat-a", "chat-b"}
 VARIABLES silver, settings, phase, captured, recipe, documents, remaining,
           certified, stamp, goldRecipe
 vars == <<silver, settings, phase, captured, recipe, documents, remaining,
           certified, stamp, goldRecipe>>
 
 Projection(revision, build) ==
-    [item \in Items |-> IF revision = 2 /\ item = "session-a"
+    [item \in Items |-> IF revision = 2 /\ item = "chat-a"
                        THEN 0 ELSE revision * 2 + build]
 
 Init == /\ silver = 1

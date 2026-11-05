@@ -159,8 +159,8 @@ fn assert_source_independent_views_rebuild(
 ) {
     let connection = open_silver(database);
     let silver_tables = [
-        "conversation_enrichment",
-        "sessions",
+        "chat_enrichment",
+        "chats",
         "messages",
         "turns",
         "tombstones",

@@ -73,8 +73,8 @@ async fn qdrant_flexible_lexical_search_matches_prefixes_and_typos() {
     messages[0].projection = "idemp".into();
     let file = Fixture::upload(&[
         Event::Start(Fixture::start(2)),
-        Event::Batch(Batch::Conversations {
-            records: vec![Fixture::conversation()],
+        Event::Batch(Batch::Chats {
+            records: vec![Fixture::chat()],
         }),
         Event::Batch(Batch::Messages { records: messages }),
         Event::Finish,

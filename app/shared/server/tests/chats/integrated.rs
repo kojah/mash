@@ -29,7 +29,7 @@ fn configuration(directory: &Path, service: &Service) -> Paths {
 fn local_copy(path: &Path) {
     let mut storage = Storage::open_writer(path).unwrap();
     storage
-        .replace_conversation(&crate::silver::Conversation {
+        .replace_chat(&crate::silver::Chat {
             id: "a".into(),
             provider: Provider::Codex,
             title_origin: None,
@@ -81,7 +81,7 @@ async fn contract(service: Service, token: &str) {
     }
     let initial = discover(&paths, Request::default(), false).await;
     assert_eq!(initial.chats.len(), 5);
-    assert_eq!(initial.chats[0].conversation_id, "a");
+    assert_eq!(initial.chats[0].chat_id, "a");
     assert_eq!(initial.chats[0].node_id, "first");
     assert_eq!(
         initial.chats[0].metadata.title.as_deref(),
@@ -169,7 +169,7 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .unwrap();
     let replaced = discover(paths, Request::default(), false).await;
     assert_eq!(replaced.chats.len(), 4);
-    assert!(replaced.chats.iter().all(|row| row.conversation_id != "c"));
+    assert!(replaced.chats.iter().all(|row| row.chat_id != "c"));
     assert_eq!(replaced.chats[0].node_id, "second");
     assert_eq!(
         replaced.chats[0].metadata.title.as_deref(),
@@ -204,13 +204,13 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .unwrap();
     let shared = discover(paths, Request::default(), true).await;
     assert_eq!(shared.chats.len(), 4);
-    assert!(shared.chats.iter().all(|row| row.conversation_id != "a"));
+    assert!(shared.chats.iter().all(|row| row.chat_id != "a"));
     let combined = discover(paths, Request::default(), false).await;
     assert!(
         combined
             .chats
             .iter()
-            .any(|row| row.conversation_id == "a" && row.node_id == "first")
+            .any(|row| row.chat_id == "a" && row.node_id == "first")
     );
     assert_eq!(
         service.upload(SECOND, &replacement).await.status(),
@@ -227,7 +227,7 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
             .await
             .chats
             .iter()
-            .all(|row| row.conversation_id != "a"),
+            .all(|row| row.chat_id != "a"),
         "a delayed publication cannot resurrect a tombstoned catalog entry"
     );
 }

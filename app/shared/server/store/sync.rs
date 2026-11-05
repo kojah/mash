@@ -3,7 +3,7 @@
 use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::activity::{Phase, Progress, Unit};
-use crate::shared::protocol::{Batch, ConversationRecord, Event, Indexed};
+use crate::shared::protocol::{Batch, ChatRecord, Event, Indexed};
 use crate::shared::silver_store::{self, Applied};
 use crate::views::qdrant::{NodeViews, ProjectionEvidence};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -130,7 +130,7 @@ impl Store {
             counts: self.status(&identity).await?,
             revision: applied.revision,
             removed_messages: applied.removed,
-            purged_conversations: applied.purged,
+            purged_chats: applied.purged,
             views_current: self.views_current(&identity).await?,
         })
     }
@@ -149,7 +149,7 @@ impl Store {
     }
 
     /// Current accepted source revision for this node; 0 before its first
-    /// publication. Baseline batches rebase onto it so per-conversation
+    /// publication. Baseline batches rebase onto it so per-chat
     /// ordering, not node-level staleness, decides what applies.
     pub(crate) async fn head_revision(&self, identity: &Identity) -> Result<i64, AppError> {
         Ok(self.head(identity).await?.map_or(0, |head| head.revision))
@@ -208,7 +208,7 @@ impl Store {
                 && let Some(latest) = self.views.node_views(identity).await?
                 && latest.compatible(&self.views, identity)
             {
-                for (id, chat) in latest.projections.sessions() {
+                for (id, chat) in latest.projections.chats() {
                     let scope = id.clone();
                     if views.projections.get(&scope).is_none() {
                         views.projections.insert(scope, chat.clone());
@@ -231,7 +231,7 @@ impl Store {
         // An earlier attempt may have committed silver or written points and
         // then failed before updating metadata. Its deleted set is not durable.
         self.views
-            .retain_node_conversations(identity, fingerprints.keys().cloned().collect())
+            .retain_node_chats(identity, fingerprints.keys().cloned().collect())
             .await?;
         // A duplicate snapshot resupplies every chat with its vectors.
         let supplied: BTreeSet<String> = if applied.duplicate {
@@ -289,7 +289,7 @@ impl Store {
     ) -> Result<BTreeMap<String, Written>, AppError> {
         let mut lines = std::io::BufReader::new(file.reopen().map_err(AppError::io)?).lines();
         let mut written = BTreeMap::<String, Written>::new();
-        let mut conversations = HashMap::<String, ConversationRecord>::new();
+        let mut chats = HashMap::<String, ChatRecord>::new();
         let build = self.views.build().clone();
         let mut documents = crate::views::qdrant::Documents::new(identity);
         loop {
@@ -315,26 +315,26 @@ impl Store {
                 break;
             }
             for message in batch {
-                let id = message.conversation_id.clone();
+                let id = message.chat_id.clone();
                 if !selected.contains(&id) {
                     continue;
                 }
-                if !conversations.contains_key(&id) {
+                if !chats.contains_key(&id) {
                     let chat = id.clone();
                     let record = self
                         .read(identity, move |connection| {
-                            silver_store::conversation(connection, &chat)
+                            silver_store::chat(connection, &chat)
                         })
                         .await?
                         .ok_or_else(|| AppError::internal("supplied chat has no silver"))?;
-                    conversations.insert(id.clone(), record);
+                    chats.insert(id.clone(), record);
                 }
                 let entry = written.entry(id.clone()).or_default();
                 entry.ids.push(message.id.clone());
                 entry.expected +=
                     u64::from(build.includes_dense(&message.role, &message.projection));
                 entry.embeddings += documents
-                    .push(&self.views, identity, &conversations[&id], message)
+                    .push(&self.views, identity, &chats[&id], message)
                     .await?;
                 progress.advance(1);
             }
@@ -398,7 +398,7 @@ impl Store {
             .collect();
         views.projections.retain_matching(&current);
         let head = self.head(identity).await?;
-        let synced = views.projections.sessions().count() == fingerprints.len();
+        let synced = views.projections.chats().count() == fingerprints.len();
         // A certification that finishes after a newer commit wrote every chat
         // of its own revision, but not of the head. Stamping the head would make
         // searches serve older chats as current, so it only claims the revision

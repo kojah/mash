@@ -3,8 +3,8 @@
 -- holds no retrieval artifacts. Some tables are populated by only one side:
 -- ingestion and publication state locally, shared_head on the server.
 
--- Agent sessions and their canonical messages use separate identity namespaces.
-CREATE TABLE IF NOT EXISTS sessions (
+-- Agent chats and their canonical messages use separate identity namespaces.
+CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
     provider TEXT NOT NULL CHECK (provider IN ('claude-code','codex','opencode','copilot','cursor','antigravity')),
     title TEXT,
@@ -17,22 +17,22 @@ CREATE TABLE IF NOT EXISTS sessions (
     source_fingerprint TEXT NOT NULL DEFAULT '',
     source_key TEXT,
     source_session TEXT,
-    thread_fingerprint TEXT,
+    chat_fingerprint TEXT,
     UNIQUE (provider, source_key)
 );
 CREATE TABLE IF NOT EXISTS turns (
     id TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
-    conversation_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     revision TEXT NOT NULL,
     boundary TEXT NOT NULL CHECK (boundary IN ('start', 'user_reply', 'branch', 'orphan')),
     closed INTEGER NOT NULL CHECK (closed IN (0, 1)),
     created_at INTEGER,
     updated_at INTEGER
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS turns_conversation ON turns(conversation_id);
+CREATE INDEX IF NOT EXISTS turns_chat ON turns(chat_id);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
-    conversation_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     ordinal INTEGER NOT NULL,
     role TEXT NOT NULL,
     -- NULL means linear; empty means a tree root; otherwise a stable message ID.
@@ -48,18 +48,18 @@ CREATE TABLE IF NOT EXISTS messages (
     attachments TEXT NOT NULL DEFAULT '[]',
     fingerprint TEXT NOT NULL DEFAULT ''
 );
-CREATE UNIQUE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id, ordinal);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_chat ON messages(chat_id, ordinal);
 CREATE INDEX IF NOT EXISTS messages_turn ON messages(turn_id) WHERE turn_id IS NOT NULL;
-CREATE TABLE IF NOT EXISTS conversation_enrichment (
-    conversation_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS chat_enrichment (
+    chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
     evidence TEXT NOT NULL
 ) WITHOUT ROWID;
 -- Deletion intent.
 CREATE TABLE IF NOT EXISTS tombstones (
     provider TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
     forgotten_at INTEGER NOT NULL,
-    PRIMARY KEY (provider, conversation_id)
+    PRIMARY KEY (provider, chat_id)
 );
 -- Provider replay checkpoints; local only.
 CREATE TABLE IF NOT EXISTS source_checkpoints (
@@ -96,12 +96,12 @@ CREATE TABLE IF NOT EXISTS silver_rejections (
 CREATE TABLE IF NOT EXISTS claude_sources (
     source_key TEXT PRIMARY KEY,
     source_path TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
     title TEXT,
     project TEXT,
     repository TEXT
 );
-CREATE INDEX IF NOT EXISTS claude_sources_conversation ON claude_sources(conversation_id, source_key);
+CREATE INDEX IF NOT EXISTS claude_sources_chat ON claude_sources(chat_id, source_key);
 CREATE TABLE IF NOT EXISTS claude_source_messages (
     attachments TEXT NOT NULL DEFAULT '[]',
     -- The contribution's structured tool activity, as on its canonical message.
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS shared_publication (
 INSERT OR IGNORE INTO shared_publication(singleton, instance)
 VALUES (1, lower(hex(randomblob(16))));
 CREATE TABLE IF NOT EXISTS shared_changes (
-    conversation_id TEXT PRIMARY KEY,
+    chat_id TEXT PRIMARY KEY,
     revision INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS shared_change_state (

@@ -124,7 +124,7 @@ async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_ba
 }
 use crate::{
     message_context::MessageContext,
-    shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start, View},
+    shared::protocol::{Batch, ChatRecord, Event, MessageRecord, Start, View},
     storage::{Message, MessageContent},
 };
 
@@ -184,7 +184,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
     .map(|(ordinal, context, content, projection)| MessageRecord {
         attachments: Vec::new(),
         id: format!("message-{ordinal}"),
-        conversation_id: "branch".into(),
+        chat_id: "branch".into(),
         ordinal,
         context,
         role: if projection.is_empty() {
@@ -211,8 +211,8 @@ fn snapshot(revision: i64) -> Vec<Value> {
             snapshot: true,
             forgets: Vec::new(),
         }),
-        Event::Batch(Batch::Conversations {
-            records: vec![ConversationRecord {
+        Event::Batch(Batch::Chats {
+            records: vec![ChatRecord {
                 enrichment: None,
                 id: "branch".into(),
                 provider: crate::provider::Provider::Cursor,

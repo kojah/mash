@@ -3,9 +3,7 @@ use super::*;
 
 fn seed(path: &Path) {
     let mut storage = Storage::open_writer(path).unwrap();
-    storage
-        .replace_conversation(&conversation("durable needle"))
-        .unwrap();
+    storage.replace_chat(&chat("durable needle")).unwrap();
     storage.commit_writer().unwrap();
 }
 
@@ -41,12 +39,7 @@ fn canonical_silver_reader_never_opens_or_synthesizes_gold() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(databases, ["main"]);
-    assert!(
-        reader
-            .connection
-            .execute("DELETE FROM sessions", [])
-            .is_err()
-    );
+    assert!(reader.connection.execute("DELETE FROM chats", []).is_err());
     assert_eq!(
         std::fs::read(&old_gold).unwrap(),
         b"unreadable retired gold"
@@ -98,7 +91,7 @@ fn deleting_silver_journals_the_canonical_change() {
     let before = revision(&storage);
     storage
         .connection
-        .execute("DELETE FROM sessions ", [])
+        .execute("DELETE FROM chats ", [])
         .unwrap();
     assert!(revision(&storage) > before);
     assert_eq!(storage.counts().unwrap().messages, 0);

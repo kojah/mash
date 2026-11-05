@@ -5,9 +5,9 @@ use std::path::Path;
 use rusqlite::{OptionalExtension, params};
 
 use super::generated as sql;
-use super::{ConversationChange, Storage};
+use super::{ChatChange, Storage};
 use crate::AppError;
-use crate::silver::Conversation;
+use crate::silver::Chat;
 
 struct MessageState {
     fingerprint: String,
@@ -37,44 +37,38 @@ impl Storage {
             .map_err(AppError::database)
     }
 
-    pub(crate) fn replace_conversation(
-        &mut self,
-        conversation: &Conversation,
-    ) -> Result<ConversationChange, AppError> {
-        if conversation.provider == Provider::ClaudeCode && conversation.claude_lineage.is_some() {
-            return self.replace_claude_source(conversation);
+    pub(crate) fn replace_chat(&mut self, chat: &Chat) -> Result<ChatChange, AppError> {
+        if chat.provider == Provider::ClaudeCode && chat.claude_lineage.is_some() {
+            return self.replace_claude_source(chat);
         }
-        self.replace_canonical_conversation(conversation)
+        self.replace_canonical_chat(chat)
     }
 
-    pub(super) fn replace_canonical_conversation(
-        &mut self,
-        conversation: &Conversation,
-    ) -> Result<ConversationChange, AppError> {
+    pub(super) fn replace_canonical_chat(&mut self, chat: &Chat) -> Result<ChatChange, AppError> {
         self.require_writer()?;
         let tombstoned = self
             .connection
             .query_row(
-                "SELECT 1 FROM tombstones WHERE provider = ?1 AND conversation_id = ?2",
-                params![conversation.provider, conversation.id],
+                "SELECT 1 FROM tombstones WHERE provider = ?1 AND chat_id = ?2",
+                params![chat.provider, chat.id],
                 |_| Ok(()),
             )
             .optional()
             .map_err(AppError::database)?
             .is_some();
         if tombstoned {
-            return Ok(ConversationChange {
+            return Ok(ChatChange {
                 tombstoned: true,
-                ..ConversationChange::default()
+                ..ChatChange::default()
             });
         }
 
-        let repaired_messages = self.repair_claude_source_identity(conversation)?;
+        let repaired_messages = self.repair_claude_source_identity(chat)?;
 
-        let enrichment = crate::silver::enrichment::Evidence::capture(conversation)?;
-        let source_fingerprint = conversation_fingerprint(conversation, &enrichment)?;
-        let existing_source_fingerprint = sql::SessionSourceFingerprint::builder()
-            .id(&conversation.id)
+        let enrichment = crate::silver::enrichment::Evidence::capture(chat)?;
+        let source_fingerprint = chat_fingerprint(chat, &enrichment)?;
+        let existing_source_fingerprint = sql::ChatSourceFingerprint::builder()
+            .id(&chat.id)
             .build()
             .query_opt(&self.connection)
             .map_err(AppError::database)?
@@ -82,74 +76,71 @@ impl Storage {
         if existing_source_fingerprint.as_deref() == Some(source_fingerprint.as_str()) {
             // A metadata-only migration can lose evidence while retaining the
             // same history fingerprint. Explicit replay must repair that row.
-            self.store_enrichment(&conversation.id, &enrichment)?;
-            return Ok(ConversationChange {
+            self.store_enrichment(&chat.id, &enrichment)?;
+            return Ok(ChatChange {
                 unchanged: true,
-                ..ConversationChange::default()
+                ..ChatChange::default()
             });
         }
-        let existing_messages = self.message_states(&conversation.id)?;
-        let title = conversation.title.clone().map(|mut title| {
+        let existing_messages = self.message_states(&chat.id)?;
+        let title = chat.title.clone().map(|mut title| {
             crate::redaction::private_text(&mut title);
             title
         });
-        sql::UpsertSession::builder()
-            .provider(conversation.provider.as_str())
-            .id(&conversation.id)
+        sql::UpsertChat::builder()
+            .provider(chat.provider.as_str())
+            .id(&chat.id)
             .title(title.as_deref())
-            .created_at(conversation.created_at)
-            .updated_at(conversation.updated_at)
-            .project(conversation.project.as_deref())
-            .repository(conversation.repository.as_deref())
+            .created_at(chat.created_at)
+            .updated_at(chat.updated_at)
+            .project(chat.project.as_deref())
+            .repository(chat.repository.as_deref())
             .build()
             .execute(&self.connection)
             .map_err(AppError::database)?;
-        let source_path = conversation.source.path.to_string_lossy();
-        let source_key = conversation.source.key();
-        sql::SetSessionSource::builder()
+        let source_path = chat.source.path.to_string_lossy();
+        let source_key = chat.source.key();
+        sql::SetChatSource::builder()
             .source_path(&source_path)
             .source_fingerprint(&source_fingerprint)
             .source_key(Some(&source_key))
-            .source_session(conversation.source.session.as_deref())
-            .id(&conversation.id)
+            .source_session(chat.source.session.as_deref())
+            .id(&chat.id)
             .build()
             .execute(&self.connection)
             .map_err(AppError::database)?;
 
-        self.store_enrichment(&conversation.id, &enrichment)?;
+        self.store_enrichment(&chat.id, &enrichment)?;
         let (changed_message_ids, removed_messages) =
-            self.reconcile_messages(conversation, &existing_messages)?;
+            self.reconcile_messages(chat, &existing_messages)?;
         if !changed_message_ids.is_empty() || removed_messages != 0 {
-            super::turns::derive(&self.connection, &conversation.id)?;
+            super::turns::derive(&self.connection, &chat.id)?;
         }
-        Ok(ConversationChange {
+        Ok(ChatChange {
             changed_message_ids,
             removed_messages: removed_messages + repaired_messages,
-            ..ConversationChange::default()
+            ..ChatChange::default()
         })
     }
 
-    pub(super) fn repair_claude_source_identity(
-        &mut self,
-        conversation: &Conversation,
-    ) -> Result<u64, AppError> {
-        if conversation.provider != Provider::ClaudeCode {
+    pub(super) fn repair_claude_source_identity(&mut self, chat: &Chat) -> Result<u64, AppError> {
+        if chat.provider != Provider::ClaudeCode {
             return Ok(0);
         }
         // The old parser could store a subagent under its parent's ID. Repair
         // source ownership within the writer transaction, staging every derived
         // index before deletion so an agent-first replay is also correct.
-        let source_key = conversation.source.key();
-        let displaced = sql::DisplacedSessionMessages::builder()
-            .provider(conversation.provider.as_str())
+        let source_key = chat.source.key();
+        let displaced = sql::DisplacedChatMessages::builder()
+            .provider(chat.provider.as_str())
             .source_key(Some(&source_key))
-            .id(&conversation.id)
+            .id(&chat.id)
             .build()
             .query_opt(&self.connection)
             .map_err(AppError::database)?
             .map(|row| row.messages);
         if displaced.is_some() {
-            self.remove_source(conversation.provider, &conversation.source)?;
+            self.remove_source(chat.provider, &chat.source)?;
         }
         u64::try_from(displaced.unwrap_or_default())
             .map_err(|_| AppError::internal("invalid displaced message count"))
@@ -211,7 +202,7 @@ impl Storage {
 
     fn reconcile_messages(
         &mut self,
-        conversation: &Conversation,
+        chat: &Chat,
         existing_messages: &BTreeMap<String, MessageState>,
     ) -> Result<(Vec<String>, u64), AppError> {
         let mut changed = Vec::new();
@@ -223,10 +214,10 @@ impl Storage {
             .connection
             .prepare_cached(sql::SetMessageFingerprint::QUERY)
             .map_err(AppError::database)?;
-        let removed = self.remove_missing_messages(conversation, existing_messages)?;
-        self.park_moved_ordinals(conversation, existing_messages)?;
+        let removed = self.remove_missing_messages(chat, existing_messages)?;
+        self.park_moved_ordinals(chat, existing_messages)?;
 
-        for message in conversation.messages.rows()? {
+        for message in chat.messages.rows()? {
             let mut message = message?;
             crate::redaction::private_message(&mut message);
             let fingerprint = message_fingerprint(&message);
@@ -242,7 +233,7 @@ impl Storage {
             let metadata = message.tools.encode()?;
             let upsert = sql::UpsertMessage::builder()
                 .id(&message.id)
-                .conversation_id(&conversation.id)
+                .chat_id(&chat.id)
                 .ordinal(message.ordinal)
                 .role(message.role.as_str())
                 .content(&message.content)
@@ -269,10 +260,10 @@ impl Storage {
 
     fn remove_missing_messages(
         &self,
-        conversation: &Conversation,
+        chat: &Chat,
         existing: &BTreeMap<String, MessageState>,
     ) -> Result<u64, AppError> {
-        let incoming = conversation
+        let incoming = chat
             .messages
             .rows()?
             .map(|message| message.map(|message| message.id.clone()))
@@ -308,7 +299,7 @@ impl Storage {
         } else {
             0
         };
-        let existing = sql::SessionsForPurge::builder()
+        let existing = sql::ChatsForPurge::builder()
             .provider(provider.as_str())
             .build()
             .query_many(&self.connection)
@@ -334,7 +325,7 @@ impl Storage {
             {
                 continue;
             }
-            self.delete_session(&id)?;
+            self.delete_chat(&id)?;
             removed += 1;
         }
         let mut statement = self
@@ -389,7 +380,7 @@ impl Storage {
             return Ok(removed);
         }
         let source_key = source.key();
-        let id = sql::SessionBySource::builder()
+        let id = sql::ChatBySource::builder()
             .provider(provider.as_str())
             .source_key(Some(&source_key))
             .build()
@@ -399,16 +390,16 @@ impl Storage {
         let Some(id) = id else {
             return Ok(false);
         };
-        self.remove_canonical_conversation(&id)
+        self.remove_canonical_chat(&id)
     }
 
-    pub(super) fn remove_canonical_conversation(&mut self, id: &str) -> Result<bool, AppError> {
-        self.delete_session(id)?;
+    pub(super) fn remove_canonical_chat(&mut self, id: &str) -> Result<bool, AppError> {
+        self.delete_chat(id)?;
         Ok(true)
     }
 
-    fn delete_session(&self, id: &str) -> Result<(), AppError> {
-        sql::DeleteSession::builder()
+    fn delete_chat(&self, id: &str) -> Result<(), AppError> {
+        sql::DeleteChat::builder()
             .id(id)
             .build()
             .execute(&self.connection)
@@ -421,7 +412,7 @@ impl Storage {
             .connection
             .unchecked_transaction()
             .map_err(AppError::database)?;
-        let provider = sql::SessionProvider::builder()
+        let provider = sql::ChatProvider::builder()
             .id(id)
             .build()
             .query_opt(&transaction)
@@ -434,19 +425,19 @@ impl Storage {
         };
         transaction
             .execute(
-                "INSERT INTO tombstones(provider, conversation_id, forgotten_at)
+                "INSERT INTO tombstones(provider, chat_id, forgotten_at)
                  VALUES (?1, ?2, unixepoch())
-                 ON CONFLICT(provider, conversation_id) DO NOTHING",
+                 ON CONFLICT(provider, chat_id) DO NOTHING",
                 params![provider, id],
             )
             .map_err(AppError::database)?;
-        let removed = sql::DeleteSession::builder()
+        let removed = sql::DeleteChat::builder()
             .id(id)
             .build()
             .execute(&transaction)
             .map_err(AppError::database)?;
-        sql::DeleteClaudeThreadSources::builder()
-            .conversation_id(id)
+        sql::DeleteClaudeChatSources::builder()
+            .chat_id(id)
             .build()
             .execute(&transaction)
             .map_err(AppError::database)?;
@@ -456,7 +447,7 @@ impl Storage {
 
     fn park_moved_ordinals(
         &self,
-        conversation: &Conversation,
+        chat: &Chat,
         existing: &BTreeMap<String, MessageState>,
     ) -> Result<(), AppError> {
         // Free occupied destination slots before inserting/updating stable IDs.
@@ -467,14 +458,14 @@ impl Storage {
             .map(|state| state.ordinal)
             .max()
             .unwrap_or(-1);
-        for message in conversation.messages.rows()? {
+        for message in chat.messages.rows()? {
             ordinal = ordinal.max(message?.ordinal);
         }
         let mut statement = self
             .connection
             .prepare_cached(sql::ParkMessageOrdinal::QUERY)
             .map_err(AppError::database)?;
-        for message in conversation.messages.rows()? {
+        for message in chat.messages.rows()? {
             let message = message?;
             if existing
                 .get(&message.id)
@@ -485,7 +476,7 @@ impl Storage {
                     .ok_or_else(|| AppError::database_data("message ordinal staging overflow"))?;
                 let query = sql::ParkMessageOrdinal::builder()
                     .ordinal(ordinal)
-                    .conversation_id(&conversation.id)
+                    .chat_id(&chat.id)
                     .message_id(&message.id)
                     .build();
                 statement
@@ -496,24 +487,16 @@ impl Storage {
         Ok(())
     }
 
-    fn message_states(
-        &self,
-        conversation_id: &str,
-    ) -> Result<BTreeMap<String, MessageState>, AppError> {
-        let query = sql::ConversationMessageState::builder()
-            .conversation_id(conversation_id)
-            .build();
+    fn message_states(&self, chat_id: &str) -> Result<BTreeMap<String, MessageState>, AppError> {
+        let query = sql::ChatMessageState::builder().chat_id(chat_id).build();
         let mut statement = self
             .connection
             .prepare_cached(query.query_str())
             .map_err(AppError::database)?;
         // Decode and fingerprint one text at a time. Collecting generated rows
-        // first would retain another full copy of the conversation's text.
+        // first would retain another full copy of the chat's text.
         statement
-            .query_map(
-                query.as_params(),
-                sql::ConversationMessageStateRow::from_row,
-            )
+            .query_map(query.as_params(), sql::ChatMessageStateRow::from_row)
             .map_err(AppError::database)?
             .map(|row| {
                 let row = row.map_err(AppError::database)?;
@@ -544,8 +527,8 @@ pub(super) fn source_is_in_reconciliation_scope(
     }
     cutoff_modified_ns.is_none_or(|cutoff| modified_ns.is_some_and(|value| value >= cutoff))
 }
-fn conversation_fingerprint(
-    conversation: &Conversation,
+fn chat_fingerprint(
+    chat: &Chat,
     enrichment: &crate::silver::enrichment::Evidence,
 ) -> Result<String, AppError> {
     let mut hasher = blake3::Hasher::new();
@@ -554,32 +537,23 @@ fn conversation_fingerprint(
         &serde_json::to_string(enrichment)
             .map_err(|_| AppError::internal("serialize silver enrichment evidence"))?,
     );
-    update_hash(&mut hasher, conversation.provider.as_str());
-    update_hash(&mut hasher, &conversation.id);
-    update_hash(&mut hasher, &conversation.source.key());
+    update_hash(&mut hasher, chat.provider.as_str());
+    update_hash(&mut hasher, &chat.id);
+    update_hash(&mut hasher, &chat.source.key());
+    update_hash(&mut hasher, chat.project.as_deref().unwrap_or_default());
+    update_hash(&mut hasher, chat.repository.as_deref().unwrap_or_default());
+    update_hash(&mut hasher, chat.title.as_deref().unwrap_or_default());
     update_hash(
         &mut hasher,
-        conversation.project.as_deref().unwrap_or_default(),
+        &chat.created_at.unwrap_or_default().to_string(),
     );
     update_hash(
         &mut hasher,
-        conversation.repository.as_deref().unwrap_or_default(),
-    );
-    update_hash(
-        &mut hasher,
-        conversation.title.as_deref().unwrap_or_default(),
-    );
-    update_hash(
-        &mut hasher,
-        &conversation.created_at.unwrap_or_default().to_string(),
-    );
-    update_hash(
-        &mut hasher,
-        &conversation.updated_at.unwrap_or_default().to_string(),
+        &chat.updated_at.unwrap_or_default().to_string(),
     );
     let mut seen = BTreeSet::new();
     let mut previous = -1;
-    for message in conversation.messages.rows()? {
+    for message in chat.messages.rows()? {
         let message = message?;
         if message.id.is_empty()
             || message.ordinal <= previous

@@ -745,7 +745,7 @@ fn backfill_members(events: &[Event]) -> Result<Vec<wire::BackfillMember>, AppEr
     let mut members = std::collections::BTreeMap::new();
     for event in events {
         match event {
-            Event::Batch(protocol::Batch::Conversations { records }) => {
+            Event::Batch(protocol::Batch::Chats { records }) => {
                 for record in records {
                     members.insert(record.id.clone(), wire::member_digest(record)?);
                 }
@@ -753,8 +753,8 @@ fn backfill_members(events: &[Event]) -> Result<Vec<wire::BackfillMember>, AppEr
             Event::Batch(protocol::Batch::Tombstones { records }) => {
                 for record in records {
                     members.insert(
-                        record.conversation_id.clone(),
-                        wire::tombstone_member_digest(&record.conversation_id),
+                        record.chat_id.clone(),
+                        wire::tombstone_member_digest(&record.chat_id),
                     );
                 }
             }
@@ -766,10 +766,7 @@ fn backfill_members(events: &[Event]) -> Result<Vec<wire::BackfillMember>, AppEr
     }
     Ok(members
         .into_iter()
-        .map(|(conversation_id, digest)| wire::BackfillMember {
-            conversation_id,
-            digest,
-        })
+        .map(|(chat_id, digest)| wire::BackfillMember { chat_id, digest })
         .collect())
 }
 
@@ -832,10 +829,10 @@ pub(crate) fn scoped_operation_id(kind: &str, config: &SharedConfig, digest: &st
     format!("{kind}:{}:{}:{digest}", config.group_id, config.node_id)
 }
 
-/// How many conversations and decoded bytes one baseline batch may carry.
+/// How many chats and decoded bytes one baseline batch may carry.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BackfillLimits {
-    pub(crate) conversations: usize,
+    pub(crate) chats: usize,
     pub(crate) decoded_bytes: u64,
 }
 
@@ -845,7 +842,7 @@ impl Default for BackfillLimits {
         // per-operation transaction, fsync, Qdrant flush and certification.
         // The cost is coarser resume granularity.
         Self {
-            conversations: 512,
+            chats: 512,
             decoded_bytes: 4 * 1024 * 1024,
         }
     }
@@ -913,8 +910,8 @@ fn entry<'a>(groups: &'a mut std::collections::BTreeMap<String, Group>, id: &str
 }
 
 /// Split a frozen batch into independently publishable commits: whole
-/// conversations, most-recently-updated first, packed to the byte and
-/// conversation targets. A conversation is never split across batches.
+/// chats, most-recently-updated first, packed to the byte and
+/// chat targets. A chat is never split across batches.
 #[allow(
     clippy::too_many_lines,
     reason = "grouping, ordering, packing and manifest assembly in one pure planner"
@@ -936,21 +933,19 @@ pub(crate) fn plan_backfill(
     let mut groups: std::collections::BTreeMap<String, Group> = std::collections::BTreeMap::new();
     for event in events {
         match event {
-            Event::Batch(protocol::Batch::Conversations { records }) => {
+            Event::Batch(protocol::Batch::Chats { records }) => {
                 for record in records {
                     let updated_at = record.updated_at.unwrap_or(0);
                     let group = entry(&mut groups, &record.id);
                     group.updated_at = group.updated_at.max(updated_at);
-                    group
-                        .events
-                        .push(Event::Batch(protocol::Batch::Conversations {
-                            records: vec![record],
-                        }));
+                    group.events.push(Event::Batch(protocol::Batch::Chats {
+                        records: vec![record],
+                    }));
                 }
             }
             Event::Batch(protocol::Batch::Messages { records }) => {
                 for record in records {
-                    entry(&mut groups, &record.conversation_id)
+                    entry(&mut groups, &record.chat_id)
                         .events
                         .push(Event::Batch(protocol::Batch::Messages {
                             records: vec![record],
@@ -959,7 +954,7 @@ pub(crate) fn plan_backfill(
             }
             Event::Batch(protocol::Batch::Tombstones { records }) => {
                 for record in records {
-                    entry(&mut groups, &record.conversation_id)
+                    entry(&mut groups, &record.chat_id)
                         .events
                         .push(Event::Batch(protocol::Batch::Tombstones {
                             records: vec![record],
@@ -972,7 +967,7 @@ pub(crate) fn plan_backfill(
     }
     if groups.is_empty() {
         return Err(AppError::usage(
-            "a backfill batch must carry at least one conversation",
+            "a backfill batch must carry at least one chat",
         ));
     }
     let mut ordered = groups.into_values().collect::<Vec<_>>();
@@ -981,7 +976,7 @@ pub(crate) fn plan_backfill(
 
     let mut batches = Vec::new();
     let mut current = Vec::new();
-    let mut conversations = 0usize;
+    let mut chats = 0usize;
     let mut decoded = 0u64;
     let flush = |events: Vec<Event>, batches: &mut Vec<PlannedBatch>| -> Result<(), AppError> {
         if events.is_empty() {
@@ -996,21 +991,21 @@ pub(crate) fn plan_backfill(
         let group_encoded =
             wire::encode_publication(&group.events, wire::DEFAULT_MAX_DECODED_BYTES)?;
         let group_bytes = group_encoded.decoded_bytes;
-        let over_limit = conversations + 1 > limits.conversations
-            || decoded.saturating_add(group_bytes) > limits.decoded_bytes;
+        let over_limit =
+            chats + 1 > limits.chats || decoded.saturating_add(group_bytes) > limits.decoded_bytes;
         if !current.is_empty() && over_limit {
             flush(std::mem::take(&mut current), &mut batches)?;
-            conversations = 0;
+            chats = 0;
             decoded = 0;
         }
         current.extend(group.events);
-        conversations += 1;
+        chats += 1;
         decoded = decoded.saturating_add(group_bytes);
     }
     flush(current, &mut batches)?;
     if batches.is_empty() {
         return Err(AppError::usage(
-            "a backfill batch must carry at least one conversation",
+            "a backfill batch must carry at least one chat",
         ));
     }
 
@@ -1018,8 +1013,8 @@ pub(crate) fn plan_backfill(
         .iter()
         .flat_map(|batch| batch.members.iter().cloned())
         .collect::<Vec<_>>();
-    members.sort_by(|a, b| a.conversation_id.cmp(&b.conversation_id));
-    members.dedup_by(|a, b| a.conversation_id == b.conversation_id);
+    members.sort_by(|a, b| a.chat_id.cmp(&b.chat_id));
+    members.dedup_by(|a, b| a.chat_id == b.chat_id);
     let (manifest_piece, manifest_digest, manifest_bytes) = encode_backfill_manifest(&members)?;
 
     Ok(BackfillPlan {
@@ -1233,7 +1228,7 @@ async fn install_backfill_manifest(
                 baseline_revision: plan.baseline_revision,
                 views_fingerprint: views_fingerprint(&plan.start),
                 manifest_digest: plan.manifest_digest.clone(),
-                total_conversations: plan.members.len() as u64,
+                total_chats: plan.members.len() as u64,
                 decoded_bytes: plan.manifest_bytes,
             })),
         },
@@ -1351,7 +1346,7 @@ fn indexed(revision: i64, views_current: bool) -> protocol::Indexed {
         counts: crate::storage::Counts::default(),
         revision,
         removed_messages: 0,
-        purged_conversations: 0,
+        purged_chats: 0,
         views_current,
     }
 }
@@ -1371,8 +1366,8 @@ mod tests {
     use super::*;
 
     fn chat(id: &str, updated_at: i64) -> Event {
-        Event::Batch(crate::shared::protocol::Batch::Conversations {
-            records: vec![crate::shared::protocol::ConversationRecord {
+        Event::Batch(crate::shared::protocol::Batch::Chats {
+            records: vec![crate::shared::protocol::ChatRecord {
                 enrichment: None,
                 id: id.into(),
                 provider: crate::provider::Provider::Codex,
@@ -1398,26 +1393,26 @@ mod tests {
     }
 
     #[test]
-    fn the_planner_splits_whole_conversations_newest_first() {
+    fn the_planner_splits_whole_chats_newest_first() {
         let events = || vec![chat("old", 10), chat("new", 30), chat("mid", 20)];
         let limits = BackfillLimits {
-            conversations: 2,
+            chats: 2,
             decoded_bytes: 1024 * 1024,
         };
         let plan = plan_backfill(start(), events(), limits).unwrap();
         assert_eq!(plan.batches.len(), 2, "three chats at two per batch");
-        // Membership is identified by conversation id; recency decides order.
+        // Membership is identified by chat id; recency decides order.
         assert_eq!(
             plan.batches[0]
                 .members
                 .iter()
-                .map(|member| member.conversation_id.as_str())
+                .map(|member| member.chat_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["mid", "new"],
             "the newest two conversations fill the first batch"
         );
         assert_eq!(
-            plan.batches[1].members[0].conversation_id, "old",
+            plan.batches[1].members[0].chat_id, "old",
             "the oldest conversation is sent last"
         );
         assert_eq!(plan.members.len(), 3, "manifest covers every conversation");
@@ -1438,11 +1433,11 @@ mod tests {
     }
 
     #[test]
-    fn the_planner_never_splits_a_conversation_across_batches() {
-        // Two conversations forced into separate batches by the byte target.
+    fn the_planner_never_splits_a_chat_across_batches() {
+        // Two chats forced into separate batches by the byte target.
         let events = vec![
-            Event::Batch(crate::shared::protocol::Batch::Conversations {
-                records: vec![crate::shared::protocol::ConversationRecord {
+            Event::Batch(crate::shared::protocol::Batch::Chats {
+                records: vec![crate::shared::protocol::ChatRecord {
                     enrichment: None,
                     id: "big".into(),
                     provider: crate::provider::Provider::Codex,
@@ -1457,7 +1452,7 @@ mod tests {
                 records: vec![crate::shared::protocol::MessageRecord {
                     attachments: Vec::new(),
                     id: "big-1".into(),
-                    conversation_id: "big".into(),
+                    chat_id: "big".into(),
                     ordinal: 0,
                     context: crate::message_context::MessageContext::Linear,
                     role: crate::role::Role::User,
@@ -1475,7 +1470,7 @@ mod tests {
             start(),
             events,
             BackfillLimits {
-                conversations: 128,
+                chats: 128,
                 decoded_bytes: 1024,
             },
         )
@@ -1484,15 +1479,10 @@ mod tests {
         let big = plan
             .batches
             .iter()
-            .find(|batch| {
-                batch
-                    .members
-                    .iter()
-                    .any(|member| member.conversation_id == "big")
-            })
+            .find(|batch| batch.members.iter().any(|member| member.chat_id == "big"))
             .expect("big conversation present");
-        // The conversation record and its message travel together.
-        let bound = crate::shared::protocol::ConversationRecord {
+        // The chat record and its message travel together.
+        let bound = crate::shared::protocol::ChatRecord {
             enrichment: None,
             id: "big".into(),
             provider: crate::provider::Provider::Codex,
@@ -1512,7 +1502,7 @@ mod tests {
         );
     }
 
-    /// One publication spool with a conversation record.
+    /// One publication spool with a chat record.
     fn spool(instance: &str) -> tempfile::NamedTempFile {
         use std::io::Write as _;
         let file = tempfile::NamedTempFile::new().unwrap();
@@ -1526,7 +1516,7 @@ mod tests {
             snapshot: true,
             forgets: Vec::new(),
         };
-        let record = crate::shared::protocol::ConversationRecord {
+        let record = crate::shared::protocol::ChatRecord {
             enrichment: None,
             id: "reuse-chat".into(),
             provider: crate::provider::Provider::Codex,
@@ -1538,7 +1528,7 @@ mod tests {
         };
         for event in [
             Event::Start(start),
-            Event::Batch(crate::shared::protocol::Batch::Conversations {
+            Event::Batch(crate::shared::protocol::Batch::Chats {
                 records: vec![record],
             }),
             Event::Finish,

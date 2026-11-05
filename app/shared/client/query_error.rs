@@ -33,8 +33,8 @@ pub(super) async fn read(mut response: reqwest::Response) -> Option<AppError> {
         "query may only read; ATTACH and pragma are not allowed" => {
             "shared query may only read; ATTACH and pragma are not allowed"
         }
-        "this target cannot group by role or conversation" => {
-            "shared query cannot group this target by role or conversation"
+        "this target cannot group by role or chat" => {
+            "shared query cannot group this target by role or chat"
         }
         "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict" => {
             "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict"

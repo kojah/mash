@@ -26,7 +26,7 @@ fn event_only_claude_sources_remove_old_contributions_and_keep_restart_checkpoin
         assert_eq!(summary.checkpoint_skipped_sources, u64::from(restart));
         storage.commit_writer().unwrap();
         assert_eq!(storage.counts().unwrap().messages, 0);
-        assert_eq!(storage.counts().unwrap().conversations, 0);
+        assert_eq!(storage.counts().unwrap().chats, 0);
         assert!(
             storage
                 .source_checkpoint_matches(
@@ -45,36 +45,33 @@ fn claude_parent_and_agents_keep_independent_histories_and_checkpoints() {
         let directory = tempfile::tempdir().unwrap();
         let parent_path = directory.path().join("parent.jsonl");
         write_claude_session(&parent_path, "session", "parent sentinel");
-        let parent = parse_claude(&parent_path).unwrap().conversation.unwrap();
+        let parent = parse_claude(&parent_path).unwrap().chat.unwrap();
         let mut agents = Vec::new();
         for agent in ["alpha", "beta"] {
             let path = directory.path().join(format!("agent-{agent}.jsonl"));
             fs::write(&path, format!(
                 "{{\"type\":\"user\",\"sessionId\":\"session\",\"agentId\":\"{agent}\",\"isSidechain\":true,\"uuid\":\"{agent}-message\",\"message\":{{\"role\":\"user\",\"content\":\"{agent} sentinel\"}}}}\n"
             )).unwrap();
-            agents.push(parse_claude(&path).unwrap().conversation.unwrap());
+            agents.push(parse_claude(&path).unwrap().chat.unwrap());
         }
         assert_ne!(parent.id, agents[0].id);
         assert_ne!(agents[0].id, agents[1].id);
         let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
         // Emulate the old parser: the agent occupied its parent's session ID.
-        let mut legacy = parse_claude(&agents[0].source.path)
-            .unwrap()
-            .conversation
-            .unwrap();
+        let mut legacy = parse_claude(&agents[0].source.path).unwrap().chat.unwrap();
         legacy.id = parent.id.clone();
-        storage.replace_conversation(&legacy).unwrap();
-        let mut conversations = vec![parent, agents.remove(0), agents.remove(0)];
+        storage.replace_chat(&legacy).unwrap();
+        let mut chats = vec![parent, agents.remove(0), agents.remove(0)];
         if reverse {
-            conversations.reverse();
+            chats.reverse();
         }
-        for conversation in &conversations {
-            storage.replace_conversation(conversation).unwrap();
+        for chat in &chats {
+            storage.replace_chat(chat).unwrap();
         }
-        assert_eq!(storage.counts().unwrap().conversations, 3);
+        assert_eq!(storage.counts().unwrap().chats, 3);
         assert_eq!(storage.counts().unwrap().messages, 3);
-        for conversation in &conversations {
-            let message = &conversation.messages.inline()[0];
+        for chat in &chats {
+            let message = &chat.messages.inline()[0];
             assert_eq!(
                 storage.view(&message.id, 0).unwrap()[0].content,
                 message.content
@@ -94,7 +91,7 @@ fn claude_parent_and_agents_keep_independent_histories_and_checkpoints() {
         assert_eq!(storage.counts().unwrap().messages, 3);
         fs::remove_file(directory.path().join("agent-alpha.jsonl")).unwrap();
         index(&mut storage, &options).unwrap();
-        assert_eq!(storage.counts().unwrap().conversations, 2);
+        assert_eq!(storage.counts().unwrap().chats, 2);
         assert_eq!(storage.counts().unwrap().messages, 2);
     }
 }
@@ -385,7 +382,7 @@ fn queued_jsonl_prefix_applies_once_and_later_appends_remain_pending() {
     let history = HistorySource::file(&path);
     let mut stamp = history.stamp().unwrap();
     let parsed = parse_stable_source(&history, &mut stamp, Provider::ClaudeCode.parser()).unwrap();
-    let original_id = parsed.conversation.as_ref().unwrap().messages.inline()[0]
+    let original_id = parsed.chat.as_ref().unwrap().messages.inline()[0]
         .id
         .clone();
     std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"{\"type\":\"user\",\"sessionId\":\"session\",\"uuid\":\"second\",\"message\":{\"role\":\"user\",\"content\":\"later sentinel\"}}\n").unwrap();
@@ -565,7 +562,7 @@ fn stable_retry_refreshes_discovery_and_recovers_a_single_append() {
     let parsed =
         parse_source_with_retries(&source, &mut stamp, Parser::Custom(append_once)).unwrap();
     assert_eq!(
-        parsed.conversation.unwrap().messages.inline()[0].content,
+        parsed.chat.unwrap().messages.inline()[0].content,
         "current content after discovery"
     );
     stamp.verify(&source.identity).unwrap();
@@ -614,7 +611,7 @@ fn stable_retry_reads_atomic_replacement_instead_of_retired_content() {
     let parsed =
         parse_source_with_retries(&source, &mut stamp, Parser::Custom(replace_once)).unwrap();
     assert_eq!(
-        parsed.conversation.unwrap().messages.inline()[0].content,
+        parsed.chat.unwrap().messages.inline()[0].content,
         "replacement dialogue"
     );
     stamp.verify(&source.identity).unwrap();
@@ -682,7 +679,7 @@ fn purge_requires_a_complete_provider_scan() {
 
     let mut writer = Storage::open_writer(&database).expect("writer");
     writer
-        .replace_conversation(&Conversation {
+        .replace_chat(&Chat {
             id: "old-session".to_owned(),
             provider: Provider::ClaudeCode,
             title_origin: None,
@@ -721,15 +718,15 @@ fn purge_requires_a_complete_provider_scan() {
     let incomplete = index(&mut writer, &options).expect("bounded malformed scan");
     assert_eq!(incomplete.malformed_records, 1);
     writer.commit_writer().expect("commit incomplete scan");
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
     drop(writer);
 
     fs::remove_file(claude_root.join("malformed.jsonl")).expect("remove malformed source");
     let mut writer = Storage::open_writer(&database).expect("complete writer");
     let complete = index(&mut writer, &options).expect("complete scan");
-    assert_eq!(complete.purged_conversations, 1);
+    assert_eq!(complete.purged_chats, 1);
     writer.commit_writer().expect("commit complete scan");
-    assert_eq!(writer.counts().expect("counts").conversations, 0);
+    assert_eq!(writer.counts().expect("counts").chats, 0);
 }
 
 #[test]
@@ -773,7 +770,7 @@ fn authoritative_roots_index_only_the_two_concrete_formats() {
     .expect("configured index");
 
     assert_eq!(summary.scanned_files, 3);
-    assert_eq!(writer.counts().expect("counts").conversations, 2);
+    assert_eq!(writer.counts().expect("counts").chats, 2);
     writer.commit_writer().expect("commit configured index");
     assert_eq!(
         crate::storage::test_support::projections_with_text(
@@ -822,7 +819,7 @@ fn every_authoritative_root_is_preflighted_before_ingestion_writes() {
     let error = index(&mut writer, &options).err().expect("missing root");
 
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
-    assert_eq!(writer.counts().expect("counts").conversations, 0);
+    assert_eq!(writer.counts().expect("counts").chats, 0);
     assert_eq!(writer.counts().expect("counts").messages, 0);
 }
 
@@ -847,8 +844,8 @@ fn missing_builtin_root_is_nonfatal_but_never_authorizes_purge() {
     let mut writer = Storage::open_writer(&database).expect("offline writer");
     let refresh = index(&mut writer, &options).expect("nonfatal refresh");
 
-    assert_eq!(refresh.purged_conversations, 0);
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(refresh.purged_chats, 0);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
     assert_eq!(
         crate::storage::test_support::projections_with_text(&writer, "durable", None).len(),
         1
@@ -858,8 +855,8 @@ fn missing_builtin_root_is_nonfatal_but_never_authorizes_purge() {
     fs::write(&root, "not a JSONL history").expect("replace root with unusable file");
     let mut writer = Storage::open_writer(&database).expect("wrong-type writer");
     let refresh = index(&mut writer, &options).expect("nonfatal wrong-type refresh");
-    assert_eq!(refresh.purged_conversations, 0);
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(refresh.purged_chats, 0);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
 }
 
 #[test]
@@ -872,7 +869,7 @@ fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
     let database = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&database).expect("seed writer");
     writer
-        .replace_conversation(&test_conversation(
+        .replace_chat(&test_chat(
             "existing",
             Provider::ClaudeCode,
             root.join("missing.jsonl"),
@@ -900,7 +897,7 @@ fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
     .expect_err("disappearing configured root");
 
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
     writer.commit_writer().expect("commit unchanged state");
     assert_eq!(
         crate::storage::test_support::projections_with_text(&writer, "durable", None).len(),
@@ -916,7 +913,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
     let mut writer = Storage::open_writer(&database).expect("seed writer");
     for (id, content) in [("existing", "durable sentinel"), ("forgotten", "forgotten")] {
         writer
-            .replace_conversation(&test_conversation(
+            .replace_chat(&test_chat(
                 id,
                 Provider::ClaudeCode,
                 if id == "existing" {
@@ -968,7 +965,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
 
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
     assert_eq!(summary.committed_batches, 0);
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
     assert!(
         writer
             .source_checkpoint_matches(
@@ -987,7 +984,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
             .is_empty()
     );
     let tombstone = writer
-        .replace_conversation(&test_conversation(
+        .replace_chat(&test_chat(
             "forgotten",
             Provider::ClaudeCode,
             directory.path().join("forgotten.jsonl"),
@@ -1028,7 +1025,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
     let mut writer = Storage::open_writer(&database).expect("bounded writer");
     let admitted = index_at(&mut writer, &bounded, run_started).expect("bounded index");
     assert_eq!(admitted.scanned_files, 1);
-    assert_eq!(writer.counts().expect("bounded counts").conversations, 1);
+    assert_eq!(writer.counts().expect("bounded counts").chats, 1);
     assert_eq!(writer.counts().expect("bounded counts").messages, 2);
     writer.commit_writer().expect("commit bounded index");
     assert_eq!(
@@ -1045,10 +1042,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
     let mut writer = Storage::open_writer(&database).expect("all-history writer");
     let archival = index_at(&mut writer, &all_history, run_started).expect("all-history index");
     assert_eq!(archival.scanned_files, 2);
-    assert_eq!(
-        writer.counts().expect("all-history counts").conversations,
-        2
-    );
+    assert_eq!(writer.counts().expect("all-history counts").chats, 2);
     let old_stamp = source_stamp(&old_path).expect("old source stamp");
     writer.commit_writer().expect("commit all-history index");
     drop(writer);
@@ -1062,8 +1056,8 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
     let mut writer = Storage::open_writer(&database).expect("bounded writer");
     let refresh = index_at(&mut writer, &bounded, run_started).expect("bounded refresh");
 
-    assert_eq!(refresh.purged_conversations, 1);
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(refresh.purged_chats, 1);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
     assert!(
         writer
             .source_checkpoint_matches(
@@ -1104,7 +1098,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
         ),
     ] {
         writer
-            .replace_conversation(&test_conversation(
+            .replace_chat(&test_chat(
                 id,
                 provider,
                 source_path,
@@ -1140,8 +1134,8 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
     )
     .expect("Codex-only refresh");
 
-    assert_eq!(summary.purged_conversations, 1);
-    assert_eq!(writer.counts().expect("counts").conversations, 1);
+    assert_eq!(summary.purged_chats, 1);
+    assert_eq!(writer.counts().expect("counts").chats, 1);
     assert!(
         writer
             .source_checkpoint_matches(
@@ -1156,7 +1150,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
         1
     );
     let tombstone = writer
-        .replace_conversation(&test_conversation(
+        .replace_chat(&test_chat(
             "claude-forgotten",
             Provider::ClaudeCode,
             directory.path().join("claude-forgotten.jsonl"),

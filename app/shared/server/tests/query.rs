@@ -30,7 +30,7 @@ async fn shared_typed_queries_are_group_scoped_and_reject_sql() {
     // An in-group node can be named explicitly.
     let response = service
         .request("query", FIRST)
-        .json(&json!({"node": "second", "request": {"target": "sessions"}}))
+        .json(&json!({"node": "second", "request": {"target": "chats"}}))
         .send()
         .await
         .unwrap();

@@ -59,7 +59,7 @@ fn wal_writes_change_stamps_and_rewind_keeps_surviving_message_ids() {
     let directory = tempfile::tempdir().unwrap();
     let path = write(directory.path());
     let identity = source(&path);
-    let before = conversation(&path);
+    let before = chat(&path);
     let old = crate::silver::source_stamp_for(&identity).unwrap();
     let writer = Connection::open(&path).unwrap();
     writer
@@ -68,7 +68,7 @@ fn wal_writes_change_stamps_and_rewind_keeps_surviving_message_ids() {
         )
         .unwrap();
     assert_ne!(old, crate::silver::source_stamp_for(&identity).unwrap());
-    let after = conversation(&path);
+    let after = chat(&path);
     assert_eq!(after.messages.len(), 2);
     assert_eq!(
         before.messages.inline()[0].id,

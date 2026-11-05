@@ -1,6 +1,6 @@
 use crate::role::Role;
 use crate::storage::Storage;
-use crate::storage::tests::conversation_with_messages;
+use crate::storage::tests::chat_with_messages;
 
 #[test]
 fn message_turn_updates_use_an_id_lookup_instead_of_scanning_the_chat() {
@@ -8,7 +8,7 @@ fn message_turn_updates_use_an_id_lookup_instead_of_scanning_the_chat() {
     let storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let update = crate::storage::generated::SetMessageTurn::builder()
         .turn_id(Some("turn"))
-        .conversation_id("chat")
+        .chat_id("chat")
         .id("entry")
         .build();
     let plan: Vec<String> = storage
@@ -25,9 +25,9 @@ fn message_turn_updates_use_an_id_lookup_instead_of_scanning_the_chat() {
     assert!(plan.iter().any(|step| step.contains("(id=?)")), "{plan:?}");
 }
 
-fn chat(roles: &[(&str, Role, &str)]) -> crate::silver::Conversation {
+fn chat(roles: &[(&str, Role, &str)]) -> crate::silver::Chat {
     let pairs: Vec<(&str, &str)> = roles.iter().map(|(id, _, text)| (*id, *text)).collect();
-    let mut chat = conversation_with_messages(&pairs);
+    let mut chat = chat_with_messages(&pairs);
     for (message, (_, role, _)) in chat.messages.inline_mut().iter_mut().zip(roles) {
         message.role = role.clone();
     }
@@ -60,41 +60,26 @@ fn turn_count(storage: &Storage) -> i64 {
 fn message_turn_lookup_preserves_boundaries_and_checks_search_identity() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    let conversation = chat(&[
+    let chat = chat(&[
         ("ask", Role::User, "fix the bug"),
         ("answer", Role::Assistant, "done"),
         ("skill", Role::User, "<skill> injected"),
         ("thanks", Role::User, "thanks"),
     ]);
-    storage.replace_conversation(&conversation).unwrap();
-    let lookup = |id| {
-        super::message_turn(
-            &storage.connection,
-            conversation.provider,
-            &conversation.id,
-            id,
-        )
-        .unwrap()
-    };
+    storage.replace_chat(&chat).unwrap();
+    let lookup =
+        |id| super::message_turn(&storage.connection, chat.provider, &chat.id, id).unwrap();
     let first = lookup("ask").unwrap();
     assert_eq!(lookup("answer").as_deref(), Some(first.as_str()));
     assert_ne!(lookup("thanks").unwrap(), first);
     assert_eq!(lookup("skill"), None);
     assert_eq!(lookup("deleted"), None);
-    assert!(
-        super::message_turn(
-            &storage.connection,
-            conversation.provider,
-            "wrong-chat",
-            "ask",
-        )
-        .is_err()
-    );
+    assert!(super::message_turn(&storage.connection, chat.provider, "wrong-chat", "ask",).is_err());
     assert!(
         super::message_turn(
             &storage.connection,
             crate::provider::Provider::ClaudeCode,
-            &conversation.id,
+            &chat.id,
             "ask",
         )
         .is_err()
@@ -111,7 +96,7 @@ fn indexing_stores_turns_without_reparenting_messages() {
         ("skill", Role::User, "<skill> injected"),
         ("thanks", Role::User, "thanks"),
     ]);
-    storage.replace_conversation(&first).unwrap();
+    storage.replace_chat(&first).unwrap();
     assert_eq!(turn_count(&storage), 2);
     let membership = memberships(&storage);
     assert_eq!(
@@ -137,7 +122,7 @@ fn indexing_stores_turns_without_reparenting_messages() {
 
     // Dropping the reply removes its turn, but never the surviving messages.
     first.messages.inline_mut().truncate(2);
-    storage.replace_conversation(&first).unwrap();
+    storage.replace_chat(&first).unwrap();
     assert_eq!(turn_count(&storage), 1);
     assert_eq!(
         memberships(&storage),
@@ -148,7 +133,7 @@ fn indexing_stores_turns_without_reparenting_messages() {
     );
     // Searchable counts and listings stay message-only.
     assert_eq!(storage.counts().unwrap().messages, 2);
-    assert_eq!(storage.counts().unwrap().conversations, 1);
+    assert_eq!(storage.counts().unwrap().chats, 1);
 }
 
 #[test]
@@ -159,21 +144,21 @@ fn unchanged_reindexing_leaves_silver_untouched() {
         ("ask", Role::User, "question"),
         ("answer", Role::Assistant, "reply"),
     ]);
-    storage.replace_conversation(&thread).unwrap();
+    storage.replace_chat(&thread).unwrap();
     let before = storage.silver_certificate().unwrap();
     super::derive(&storage.connection, &thread.id).unwrap();
     assert_eq!(storage.silver_certificate().unwrap(), before);
 }
 
 #[test]
-fn deleting_derived_turns_preserves_messages_and_session_deletion_cascades() {
+fn deleting_derived_turns_preserves_messages_and_chat_deletion_cascades() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    let session = chat(&[
+    let chat = chat(&[
         ("ask", Role::User, "question"),
         ("answer", Role::Assistant, "reply"),
     ]);
-    storage.replace_conversation(&session).unwrap();
+    storage.replace_chat(&chat).unwrap();
     let before = storage.view("ask", 10).unwrap();
     storage.connection.execute("DELETE FROM turns", []).unwrap();
     assert_eq!(storage.counts().unwrap().messages, 2);
@@ -183,28 +168,28 @@ fn deleting_derived_turns_preserves_messages_and_session_deletion_cascades() {
         serde_json::to_value(after).unwrap(),
         serde_json::to_value(before).unwrap()
     );
-    super::derive(&storage.connection, &session.id).unwrap();
+    super::derive(&storage.connection, &chat.id).unwrap();
     assert_eq!(turn_count(&storage), 1);
     storage
         .connection
-        .execute("DELETE FROM sessions WHERE id=?1", [&session.id])
+        .execute("DELETE FROM chats WHERE id=?1", [&chat.id])
         .unwrap();
     assert_eq!(turn_count(&storage), 0);
     assert_eq!(storage.counts().unwrap().messages, 0);
 }
 
 #[test]
-fn session_and_message_constraints_reject_invalid_history_for_every_provider() {
+fn chat_and_message_constraints_reject_invalid_history_for_every_provider() {
     for &provider in crate::provider::Provider::ALL {
         let directory = tempfile::tempdir().unwrap();
         let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-        let mut session = chat(&[("ask", Role::User, "question")]);
-        session.provider = provider;
-        storage.replace_conversation(&session).unwrap();
+        let mut chat = chat(&[("ask", Role::User, "question")]);
+        chat.provider = provider;
+        storage.replace_chat(&chat).unwrap();
         storage.commit_writer().unwrap();
         for mutation in [
-            "UPDATE sessions SET provider='unknown-provider'",
-            "UPDATE messages SET conversation_id='missing'",
+            "UPDATE chats SET provider='unknown-provider'",
+            "UPDATE messages SET chat_id='missing'",
             "UPDATE messages SET role=NULL",
             "UPDATE messages SET ordinal=NULL",
             "UPDATE messages SET context_parent=id",

@@ -32,7 +32,7 @@ pub(crate) fn serialize(
                 .chats
                 .iter()
                 .map(|thread| Chat {
-                    conversation_id: &thread.conversation_id,
+                    chat_id: &thread.chat_id,
                     provider: &thread.provider,
                     node_id: Some(&thread.node_id),
                     metadata: metadata(&thread.metadata),
@@ -63,8 +63,7 @@ struct Message<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     lexical_match: Option<&'a crate::views::matching::Evidence>,
     id: &'a str,
-    #[serde(rename = "chat_id")]
-    conversation_id: &'a str,
+    chat_id: &'a str,
     provider: &'a crate::provider::Provider,
     #[serde(skip_serializing_if = "Option::is_none")]
     turn_id: Option<&'a str>,
@@ -122,9 +121,12 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
 }
 
 #[derive(Serialize)]
+#[allow(
+    clippy::struct_field_names,
+    reason = "chat_id is the public identity field shared with search results"
+)]
 struct Chat<'a> {
-    #[serde(rename = "chat_id")]
-    conversation_id: &'a str,
+    chat_id: &'a str,
     provider: &'a crate::provider::Provider,
     node_id: Option<&'a str>,
     #[serde(flatten)]
@@ -138,7 +140,7 @@ struct Chat<'a> {
 impl<'a> From<&'a ChatHit> for Chat<'a> {
     fn from(value: &'a ChatHit) -> Self {
         Self {
-            conversation_id: &value.conversation_id,
+            chat_id: &value.chat_id,
             provider: &value.provider,
             node_id: value.node_id.as_deref(),
             metadata: metadata(&value.metadata),
@@ -187,7 +189,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         lookup: hit.lookup.as_ref(),
                         lexical_match: hit.lexical_match.as_ref(),
                         id: &hit.id,
-                        conversation_id: &hit.conversation_id,
+                        chat_id: &hit.chat_id,
                         provider: &hit.provider,
                         turn_id: hit.turn_id.as_deref(),
                         node_id: hit.node_id.as_deref(),
@@ -244,7 +246,7 @@ struct Status<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     silver: Option<&'a crate::silver::certificate::Certificate>,
     ready: bool,
-    conversations: u64,
+    chats: u64,
     messages: u64,
     searchable_messages: u64,
     embeddings: u64,
@@ -268,7 +270,7 @@ impl<'a> From<&'a StatusResponse> for Status<'a> {
             local_artifacts: &value.local_artifacts,
             silver: value.silver.as_ref(),
             ready: value.ready,
-            conversations: value.conversations,
+            chats: value.chats,
             messages: value.messages,
             searchable_messages: value.searchable_messages,
             embeddings: value.embeddings,

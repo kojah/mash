@@ -1,7 +1,5 @@
 //! `OpenCode`'s native session/project database and its two upstream message layouts.
-use super::{
-    Conversation, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, sqlite_source,
-};
+use super::{Chat, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, sqlite_source};
 use crate::{AppError, provider::Provider, role::Role};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
@@ -528,7 +526,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         legacy(&connection, source, session, &mut budget)?
     };
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: super::parsers::stable_id(
                 "conversation",
                 &[Provider::Opencode.as_str(), &source.key()],

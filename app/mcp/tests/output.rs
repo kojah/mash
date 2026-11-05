@@ -53,7 +53,7 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     let mut writer = crate::storage::Storage::open_writer(&database).unwrap();
     writer.begin_silver_scan(Provider::Codex).unwrap();
     writer
-        .replace_conversation(&crate::silver::Conversation {
+        .replace_chat(&crate::silver::Chat {
             id: "thread".into(),
             provider: Provider::Codex,
             source: crate::silver::SourceIdentity::file("fixture"),

@@ -235,7 +235,7 @@ async fn freshness(
                     id: backfill.backfill_id,
                     state: backfill.state,
                     covered: backfill.covered,
-                    total: backfill.total_conversations,
+                    total: backfill.total_chats,
                 }
             }))
         },

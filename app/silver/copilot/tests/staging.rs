@@ -62,17 +62,14 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
     let body = "privateinjectedcontext".repeat(1600);
     write_large(file.path(), &body);
 
-    let conversation = parse(file.path()).unwrap().conversation.unwrap();
-    assert!(matches!(conversation.messages, Messages::Staged(_)));
-    let scratch = conversation.messages.staging_path().unwrap().to_path_buf();
-    assert_eq!(
-        conversation.title.as_deref(),
-        Some("Human importer question")
-    );
-    assert_eq!(conversation.messages.summary().unwrap().searchable, 2);
+    let chat = parse(file.path()).unwrap().chat.unwrap();
+    assert!(matches!(chat.messages, Messages::Staged(_)));
+    let scratch = chat.messages.staging_path().unwrap().to_path_buf();
+    assert_eq!(chat.title.as_deref(), Some("Human importer question"));
+    assert_eq!(chat.messages.summary().unwrap().searchable, 2);
     let mut count = 0;
     let mut previous = String::new();
-    for row in conversation.messages.rows().unwrap() {
+    for row in chat.messages.rows().unwrap() {
         let row = row.unwrap();
         let ordinal = row.ordinal;
         assert_eq!(ordinal, count);
@@ -104,7 +101,7 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
         count += 1;
     }
     assert_eq!(count, 604);
-    drop(conversation);
+    drop(chat);
     assert!(!scratch.exists());
     std::fs::OpenOptions::new()
         .append(true)

@@ -1,5 +1,5 @@
 //! Versioned evidence for canonical metadata, separate from retrieval policy.
-use super::Conversation;
+use super::Chat;
 use crate::{AppError, provider::Provider};
 use serde::{Deserialize, Serialize};
 
@@ -67,9 +67,9 @@ impl Timestamps {
             && self.updated_at.is_some() == updated_at.is_some()
     }
 
-    fn validate_selection(&self, conversation: &Conversation) -> Result<(), AppError> {
-        if !self.matches_values(conversation.created_at, conversation.updated_at)
-            || !self.is_current_for(conversation.provider)
+    fn validate_selection(&self, chat: &Chat) -> Result<(), AppError> {
+        if !self.matches_values(chat.created_at, chat.updated_at)
+            || !self.is_current_for(chat.provider)
         {
             return Err(AppError::internal(
                 "timestamp origin does not match selected metadata",
@@ -172,14 +172,14 @@ fn native_fields(provider: Provider) -> [Option<SourceField>; 3] {
 }
 
 impl Evidence {
-    fn validate_selected_metadata(&self, conversation: &Conversation) -> Result<(), AppError> {
+    fn validate_selected_metadata(&self, chat: &Chat) -> Result<(), AppError> {
         if self.is_current()
             && self.matches_metadata_values(
-                conversation.title.as_deref(),
-                conversation.project.as_deref(),
-                conversation.repository.as_deref(),
-                conversation.created_at,
-                conversation.updated_at,
+                chat.title.as_deref(),
+                chat.project.as_deref(),
+                chat.repository.as_deref(),
+                chat.created_at,
+                chat.updated_at,
             )
         {
             Ok(())
@@ -243,24 +243,21 @@ impl Evidence {
                 })
     }
 
-    pub(crate) fn capture(conversation: &Conversation) -> Result<Self, AppError> {
+    pub(crate) fn capture(chat: &Chat) -> Result<Self, AppError> {
         let mut evidence = Self {
             version: VERSION,
-            title: conversation.title.as_ref().map(|_| Origin::Unknown),
-            project: conversation.project.as_ref().map(|_| Origin::Unknown),
-            repository: conversation.repository.as_ref().map(|_| Origin::Unknown),
+            title: chat.title.as_ref().map(|_| Origin::Unknown),
+            project: chat.project.as_ref().map(|_| Origin::Unknown),
+            repository: chat.repository.as_ref().map(|_| Origin::Unknown),
             timestamps: Some(Timestamps {
-                created_at: conversation.created_at.map(|_| TimestampOrigin::Unknown),
-                updated_at: conversation.updated_at.map(|_| TimestampOrigin::Unknown),
+                created_at: chat.created_at.map(|_| TimestampOrigin::Unknown),
+                updated_at: chat.updated_at.map(|_| TimestampOrigin::Unknown),
             }),
         };
         // These adapters always select the summary title and native cwd. Do not
         // apply value-equality heuristics to adapters with native-title fallbacks.
-        if matches!(
-            conversation.provider,
-            Provider::Codex | Provider::ClaudeCode
-        ) {
-            let summary = conversation.messages.summary()?;
+        if matches!(chat.provider, Provider::Codex | Provider::ClaudeCode) {
+            let summary = chat.messages.summary()?;
             let times = evidence
                 .timestamps
                 .as_mut()
@@ -268,14 +265,14 @@ impl Evidence {
             for (origin, selected, boundary_time, message_id, selection) in [
                 (
                     &mut times.created_at,
-                    conversation.created_at,
+                    chat.created_at,
                     summary.created_at,
                     summary.created_message_id,
                     Boundary::Minimum,
                 ),
                 (
                     &mut times.updated_at,
-                    conversation.updated_at,
+                    chat.updated_at,
                     summary.updated_at,
                     summary.updated_message_id,
                     Boundary::Maximum,
@@ -291,7 +288,7 @@ impl Evidence {
                     });
                 }
             }
-            if conversation.title == summary.title
+            if chat.title == summary.title
                 && let Some(message_id) = summary.title_message_id
             {
                 evidence.title = Some(Origin::FirstVisibleUserMessage {
@@ -300,7 +297,7 @@ impl Evidence {
                 });
             }
         }
-        if conversation.provider == Provider::Opencode
+        if chat.provider == Provider::Opencode
             && let Some(times) = evidence.timestamps.as_mut()
         {
             for (origin, field) in [
@@ -321,23 +318,23 @@ impl Evidence {
             &mut evidence.repository,
         ]
         .into_iter()
-        .zip(native_fields(conversation.provider))
+        .zip(native_fields(chat.provider))
         {
             if let (Some(origin), Some(field)) = (origin.as_mut(), field) {
                 *origin = Origin::SourceMetadata { field };
             }
         }
-        if let Some(origin) = &conversation.title_origin {
-            if conversation.title.is_none() {
+        if let Some(origin) = &chat.title_origin {
+            if chat.title.is_none() {
                 return Err(AppError::internal("title origin has no selected title"));
             }
             evidence.title = Some(origin.clone());
         }
-        if let Some(times) = &conversation.timestamp_origins {
-            times.validate_selection(conversation)?;
+        if let Some(times) = &chat.timestamp_origins {
+            times.validate_selection(chat)?;
             evidence.timestamps = Some(times.clone());
         }
-        evidence.validate_selected_metadata(conversation)?;
+        evidence.validate_selected_metadata(chat)?;
         Ok(evidence)
     }
 }
@@ -352,7 +349,7 @@ mod tests {
 
     #[test]
     fn observed_inferred_absent_and_unknown_metadata_remain_distinct() {
-        let mut thread = Conversation {
+        let mut thread = Chat {
             id: "thread".into(),
             provider: Provider::Codex,
             source: super::super::SourceIdentity::file("fixture"),

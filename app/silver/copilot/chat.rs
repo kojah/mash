@@ -1,6 +1,6 @@
 //! Regular VS Code Chat snapshots and append-only mutation logs, distinct from CLI events.
 use super::super::{
-    Conversation, HistorySource, NormalizedMessage, ParsedFile, messages::Builder, records,
+    Chat, HistorySource, NormalizedMessage, ParsedFile, messages::Builder, records,
 };
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use serde::de::DeserializeOwned;
@@ -83,7 +83,7 @@ pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
     let messages = normalize(id, session.requests)?;
     let summary = messages.summary()?;
     Ok(ParsedFile {
-        conversation: Some(Conversation {
+        chat: Some(Chat {
             id: super::super::parsers::stable_id("session", &["copilot-chat", id]),
             provider: Provider::Copilot,
             source: source.identity.clone(),

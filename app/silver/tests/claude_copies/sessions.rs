@@ -42,7 +42,7 @@ fn claude_forks_keep_original_and_inherited_threads_distinct_across_copies_and_r
         ],
     );
     fs::copy(&fork, &copy).unwrap();
-    let parsed = parse_claude(&fork).unwrap().conversation.unwrap();
+    let parsed = parse_claude(&fork).unwrap().chat.unwrap();
     assert_eq!(parsed.id, "fork");
     let new_tail = stable_id("claude-message", &["fork", "new-tail"]);
     let database = directory.path().join("index.sqlite3");
@@ -50,7 +50,7 @@ fn claude_forks_keep_original_and_inherited_threads_distinct_across_copies_and_r
     let summary = index(&mut storage, &options(&root)).unwrap();
     assert_eq!(summary.malformed_records, 0);
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.counts().unwrap().chats, 2);
     assert_eq!(storage.counts().unwrap().messages, 5);
     let context = storage.view(&new_tail, 10).unwrap();
     assert_eq!(context.len(), 2);
@@ -79,7 +79,7 @@ fn claude_forks_keep_original_and_inherited_threads_distinct_across_copies_and_r
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(&root)).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 1);
+    assert_eq!(storage.counts().unwrap().chats, 1);
     assert_eq!(storage.counts().unwrap().messages, 2);
 }
 
@@ -101,7 +101,7 @@ fn claude_nested_forks_resolve_native_metadata_at_each_transition() {
         .unwrap()
         .write_all(b"\n{\"type\":\"attachment\",\"uuid\":\"bridge\",\"parentUuid\":\"root\"}\n")
         .unwrap();
-    let parsed = parse_claude(&path).unwrap().conversation.unwrap();
+    let parsed = parse_claude(&path).unwrap().chat.unwrap();
     assert_eq!(parsed.id, "second-fork");
     assert_eq!(parsed.messages.len(), 3);
     assert_eq!(
@@ -192,6 +192,6 @@ fn claude_unproven_session_transitions_roll_back_without_checkpointing() {
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(&root)).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.counts().unwrap().chats, 2);
     assert_eq!(storage.counts().unwrap().messages, 3);
 }

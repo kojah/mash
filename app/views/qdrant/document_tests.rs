@@ -8,7 +8,7 @@ fn document() -> Document {
         node_id: "node".into(),
         provider: Provider::Codex,
         role: Role::User,
-        conversation_id: "chat".into(),
+        chat_id: "chat".into(),
         project: None,
         repository: None,
         created_at: Some(100),
@@ -76,7 +76,7 @@ fn common_document_rejects_mismatched_identity_and_projection_evidence() {
             match field {
                 "node" => d.node_id = "other".into(),
                 "anchor" => d.unit.anchor.clear(),
-                "group" => d.conversation_id.clear(),
+                "group" => d.chat_id.clear(),
                 "tokens" => d.tokens.clear(),
                 "empty" => d.unit.text.clear(),
                 _ => unreachable!(),
@@ -119,7 +119,7 @@ fn common_document_requires_message_content_and_chat_identity() {
         match field {
             "content" => d.unit.content = "different".into(),
             "group" => {
-                d.conversation_id.clear();
+                d.chat_id.clear();
             }
             _ => unreachable!(),
         }

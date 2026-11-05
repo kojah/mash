@@ -3,9 +3,7 @@ use crate::{
     provider::Provider,
     search_filter::{Filter, Selection},
     search_results::SearchUnit,
-    shared::protocol::{
-        Batch, Candidates, ConversationRecord, Event, MessageRecord, Search, Start,
-    },
+    shared::protocol::{Batch, Candidates, ChatRecord, Event, MessageRecord, Search, Start},
     views::exact::Intent,
 };
 
@@ -13,7 +11,7 @@ fn row(id: &str, ordinal: i64, content: &str, created_at: Option<i64>) -> Messag
     MessageRecord {
         attachments: Vec::new(),
         id: id.into(),
-        conversation_id: "conversation".into(),
+        chat_id: "conversation".into(),
         ordinal,
         context: crate::message_context::MessageContext::Linear,
         role: crate::role::Role::User,
@@ -76,14 +74,14 @@ fn records() -> Vec<MessageRecord> {
     // Genuine matches in another provider must not consume a scoped budget.
     for i in 0..100 {
         let mut other = row(&format!("claude-{i}"), i, "voyage-code-4", Some(4000 + i));
-        other.conversation_id = "claude".into();
+        other.chat_id = "claude".into();
         rows.push(other);
     }
     rows
 }
 
 fn events(revision: i64) -> Vec<Value> {
-    let conversation = ConversationRecord {
+    let chat = ChatRecord {
         enrichment: None,
         id: "conversation".into(),
         provider: Provider::Codex,
@@ -93,7 +91,7 @@ fn events(revision: i64) -> Vec<Value> {
         created_at: Some(1000),
         updated_at: Some(2000),
     };
-    let mut other = conversation.clone();
+    let mut other = chat.clone();
     other.id = "claude".into();
     other.provider = Provider::ClaudeCode;
     let mut events = vec![
@@ -111,8 +109,8 @@ fn events(revision: i64) -> Vec<Value> {
                 rejected_sources: 0,
             }),
         }),
-        Event::Batch(Batch::Conversations {
-            records: vec![conversation, other],
+        Event::Batch(Batch::Chats {
+            records: vec![chat, other],
         }),
     ];
     for batch in records().chunks(128) {
@@ -232,7 +230,7 @@ async fn verify_scopes(service: &Service, token: &str) {
     let scoped = Selection {
         provider: vec![Provider::Codex],
         node: vec!["first".into()],
-        conversation: vec!["conversation".into()],
+        chat: vec!["conversation".into()],
         role: vec![crate::role::Role::User],
         project: vec!["/work/mash".into()],
         repository: vec!["repo://mash".into()],
@@ -317,7 +315,7 @@ fn seed_core(database: &std::path::Path) {
         })
         .collect::<Vec<_>>();
     writer
-        .replace_conversation(&crate::silver::Conversation {
+        .replace_chat(&crate::silver::Chat {
             id: "conversation".into(),
             provider: Provider::Codex,
             source: crate::silver::SourceIdentity::file("missing.jsonl"),
@@ -367,7 +365,7 @@ async fn verify_core(service: &Service) {
                 unit: Some(unit),
                 filters: Box::new(Selection {
                     provider: vec![Provider::Codex],
-                    conversation: vec!["conversation".into()],
+                    chat: vec!["conversation".into()],
                     ..Default::default()
                 }),
                 shared: false,

@@ -60,7 +60,7 @@ fn current_sessions_are_discovered_from_session_v2() {
     let sources = discover(&path).unwrap();
     assert_eq!(sources.len(), 1);
     assert_eq!(sources[0].identity.session.as_deref(), Some("gamma"));
-    let parsed = parse(&sources[0].identity).unwrap().conversation.unwrap();
+    let parsed = parse(&sources[0].identity).unwrap().chat.unwrap();
     assert_eq!(parsed.title.as_deref(), Some("Current session"));
     assert_eq!(parsed.project.as_deref(), Some("/work/current"));
     assert_eq!(parsed.repository.as_deref(), Some("/work/current"));
@@ -96,7 +96,7 @@ fn native_layouts_preserve_prose_metadata_and_context_without_duplicate_mirrors(
     assert_eq!(sources.len(), 2);
     assert!(sources.iter().all(|s| s.estimated_bytes.unwrap() > 0));
     let before = source_stamp_for(&sources[0].identity).unwrap();
-    let parsed = parse(&sources[0].identity).unwrap().conversation.unwrap();
+    let parsed = parse(&sources[0].identity).unwrap().chat.unwrap();
     assert_eq!(parsed.messages.len(), 4);
     assert_eq!(parsed.project.as_deref(), Some("/work/cbioportal"));
     assert_eq!(parsed.repository.as_deref(), Some("/work/repository"));
@@ -118,7 +118,7 @@ fn native_layouts_preserve_prose_metadata_and_context_without_duplicate_mirrors(
         parsed.messages.inline()[3].dialogue_text.as_deref(),
         Some("")
     );
-    let legacy = parse(&sources[1].identity).unwrap().conversation.unwrap();
+    let legacy = parse(&sources[1].identity).unwrap().chat.unwrap();
     assert!(
         legacy.messages.inline()[0]
             .content
@@ -201,14 +201,9 @@ fn wal_refresh_deletion_and_malformed_history_preserve_index_consistency() {
         .unwrap();
     upstream.execute_batch("DELETE FROM session WHERE id='beta'; DELETE FROM message WHERE session_id='beta'; DELETE FROM part WHERE session_id='beta';").unwrap();
     let mut writer = Storage::open_writer(&local).unwrap();
-    assert_eq!(
-        index(&mut writer, &options(&path))
-            .unwrap()
-            .purged_conversations,
-        1
-    );
+    assert_eq!(index(&mut writer, &options(&path)).unwrap().purged_chats, 1);
     writer.commit_writer().unwrap();
-    assert_eq!(writer.counts().unwrap().conversations, 1);
+    assert_eq!(writer.counts().unwrap().chats, 1);
 }
 
 #[test]
@@ -223,7 +218,7 @@ fn old_native_databases_and_oversized_parts_are_handled_explicitly() {
     assert_eq!(
         parse(&sources[0].identity)
             .unwrap()
-            .conversation
+            .chat
             .unwrap()
             .messages
             .len(),
@@ -261,7 +256,7 @@ fn session_horizon_and_attachments_do_not_promote_operational_text() {
     let sources = discover(&path).unwrap();
     let message = parse(&sources[0].identity)
         .unwrap()
-        .conversation
+        .chat
         .unwrap()
         .messages
         .inline_mut()
@@ -278,7 +273,7 @@ fn session_horizon_and_attachments_do_not_promote_operational_text() {
     writer.commit_writer().unwrap();
     assert_eq!(summary.processed_files, 1);
     assert_eq!(summary.processed_bytes, sources[0].estimated_bytes.unwrap());
-    assert_eq!(writer.counts().unwrap().conversations, 1);
+    assert_eq!(writer.counts().unwrap().chats, 1);
     assert!(
         crate::storage::test_support::projections_with_text(&writer, "attachmentmarker", None)
             .is_empty()

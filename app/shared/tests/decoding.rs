@@ -44,7 +44,7 @@ async fn busy_response_decoder_does_not_block_another_shared_read() {
             get(|| async {
                 Json(crate::storage::Counts {
                     searchable_user_messages: None,
-                    conversations: 2,
+                    chats: 2,
                     messages: 5,
                     searchable_messages: 4,
                     embeddings: 4,

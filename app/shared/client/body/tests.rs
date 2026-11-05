@@ -44,7 +44,7 @@ fn state(records: usize) -> NodeState {
         tombstones: (0..records)
             .map(|ordinal| Tombstone {
                 provider: Provider::ClaudeCode,
-                conversation_id: format!("deleted-🧪-{ordinal}-{}", "payload ".repeat(64)),
+                chat_id: format!("deleted-🧪-{ordinal}-{}", "payload ".repeat(64)),
             })
             .collect(),
     }

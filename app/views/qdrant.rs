@@ -92,7 +92,7 @@ struct Document {
     node_id: String,
     provider: crate::provider::Provider,
     role: crate::role::Role,
-    conversation_id: String,
+    chat_id: String,
     project: Option<String>,
     repository: Option<String>,
     created_at: Option<i64>,
@@ -134,7 +134,7 @@ fn document_hit(
     let expected_id = document_id(&d.node_id, &d.unit.anchor);
     if id != expected_id
         || !active.contains(&d.node_id)
-        || d.conversation_id.is_empty()
+        || d.chat_id.is_empty()
         || d.unit.anchor.is_empty()
         || d.tokens != tokens(&d.unit.text)
         || d.unit.text.is_empty()
@@ -157,7 +157,7 @@ fn document_hit(
     Ok(crate::storage::SearchHit {
         node_id: Some(d.node_id),
         id: d.unit.anchor,
-        conversation_id: d.conversation_id,
+        chat_id: d.chat_id,
         provider: d.provider,
         turn_id: None,
         role: d.role,

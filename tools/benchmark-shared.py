@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Exercise mash's authenticated HTTP API with deterministic synthetic vectors.
+"""Historical NDJSON HTTP benchmark for the retired pre-WebSocket API.
+
+This frozen experiment does not support the current Mash protocol. Its original
+record names and payloads are retained for reproducing historical measurements.
 
 No model inference is included. Run against disposable benchmark groups only.
 Each node token comes from MASH_BENCH_TOKEN_0, _1, and _2.

@@ -92,7 +92,7 @@ fn absent_display_text_uses_ordered_text_and_keeps_scope_only_content_unsearchab
 fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
     let directory = tempfile::tempdir().unwrap();
     let path = write(directory.path());
-    let parsed = conversation(&path);
+    let parsed = chat(&path);
     assert_eq!(parsed.messages.len(), 9);
     assert_eq!(
         parsed.messages.inline()[0].content,
@@ -145,7 +145,7 @@ fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
 fn native_fork_copies_remain_canonical_but_not_searchable() {
     let directory = tempfile::tempdir().unwrap();
     let path = write_case(directory.path(), &fixture().fork);
-    let parsed = conversation(&path);
+    let parsed = chat(&path);
     assert_eq!(parsed.messages.len(), 2);
     assert!(
         parsed
@@ -171,9 +171,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         step.metadata.as_mut().unwrap().source = source;
         replace_step(&path, 0, &step);
         assert_eq!(
-            conversation(&path).messages.inline()[0]
-                .dialogue_text
-                .as_deref(),
+            chat(&path).messages.inline()[0].dialogue_text.as_deref(),
             Some("")
         );
     }
@@ -182,9 +180,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         step.status = status;
         replace_step(&path, 0, &step);
         assert_eq!(
-            conversation(&path).messages.inline()[0]
-                .dialogue_text
-                .as_deref(),
+            chat(&path).messages.inline()[0].dialogue_text.as_deref(),
             Some("")
         );
     }
@@ -210,7 +206,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         )
         .unwrap();
     assert!(
-        conversation(&path)
+        chat(&path)
             .messages
             .inline()
             .iter()
@@ -240,7 +236,7 @@ fn metadata_locations_are_unambiguous_and_bad_timestamps_fail() {
             [metadata.encode_to_vec()],
         )
         .unwrap();
-    let parsed = conversation(&path);
+    let parsed = chat(&path);
     assert_eq!(parsed.project.as_deref(), Some("/tmp/project"));
     assert_eq!(parsed.repository.as_deref(), Some("/tmp/repo"));
     metadata.workspaces.push(proto::Workspace {
@@ -253,7 +249,7 @@ fn metadata_locations_are_unambiguous_and_bad_timestamps_fail() {
             [metadata.encode_to_vec()],
         )
         .unwrap();
-    let parsed = conversation(&path);
+    let parsed = chat(&path);
     assert_eq!(parsed.project, None);
     assert_eq!(parsed.repository, None);
     metadata.created_at.as_mut().unwrap().nanos = 1_000_000_000;

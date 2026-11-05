@@ -123,7 +123,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     let models = directory.path().join("models");
     let mut storage = crate::storage::Storage::open_writer(&database).unwrap();
     storage
-        .replace_conversation(&crate::silver::Conversation {
+        .replace_chat(&crate::silver::Chat {
             id: "orientation".into(),
             provider: Provider::Codex,
             title_origin: None,

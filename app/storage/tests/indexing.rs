@@ -22,7 +22,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
             path,
             session: Some(session.into()),
         };
-        let mut value = conversation(&format!("{session} searchable evidence"));
+        let mut value = chat(&format!("{session} searchable evidence"));
         // Codex thread times are selected from retained messages, not arbitrary
         // independent fixture dates.
         value.created_at = value.messages.inline()[0].created_at;
@@ -30,7 +30,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
         value.id = session.into();
         value.messages.inline_mut()[0].id = format!("{session}-message");
         value.source = source.clone();
-        storage.replace_conversation(&value).unwrap();
+        storage.replace_chat(&value).unwrap();
         storage
             .record_source_checkpoint(Provider::Codex, &source, &SourceStamp::file(10, modified))
             .unwrap();
@@ -39,9 +39,9 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     storage.commit_writer().unwrap();
     drop(storage);
     let mut storage = Storage::open_writer(&database).unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 4);
+    assert_eq!(storage.counts().unwrap().chats, 4);
     let paths: Vec<(String, String)> = storage.connection.prepare(
-        "SELECT source_path, source_session FROM sessions WHERE id IN ('keep','deleted') ORDER BY id"
+        "SELECT source_path, source_session FROM chats WHERE id IN ('keep','deleted') ORDER BY id"
     ).unwrap().query_map([], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
         .collect::<Result<_, _>>().unwrap();
     assert!(
@@ -97,7 +97,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     let mut storage = Storage::open_writer(&database).unwrap();
     assert!(storage.remove_source(Provider::Codex, &sources[0]).unwrap());
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.counts().unwrap().chats, 2);
     assert_eq!(storage.view("archived-message", 0).unwrap().len(), 1);
 }
 
@@ -107,10 +107,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
     let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
-        .replace_conversation(&conversation_with_messages(&[(
-            "message-1",
-            "durable needle",
-        )]))
+        .replace_chat(&chat_with_messages(&[("message-1", "durable needle")]))
         .expect("durable mutation");
     writer
         .record_source_checkpoint(
@@ -121,7 +118,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
         .expect("durable source checkpoint");
     writer.checkpoint_writer().expect("checkpoint batch");
     writer
-        .replace_conversation(&conversation("rolled back text"))
+        .replace_chat(&chat("rolled back text"))
         .expect("later mutation");
     drop(writer);
 
@@ -155,22 +152,22 @@ fn concurrent_writer_is_rejected_and_first_writer_can_commit() {
 }
 
 #[test]
-fn conversation_reconciliation_writes_only_changed_messages() {
+fn chat_reconciliation_writes_only_changed_messages() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");
     let mut storage = Storage::open_writer(&path).expect("writer");
     let first = storage
-        .replace_conversation(&conversation("first"))
+        .replace_chat(&chat("first"))
         .expect("initial insert");
     assert_eq!(first.changed_message_ids, ["message-1"]);
     let unchanged = storage
-        .replace_conversation(&conversation("first"))
+        .replace_chat(&chat("first"))
         .expect("unchanged refresh");
     assert!(unchanged.unchanged);
     assert_eq!(unchanged.changed_message_ids, Vec::<String>::new());
     let unchanged_revision = storage.silver_certificate().unwrap().revision;
     let changed = storage
-        .replace_conversation(&conversation("second"))
+        .replace_chat(&chat("second"))
         .expect("changed refresh");
     assert_eq!(changed.changed_message_ids, ["message-1"]);
     assert!(storage.silver_certificate().unwrap().revision > unchanged_revision);
@@ -178,18 +175,18 @@ fn conversation_reconciliation_writes_only_changed_messages() {
 }
 
 #[test]
-fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal() {
+fn chat_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");
     let mut storage = Storage::open_writer(&path).expect("writer");
     storage
-        .replace_conversation(&conversation("first"))
+        .replace_chat(&chat("first"))
         .expect("initial insert");
 
-    let mut replacement = conversation("second");
+    let mut replacement = chat("second");
     replacement.messages.inline_mut()[0].id = "message-2".to_owned();
     let change = storage
-        .replace_conversation(&replacement)
+        .replace_chat(&replacement)
         .expect("replace message identity");
 
     assert_eq!(change.changed_message_ids, ["message-2"]);
@@ -201,7 +198,7 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
 }
 
 #[test]
-fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context() {
+fn chat_reconciliation_inserts_and_reorders_stable_ids_with_tree_context() {
     fn assert_parent(storage: &Storage) {
         let parent: String = storage
             .connection
@@ -213,8 +210,8 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
             .unwrap();
         assert_eq!(parent, "message-1");
     }
-    fn history(insert: bool) -> crate::silver::Conversation {
-        let mut value = conversation("original request");
+    fn history(insert: bool) -> crate::silver::Chat {
+        let mut value = chat("original request");
         let shift = i64::from(insert);
         value.messages.inline_mut()[0].context = crate::message_context::MessageContext::Root;
         value.messages.inline_mut()[0].ordinal = shift;
@@ -255,10 +252,10 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let original = history(false);
-    storage.replace_conversation(&original).unwrap();
+    storage.replace_chat(&original).unwrap();
     assert_parent(&storage);
     let shifted = history(true);
-    storage.replace_conversation(&shifted).unwrap();
+    storage.replace_chat(&shifted).unwrap();
     storage.commit_writer().unwrap();
     assert_parent(&storage);
     let viewed = storage.view("reply", 4).unwrap();
@@ -268,7 +265,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     );
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     // Removing the inserted item shifts the same IDs down into occupied slots.
-    storage.replace_conversation(&original).unwrap();
+    storage.replace_chat(&original).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert!(storage.view("inserted", 0).unwrap().is_empty());
@@ -282,7 +279,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     invalid.messages.inline_mut()[2].context = crate::message_context::MessageContext::Parent {
         id: "missing".into(),
     };
-    assert!(storage.replace_conversation(&invalid).is_err());
+    assert!(storage.replace_chat(&invalid).is_err());
     storage.rollback_provider_scan().unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 2);
@@ -291,12 +288,12 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
 }
 
 #[test]
-fn purging_a_conversation_removes_its_canonical_entries() {
+fn purging_a_chat_removes_its_canonical_entries() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
-        .replace_conversation(&conversation("disappearing sentinel"))
+        .replace_chat(&chat("disappearing sentinel"))
         .expect("seed conversation");
     writer.commit_writer().expect("commit seed");
     drop(writer);
@@ -323,9 +320,7 @@ fn tombstone_prevents_reinsertion() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
-    writer
-        .replace_conversation(&conversation("remember me"))
-        .expect("insert");
+    writer.replace_chat(&chat("remember me")).expect("insert");
     writer.commit_writer().expect("commit");
     drop(writer);
 
@@ -335,11 +330,11 @@ fn tombstone_prevents_reinsertion() {
 
     let mut writer = Storage::open_writer(&path).expect("second writer");
     let change = writer
-        .replace_conversation(&conversation("remember me"))
+        .replace_chat(&chat("remember me"))
         .expect("tombstone check");
     assert!(change.tombstoned);
     writer.commit_writer().expect("commit");
-    assert_eq!(writer.counts().expect("counts").conversations, 0);
+    assert_eq!(writer.counts().expect("counts").chats, 0);
 }
 
 #[test]
@@ -349,7 +344,7 @@ fn ordinary_writer_commits_leave_wal_checkpointing_to_sqlite() {
     let wal_path = std::path::PathBuf::from(format!("{}-wal", path.display()));
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
-        .replace_conversation(&conversation("small incremental write"))
+        .replace_chat(&chat("small incremental write"))
         .expect("insert conversation");
     writer.commit_writer().expect("commit writer");
 

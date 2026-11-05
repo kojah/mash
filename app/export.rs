@@ -26,7 +26,7 @@ struct FileDigest {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HistoryCounts {
-    pub(crate) conversations: u64,
+    pub(crate) chats: u64,
     pub(crate) messages: u64,
     pub(crate) attachment_files: u64,
     pub(crate) attachment_bytes: u64,
@@ -202,7 +202,7 @@ fn history_counts(
     files: &BTreeMap<String, u64>,
 ) -> Result<HistoryCounts, AppError> {
     Ok(HistoryCounts {
-        conversations: counts.conversations,
+        chats: counts.chats,
         messages: counts.messages,
         attachment_files: u64::try_from(files.len())
             .map_err(|_| AppError::internal("too many export attachments"))?,

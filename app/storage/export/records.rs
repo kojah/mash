@@ -28,7 +28,7 @@ pub(crate) fn visit(
 ) -> Result<(), AppError> {
     let invalid_context = storage.connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM messages m WHERE m.context_parent<>'' AND NOT EXISTS(SELECT 1 FROM messages p
-                WHERE p.conversation_id=m.conversation_id
+                WHERE p.chat_id=m.chat_id
                     AND p.id=m.context_parent AND p.ordinal<m.ordinal))",
         [], |row| row.get::<_, bool>(0),
     ).map_err(AppError::database)?;
@@ -52,11 +52,11 @@ pub(crate) fn visit(
         }};
     }
     table!("SELECT c.id,c.provider,c.source_path,c.source_key,c.source_session,c.title,c.created_at,c.updated_at,c.source_fingerprint,c.project,c.repository
-         FROM sessions c ORDER BY c.id", |row| Ok::<
+         FROM chats c ORDER BY c.id", |row| Ok::<
         _,
         AppError,
     >(
-        Record::Conversation {
+        Record::Chat {
             id: get(row, "id")?,
             provider: get(row, "provider")?,
             source_path: get(row, "source_path")?,
@@ -71,16 +71,16 @@ pub(crate) fn visit(
         }
     ));
     table!(
-        "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,
+        "SELECT m.attachments,m.id,m.chat_id,m.ordinal,m.role,m.content,m.search_projection,
              CASE WHEN m.context_parent IS NULL THEN NULL WHEN m.context_parent='' THEN -1
-                  ELSE (SELECT p.ordinal FROM messages p WHERE p.conversation_id=m.conversation_id AND p.id=m.context_parent) END AS context_parent,
+                  ELSE (SELECT p.ordinal FROM messages p WHERE p.chat_id=m.chat_id AND p.id=m.context_parent) END AS context_parent,
              m.created_at,m.fingerprint AS fingerprint,m.metadata
          FROM messages m
-         ORDER BY m.conversation_id,m.ordinal",
+         ORDER BY m.chat_id,m.ordinal",
         |row| Ok::<_, AppError>(Record::Message {
             attachments: json(row, "attachments")?,
             id: get(row, "id")?,
-            conversation_id: get(row, "conversation_id")?,
+            chat_id: get(row, "chat_id")?,
             ordinal: get(row, "ordinal")?,
             role: get(row, "role")?,
             content: get(row, "content")?,
@@ -95,17 +95,17 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT * FROM conversation_enrichment ORDER BY conversation_id",
+        "SELECT * FROM chat_enrichment ORDER BY chat_id",
         |row| Ok::<_, AppError>(Record::Enrichment {
-            conversation_id: get(row, "conversation_id")?,
+            chat_id: get(row, "chat_id")?,
             evidence: json(row, "evidence")?,
         })
     );
     table!(
-        "SELECT * FROM tombstones ORDER BY provider,conversation_id",
+        "SELECT * FROM tombstones ORDER BY provider,chat_id",
         |row| Ok::<_, AppError>(Record::Tombstone {
             provider: get(row, "provider")?,
-            conversation_id: get(row, "conversation_id")?,
+            chat_id: get(row, "chat_id")?,
             forgotten_at: get(row, "forgotten_at")?,
         })
     );
@@ -114,7 +114,7 @@ pub(crate) fn visit(
         |row| Ok::<_, AppError>(Record::ClaudeSource {
             source_key: get(row, "source_key")?,
             source_path: get(row, "source_path")?,
-            conversation_id: get(row, "conversation_id")?,
+            chat_id: get(row, "chat_id")?,
             title: get(row, "title")?,
             project: get(row, "project")?,
             repository: get(row, "repository")?,
@@ -245,7 +245,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 interpretation_version
             );
         }
-        Record::Conversation {
+        Record::Chat {
             id,
             provider,
             source_path,
@@ -259,7 +259,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             repository,
         } => {
             execute!(
-                "INSERT INTO sessions(id,provider,title,created_at,updated_at,project,repository)
+                "INSERT INTO chats(id,provider,title,created_at,updated_at,project,repository)
                  VALUES(?1,?2,?3,?4,?5,?6,?7)",
                 id,
                 provider,
@@ -270,7 +270,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 repository
             );
             execute!(
-                "UPDATE sessions SET source_path=?2,source_fingerprint=?3,source_key=?4,source_session=?5 WHERE id=?1",
+                "UPDATE chats SET source_path=?2,source_fingerprint=?3,source_key=?4,source_session=?5 WHERE id=?1",
                 id,
                 source_path,
                 source_fingerprint,
@@ -281,7 +281,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
         Record::Message {
             attachments,
             id,
-            conversation_id,
+            chat_id,
             ordinal,
             role,
             content,
@@ -294,11 +294,11 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             // The chat precedes its messages in every archive; a message
             // without one would otherwise vanish rather than fail.
             let inserted = execute!(
-                "INSERT INTO messages(attachments,id,conversation_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata)
+                "INSERT INTO messages(attachments,id,chat_id,ordinal,role,content_packed,search_projection,context_parent,created_at,metadata)
                  VALUES(?1,?2,?3,?4,?5,silver_pack(?6),?7,?8,?9,?10)",
                 encode(&attachments)?,
                 id,
-                conversation_id,
+                chat_id,
                 ordinal,
                 role,
                 content,
@@ -308,15 +308,13 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 tools.encode()?
             );
             if inserted == 0 {
-                return Err(AppError::database_data(
-                    "archive message precedes its conversation",
-                ));
+                return Err(AppError::database_data("archive message precedes its chat"));
             }
             if let crate::silver::archive::Context::Parent { ordinal } = context {
                 execute!(
-                    "INSERT INTO archive_context(id,conversation_id,parent_ordinal) VALUES(?1,?2,?3)",
+                    "INSERT INTO archive_context(id,chat_id,parent_ordinal) VALUES(?1,?2,?3)",
                     id,
-                    conversation_id,
+                    chat_id,
                     ordinal
                 );
             }
@@ -326,41 +324,38 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 fingerprint
             );
         }
-        Record::Enrichment {
-            conversation_id,
-            evidence,
-        } => {
+        Record::Enrichment { chat_id, evidence } => {
             execute!(
-                "INSERT INTO conversation_enrichment(conversation_id,evidence) VALUES(?1,?2)",
-                conversation_id,
+                "INSERT INTO chat_enrichment(chat_id,evidence) VALUES(?1,?2)",
+                chat_id,
                 encode(&evidence)?
             );
         }
         Record::Tombstone {
             provider,
-            conversation_id,
+            chat_id,
             forgotten_at,
         } => {
             execute!(
-                "INSERT INTO tombstones(provider,conversation_id,forgotten_at) VALUES(?1,?2,?3)",
+                "INSERT INTO tombstones(provider,chat_id,forgotten_at) VALUES(?1,?2,?3)",
                 provider,
-                conversation_id,
+                chat_id,
                 forgotten_at
             );
         }
         Record::ClaudeSource {
             source_key,
             source_path,
-            conversation_id,
+            chat_id,
             title,
             project,
             repository,
         } => {
             execute!(
-                "INSERT INTO claude_sources(source_key,source_path,conversation_id,title,project,repository) VALUES(?1,?2,?3,?4,?5,?6)",
+                "INSERT INTO claude_sources(source_key,source_path,chat_id,title,project,repository) VALUES(?1,?2,?3,?4,?5,?6)",
                 source_key,
                 source_path,
-                conversation_id,
+                chat_id,
                 title,
                 project,
                 repository

@@ -195,9 +195,13 @@ Search results, chat matches and listed chats identify their provider directly,
 for example `"provider": "codex"`. Messages and matching excerpts carry the agent's
 `role` directly, including provider-defined roles. Messages and matching excerpts
 include `turn_id` when they belong to a derived turn; `chat_id` identifies their chat.
-Local and shared Qdrant use views schema 11; silver uses
-schema 61. Views are rebuilt from silver; silver from an earlier release crosses
-over through export and `import --keep-identity`.
+Local and shared Qdrant use views schema 12; silver uses
+schema 62. Views are rebuilt from silver. Export and `import --keep-identity`
+can transfer history only between releases with compatible archive schemas.
+
+Shared synchronization uses protocol 3 and sync catalog schema 1. Clients and
+servers must run matching releases. Existing unversioned sync catalogs are
+rejected untouched; they are not upgraded in place.
 
 Silver compresses canonical text of at least 1 KiB with zstd when it saves space.
 This applies to canonical text in `messages`, and to retained
@@ -380,7 +384,7 @@ custom index paths are needed, as in the Codex setup above. The skill uses
 
 Restart the client after installation. In Claude Code, invoke
 `/mash:history`; in Codex, select the plugin's `history` skill or let it activate
-for requests about past conversations. For developing the Claude plugin directly,
+for requests about past chats. For developing the Claude plugin directly,
 use `claude --plugin-dir ./plugins/mash` instead of installing it. After edits,
 reload the plugin or start a new session; installed copies may require a
 marketplace/plugin refresh. Rebuilding the Mash binary and reloading skill files
@@ -509,8 +513,10 @@ Local and shared Qdrant collections use the `mash_views_` prefix. Rebuild local 
 shared views with `serve --replay-views` before checking readiness. Retired
 `.gold.sqlite3` and `.views.sqlite3` files and `mash_gold_` collections are not read or converted;
 they can be removed after verifying the rebuilt views.
-Portable archive version 1 preserves its native history encoding. Upgrade local
-silver through export/import, then rebuild retrieval views.
+Portable archives use envelope `format_version = 2` and history
+`record_schema_version = 2`. Earlier record schemas are rejected. Export/import
+requires compatible archive schemas; it does not translate earlier record
+formats. Rebuild retrieval views after importing.
 Update the history plugin and reconnect Mash MCP after the
 rollout. Older cached plugin instructions still use `list_threads` and
 `unit: "threads"`; the current protocol uses `list_chats` and `unit: "chats"`.
@@ -518,7 +524,8 @@ Replacing the executable leaves already running MCP processes on their previous
 binary, so those connections must be restarted before using the new schema.
 
 There are no in-place schema migrations. A release opens only its own silver
-schema and rejects any other untouched. To upgrade across a schema change,
+schema and rejects any other untouched. When archive schemas are compatible,
+to upgrade across a silver schema change,
 export with the release that wrote the index, retire its files, and import with
 the new release using `mash import --keep-identity`, which continues the node's
 shared identity; `tools/upgrade-local-index.sh` does exactly this and is a no-op
@@ -538,7 +545,7 @@ and recovery behavior.
 elapsed time, and an estimated remaining time for the current phase. Estimates
 use recent throughput and adjust as the workload changes; they are approximate,
 especially when message lengths vary. Ingestion estimates cover the current
-provider; shared-recipe embeddings estimate the current conversation.
+provider; shared-recipe embeddings estimate the current chat.
 Model loading, search rebuilding, snapshot preparation, and server
 commit show activity with an unknown ETA until work can be measured. Shared
 uploads report bytes and an upload ETA; completion is reported only after the
@@ -599,7 +606,7 @@ Malformed envelopes, oversized canonical messages, and unsupported oversized
 event types fail indexing. Oversized input fails indexing with a source-specific
 error; it is never truncated or marked
 complete. A failed configured provider scan retains its previous messages and
-checkpoints. These are record limits, not a total conversation memory limit.
+checkpoints. These are record limits, not a total chat memory limit.
 Codex SQLite history permits individual items up to 64 MiB because file-change
 and tool-result items can exceed the JSONL limit. The 65,536-node structural JSON
 limit still applies, and large normalized histories spill to disk. Tool bodies
@@ -869,7 +876,7 @@ application KV schema and v18 composer roots, follows saved bubble order, and
 keeps native bubble IDs stable through edits and rewinds. Drafts, summaries,
 orphaned bubbles, simulated/agent-sent prompts and operational rows do not enter
 search prose. Older or unknown root versions fail explicitly. Each JSON record
-is limited to 8 MiB and 65,536 nodes; each conversation has a 64 MiB read budget
+is limited to 8 MiB and 65,536 nodes; each chat has a 64 MiB read budget
 and 32 MiB retained-history budget. IDE and Agent identities remain distinct.
 Its [native storage contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ide-ingestion-contract.md) records the
 fixture provenance and remaining captured-session validation gates.
@@ -887,7 +894,7 @@ Supported reasoning and text-block attachments remain available in canonical
 message views. Other attachment types, tool-step bodies and subtrajectories are
 not currently reconstructed.
 
-Each native BLOB is limited to 8 MiB, each conversation to 64 MiB of reads,
+Each native BLOB is limited to 8 MiB, each chat to 64 MiB of reads,
 65,536 steps/decoded fields and 32 MiB of retained normalized history. Unknown
 step formats, SQL/protobuf disagreements, malformed timestamps and oversized
 input fail explicitly and preserve the previous index revision. Native workspace
@@ -1143,14 +1150,13 @@ combined results are reranked. Raw SQL, regular expressions, and glob patterns
 are not supported. Limits are eight levels of nesting, 128 expressions, and 100
 values per field list.
 
-Project means the session's first recorded working directory. Repository means
-the session's logged Git repository URL, or the locally available Git origin for
-that directory at ingestion time. They are conversation metadata; the first
-directory applies to the whole session. Unavailable metadata remains unknown,
+Project means the chat's first recorded working directory. Repository means
+the chat's logged Git repository URL, or the locally available Git origin for
+that directory at ingestion time. They are chat metadata; the first
+directory applies to the whole chat. Unavailable metadata remains unknown,
 so a positive filter does not match it and a negated filter does. Date filters do
-not match messages without timestamps. Schema upgrades preserve history and
-embeddings and invalidate local ingestion checkpoints, allowing the next
-`mash index` to capture metadata from source files.
+not match messages without timestamps. Incompatible schemas are rejected
+untouched; reindex provider files to build a fresh index for the current release.
 
 ## Shared index
 
@@ -1256,7 +1262,7 @@ attachment read routes. Nodes plan publication from their `/v1/freshness` entry
 and forget through delta uploads. Requests use bearer credentials. `/v1/sync`
 carries typed Protobuf envelopes with zstd publication data, durable piece
 checkpoints and resume; a first publication of a large history is planned into
-independently committed batches, so recent conversations become searchable
+independently committed batches, so recent chats become searchable
 while the rest uploads; publication, attachment-upload and
 progressive-backfill operations share one transfer protocol. The former
 `POST /v1/index` (NDJSON) and `/v1/attachment-upload` routes and handlers were
@@ -1284,7 +1290,7 @@ is certified for the new silver revision when every chat is written. Until
 then the node's views are reported stale and excluded from dense search; there is
 no Qdrant staging or conditional head protocol. A node that sees stale views
 resends a complete snapshot, which repairs views without changing silver.
-Thread lists, `view` and context reads come from shared silver.
+Chat lists, `view` and context reads come from shared silver.
 
 If Qdrant data is lost or damaged, start the service with `--replay-views` to
 rebuild every configured node's documents and vectors from shared silver before
@@ -1303,7 +1309,7 @@ without replacing shared records. A failed upload returns local success with
 `shared.state: "pending"`; subsequent `index` runs retry even with no new history.
 `status` checks publication state locally; `status --shared` contacts the API.
 
-`forget` deletes a locally owned conversation and publishes a persistent
+`forget` deletes a locally owned chat and publishes a persistent
 shared tombstone. Check its `shared.state`: an offline deletion remains pending
 until a later successful `index` or `forget`. Copies owned by other nodes remain.
 In local/both modes, node identity is tied to the local database instance; a
@@ -1329,13 +1335,13 @@ or disconnected requester does not cancel an already admitted mutation: it keeps
 its capacity until completion, and views are not reported current until synchronization completes.
 
 Search defaults to `unit = "chats"` in CLI and MCP. Each chat result includes
-its conversation ID, provider, representative node, available title/project/repository
-and conversation timestamps, a ranking score, and up to three distinct matching
+its chat ID, provider, representative node, available title/project/repository
+and chat timestamps, a ranking score, and up to three distinct matching
 excerpts in relevance order. Each excerpt has a `message_id`, its own `node_id`,
 role, timestamp, and relevance scores. Open an excerpt with `view MESSAGE_ID
 --context N`, supplying `--shared NODE_ID` for a shared excerpt. Timestamps are
 Unix milliseconds; unknown metadata is null. Search never returns an entire
-conversation automatically. Every returned message `id` in a `view` response is
+chat automatically. Every returned message `id` in a `view` response is
 itself a view anchor: to keep reading, view the first or last returned message
 with the same `--shared` value. `--context` has no upper bound and bodies are
 never truncated.
@@ -1352,12 +1358,12 @@ Use the metadata filters for Boolean scopes.
 See [the search quality audit](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/search-audit-2026-09-30.md) for measured failures
 and remaining relevance limitations.
 
-Thread retrieval considers up to 200 lexical and 200 semantic candidates per
-index. It keeps up to six distinct candidate messages per conversation. A first
+Chat retrieval considers up to 200 lexical and 200 semantic candidates per
+index. It keeps up to six distinct candidate messages per chat. A first
 reranking pass evaluates up to 20 grouped chat documents, then individual
 evidence is reranked for the ten most promising chats (at most 60 messages).
 Each evidence document includes bounded text from its two nearest searchable
-neighbours. Threads are grouped before applying `limit`;
+neighbours. Chats are grouped before applying `limit`;
 their score is reciprocal rank of the best qualifying message plus a bounded
 bonus for up to two additional qualifying excerpts. The bonus is smaller than
 the gap to the next message rank, so weaker matches cannot push a chat above
@@ -1369,15 +1375,15 @@ do not fill out chat results. Raw model logits are not calibrated probabilities,
 so a negative score alone does not disqualify a semantic paraphrase. A query may
 return fewer chats than requested. Message mode applies the same evidence gate.
 Recency does not change ranking; use date filters to restrict history.
-Copies with the same provider and conversation ID are grouped across nodes;
+Copies with the same provider and chat ID are grouped across nodes;
 identical role and whitespace-normalized message content earns no additional credit.
 Replicas are collapsed before fusion and chat scoring; each excerpt's `copies`
-lists alternate message/node references for viewing the same evidence. Independent conversations
+lists alternate message/node references for viewing the same evidence. Independent chats
 with different IDs remain separate.
 
 Use `mash search QUERY --unit messages` or MCP `unit = "messages"` for full
 individual message results with the existing 50-candidate and ten-message
-reranking budgets. Copies with the same provider, conversation, canonical message
+reranking budgets. Copies with the same provider, chat, canonical message
 ID, role and whitespace-normalized content occupy one message result, with
 alternate view anchors in `copies`. Repeated content with different message IDs
 and divergent copies remain separate. Replicas do not earn additional fusion
@@ -1395,7 +1401,7 @@ page is cut, so for an unchanged index the pages of local, shared, combined and
 exact-mention searches partition the same ranking that one large page returns.
 Boundaries are best effort when the index changes between requests, or when a
 combined search's shared source or shared context fetch fails for some pages
-and not others (reported by `shared_error` and `shared_context_error`). Thread excerpts are bounded to 800 characters
+and not others (reported by `shared_error` and `shared_context_error`). Chat excerpts are bounded to 800 characters
 plus ellipses, with a window around a query term when present. Results describe
 the bounded candidate pool, not an exhaustive count of matches in each chat.
 Unknown upstream metadata remains null.
@@ -1773,7 +1779,7 @@ it does not queue work, increase concurrency or retry mutations.
 
 Use that same status response
 to inspect `shared_index.nodes` for every publishing node in the configured
-group. Each node includes its revision, conversation/message counts, and UTC
+group. Each node includes its revision, chat/message counts, and UTC
 timestamps:
 
 - `last_synced_at`: last successfully committed indexing/publication check,
@@ -1957,7 +1963,7 @@ modules are grouped by responsibility:
   durable canonical ingestion and rebuildable retrieval state. The application
   core wires those stages together.
 - `app/views/shared.rs`: node-side embedding and publication-payload materialization
-  from interpreted silver conversations; source scanning stays in the shared
+  from interpreted silver chats; source scanning stays in the shared
   publication coordinator.
 - `app/semantic/` and `app/search_*`: views model execution, embedding batches,
   Core ML, remote embeddings, hybrid retrieval and query/ranking policies.

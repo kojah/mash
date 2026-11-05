@@ -4,7 +4,7 @@ use crate::{provider::Provider, role::Role, search_results::ChatMetadata};
 fn hit(node: &str, content: &str) -> SearchHit {
     SearchHit {
         id: "message".into(),
-        conversation_id: "thread".into(),
+        chat_id: "thread".into(),
         provider: Provider::Codex,
         turn_id: None,
         role: Role::User,

@@ -49,7 +49,7 @@ fn default_request_limit() -> usize {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Target {
     Messages,
-    Sessions,
+    Chats,
     Turns,
 }
 
@@ -58,7 +58,7 @@ pub(crate) enum Target {
 pub(crate) enum GroupBy {
     Provider,
     Role,
-    Session,
+    Chat,
 }
 
 #[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
@@ -73,7 +73,7 @@ pub(crate) enum Order {
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct Filter {
     pub provider: Option<crate::provider::Provider>,
-    pub session: Option<String>,
+    pub chat: Option<String>,
     pub role: Option<crate::role::Role>,
     /// Inclusive lower bound in Unix milliseconds.
     pub since: Option<i64>,
@@ -87,23 +87,19 @@ impl Target {
     fn relation(self) -> &'static str {
         match self {
             Self::Messages => {
-                "(SELECT m.*,s.provider FROM messages m JOIN sessions s ON s.id=m.conversation_id)"
+                "(SELECT m.*,s.provider FROM messages m JOIN chats s ON s.id=m.chat_id)"
             }
-            Self::Sessions => "sessions",
-            Self::Turns => {
-                "(SELECT t.*,s.provider FROM turns t JOIN sessions s ON s.id=t.conversation_id)"
-            }
+            Self::Chats => "chats",
+            Self::Turns => "(SELECT t.*,s.provider FROM turns t JOIN chats s ON s.id=t.chat_id)",
         }
     }
 
     fn columns(self) -> &'static str {
         match self {
-            Self::Messages => {
-                "id, conversation_id, turn_id, provider, role, ordinal, created_at, content"
-            }
-            Self::Sessions => "id, provider, title, project, repository, created_at, updated_at",
+            Self::Messages => "id, chat_id, turn_id, provider, role, ordinal, created_at, content",
+            Self::Chats => "id, provider, title, project, repository, created_at, updated_at",
             Self::Turns => {
-                "id, conversation_id, provider, revision, boundary, closed, created_at, updated_at"
+                "id, chat_id, provider, revision, boundary, closed, created_at, updated_at"
             }
         }
     }
@@ -111,7 +107,7 @@ impl Target {
     fn text_column(self) -> Result<&'static str, AppError> {
         match self {
             Self::Messages => Ok("content"),
-            Self::Sessions => Ok("title"),
+            Self::Chats => Ok("title"),
             Self::Turns => Err(AppError::usage(
                 "turns have no text column; query their messages",
             )),
@@ -122,10 +118,8 @@ impl Target {
         match (self, group) {
             (_, GroupBy::Provider) => Ok("provider"),
             (Self::Messages, GroupBy::Role) => Ok("role"),
-            (Self::Messages | Self::Turns, GroupBy::Session) => Ok("conversation_id"),
-            _ => Err(AppError::usage(
-                "this target cannot group by role or session",
-            )),
+            (Self::Messages | Self::Turns, GroupBy::Chat) => Ok("chat_id"),
+            _ => Err(AppError::usage("this target cannot group by role or chat")),
         }
     }
 }
@@ -149,14 +143,14 @@ fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>
         where_clauses.push("provider = ?".to_owned());
         params.push(Value::Text(provider.as_str().to_owned()));
     }
-    if let Some(conversation) = &request.filter.session {
-        let column = if matches!(request.target, Target::Sessions) {
+    if let Some(chat) = &request.filter.chat {
+        let column = if matches!(request.target, Target::Chats) {
             "id"
         } else {
-            "conversation_id"
+            "chat_id"
         };
         where_clauses.push(format!("{column} = ?"));
-        params.push(Value::Text(conversation.clone()));
+        params.push(Value::Text(chat.clone()));
     }
     if let Some(role) = &request.filter.role {
         if !matches!(request.target, Target::Messages) {
@@ -469,10 +463,10 @@ mod tests {
             .execute_batch(
                 "CREATE TABLE t (id INTEGER, name TEXT);
              INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c');
-             INSERT INTO sessions(id,provider,title) VALUES('chat-1','codex','A chat');
-             INSERT INTO turns(id,conversation_id,revision,boundary,closed)
+             INSERT INTO chats(id,provider,title) VALUES('chat-1','codex','A chat');
+             INSERT INTO turns(id,chat_id,revision,boundary,closed)
                 VALUES('turn-1','chat-1','revision','start',0);
-             INSERT INTO messages(id,conversation_id,turn_id,ordinal,role,content_packed)
+             INSERT INTO messages(id,chat_id,turn_id,ordinal,role,content_packed)
                 VALUES('message-1','chat-1','turn-1',0,'user',silver_pack('hello'));",
             )
             .unwrap();
@@ -498,11 +492,11 @@ mod tests {
     }
 
     #[test]
-    fn canonical_tables_expose_sessions_messages_and_turns() {
+    fn canonical_tables_expose_chats_messages_and_turns() {
         let (_directory, path) = fixture();
         let chat = run(
             &path,
-            "SELECT id, title FROM sessions",
+            "SELECT id, title FROM chats",
             10,
             Duration::from_secs(5),
         )
@@ -511,7 +505,7 @@ mod tests {
 
         let message = run(
             &path,
-            "SELECT id, conversation_id, role, content FROM messages",
+            "SELECT id, chat_id, role, content FROM messages",
             10,
             Duration::from_secs(5),
         )
@@ -520,7 +514,7 @@ mod tests {
             message["rows"],
             json!([{
                 "id": "message-1",
-                "conversation_id": "chat-1",
+                "chat_id": "chat-1",
                 "role": "user",
                 "content": "hello",
             }])
@@ -631,9 +625,9 @@ mod tests {
         assert!(
             serde_json::from_str::<Request>(r#"{"target":"messages","sql":"SELECT 1"}"#).is_err()
         );
-        // Role is not a conversation column.
+        // Role is not a chat column.
         let invalid: Request =
-            serde_json::from_str(r#"{"target":"sessions","group_by":"role"}"#).unwrap();
+            serde_json::from_str(r#"{"target":"chats","group_by":"role"}"#).unwrap();
         assert!(run_request(&path, &invalid, Duration::from_secs(5)).is_err());
     }
 
@@ -668,16 +662,16 @@ mod tests {
     #[test]
     fn agent_query_targets_validate_filters_and_reject_retired_documents() {
         let (_directory, path) = fixture();
-        for target in ["sessions", "messages", "turns"] {
+        for target in ["chats", "messages", "turns"] {
             let request: Request = serde_json::from_value(json!({
-                "target": target, "filter": {"session": "chat-1", "provider": "codex"}
+                "target": target, "filter": {"chat": "chat-1", "provider": "codex"}
             }))
             .unwrap();
             let result = run_request(&path, &request, Duration::from_secs(5)).unwrap();
             assert_eq!(result["rows"].as_array().unwrap().len(), 1, "{target}");
         }
         for request in [
-            json!({"target":"sessions","filter":{"role":"user"}}),
+            json!({"target":"chats","filter":{"role":"user"}}),
             json!({"target":"turns","filter":{"text":"hello"}}),
             json!({"target":"messages","order":"updated_at"}),
         ] {

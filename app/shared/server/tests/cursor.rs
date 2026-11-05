@@ -37,10 +37,8 @@ fn native_publication() -> (Vec<Value>, Vec<String>) {
     let roots = vec![path.clone()];
     let sources = discovered_sources(Provider::Cursor, &roots);
     let source = &sources[0];
-    let conversation = parse_test_source(Provider::Cursor, source)
-        .conversation
-        .unwrap();
-    super::native::publication(conversation)
+    let chat = parse_test_source(Provider::Cursor, source).chat.unwrap();
+    super::native::publication(chat)
 }
 
 async fn contract(service: Service) {

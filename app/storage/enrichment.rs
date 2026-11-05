@@ -13,8 +13,8 @@ impl Storage {
             .map_err(|_| AppError::internal("serialize silver enrichment evidence"))?;
         self.connection
             .execute(
-                "INSERT INTO conversation_enrichment(conversation_id,evidence) VALUES(?1,?2)
-             ON CONFLICT(conversation_id) DO UPDATE SET evidence=excluded.evidence
+                "INSERT INTO chat_enrichment(chat_id,evidence) VALUES(?1,?2)
+             ON CONFLICT(chat_id) DO UPDATE SET evidence=excluded.evidence
              WHERE evidence IS NOT excluded.evidence",
                 rusqlite::params![id, json],
             )
@@ -55,9 +55,9 @@ impl Storage {
     }
 
     #[cfg(test)]
-    pub(crate) fn conversation_enrichment(&self, id: &str) -> Result<Option<Evidence>, AppError> {
-        generated::ConversationEnrichment::builder()
-            .conversation_id(id)
+    pub(crate) fn chat_enrichment(&self, id: &str) -> Result<Option<Evidence>, AppError> {
+        generated::ChatEnrichment::builder()
+            .chat_id(id)
             .build()
             .query_opt(&self.connection)
             .map_err(AppError::database)?

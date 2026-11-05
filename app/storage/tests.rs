@@ -1,10 +1,10 @@
 use super::*;
 use std::path::PathBuf;
 
-use crate::silver::Conversation;
+use crate::silver::Chat;
 
-fn conversation(content: &str) -> Conversation {
-    Conversation {
+fn chat(content: &str) -> Chat {
+    Chat {
         id: "session-1".to_owned(),
         provider: crate::provider::Provider::Codex,
         title_origin: None,
@@ -31,8 +31,8 @@ fn conversation(content: &str) -> Conversation {
     }
 }
 
-pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversation {
-    let mut value = conversation("");
+pub(super) fn chat_with_messages(messages: &[(&str, &str)]) -> Chat {
+    let mut value = chat("");
     value.messages = messages
         .iter()
         .enumerate()

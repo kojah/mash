@@ -43,13 +43,13 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
     connection
         .execute_batch(
             "UPDATE silver_state SET interpretation_version=3 WHERE singleton=1;
-         INSERT INTO sessions(id,provider,source_path,source_key)
+         INSERT INTO chats(id,provider,source_path,source_key)
          VALUES ('session','codex','/tmp/session.jsonl','file:/tmp/session.jsonl');",
         )
         .expect("readiness history");
     connection
         .execute(
-            "INSERT INTO messages(id,conversation_id,ordinal,role,content_packed,search_projection)
+            "INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection)
              VALUES('message','session',0,'tool','canonical tool output',?1)",
             [dialogue_text],
         )

@@ -15,7 +15,7 @@ fn database(directory: &Path) -> std::path::PathBuf {
     let path = directory.join("index.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();
     storage
-        .replace_conversation(&crate::silver::Conversation {
+        .replace_chat(&crate::silver::Chat {
             id: "thread-105".into(),
             provider: Provider::Codex,
             title_origin: None,
@@ -67,7 +67,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             let mut collector = Collector::new(input).unwrap();
             for number in 0..110 {
                 collector.push(Chat {
-                    conversation_id: format!("thread-{number:03}"),
+                    chat_id: format!("thread-{number:03}"),
                     provider: Provider::Codex,
                     node_id: "peer".into(),
                     metadata: ChatMetadata {
@@ -102,7 +102,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             .page
             .chats
             .iter()
-            .map(|row| row.conversation_id.as_str())
+            .map(|row| row.chat_id.as_str())
             .collect::<Vec<_>>(),
         [
             "thread-009",
@@ -120,7 +120,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             .page
             .chats
             .iter()
-            .filter(|row| row.conversation_id == "thread-105")
+            .filter(|row| row.chat_id == "thread-105")
             .count(),
         1
     );
@@ -129,7 +129,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             .page
             .chats
             .iter()
-            .find(|row| row.conversation_id == "thread-105")
+            .find(|row| row.chat_id == "thread-105")
             .unwrap()
             .node_id,
         "laptop"

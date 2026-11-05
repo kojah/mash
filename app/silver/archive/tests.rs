@@ -1,10 +1,10 @@
 use super::*;
 
 #[test]
-fn version_one_archive_context_keeps_its_frozen_wire_contract() {
-    // The whole record is deliberately a version-1 fixture, independent of
+fn version_two_archive_context_keeps_its_frozen_wire_contract() {
+    // The whole record is deliberately a version-2 fixture, independent of
     // the runtime MessageContext type and the current SQLite representation.
-    const RECORD: &str = r#"{"record":"message","attachments":[],"id":"child","conversation_id":"chat","ordinal":1,"role":"user","content":"sample","dialogue_text":null,"context":{"kind":"parent","ordinal":0},"created_at":null,"fingerprint":""}"#;
+    const RECORD: &str = r#"{"record":"message","attachments":[],"id":"child","chat_id":"chat","ordinal":1,"role":"user","content":"sample","dialogue_text":null,"context":{"kind":"parent","ordinal":0},"created_at":null,"fingerprint":""}"#;
     let record: Record = serde_json::from_str(RECORD).unwrap();
     record.validate().unwrap();
     assert_eq!(serde_json::to_string(&record).unwrap(), RECORD);

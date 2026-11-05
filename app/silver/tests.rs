@@ -20,13 +20,8 @@ fn write_claude_session(path: &Path, session: &str, message: &str) {
     .expect("Claude fixture");
 }
 
-fn test_conversation(
-    id: &str,
-    provider: Provider,
-    source_path: PathBuf,
-    content: &str,
-) -> Conversation {
-    Conversation {
+fn test_chat(id: &str, provider: Provider, source_path: PathBuf, content: &str) -> Chat {
+    Chat {
         id: id.to_owned(),
         provider,
         title_origin: None,
@@ -64,7 +59,7 @@ fn empty_summary() -> IndexSummary {
         unchanged_sources: 0,
         checkpoint_skipped_sources: 0,
         tombstoned_sources: 0,
-        purged_conversations: 0,
+        purged_chats: 0,
         committed_batches: 0,
         discovered_bytes: 0,
         processed_bytes: 0,

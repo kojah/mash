@@ -171,9 +171,9 @@ fn unambiguous_local_metadata_is_required_and_inline_hex_state_is_supported() {
         path: "/other/repository".into(),
     });
     write(&connection, root_key(), &root);
-    let conversation = parsed(&path);
-    assert_eq!(conversation.project, None);
-    assert_eq!(conversation.repository, None);
+    let chat = parsed(&path);
+    assert_eq!(chat.project, None);
+    assert_eq!(chat.repository, None);
     let mut bubble: Bubble = read(&connection, &bubble_key("request-1"));
     bubble.created_at = Some("invalid".into());
     write(&connection, &bubble_key("request-1"), &bubble);

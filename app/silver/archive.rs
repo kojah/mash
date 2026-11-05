@@ -2,11 +2,10 @@
 use crate::{attachments::Metadata, provider::Provider, role::Role};
 use serde::{Deserialize, Serialize};
 
-pub(crate) const VERSION: u32 = 1;
+pub(crate) const VERSION: u32 = 2;
 
-/// Version 1 archive ancestry is expressed in positions within its frozen
-/// conversation. Keep this wire model independent of live canonical ancestry:
-/// exports from the previous release must remain importable when silver changes.
+/// Archive record schema 2 uses chat terminology. Ancestry is expressed in
+/// positions within the frozen chat, independently of live message IDs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum Context {
@@ -62,7 +61,7 @@ pub(crate) enum Record {
         revision: u64,
         interpretation_version: u32,
     },
-    Conversation {
+    Chat {
         id: String,
         provider: Provider,
         source_path: String,
@@ -78,7 +77,7 @@ pub(crate) enum Record {
     Message {
         attachments: Vec<Metadata>,
         id: String,
-        conversation_id: String,
+        chat_id: String,
         ordinal: i64,
         role: Role,
         content: String,
@@ -91,18 +90,18 @@ pub(crate) enum Record {
         tools: crate::tools::Activity,
     },
     Enrichment {
-        conversation_id: String,
+        chat_id: String,
         evidence: super::enrichment::Evidence,
     },
     Tombstone {
         provider: Provider,
-        conversation_id: String,
+        chat_id: String,
         forgotten_at: i64,
     },
     ClaudeSource {
         source_key: String,
         source_path: String,
-        conversation_id: String,
+        chat_id: String,
         title: Option<String>,
         project: Option<String>,
         repository: Option<String>,

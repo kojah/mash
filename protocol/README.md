@@ -51,13 +51,13 @@ original extraction preserved shared mutation ordering and revision checks.
 The local cutover is modeled separately by `LocalWriter` and `LocalGold` below;
 shared coordinators retain their existing models.
 
-Session evidence lives in `NodeViews.projections`, keyed directly by session ID,
+Chat evidence lives in `NodeViews.projections`, keyed directly by chat ID,
 with a fingerprint, vector count, and completeness flag. `Projections::merge_matching`
 implements the preferred/current fingerprint rule modeled by `CoverageMerge`;
 `retain_matching` drops evidence that no longer matches committed history.
 The `LocalGold`, `SharedViews`, `RetryViews`, and `CoverageMerge` durable actions
 and lock boundaries remain unchanged. Node-scoped deletion is tested against
-another publisher with identical session and message IDs.
+another publisher with identical chat and message IDs.
 
 Qdrant point publication now uses the generated Tonic client in
 `app/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
@@ -134,7 +134,7 @@ blocking work after cancellation, and public CLI contention with reads available
 ### LocalGold: invalidate before mutation and certify completed replay
 
 `LocalGold.tla` checks the direct local coordinator with two silver revisions,
-two build settings, and two session projections. Revision 2
+two build settings, and two chat projections. Revision 2
 deletes the native projection. A reader reports current only when certification,
 the captured silver revision, and build settings agree. `CurrentMatchesSilver`
 then requires both persisted projections to equal that input.
@@ -198,7 +198,7 @@ must invalidate an existing reader; the Rust regression isolates this identity
 check. The bounded model fixes one database identity, so this additional reader
 guard does not change its transitions or completed-write assumptions.
 The model's unchanged-projection reuse assumes equal fingerprints cover every
-stored field. Session fingerprints include canonical message and session metadata;
+stored field. Chat fingerprints include canonical message and chat metadata;
 embedding reuse separately requires matching prepared text and model settings.
 
 The cutover removes SQL-gold participation from publication snapshots. The
@@ -288,7 +288,7 @@ finds resurrection.
 Source mapping:
 
 - [silver_store/apply.rs](../app/shared/silver_store/apply.rs): `start`,
-  `apply`, `Upload::forget`, `Upload::conversation`.
+  `apply`, `Upload::forget`, `Upload::chat`.
 - [silver_store.rs](../app/shared/silver_store.rs): `SilverStore::write`.
 - Existing regression:
   [canonical revision and atomic publication](../app/shared/server/tests/silver_revision.rs).
@@ -461,7 +461,7 @@ retirement without a validated import. No progress/liveness property is claimed.
 ### Shared vocabulary
 
 `docs/agent-history.md` defines the agent-history domain and the relationship
-between canonical sessions, messages, derived turns, publication, and replay.
+between canonical chats, messages, derived turns, publication, and replay.
 Model changes here should keep that document in sync.
 
 ### WebSocket synchronization: transfer and durable acknowledgement
@@ -536,7 +536,7 @@ Known implementation/model gaps, recorded in Beads:
    transport row. Coverage evidence is part of the receipt: a baseline
    `cover` failure, and a live `record_live` failure, both leave the operation
    `views_pending` and fail the request instead of being logged and ignored, so
-   a later baseline cannot overwrite a conversation whose live revision was
+   a later baseline cannot overwrite a chat whose live revision was
    never recorded.
 2. Startup recovery is implemented: `server::sync::recover` runs before the
    listener serves and resumes `queued_for_apply`, `applying` and
@@ -594,18 +594,18 @@ Known implementation/model gaps, recorded in Beads:
    bounded member manifest, `Catalog::store_manifest` installs it durably,
    `BackfillBatch` publications must match the frozen baseline revision, and
    `Catalog::cover` records member evidence before the receipt. Live `/v1/sync`
-   publications record `live_revision` per conversation; a baseline batch drops
+   publications record `live_revision` per chat; a baseline batch drops
    records, messages and tombstones superseded by newer live state, then rebases
    the rest onto the node revision, so a late baseline cannot overwrite a live
-   conversation or resurrect a deletion. Opening a baseline behind the node head
+   chat or resurrect a deletion. Opening a baseline behind the node head
    fails closed. `mash index --backfill` drives the whole flow.
    `journal_pruning_waits_for_baseline_completion_and_contiguous_coverage`
    enforces the journal gate.
 
-   The client plans the baseline itself: conversations are grouped whole,
+   The client plans the baseline itself: chats are grouped whole,
    ordered by `updated_at` descending with the identifier as tie-breaker, and
-   greedily packed to 128 conversations or 1 MiB of decoded Protobuf records. A
-   conversation is never split across batches. Each batch is one
+   greedily packed to 128 chats or 1 MiB of decoded Protobuf records. A
+   chat is never split across batches. Each batch is one
    `BeginPublication` with mode `BackfillBatch`, so **the server commits and
    certifies it as soon as its last piece lands**, independently of the others;
    the first batch is searchable while later batches are still uploading.
@@ -614,7 +614,7 @@ Known implementation/model gaps, recorded in Beads:
    completed batch digests before finishing.
 
    `mash index` chooses the strategy itself: a database with at least 200
-   conversations and **no publication for that node on the server yet** is
+   chats and **no publication for that node on the server yet** is
    published as a baseline, so the newest batches become searchable while the
    rest upload. Established nodes keep replace/delta semantics, because absence
    must still mean deletion there. `--backfill` remains as a hidden override for
@@ -628,8 +628,8 @@ Known implementation/model gaps, recorded in Beads:
    incremental path in production.
 
    Duplicate history across nodes is measured, not hidden. Silver already stores
-   a canonical per-conversation fingerprint, and `GET /v1/fingerprints` folds
-   those across the group into `duplicated_conversations`, `redundant_copies`,
+   a canonical per-chat fingerprint, and `GET /v1/fingerprints` folds
+   those across the group into `duplicated_chats`, `redundant_copies`,
    `redundant_messages` and `duplicate_vector_bytes` (an f32-per-message
    estimate at the group's embedding width; text and index overhead excluded).
    `mash status --shared` reports it as `duplicates`. The endpoint exposes
@@ -731,20 +731,20 @@ configuration reproduces the first invalid state.
 
 [ProgressiveBackfill.tla](ProgressiveBackfill.tla) is a **partially implemented
 design contract**. The manifest transfer, durable membership table, coverage
-evidence, completion check, per-conversation ordering and tombstone dominance
+evidence, completion check, per-chat ordering and tombstone dominance
 exist in `app/shared/sync/catalog.rs` and the `/v1/sync` handlers:
 
 - While a baseline is active, every committed `/v1/sync` live publication records
-  `live_revision` per conversation in `backfill_members` and covers its baseline
+  `live_revision` per chat in `backfill_members` and covers its baseline
   member. That evidence is durable in the transfer catalog, not silver.
-- A baseline batch drops conversation records, their messages and their
-  tombstones for every conversation with `live_revision` above its source
+- A baseline batch drops chat records, their messages and their
+  tombstones for every chat with `live_revision` above its source
   revision, then rebases the remaining records onto the node's current revision.
   A batch whose records are all superseded writes no silver, marks its members
   covered and acknowledges the current revision. This keeps silver's monotonic
-  node revision intact while honouring per-conversation order.
+  node revision intact while honouring per-chat order.
 - A live tombstone therefore survives late baseline arrival, and a newer live
-  conversation is never overwritten by the frozen baseline.
+  chat is never overwritten by the frozen baseline.
 - Opening a baseline behind the node's current revision fails closed with
   `backfill_baseline_stale`; the server never rebases a baseline over history it
   cannot order.
@@ -773,7 +773,7 @@ are enforced and tested at the storage boundary. Multi-session and
 restored-baseline ordering remain outside the model.
 
 The client can drive a baseline end to end: `sync::client::upload_backfill`
-encodes the frozen batch's conversation membership as the manifest, streams
+encodes the frozen batch's chat membership as the manifest, streams
 `BeginBackfill`/chunks/`FinishUpload`, sends the batch as a `BackfillBatch`
 publication, then drives `FinishBackfill` and waits for `BackfillComplete`.
 `qdrant_client_backfill_sender_completes_a_baseline_end_to_end` runs that sender
@@ -791,7 +791,7 @@ automatically for a large first publication. `mash index --backfill[=ID]` is a
 hidden override that forces the baseline path for tests and diagnostics. Either
 way it indexes local sources, then
 freezes the next local revision, plans the history into batches (128
-conversations or 1 MiB each), installs the member manifest, and publishes those
+chats or 1 MiB each), installs the member manifest, and publishes those
 batches in order under the publisher lock. Each batch commits independently and
 the journal is acknowledged with the baseline-complete gate once coverage is
 complete; the command reports
@@ -803,14 +803,14 @@ views recipe and a configured shared destination, and conflicts with
 `qdrant_backfill_command_publishes_a_baseline_through_the_cli` runs the real
 binary against a real server and asserts the catalog reports `complete` with
 full coverage and that shared status shows the same revision.
-A frozen baseline at source revision 1 contains conversations `a` and `b`; live
+A frozen baseline at source revision 1 contains chats `a` and `b`; live
 revision 2 edits `a`, and revision 3 deletes it. Four independent batches may be
-scheduled in any order. Each carries complete conversation state or a tombstone.
+scheduled in any order. Each carries complete chat state or a tombstone.
 Only one apply/repair worker runs per node, but source edits and crashes may
 interleave with its work. Retrying an already committed batch uses its immutable
 receipt without applying it again.
 
-`Commit` atomically records silver, per-conversation ordering, the receipt and
+`Commit` atomically records silver, per-chat ordering, the receipt and
 baseline membership coverage. A newer live record can satisfy its baseline
 member. `WriteDocument` models each separate durable views write/delete, followed
 by `Certify` and then the client's `Publish` receipt. The receipt count represents
@@ -819,7 +819,7 @@ completed writes and loses the worker or reply. Recovery repairs views from
 silver. A tombstone value in `docs` means no searchable document, not an indexed
 tombstone. Views settings and node identity are fixed in this model.
 
-Checks require the newest committed conversation version to win, deletions to
+Checks require the newest committed chat version to win, deletions to
 survive late baseline arrival, and certified views to match silver. Baseline
 completion requires evidence for every member. Local acknowledgement and journal
 pruning require baseline completion plus contiguous published live coverage;
@@ -834,7 +834,7 @@ finish with missing baseline members or prune using only the highest published
 revision. These must expose stale writes, resurrection, incomplete coverage and
 lost journal gaps respectively. The finite batch set allows weak fairness to
 establish progress; this is not a scheduling or latency guarantee for an unbounded
-live stream. Baseline construction, multi-conversation transactions, local
+live stream. Baseline construction, multi-chat transactions, local
 snapshot/journal persistence, identity changes and simultaneous publishers are
 outside this model. Tombstones have no later recreation in the bounded history.
 
@@ -847,7 +847,7 @@ Coverage: manifest and completion flow in
 `qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches`, late
 baseline and tombstone dominance in
 `qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions`
-(including the stale-open rejection), and per-conversation evidence in the
+(including the stale-open rejection), and per-chat evidence in the
 `live_publications_supersede_baseline_members` catalog unit test.
 
 Publisher ownership is verified by

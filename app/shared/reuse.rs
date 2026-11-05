@@ -1,5 +1,5 @@
 //! Publication plans and the silver dependency fingerprint of each thread.
-use super::protocol::{ConversationRecord, MessageRecord};
+use super::protocol::{ChatRecord, MessageRecord};
 use crate::{AppError, message_context::MessageContext, role::Role, views::config::Build};
 use serde::Serialize;
 use std::io::Write;
@@ -46,7 +46,7 @@ impl Target {
 /// checkpoint stamps or retrieval policy enter this digest.
 pub(super) struct Fingerprint {
     digest: blake3::Hasher,
-    conversation_id: String,
+    chat_id: String,
     ordinal: Option<i64>,
 }
 
@@ -62,21 +62,21 @@ impl Write for Digest<'_> {
 }
 
 impl Fingerprint {
-    pub(super) fn new(conversation: &ConversationRecord) -> Result<Self, AppError> {
+    pub(super) fn new(chat: &ChatRecord) -> Result<Self, AppError> {
         let mut digest = blake3::Hasher::new();
         digest.update(b"mash-shared-thread-dependencies-v1\0");
-        serde_json::to_writer(Digest(&mut digest), conversation)
+        serde_json::to_writer(Digest(&mut digest), chat)
             .map_err(|_| AppError::internal("fingerprint shared thread"))?;
         digest.update(b"\n");
         Ok(Self {
             digest,
-            conversation_id: conversation.id.clone(),
+            chat_id: chat.id.clone(),
             ordinal: None,
         })
     }
 
     pub(super) fn push(&mut self, message: &MessageRecord) -> Result<(), AppError> {
-        if message.conversation_id != self.conversation_id
+        if message.chat_id != self.chat_id
             || message.ordinal < 0
             || self
                 .ordinal
@@ -101,7 +101,7 @@ pub(in crate::shared) struct MessageRef<'a> {
     #[serde(skip_serializing_if = "<[crate::attachments::Metadata]>::is_empty")]
     attachments: &'a [crate::attachments::Metadata],
     id: &'a str,
-    conversation_id: &'a str,
+    chat_id: &'a str,
     ordinal: i64,
     #[serde(skip_serializing_if = "MessageContext::is_linear")]
     context: &'a MessageContext,
@@ -119,7 +119,7 @@ impl MessageRecord {
         MessageRef {
             attachments: &self.attachments,
             id: &self.id,
-            conversation_id: &self.conversation_id,
+            chat_id: &self.chat_id,
             ordinal: self.ordinal,
             context: &self.context,
             role: &self.role,

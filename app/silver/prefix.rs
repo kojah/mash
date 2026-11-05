@@ -136,7 +136,7 @@ mod tests {
                 .parser()
                 .parse(&crate::silver::HistorySource::file(&path))
                 .unwrap()
-                .conversation
+                .chat
                 .unwrap();
             let stamp = crate::silver::source_stamp(&path).unwrap();
             let (file, proof) = capture(&path, &stamp).unwrap();
@@ -149,7 +149,7 @@ mod tests {
             proof.verify(&path).unwrap();
             let captured = crate::silver::parsers::parse_captured(&path, provider, file)
                 .unwrap()
-                .conversation
+                .chat
                 .unwrap();
             assert_eq!(captured.id, expected.id);
             assert_eq!(captured.source, expected.source);
@@ -166,7 +166,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(parsed.malformed_records, 1);
-            assert!(parsed.conversation.is_none());
+            assert!(parsed.chat.is_none());
         }
     }
 }

@@ -105,7 +105,7 @@ fn upload_serialization_masks_canonical_projection_and_metadata() {
         records: vec![MessageRecord {
             attachments: Vec::new(),
             id: "m".into(),
-            conversation_id: "c".into(),
+            chat_id: "c".into(),
             ordinal: 0,
             context: crate::message_context::MessageContext::default(),
             role: crate::role::Role::User,

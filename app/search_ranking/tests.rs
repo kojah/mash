@@ -7,7 +7,7 @@ use crate::views::config::Fusion;
 fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
-        conversation_id: thread.into(),
+        chat_id: thread.into(),
         provider: Provider::Codex,
         turn_id: None,
         role: Role::User,

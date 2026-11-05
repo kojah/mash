@@ -5,7 +5,7 @@ use super::*;
 use crate::config::SharedConfig;
 use crate::search_results::SearchUnit;
 use crate::semantic::{self, Models};
-use crate::silver::{Conversation, NormalizedMessage};
+use crate::silver::{Chat, NormalizedMessage};
 use crate::storage::{Message, SearchHit, Storage};
 use crate::views::readiness::{Artifacts, State};
 use std::path::Path;
@@ -22,7 +22,7 @@ mod selections;
 fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
     let response = r#"{
         "node_id":"node", "instance":"node-instance", "revision":1, "last_synced_at":null,
-        "last_updated_at":null, "conversations":0, "messages":0
+        "last_updated_at":null, "chats":0, "messages":0
     }"#;
     let node: NodeFreshness = serde_json::from_str(response).unwrap();
     assert!(node.artifacts.is_none());
@@ -32,7 +32,7 @@ fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
     assert!(!encoded.contains("\"source_silver\""));
     let reported = r#"{
         "node_id":"node", "instance":"node-instance", "revision":1, "last_synced_at":null,
-        "last_updated_at":null, "conversations":0, "messages":0,
+        "last_updated_at":null, "chats":0, "messages":0,
         "artifacts":{"metadata":"ready","lexical":"stale","dense":"disabled"}
     }"#;
     let node: NodeFreshness = serde_json::from_str(reported).unwrap();
@@ -56,7 +56,7 @@ fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
 fn freshness_source_certificate_is_typed_and_distinct_from_shared_identity() {
     let response = r#"{
         "node_id":"node", "instance":"node-instance", "revision":100, "last_synced_at":null,
-        "last_updated_at":null, "conversations":0, "messages":0,
+        "last_updated_at":null, "chats":0, "messages":0,
         "source_silver":{"revision":7,"interpretation_version":1,
             "completeness":"incomplete","rejected_sources":2}
     }"#;
@@ -121,7 +121,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
             } else {
                 format!("slow-{index}")
             },
-            conversation_id: "thread".into(),
+            chat_id: "thread".into(),
             provider: crate::provider::Provider::Codex,
             turn_id: None,
             role: crate::role::Role::User,
@@ -554,12 +554,12 @@ async fn websocket_publication_streams_a_complete_snapshot_before_acknowledging(
         })
         .collect::<Vec<_>>();
     let events = wire::decode_publication(&pieces, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
-    let conversations: usize = events
+    let chats: usize = events
         .iter()
         .map(|event| match event {
-            crate::shared::protocol::Event::Batch(
-                crate::shared::protocol::Batch::Conversations { records },
-            ) => records.len(),
+            crate::shared::protocol::Event::Batch(crate::shared::protocol::Batch::Chats {
+                records,
+            }) => records.len(),
             _ => 0,
         })
         .sum();
@@ -572,7 +572,7 @@ async fn websocket_publication_streams_a_complete_snapshot_before_acknowledging(
             _ => 0,
         })
         .sum();
-    assert_eq!(conversations, 1);
+    assert_eq!(chats, 1);
     assert_eq!(messages, 2);
     assert!(!Storage::publication_is_pending(&path, &target(&config)).unwrap());
     server.abort();
@@ -743,8 +743,8 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
         });
         Json(serde_json::json!({
             "ok": true,
-            "counts": {"conversations": 0, "messages": 0, "searchable_messages": 0, "embeddings": 0},
-            "revision": 1, "removed_messages": 0, "purged_conversations": 0
+            "counts": {"chats": 0, "messages": 0, "searchable_messages": 0, "embeddings": 0},
+            "revision": 1, "removed_messages": 0, "purged_chats": 0
         }))
     }
     let received = Arc::new(Mutex::new(Vec::<Received>::new()));
@@ -828,7 +828,7 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
 fn seed(path: &Path) -> Storage {
     let mut storage = Storage::open_writer(path).expect("writer");
     storage
-        .replace_conversation(&Conversation {
+        .replace_chat(&Chat {
             id: "conversation".to_owned(),
             provider: crate::provider::Provider::Codex,
             title_origin: None,
@@ -906,7 +906,7 @@ async fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits()
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("filters.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();
-    let mut conversation = Conversation {
+    let mut chat = Chat {
         id: "conversation".into(),
         provider: crate::provider::Provider::Codex,
         title_origin: None,
@@ -921,7 +921,7 @@ async fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits()
         messages: Vec::new().into(),
     };
     for i in 0..61 {
-        conversation.messages.inline_mut().push(NormalizedMessage {
+        chat.messages.inline_mut().push(NormalizedMessage {
             attachments: Vec::new(),
             id: format!("message-{i:02}"),
             ordinal: i,
@@ -933,7 +933,7 @@ async fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits()
             tools: crate::tools::Activity::default(),
         });
     }
-    storage.replace_conversation(&conversation).unwrap();
+    storage.replace_chat(&chat).unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
     let gold = crate::views::local::test_support::Fixture::new(&path, "local-node").await;
@@ -1029,7 +1029,7 @@ async fn publication_state_survives_failed_delivery_and_forget() {
                 let protocol::Batch::Tombstones { records } = batch else {
                     panic!("tombstone batch")
                 };
-                assert_eq!(records[0].conversation_id, "conversation");
+                assert_eq!(records[0].chat_id, "conversation");
                 Ok(())
             })
         })

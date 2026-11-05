@@ -2,7 +2,7 @@ use crate::provider::Provider;
 use serde::{Deserialize, Serialize};
 
 use crate::storage::Counts;
-pub(crate) use crate::views::documents::{ConversationRecord, MessageRecord};
+pub(crate) use crate::views::documents::{ChatRecord, MessageRecord};
 pub(crate) use crate::views::retrieval::{Candidates, Document, Search, valid_vector};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -81,14 +81,14 @@ pub(crate) enum Event {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Batch {
     Tombstones { records: Vec<Tombstone> },
-    Conversations { records: Vec<ConversationRecord> },
+    Chats { records: Vec<ChatRecord> },
     Messages { records: Vec<MessageRecord> },
 }
 
 #[derive(Clone, Copy)]
 pub(crate) enum BatchKind {
     Tombstones,
-    Conversations,
+    Chats,
     Messages,
 }
 
@@ -98,7 +98,7 @@ impl Batch {
             Self::Tombstones { records } => Self::Tombstones {
                 records: std::mem::take(records),
             },
-            Self::Conversations { records } => Self::Conversations {
+            Self::Chats { records } => Self::Chats {
                 records: std::mem::take(records),
             },
             Self::Messages { records } => Self::Messages {
@@ -109,13 +109,13 @@ impl Batch {
     pub(crate) fn len(&self) -> usize {
         match self {
             Self::Tombstones { records } => records.len(),
-            Self::Conversations { records } => records.len(),
+            Self::Chats { records } => records.len(),
             Self::Messages { records } => records.len(),
         }
     }
 }
 
-impl ConversationRecord {
+impl ChatRecord {
     pub(crate) fn validate_enrichment(&self) -> Result<(), crate::AppError> {
         if let Some(evidence) = &self.enrichment {
             if !evidence.is_current()
@@ -160,7 +160,7 @@ impl ConversationRecord {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Tombstone {
     pub provider: Provider,
-    pub conversation_id: String,
+    pub chat_id: String,
 }
 
 #[cfg(test)]
@@ -186,7 +186,7 @@ pub(crate) struct Indexed {
     pub counts: Counts,
     pub revision: i64,
     pub removed_messages: u64,
-    pub purged_conversations: u64,
+    pub purged_chats: u64,
     /// Whether the node's stored views cover the head after certification.
     /// A certification that finished behind a newer commit reports false.
     #[serde(default)]
@@ -240,19 +240,19 @@ mod tests {
 
     #[test]
     fn batches_validate_record_schema_at_the_protocol_boundary() {
-        let line = r#"{"type":"batch","kind":"tombstones","records":[{"provider":"codex","conversation_id":"gone"}]}"#;
+        let line = r#"{"type":"batch","kind":"tombstones","records":[{"provider":"codex","chat_id":"gone"}]}"#;
         let event: Event = serde_json::from_str(line).unwrap();
         let encoded = serde_json::to_string(&event).unwrap();
         let Event::Batch(Batch::Tombstones { records }) = serde_json::from_str(&encoded).unwrap()
         else {
             panic!("typed tombstone batch")
         };
-        assert_eq!(records[0].conversation_id, "gone");
+        assert_eq!(records[0].chat_id, "gone");
         for invalid in [
-            r#"{"type":"batch","kind":"messages","records":[{"provider":"codex","conversation_id":"gone"}]}"#,
+            r#"{"type":"batch","kind":"messages","records":[{"provider":"codex","chat_id":"gone"}]}"#,
             r#"{"type":"batch","kind":"unknown","records":[]}"#,
-            r#"{"type":"batch","kind":"tombstones","records":[{"provider":"unknown","conversation_id":"gone"}]}"#,
-            r#"{"type":"batch","kind":"tombstones","records":[{"provider":"codex","conversation_id":3}]}"#,
+            r#"{"type":"batch","kind":"tombstones","records":[{"provider":"unknown","chat_id":"gone"}]}"#,
+            r#"{"type":"batch","kind":"tombstones","records":[{"provider":"codex","chat_id":3}]}"#,
             r#"{"type":"batch","kind":"tombstones","records":[],"unexpected":true}"#,
         ] {
             assert!(serde_json::from_str::<Event>(invalid).is_err(), "{invalid}");

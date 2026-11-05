@@ -2,7 +2,7 @@
 use super::{Counts, Storage};
 use crate::{
     AppError,
-    views::documents::{ConversationRecord, MessageRecord},
+    views::documents::{ChatRecord, MessageRecord},
 };
 use std::{
     collections::BTreeMap,
@@ -11,7 +11,7 @@ use std::{
 };
 
 pub(crate) struct Chat {
-    pub(crate) record: ConversationRecord,
+    pub(crate) record: ChatRecord,
     pub(crate) fingerprint: String,
     offset: u64,
     messages: usize,
@@ -36,8 +36,8 @@ impl Input {
         let mut offset = 0;
         let mut captured = None;
         storage.with_publication_snapshot(|snapshot| {
-            snapshot.visit_selected(BatchKind::Conversations, false, None, |batch| {
-                if let Batch::Conversations { records } = batch {
+            snapshot.visit_selected(BatchKind::Chats, false, None, |batch| {
+                if let Batch::Chats { records } = batch {
                     for record in records {
                         let mut hash = blake3::Hasher::new();
                         hash.update(
@@ -64,14 +64,14 @@ impl Input {
                         let bytes = serde_json::to_vec(&record)
                             .map_err(|_| AppError::internal("encode gold input"))?;
                         let chat = chats
-                            .get_mut(&record.conversation_id)
+                            .get_mut(&record.chat_id)
                             .ok_or_else(|| AppError::database_data("gold input has no chat"))?;
                         if chat.messages == 0 {
                             chat.offset = offset;
                         }
                         chat.messages += 1;
                         hashes
-                            .get_mut(&record.conversation_id)
+                            .get_mut(&record.chat_id)
                             .ok_or_else(|| AppError::internal("missing chat digest"))?
                             .update(&bytes);
                         writer
@@ -125,7 +125,7 @@ impl Input {
                     .map_err(|_| AppError::internal("invalid gold input"))
             })
             .collect::<Result<Vec<MessageRecord>, AppError>>()?;
-        if records.len() != chat.messages || records.iter().any(|m| m.conversation_id != id) {
+        if records.len() != chat.messages || records.iter().any(|m| m.chat_id != id) {
             return Err(AppError::internal("incomplete gold input"));
         }
         Ok(records)

@@ -21,7 +21,7 @@ fn pagination_stops_at_the_documented_offset_cap() {
 
 fn row(id: &str, time: Option<i64>) -> Chat {
     Chat {
-        conversation_id: id.into(),
+        chat_id: id.into(),
         provider: Provider::Codex,
         node_id: "node".into(),
         metadata: ChatMetadata {
@@ -52,7 +52,7 @@ fn bounded_collection_deduplicates_better_copies_before_global_pagination() {
     assert_eq!(
         page.chats
             .into_iter()
-            .map(|thread| thread.conversation_id)
+            .map(|thread| thread.chat_id)
             .collect::<Vec<_>>(),
         ["id-0997", "id-0996"]
     );
@@ -83,7 +83,7 @@ fn metadata_filters_compose_and_time_bounds_exclude_unknown_activity() {
     }
     let page = collector.finish();
     assert_eq!(page.chats.len(), 1);
-    assert_eq!(page.chats[0].conversation_id, "match");
+    assert_eq!(page.chats[0].chat_id, "match");
     assert!(input.admits_node("other", "caller"));
     let selected = Request {
         node: vec!["other".into()],

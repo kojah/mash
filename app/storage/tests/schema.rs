@@ -36,8 +36,8 @@ fn schemas_before_the_supported_upgrade_are_rejected_untouched() {
     let connection = Connection::open(&path).expect("seed database");
     connection
         .execute_batch(
-            "CREATE TABLE conversations(id TEXT PRIMARY KEY);
-             INSERT INTO conversations VALUES('kept');
+            "CREATE TABLE chats(id TEXT PRIMARY KEY);
+             INSERT INTO chats VALUES('kept');
              PRAGMA user_version = 44;",
         )
         .expect("older schema");
@@ -50,7 +50,7 @@ fn schemas_before_the_supported_upgrade_are_rejected_untouched() {
     assert!(!directory.path().join("mash.views.sqlite3").exists());
     let kept: i64 = Connection::open(&path)
         .unwrap()
-        .query_row("SELECT count(*) FROM conversations", [], |row| row.get(0))
+        .query_row("SELECT count(*) FROM chats", [], |row| row.get(0))
         .unwrap();
     assert_eq!(kept, 1);
 }

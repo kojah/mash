@@ -526,8 +526,8 @@ fn status_reports_another_release_schema_without_touching_it() {
     Connection::open(&database)
         .expect("old database")
         .execute_batch(
-            "CREATE TABLE conversations (id TEXT PRIMARY KEY);
-             INSERT INTO conversations VALUES ('conversation');
+            "CREATE TABLE chats (id TEXT PRIMARY KEY);
+             INSERT INTO chats VALUES ('chat');
              PRAGMA user_version = 7;",
         )
         .expect("seed old database");

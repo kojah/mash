@@ -79,7 +79,7 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
             }
         }
         .unwrap()
-        .conversation
+        .chat
         .unwrap();
         assert_eq!(parsed.messages.inline()[0].content, context);
         assert_eq!(
@@ -108,7 +108,7 @@ fn malformed_jsonl_cannot_be_masked_by_fragment_ancestry_or_identity_errors() {
         fs::write(source.path(), &input).unwrap();
         let parsed = parse_claude(source.path()).unwrap();
         assert!(
-            parsed.conversation.is_none(),
+            parsed.chat.is_none(),
             "an incomplete source exposes no normalized fragments"
         );
         assert_eq!(
@@ -163,8 +163,8 @@ fn claude_agent_identity_uses_native_session_and_agent_not_file_location() {
     let copied = directory.path().join("moved.jsonl");
     fs::write(&first, record).unwrap();
     fs::write(&copied, record).unwrap();
-    let original = parse_claude(&first).unwrap().conversation.unwrap();
-    let moved = parse_claude(&copied).unwrap().conversation.unwrap();
+    let original = parse_claude(&first).unwrap().chat.unwrap();
+    let moved = parse_claude(&copied).unwrap().chat.unwrap();
     assert_eq!(original.id, moved.id);
     assert_ne!(original.id, "parent");
     fs::write(
@@ -190,12 +190,12 @@ fn claude_workflow_events_require_agent_consistency_only_when_dialogue_exists() 
 {"type":"result","agentId":"beta"}"#;
     fs::write(&path, events).unwrap();
     let empty = parse_claude(&path).unwrap();
-    assert!(empty.conversation.is_none());
+    assert!(empty.chat.is_none());
     assert_eq!(empty.malformed_records, 0);
 
     let message = r#"{"type":"user","sessionId":"chat","agentId":"dialogue-agent","uuid":"message","parentUuid":null,"message":{"role":"user","content":"retained dialogue"}}"#;
     fs::write(&path, message).unwrap();
-    let plain = parse_claude(&path).unwrap().conversation.unwrap();
+    let plain = parse_claude(&path).unwrap().chat.unwrap();
     fs::write(&path, format!("{events}\n{message}\n{events}")).unwrap();
     assert!(
         parse_claude(&path)
@@ -208,13 +208,13 @@ fn claude_workflow_events_require_agent_consistency_only_when_dialogue_exists() 
     let consistent = r#"{"type":"started","agentId":"dialogue-agent"}"#;
     let metadata_identified = message.replace("\"agentId\":\"dialogue-agent\",", "");
     fs::write(&path, format!("{consistent}\n{metadata_identified}")).unwrap();
-    let mixed = parse_claude(&path).unwrap().conversation.unwrap();
+    let mixed = parse_claude(&path).unwrap().chat.unwrap();
     assert_eq!(plain.id, mixed.id);
     assert_eq!(plain.messages.inline(), mixed.messages.inline());
 
     fs::write(&path, format!("{events}\n{{broken")).unwrap();
     let malformed = parse_claude(&path).unwrap();
-    assert!(malformed.conversation.is_none());
+    assert!(malformed.chat.is_none());
     assert_eq!(malformed.malformed_records, 1);
 }
 
@@ -227,8 +227,8 @@ fn claude_parser_skips_interior_damage_but_rejects_a_damaged_tail() {
     // progress, so the rest of the transcript is applied and the line reported.
     writeln!(file, "not-json\n{user}\n{assistant}").expect("transcript");
     let parsed = parse_claude(file.path()).expect("parse Claude history");
-    let conversation = parsed.conversation.expect("readable records are kept");
-    assert_eq!(conversation.messages.inline().len(), 2);
+    let chat = parsed.chat.expect("readable records are kept");
+    assert_eq!(chat.messages.inline().len(), 2);
     assert_eq!(parsed.malformed_records, 1);
     assert_eq!(parsed.first_record_issue.unwrap().line, 1);
 
@@ -237,7 +237,7 @@ fn claude_parser_skips_interior_damage_but_rejects_a_damaged_tail() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(file, "{user}\n{assistant}\n{{\"type\":\"user\",\"session").expect("transcript");
     let parsed = parse_claude(file.path()).expect("parse Claude history");
-    assert!(parsed.conversation.is_none());
+    assert!(parsed.chat.is_none());
     assert_eq!(parsed.malformed_records, 1);
     assert_eq!(parsed.first_record_issue.unwrap().line, 3);
 }
@@ -249,7 +249,7 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
     writeln!(file, r#"{{"type":"user","sessionId":"s1","uuid":"tool-only","message":{{"role":"user","content":[{{"type":"tool_result","content":"only tool payload"}}]}}}}"#).expect("tool-result line");
 
     let parsed = parse_claude(file.path()).expect("parse Claude history");
-    let messages = parsed.conversation.expect("conversation").messages;
+    let messages = parsed.chat.expect("conversation").messages;
     assert_eq!(
         messages.inline()[0].content,
         "keep this request\nprivate tool payload"
@@ -265,7 +265,7 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
     writeln!(object_file, r#"{{"type":"user","sessionId":"s2","uuid":"object","message":{{"role":"user","content":{{"type":"tool_result","content":"object tool payload"}}}}}}"#).expect("object tool-result line");
     let object = parse_claude(object_file.path())
         .expect("parse object tool result")
-        .conversation
+        .chat
         .expect("object conversation")
         .messages
         .inline_mut()
@@ -284,7 +284,7 @@ fn claude_keeps_reasoning_and_tool_arguments_only_in_canonical_context() {
         "{\"type\":\"tool_use\",\"name\":\"shell\",\"input\":{\"command\":\"privatecommandmarker\"}}]}}\n",
         "{\"type\":\"assistant\",\"sessionId\":\"tools\",\"uuid\":\"call\",\"message\":{\"role\":\"assistant\",\"content\":{\"type\":\"tool_use\",\"name\":\"shell\",\"input\":\"privatecommandmarker\"}}}\n",
     )).unwrap();
-    let parsed = parse_claude(file.path()).unwrap().conversation.unwrap();
+    let parsed = parse_claude(file.path()).unwrap().chat.unwrap();
     assert!(
         parsed.messages.inline()[0]
             .content
@@ -318,18 +318,11 @@ fn codex_parser_keeps_messages_and_tool_calls() {
     writeln!(file, r#"{{"type":"response_item","payload":{{"type":"function_call","call_id":"call1","name":"search","arguments":"{{\"q\":\"needle\"}}"}}}}"#).expect("tool line");
 
     let parsed = parse_codex(file.path()).expect("parse Codex history");
-    let conversation = parsed.conversation.expect("conversation");
-    assert_eq!(conversation.id, "c1");
-    assert_eq!(conversation.messages.len(), 2);
-    assert!(
-        conversation.messages.inline()[1]
-            .content
-            .contains("Tool search")
-    );
-    assert_eq!(
-        conversation.messages.inline()[1].dialogue_text.as_deref(),
-        Some("")
-    );
+    let chat = parsed.chat.expect("conversation");
+    assert_eq!(chat.id, "c1");
+    assert_eq!(chat.messages.len(), 2);
+    assert!(chat.messages.inline()[1].content.contains("Tool search"));
+    assert_eq!(chat.messages.inline()[1].dialogue_text.as_deref(), Some(""));
 }
 
 #[test]
@@ -342,15 +335,12 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
     .unwrap();
     let parsed = parse_codex(file.path()).unwrap();
     assert_eq!(parsed.malformed_records, 0);
-    let conversation = parsed.conversation.unwrap();
-    assert_eq!(conversation.id, "11111111-1111-4111-8111-111111111111");
-    assert_eq!(conversation.project.as_deref(), Some("/synthetic/mash"));
-    assert_eq!(
-        conversation.title.as_deref(),
-        Some("find cbioportal conversations")
-    );
-    assert_eq!(conversation.messages.len(), 4);
-    for (index, message) in conversation.messages.inline().iter().enumerate() {
+    let chat = parsed.chat.unwrap();
+    assert_eq!(chat.id, "11111111-1111-4111-8111-111111111111");
+    assert_eq!(chat.project.as_deref(), Some("/synthetic/mash"));
+    assert_eq!(chat.title.as_deref(), Some("find cbioportal conversations"));
+    assert_eq!(chat.messages.len(), 4);
+    for (index, message) in chat.messages.inline().iter().enumerate() {
         let ordinal = i64::try_from(index).unwrap();
         assert_eq!(message.ordinal, ordinal);
         assert_eq!(
@@ -366,7 +356,7 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
             Some(1_790_762_401_000 + 2_000 * ordinal)
         );
     }
-    let messages = &conversation.messages;
+    let messages = &chat.messages;
     assert_eq!(
         messages.inline()[0].content,
         "find cbioportal conversations"
@@ -383,7 +373,7 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
         )
     );
     // Rereading must retain identity even though mirrored lifecycle IDs differ.
-    let reread = parse_codex(file.path()).unwrap().conversation.unwrap();
+    let reread = parse_codex(file.path()).unwrap().chat.unwrap();
     assert!(
         messages
             .inline()
@@ -402,37 +392,25 @@ fn codex_native_completed_only_dialogue_is_recovered() {
     .unwrap();
     let parsed = parse_codex(file.path()).unwrap();
     assert_eq!(parsed.malformed_records, 0);
-    let conversation = parsed.conversation.unwrap();
-    assert_eq!(conversation.id, "22222222-2222-4222-8222-222222222222");
-    assert_eq!(conversation.messages.len(), 4);
+    let chat = parsed.chat.unwrap();
+    assert_eq!(chat.id, "22222222-2222-4222-8222-222222222222");
+    assert_eq!(chat.messages.len(), 4);
     assert_eq!(
-        conversation.messages.inline()[0].content,
+        chat.messages.inline()[0].content,
         "find cbioportal conversations"
     );
     assert_eq!(
-        conversation.messages.inline()[2].content,
-        conversation.messages.inline()[0].content
+        chat.messages.inline()[2].content,
+        chat.messages.inline()[0].content
     );
-    assert_ne!(
-        conversation.messages.inline()[0].id,
-        conversation.messages.inline()[2].id
-    );
+    assert_ne!(chat.messages.inline()[0].id, chat.messages.inline()[2].id);
+    assert_eq!(chat.messages.inline()[1].content, "Here is answer 0.");
+    assert_eq!(chat.messages.inline()[3].content, "Here is answer 1.");
     assert_eq!(
-        conversation.messages.inline()[1].content,
-        "Here is answer 0."
-    );
-    assert_eq!(
-        conversation.messages.inline()[3].content,
-        "Here is answer 1."
-    );
-    assert_eq!(
-        conversation.messages.inline()[0].created_at,
+        chat.messages.inline()[0].created_at,
         Some(1_790_762_402_000)
     );
-    assert_eq!(
-        conversation.messages.inline()[1].role,
-        crate::role::Role::Assistant
-    );
+    assert_eq!(chat.messages.inline()[1].role, crate::role::Role::Assistant);
 }
 
 #[test]
@@ -452,9 +430,9 @@ fn codex_completed_dialogue_does_not_promote_transient_or_unknown_items() {
     }
     let parsed = parse_codex(file.path()).unwrap();
     assert_eq!(parsed.malformed_records, 0);
-    let conversation = parsed.conversation.unwrap();
-    assert_eq!(conversation.messages.len(), 5);
-    let image = &conversation.messages.inline()[4];
+    let chat = parsed.chat.unwrap();
+    assert_eq!(chat.messages.len(), 5);
+    let image = &chat.messages.inline()[4];
     assert_eq!(image.dialogue_text.as_deref(), Some(""));
     assert_eq!(image.attachments.len(), 1);
     assert!(
@@ -477,24 +455,18 @@ fn codex_partial_mirrors_keep_unmatched_dialogue_in_both_orders() {
         }
         let mut file = tempfile::NamedTempFile::new().unwrap();
         writeln!(file, "{}", lines.join("\n")).unwrap();
-        let conversation = parse_codex(file.path()).unwrap().conversation.unwrap();
-        assert_eq!(conversation.messages.len(), 4, "reverse={reverse}");
+        let chat = parse_codex(file.path()).unwrap().chat.unwrap();
+        assert_eq!(chat.messages.len(), 4, "reverse={reverse}");
         assert_eq!(
-            conversation.messages.inline()[0].content,
+            chat.messages.inline()[0].content,
             "find cbioportal conversations"
         );
+        assert_eq!(chat.messages.inline()[1].content, "Here is answer 0.");
         assert_eq!(
-            conversation.messages.inline()[1].content,
-            "Here is answer 0."
-        );
-        assert_eq!(
-            conversation.messages.inline()[2].content,
+            chat.messages.inline()[2].content,
             "find cbioportal conversations"
         );
-        assert_eq!(
-            conversation.messages.inline()[3].content,
-            "Here is answer 1."
-        );
+        assert_eq!(chat.messages.inline()[3].content, "Here is answer 1.");
     }
 }
 
@@ -518,16 +490,13 @@ fn codex_turn_boundaries_do_not_merge_separate_identical_requests() {
     )
     .unwrap();
     writeln!(file, r#"{{"type":"event_msg","payload":{{"type":"item_completed","turn_id":"new","item":{{"type":"UserMessage","id":"completed-new","content":[{{"type":"text","text":"same request"}}]}}}}}}"#).unwrap();
-    let conversation = parse_codex(file.path()).unwrap().conversation.unwrap();
-    assert_eq!(conversation.messages.len(), 2);
+    let chat = parse_codex(file.path()).unwrap().chat.unwrap();
+    assert_eq!(chat.messages.len(), 2);
     assert_eq!(
-        conversation.messages.inline()[0].content,
-        conversation.messages.inline()[1].content
+        chat.messages.inline()[0].content,
+        chat.messages.inline()[1].content
     );
-    assert_ne!(
-        conversation.messages.inline()[0].id,
-        conversation.messages.inline()[1].id
-    );
+    assert_ne!(chat.messages.inline()[0].id, chat.messages.inline()[1].id);
 }
 
 #[test]
@@ -547,8 +516,8 @@ fn codex_parser_keeps_the_rollout_session_identity() {
     .expect("nested metadata");
 
     let parsed = parse_codex(file.path()).expect("parse Codex history");
-    let conversation = parsed.conversation.expect("conversation");
-    assert_eq!(conversation.id, "rollout-session");
+    let chat = parsed.chat.expect("conversation");
+    assert_eq!(chat.id, "rollout-session");
 }
 
 #[test]
@@ -568,9 +537,9 @@ fn codex_parser_ignores_mirrored_event_messages() {
     .expect("mirrored event");
 
     let parsed = parse_codex(file.path()).expect("parse Codex history");
-    let conversation = parsed.conversation.expect("conversation");
-    assert_eq!(conversation.messages.len(), 1);
-    assert_eq!(conversation.messages.inline()[0].content, "mirrored turn");
+    let chat = parsed.chat.expect("conversation");
+    assert_eq!(chat.messages.len(), 1);
+    assert_eq!(chat.messages.inline()[0].content, "mirrored turn");
 }
 
 #[test]
@@ -589,27 +558,15 @@ fn codex_parser_keeps_custom_tool_calls() {
     .expect("custom tool output line");
 
     let parsed = parse_codex(file.path()).expect("parse Codex history");
-    let conversation = parsed.conversation.expect("conversation");
-    assert_eq!(conversation.id, "c2");
-    assert_eq!(conversation.messages.len(), 2);
+    let chat = parsed.chat.expect("conversation");
+    assert_eq!(chat.id, "c2");
+    assert_eq!(chat.messages.len(), 2);
     assert_eq!(
-        conversation.messages.inline()[0].content,
+        chat.messages.inline()[0].content,
         "Tool imagegen: draw a diagram"
     );
-    assert_eq!(
-        conversation.messages.inline()[1].role,
-        crate::role::Role::Tool
-    );
-    assert_eq!(
-        conversation.messages.inline()[0].dialogue_text.as_deref(),
-        Some("")
-    );
-    assert_eq!(
-        conversation.messages.inline()[1].content,
-        "created diagram.png"
-    );
-    assert_eq!(
-        conversation.messages.inline()[1].dialogue_text.as_deref(),
-        Some("")
-    );
+    assert_eq!(chat.messages.inline()[1].role, crate::role::Role::Tool);
+    assert_eq!(chat.messages.inline()[0].dialogue_text.as_deref(), Some(""));
+    assert_eq!(chat.messages.inline()[1].content, "created diagram.png");
+    assert_eq!(chat.messages.inline()[1].dialogue_text.as_deref(), Some(""));
 }

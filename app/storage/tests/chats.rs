@@ -19,7 +19,7 @@ fn catalog() -> (tempfile::TempDir, Storage) {
         ("e", "codex", None, None, None),
     ] {
         storage.connection.execute(
-            "INSERT INTO sessions(id,provider,title,created_at,updated_at,project,repository) VALUES(?1,?2,?3,?4,?5,'/work/project','repo://project')",
+            "INSERT INTO chats(id,provider,title,created_at,updated_at,project,repository) VALUES(?1,?2,?3,?4,?5,'/work/project','repo://project')",
             rusqlite::params![id, provider, title, created, updated],
         ).unwrap();
     }
@@ -179,7 +179,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
                 actual
                     .chats
                     .iter()
-                    .map(|row| row.conversation_id.clone())
+                    .map(|row| row.chat_id.clone())
                     .collect::<Vec<_>>(),
                 page(&storage, key, matches!(direction, Direction::Desc), 1, 2)
             );
@@ -196,7 +196,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
     let rows = storage.chat_candidates(&request, "laptop").unwrap();
     assert_eq!(
         rows.iter()
-            .map(|row| row.conversation_id.as_str())
+            .map(|row| row.chat_id.as_str())
             .collect::<Vec<_>>(),
         ["a", "c"]
     );
@@ -224,13 +224,8 @@ fn catalog_opens_only_existing_current_schemas_without_migration_or_writes() {
     let (directory, storage) = catalog();
     let path = directory.path().join("index.sqlite3");
     let reader = Storage::open_silver(&path).unwrap();
-    assert!(
-        reader
-            .connection
-            .execute("DELETE FROM sessions ", [])
-            .is_err()
-    );
-    assert_eq!(reader.counts().unwrap().conversations, 5);
+    assert!(reader.connection.execute("DELETE FROM chats ", []).is_err());
+    assert_eq!(reader.counts().unwrap().chats, 5);
     drop(reader);
     let absent = directory.path().join("missing.sqlite3");
     assert!(Storage::open_silver(&absent).is_err());

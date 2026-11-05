@@ -2,7 +2,7 @@
 //! Each node's history is its own SQLite database using the one silver schema
 //! that every local index also uses. View (vectors, search documents and their
 //! readiness) lives only in Qdrant and can be rebuilt from these databases.
-use super::protocol::{ConversationRecord, MessageRecord, Tombstone};
+use super::protocol::{ChatRecord, MessageRecord, Tombstone};
 use super::server::Identity;
 use super::silver_revision::State;
 use crate::{AppError, provider::Provider, storage::Counts};
@@ -256,7 +256,7 @@ pub(crate) fn counts(connection: &Connection) -> Result<Counts, AppError> {
     let row = sql::Counts.query_one(connection).map_err(database)?;
     let count = |value: i64| u64::try_from(value).map_err(|_| AppError::database_data("count"));
     Ok(Counts {
-        conversations: count(row.conversations)?,
+        chats: count(row.chats)?,
         messages: count(row.messages)?,
         searchable_messages: count(row.searchable)?,
         searchable_user_messages: Some(count(row.searchable_users)?),
@@ -266,10 +266,10 @@ pub(crate) fn counts(connection: &Connection) -> Result<Counts, AppError> {
 
 /// Typed silver columns back into the published record. This must be lossless:
 /// thread fingerprints and silver revisions are computed from these records.
-macro_rules! conversation_record {
+macro_rules! chat_record {
     ($row:expr) => {{
         let row = $row;
-        Ok::<_, $crate::AppError>($crate::shared::protocol::ConversationRecord {
+        Ok::<_, $crate::AppError>($crate::shared::protocol::ChatRecord {
             enrichment: row
                 .enrichment
                 .as_deref()
@@ -292,7 +292,7 @@ macro_rules! message_record {
         Ok::<_, $crate::AppError>($crate::shared::protocol::MessageRecord {
             attachments: $crate::shared::silver_store::decode(&row.attachments)?,
             id: row.id,
-            conversation_id: row.conversation_id,
+            chat_id: row.chat_id,
             ordinal: row.ordinal,
             context: $crate::message_context::MessageContext::from_parent(row.context_parent),
             role: $crate::role::Role::from(row.role),
@@ -308,35 +308,32 @@ macro_rules! message_record {
 
 use message_record;
 
-pub(crate) fn conversation(
-    connection: &Connection,
-    id: &str,
-) -> Result<Option<ConversationRecord>, AppError> {
-    sql::Conversation::builder()
+pub(crate) fn chat(connection: &Connection, id: &str) -> Result<Option<ChatRecord>, AppError> {
+    sql::Chat::builder()
         .id(id)
         .build()
         .query_opt(connection)
         .map_err(database)?
-        .map(|row| conversation_record!(row))
+        .map(|row| chat_record!(row))
         .transpose()
 }
 
-pub(crate) fn conversations(connection: &Connection) -> Result<Vec<ConversationRecord>, AppError> {
-    sql::NodeConversations
+pub(crate) fn chats(connection: &Connection) -> Result<Vec<ChatRecord>, AppError> {
+    sql::NodeChats
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| conversation_record!(row))
+        .map(|row| chat_record!(row))
         .collect()
 }
 
 /// One thread's silver messages in ordinal order. Vectors are never stored.
-pub(crate) fn thread_messages(
+pub(crate) fn chat_messages(
     connection: &Connection,
     id: &str,
 ) -> Result<Vec<MessageRecord>, AppError> {
-    sql::ThreadMessages::builder()
-        .conversation_id(id)
+    sql::ChatMessages::builder()
+        .chat_id(id)
         .build()
         .query_many(connection)
         .map_err(database)?
@@ -353,7 +350,7 @@ pub(crate) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppE
         .map(|row| {
             Ok(Tombstone {
                 provider: provider(&row.provider)?,
-                conversation_id: row.conversation_id,
+                chat_id: row.chat_id,
             })
         })
         .collect()
@@ -365,7 +362,7 @@ pub(crate) fn fingerprints(connection: &Connection) -> Result<BTreeMap<String, S
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| (row.id, row.thread_fingerprint.unwrap_or_default()))
+        .map(|row| (row.id, row.chat_fingerprint.unwrap_or_default()))
         .collect())
 }
 
@@ -393,7 +390,7 @@ mod tests {
         let store = super::SilverStore::open(directory.path(), [&identity]).unwrap();
         let connection = store.connect(&identity).unwrap();
         let counts = super::counts(&connection).unwrap();
-        assert_eq!((counts.conversations, counts.messages), (0, 0));
+        assert_eq!((counts.chats, counts.messages), (0, 0));
     }
 
     #[test]
