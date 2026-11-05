@@ -29,10 +29,17 @@ pub(super) fn error_kind(output: &std::process::Output) -> Value {
 }
 
 pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) {
-    // The connector store initializes the same canonical schema as native writers,
-    // without contacting gold or requiring model assets.
-    drop(mash::connectors::silver::Store::open(path).unwrap());
     let connection = open_silver(path);
+    connection
+        .execute_batch(include_str!("../storage/silver.sql"))
+        .unwrap();
+    connection
+        .execute_batch(include_str!("../storage/silver_indexes.sql"))
+        .unwrap();
+    let version = run_json(&["--version"])["silver_schema"].as_i64().unwrap();
+    connection
+        .pragma_update(None, "user_version", version)
+        .unwrap();
     connection
         .execute_batch(
             "UPDATE silver_state SET interpretation_version=3 WHERE singleton=1;

@@ -121,38 +121,6 @@ CREATE TABLE IF NOT EXISTS silver_state (
 );
 INSERT OR IGNORE INTO silver_state(singleton) VALUES (1);
 
--- Source-neutral canonical records submitted by out-of-process connectors.
--- JSON columns decode into the Rust Object model; they preserve opaque metadata
--- and attachments without inventing agent roles.
-CREATE TABLE IF NOT EXISTS connector_sources (
-    id TEXT PRIMARY KEY,
-    revision TEXT NOT NULL
-) WITHOUT ROWID;
--- When each delivery mode last committed for a source, in Unix milliseconds,
--- and the modes its connector declares. Delivery metadata rather than
--- history: it is not exported and changes no silver revision.
-CREATE TABLE IF NOT EXISTS connector_activity (
-    source_id TEXT PRIMARY KEY REFERENCES connector_sources(id),
-    modes TEXT NOT NULL DEFAULT '[]',
-    snapshot_at INTEGER,
-    complete_snapshot_at INTEGER,
-    live_at INTEGER,
-    change_at INTEGER
-) WITHOUT ROWID;
--- A source's declared topology; its objects must conform once it exists.
-CREATE TABLE IF NOT EXISTS connector_schemas (
-    source_id TEXT PRIMARY KEY REFERENCES connector_sources(id),
-    schema TEXT NOT NULL
-) WITHOUT ROWID;
--- Receipts are committed with the mutations they acknowledge. A replayed
--- batch cannot apply again, nor reuse its identity for different contents.
-CREATE TABLE IF NOT EXISTS connector_receipts (
-    source_id TEXT NOT NULL REFERENCES connector_sources(id),
-    batch_id TEXT NOT NULL,
-    fingerprint TEXT NOT NULL,
-    receipt TEXT NOT NULL,
-    PRIMARY KEY (source_id, batch_id)
-) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS silver_scans (
     provider TEXT PRIMARY KEY,
     interpretation_version INTEGER NOT NULL CHECK (interpretation_version > 0),

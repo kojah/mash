@@ -205,7 +205,7 @@ fn private_spans_are_masked_only_when_closed() {
 }
 
 #[test]
-fn private_spans_leave_messages_and_connector_objects() {
+fn private_spans_are_removed_from_messages() {
     let message: crate::silver::NormalizedMessage = serde_json::from_value(serde_json::json!({
         "id": "m", "ordinal": 0, "context": {"kind": "linear"}, "role": "user",
         "content": "a <private>secret plan</private>",
@@ -221,15 +221,4 @@ fn private_spans_leave_messages_and_connector_objects() {
         message.dialogue_text.as_deref(),
         Some("a <private>[PRIVATE]</private>")
     );
-    let mut object: crate::connectors::Object = serde_json::from_value(serde_json::json!({
-        "id": "o", "role": "entry", "kind": "x:entry", "parent": "p",
-        "title": "<private>title words</private>",
-        "content": "body <private>body words</private>",
-        "metadata": {"nested": ["<private>leaf words</private>", 3]}
-    }))
-    .unwrap();
-    super::private_object(&mut object);
-    let stored = serde_json::to_string(&object).unwrap();
-    assert!(!stored.contains("words"), "{stored}");
-    assert_eq!(stored.matches("[PRIVATE]").count(), 3);
 }

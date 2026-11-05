@@ -7,8 +7,6 @@ use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub mod silver;
-
 /// Maximum encoded size of an ingestion batch, before JSON decoding.
 pub const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum number of changes accepted in one atomic silver batch.
@@ -23,23 +21,6 @@ pub const MAX_METADATA_BYTES: usize = 256 * 1024;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(transparent)]
 pub struct Metadata(BTreeMap<String, serde_json::Value>);
-
-impl Metadata {
-    /// Rewrite every string value, at any depth.
-    pub(crate) fn map_strings(&mut self, map: impl Fn(&mut String) + Copy) {
-        fn visit(value: &mut serde_json::Value, map: impl Fn(&mut String) + Copy) {
-            match value {
-                serde_json::Value::String(text) => map(text),
-                serde_json::Value::Array(items) => items.iter_mut().for_each(|v| visit(v, map)),
-                serde_json::Value::Object(fields) => {
-                    fields.values_mut().for_each(|v| visit(v, map));
-                }
-                _ => {}
-            }
-        }
-        self.0.values_mut().for_each(|value| visit(value, map));
-    }
-}
 
 impl From<BTreeMap<String, serde_json::Value>> for Metadata {
     fn from(value: BTreeMap<String, serde_json::Value>) -> Self {

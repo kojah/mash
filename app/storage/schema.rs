@@ -5,7 +5,7 @@ use crate::AppError;
 use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 58;
+pub(crate) const SCHEMA_VERSION: i64 = 59;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -63,8 +63,7 @@ pub(super) fn unsupported(version: i64) -> AppError {
 
 pub(super) fn install_publication_triggers(connection: &Connection) -> Result<(), AppError> {
     let mut statements = String::new();
-    // Node publication carries native history only; connector objects reach
-    // shared silver through their own ingress.
+    // Publication journals canonical agent history; turns are derived on receipt.
     for (table, schema, when) in [
         ("objects", "main", Some("origin = 'provider'")),
         ("native_chats", "main", None),

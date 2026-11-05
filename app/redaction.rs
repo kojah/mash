@@ -141,18 +141,6 @@ pub(crate) fn private_message(
         .map_strings(|value| private(value).into_owned());
 }
 
-pub(crate) fn private_object(object: &mut crate::connectors::Object) {
-    for value in [&mut object.title, &mut object.content]
-        .into_iter()
-        .flatten()
-    {
-        private_text(value);
-    }
-    if let Some(metadata) = &mut object.metadata {
-        metadata.map_strings(private_text);
-    }
-}
-
 /// Ancestor titles are copies of container metadata and need the same masking.
 pub(crate) fn ancestors(ancestors: &mut [crate::source::Ancestor]) {
     for title in ancestors
