@@ -65,21 +65,6 @@ have a published release before its command works.
 brew install kojah/tap/mash
 ```
 
-**Scoop — Windows**
-
-```powershell
-scoop bucket add kojah https://github.com/kojah/mash
-scoop install kojah/mash
-```
-
-**apt — Debian or Ubuntu**
-
-```sh
-curl -fsSL https://mashapp.dev/apt/mash-archive-keyring.gpg | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://mashapp.dev/apt stable main" | sudo tee /etc/apt/sources.list.d/mash.list
-sudo apt update && sudo apt install mash
-```
-
 **mise**
 
 ```sh

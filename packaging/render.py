@@ -1,6 +1,6 @@
 """Fill a packaging template for one release from its SHA256SUMS file.
 
-    python3 packaging/render.py 0.8.0 dist/SHA256SUMS packaging/scoop/mash.json.in bucket/mash.json
+    python3 packaging/render.py 0.8.0 dist/SHA256SUMS packaging/homebrew/mash.rb.in mash.rb
 
 Templates name values as @VERSION@ and @SHA256:<archive>@ (lowercase hex) or
 @SHA256_UPPER:<archive>@. Standard library only, for stock release runners.

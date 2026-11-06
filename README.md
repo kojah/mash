@@ -49,7 +49,7 @@ Both scripts verify release checksums. They install to your user’s `.local/bin
 directory; add it to `PATH` if needed.
 
 Prefer a package manager? See [alternative installation methods](docs/installation.md#package-manager-alternatives)
-for Homebrew, mise, Scoop, apt, and cargo-binstall.
+for Homebrew, mise, and cargo-binstall.
 
 ### 2. Start the local search service
 
