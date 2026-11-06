@@ -24,7 +24,9 @@ Use `list-chats` for chat discovery and `view` for complete message text.
 `mash dash` opens a local, read-only dashboard. Recent chats refresh every
 30 seconds while the page is visible. An open transcript keeps its displayed
 messages until you select **Show updated messages**; **Check for updates**
-requests a fresh comparison. Navigating between chats retains the sidebar.
+requests a fresh comparison. The transcript and sidebar scroll independently;
+switching chats resets only the transcript pane, keeping the header and sidebar
+stationary even while the next chat loads.
 Direct chat links and links to individual search matches load messages
 independently of the catalogue. The backend resolves the requested machine
 without a preliminary chat-list request.

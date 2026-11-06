@@ -28,6 +28,7 @@ const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine ===
 let offset = $state(0);
 let anchor = $state(untrack(() => messageId));
 let searchOpen = $state(false);
+let transcriptPane: HTMLElement | undefined = $state();
 let notice = $state("");
 let exporting = $state(false);
 let exportController: AbortController | undefined;
@@ -40,7 +41,7 @@ $effect(() => {
   offset = 0;
   notice = "";
   searchOpen = false;
-  window.scrollTo({ top: 0, behavior: "instant" });
+  transcriptPane?.scrollTo({ top: 0, behavior: "instant" });
   return () => exportController?.abort();
 });
 const key = $derived(JSON.stringify([id, machine, offset, anchor]));
@@ -144,13 +145,13 @@ function page(next: number): void {
 </script>
 
 <svelte:window onkeydown={(event) => event.key === "Escape" && (searchOpen = false)} />
-<div class="min-h-screen px-5 pt-6 pb-16">
-  <header class="mx-auto mb-7 flex max-w-[1120px] items-center gap-5">
+<div class="flex h-dvh flex-col overflow-hidden px-5 pt-6 pb-6">
+  <header class="mx-auto mb-7 flex w-full max-w-[1120px] shrink-0 items-center gap-5">
     <a href="#/" aria-label="Mash home"><img src="/mash-logo.png" alt="" width="34" height="31" /></a>
     <button type="button" onclick={() => searchOpen = true} class="flex min-h-10 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 text-left text-sm text-muted"><Search size={15} />Search chats</button>
   </header>
-  <div class="mx-auto grid max-w-[1120px] items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">
-    <aside aria-label="Recent chats" class="sticky top-6 max-h-[90vh] overflow-auto max-[700px]:hidden">
+  <div class="mx-auto grid min-h-0 w-full max-w-[1120px] flex-1 items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">
+    <aside aria-label="Recent chats" class="h-full min-h-0 overflow-auto max-[700px]:hidden">
       {#each sessions.slice(0, 100) as session (JSON.stringify([session.machine, session.id]))}
         {@const current = session.id === id && session.machine === displayMachine}
         <a href={chatHref(session.id, session.machine)} title={`${session.title}\n${session.project}\n${session.updatedAt}\n${session.id}`} aria-current={current ? "page" : undefined} class="flex min-h-[46px] items-start gap-2 rounded-[10px] p-2 no-underline {current ? 'bg-accent text-white' : 'text-ink hover:bg-fill'}">
@@ -159,7 +160,7 @@ function page(next: number): void {
         </a>
       {/each}
     </aside>
-    <main class="flex min-w-0 flex-col gap-6">
+    <main bind:this={transcriptPane} class="flex h-full min-h-0 min-w-0 flex-col gap-6 overflow-auto pr-2 pb-10 [scrollbar-gutter:stable] [&>*]:shrink-0">
       <header class="flex flex-col gap-2">
         <h1 class="m-0 text-[28px] font-semibold">{chat?.title ?? `Chat ${id.slice(-8)}`}</h1>
         <p class="m-0 text-sm text-muted">{chat ? agents[chat.agent].name : ""} · {displayMachine} · {chat?.project ?? ""}</p>

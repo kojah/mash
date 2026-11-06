@@ -212,6 +212,73 @@ test("chat navigation retains the sidebar and polling preserves the displayed tr
   expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
 });
 
+test("switching a scrolled chat keeps the header and sidebar stationary", async ({ page }) => {
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++;
+  });
+  let release: (() => void) | undefined;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/chats**", (route) =>
+    route.fulfill({
+      json: {
+        local_node: "local",
+        truncated: false,
+        chats: Array.from({ length: 50 }, (_, i) => ({
+          ...chat,
+          chat_id: `chat-${i}`,
+          title: `Chat ${i}`,
+          node_id: "local",
+        })),
+      },
+    }),
+  );
+  await page.route("**/api/chat?**", async (route) => {
+    const id = new URL(route.request().url()).searchParams.get("id");
+    if (id === "chat-8") await ready;
+    await route.fulfill({
+      json: {
+        messages: [
+          {
+            id: `message-${id}`,
+            ordinal: 0,
+            role: "assistant",
+            content: "Long paragraph.\n\n".repeat(120),
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/#/chat/chat-0?node=local");
+  await page.locator("main ol li").first().waitFor();
+  const header = page.getByRole("button", { name: "Search chats", exact: true });
+  const initialHeader = await header.boundingBox();
+  const sidebar = page.getByRole("complementary");
+  await page.locator("main").evaluate((element) => {
+    element.scrollTop = 600;
+  });
+  expect(await page.locator("main").evaluate((element) => element.scrollTop)).toBe(600);
+  await sidebar.evaluate((element) => {
+    element.scrollTop = 400;
+  });
+  const sidebarScroll = await sidebar.evaluate((element) => element.scrollTop);
+  try {
+    await sidebar.getByRole("link", { name: /^Chat 8 / }).click();
+    await expect(page.getByText("Loading messages…", { exact: true })).toBeVisible();
+    expect(await header.boundingBox()).toEqual(initialHeader);
+    expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(sidebarScroll);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(await page.locator("main").evaluate((element) => element.scrollTop)).toBe(0);
+    expect(documents).toBe(1);
+  } finally {
+    release?.();
+  }
+  await page.locator("main ol li").first().waitFor();
+  expect(await header.boundingBox()).toEqual(initialHeader);
+});
+
 test("Export downloads the entire chat as safe HTML and Markdown", async ({ page }) => {
   await page.route("**/api/chats**", (route) =>
     route.fulfill({
