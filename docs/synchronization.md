@@ -114,7 +114,7 @@ after awaited document writes. Normal background optimization does not delay
 publication: no collection-wide optimizer drain is required. Failed or paused
 optimization and failed probes still return errors. Certification describes
 applied search data, not an idle optimizer or a guarantee of query latency under
-load. 
+load.
 
 When mutation slots are occupied, up to 32 authenticated requests wait in FIFO
 order for at most five minutes before returning a retryable capacity error. Waiting
