@@ -97,7 +97,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         })
         .await?;
         if !semantic {
-            next.push("For semantic search: mash models install && mash init --force".to_owned());
+            next.push("For semantic search, run `mash models install`, then update your existing configuration as shown at https://mashapp.dev/indexing/#enable-semantic-search".to_owned());
         }
         ConfigOutcome {
             path: config_path,
