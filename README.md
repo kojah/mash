@@ -94,6 +94,14 @@ Prefer a container? [Run the official Qdrant Docker image](docs/installation.md#
 
 ### 3. Connect your histories
 
+Mash finds supported histories in their usual locations and indexes the last
+90 days, including current sessions of supported agents. It also connects Mash
+to the Claude Code and Codex CLIs it finds.
+
+Word and phrase search works immediately. Want search by meaning instead?
+Run `mash models install` **before** the setup command below to add the optional
+local models. Already initialized? See [model setup](docs/indexing.md).
+
 ```bash
 mash init
 ```
@@ -101,17 +109,12 @@ mash init
 Setup prints progress and a JSON result for agents and scripts. For a visual
 way to browse afterward, see [dashboard setup](docs/dashboard.md).
 
-Mash finds supported histories in their usual locations and indexes the last
-90 days, including current sessions of supported agents. The setup result lists
-the provider folders selected; [customize them](docs/configuration.md) if needed.
-It also connects Mash to the Claude Code and Codex CLIs it finds.
+The setup result lists the provider folders selected;
+[customize them](docs/configuration.md) if needed.
 Restart those agents, then try asking:
 
 > “Use Mash to find where we discussed the database migration.”
 
-Search works with words and phrases out of the box. For search by meaning,
-run `mash models install` **before** `mash init` to add the optional local models.
-Already initialized? See [model setup](docs/indexing.md).
 The history plugin’s hooks also require Python 3.9 or later.
 
 ## Try it

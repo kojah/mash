@@ -9,7 +9,9 @@ a release that uses a different database schema.
 ## Install the CLI
 
 Public release packages have not been published yet. For now, install from
-source with a stable Rust toolchain:
+source with a stable Rust toolchain.
+
+CLI output is JSON, including `--version` and `--help`.
 
 ```bash
 cargo +stable install --locked --git https://github.com/kojah/mash mash
@@ -183,6 +185,10 @@ container has separate storage; populate it with
 `mash index --rebuild-local-views --full`.
 
 ## Connect your histories
+
+Word search needs no models. If you want search by meaning, run
+`mash models install` before `mash init`. See [model setup](indexing.md) for
+download details and enabling it after setup.
 
 ```sh
 mash init
