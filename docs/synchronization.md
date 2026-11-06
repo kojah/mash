@@ -3,6 +3,11 @@
 Mash searches an index of your chats. Searching does not scan the provider's
 history files, and starting the dashboard does not refresh them.
 
+“Live indexing is inactive” means no continuous watcher is running. This is
+normal after `mash init` or a one-time `mash index`; it does not mean that setup
+failed or that the saved index is out of date. Refresh when you need newer chats,
+or use the watcher below.
+
 ## Refresh now
 
 ```bash

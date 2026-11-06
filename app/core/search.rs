@@ -28,7 +28,7 @@ fn freshness_warnings(database: &Path, providers: &[crate::provider::Provider]) 
     }
     let mut warnings = Vec::new();
     match crate::watch::active(database) {
-        Ok(false) => warnings.push("Live indexing is inactive for this local database. New messages may be missing until the next indexing run. Run `mash index` to catch up or `mash index --watch` for ongoing updates. No watcher does not by itself prove stale data; source freshness has not been checked.".into()),
+        Ok(false) => warnings.push("Live indexing is inactive: search uses the last indexed history. Run `mash index` for a one-time refresh or `mash index --watch` for continuous updates.".into()),
         Ok(true) => {},
         Err(_) => warnings.push("Watcher activity could not be determined for this local database. Recent history may be missing; check `mash status` and run `mash index` to refresh.".into()),
     }
