@@ -95,7 +95,7 @@ jobs:
   build-macos:
     needs: gate
     if: needs.gate.outputs.deploy == 'true'
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 45
     env:
       RUSTFLAGS: -Zunstable-options --jobs-frontend=4
