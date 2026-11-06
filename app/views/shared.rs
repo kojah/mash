@@ -5,6 +5,9 @@ use std::path::Path;
 use std::time::Instant;
 
 pub(crate) const BATCH_ROWS: usize = 32;
+/// Cache I/O can span inference batches without changing model inputs.
+pub(crate) const CACHE_ROWS: usize = 256;
+const _: () = assert!(CACHE_ROWS.is_multiple_of(BATCH_ROWS));
 
 #[derive(Default)]
 pub(crate) struct Build {

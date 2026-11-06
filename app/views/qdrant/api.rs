@@ -208,7 +208,7 @@ struct QueryResult<P> {
 #[derive(Serialize)]
 struct Retrieve<'a> {
     ids: &'a [String],
-    with_payload: bool,
+    with_payload: Payload,
     with_vector: bool,
 }
 #[derive(Serialize)]
@@ -222,6 +222,7 @@ struct Scroll {
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 enum Payload {
+    All(bool),
     Fields(&'static [&'static str]),
 }
 #[derive(Deserialize)]
@@ -937,12 +938,34 @@ impl Client {
         ids: &[String],
         limit: usize,
     ) -> Result<Vec<Record<P>>, AppError> {
+        self.retrieve_payload(name, ids, Payload::All(true), limit)
+            .await
+    }
+
+    #[tracing::instrument(name = "qdrant_native_retrieve", skip_all, fields(points = ids.len()))]
+    pub(super) async fn retrieve_fields<P: DeserializeOwned>(
+        &self,
+        name: &str,
+        ids: &[String],
+        fields: &'static [&'static str],
+    ) -> Result<Vec<Record<P>>, AppError> {
+        self.retrieve_payload(name, ids, Payload::Fields(fields), self.max_response)
+            .await
+    }
+
+    async fn retrieve_payload<P: DeserializeOwned>(
+        &self,
+        name: &str,
+        ids: &[String],
+        with_payload: Payload,
+        limit: usize,
+    ) -> Result<Vec<Record<P>>, AppError> {
         self.call_with_limit(
             Method::POST,
             &format!("collections/{name}/points?consistency=all"),
             Some(&Retrieve {
                 ids,
-                with_payload: true,
+                with_payload,
                 with_vector: false,
             }),
             limit,

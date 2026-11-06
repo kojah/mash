@@ -79,6 +79,21 @@ fn views_id(node: &str) -> String {
     point_id(&["node-views", node])
 }
 
+#[derive(Deserialize)]
+struct CachedEmbedding {
+    node_id: String,
+    provider: crate::provider::Provider,
+    unit: CachedUnit,
+    vector: Option<Vec<f64>>,
+    embedding_fingerprint: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CachedUnit {
+    anchor: String,
+    generation: Option<String>,
+}
+
 impl Store {
     /// Read bounded reusable dense evidence. An uncertified point may supply a
     /// vector, but never metadata or certification: the caller writes fresh
@@ -89,14 +104,25 @@ impl Store {
         inputs: &[crate::views::documents::EmbeddingInput<'_>],
     ) -> Result<Vec<Option<Vec<f64>>>, AppError> {
         let mut result = Vec::with_capacity(inputs.len());
-        for batch in inputs.chunks(crate::views::shared::BATCH_ROWS) {
+        for batch in inputs.chunks(crate::views::shared::CACHE_ROWS) {
             let ids = batch
                 .iter()
                 .map(|input| document_id(&scope.node_id, input.anchor))
                 .collect::<Vec<_>>();
             let mut points = self
                 .api
-                .retrieve::<Document>(&collection(&scope.group_id, false), &ids)
+                .retrieve_fields::<CachedEmbedding>(
+                    &collection(&scope.group_id, false),
+                    &ids,
+                    &[
+                        "node_id",
+                        "provider",
+                        "unit.anchor",
+                        "unit.generation",
+                        "vector",
+                        "embedding_fingerprint",
+                    ],
+                )
                 .await?
                 .into_iter()
                 .map(|point| (point.id, point.payload))

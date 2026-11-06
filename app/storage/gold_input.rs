@@ -6,15 +6,18 @@ use crate::{
 };
 use std::{
     collections::BTreeMap,
-    io::{BufRead, Seek, Write},
+    io::{Seek, Write},
     path::Path,
 };
+
+mod scratch;
 
 pub(crate) struct Chat {
     pub(crate) record: ChatRecord,
     pub(crate) fingerprint: String,
     offset: u64,
     messages: usize,
+    bytes: u64,
 }
 
 pub(crate) struct Input {
@@ -40,7 +43,7 @@ impl Input {
                 if let Batch::Chats { records } = batch {
                     for record in records {
                         let mut hash = blake3::Hasher::new();
-                        hash.update(b"mash-search-input\0");
+                        hash.update(b"mash-search-protobuf\0");
                         hash.update(
                             &serde_json::to_vec(&record)
                                 .map_err(|_| AppError::internal("encode gold input"))?,
@@ -53,6 +56,7 @@ impl Input {
                                 fingerprint: String::new(),
                                 offset: 0,
                                 messages: 0,
+                                bytes: 0,
                             },
                         );
                     }
@@ -60,24 +64,25 @@ impl Input {
                 Ok(())
             })?;
             snapshot.visit_search_messages(|record| {
-                let bytes = serde_json::to_vec(&record)
-                    .map_err(|_| AppError::internal("encode gold input"))?;
                 let chat = chats
                     .get_mut(&record.chat_id)
                     .ok_or_else(|| AppError::database_data("gold input has no chat"))?;
                 if chat.messages == 0 {
                     chat.offset = offset;
+                    let header = scratch::frame(record.chat_id.as_bytes())?;
+                    writer.write_all(&header).map_err(AppError::io)?;
+                    offset += header.len() as u64;
+                    chat.bytes += header.len() as u64;
                 }
                 chat.messages += 1;
-                hashes
+                let hash = hashes
                     .get_mut(&record.chat_id)
-                    .ok_or_else(|| AppError::internal("missing chat digest"))?
-                    .update(&bytes);
-                writer
-                    .write_all(&bytes)
-                    .and_then(|()| writer.write_all(b"\n"))
-                    .map_err(AppError::io)?;
-                offset += bytes.len() as u64 + 1;
+                    .ok_or_else(|| AppError::internal("missing chat digest"))?;
+                let bytes = scratch::encode(record)?;
+                hash.update(&bytes);
+                writer.write_all(&bytes).map_err(AppError::io)?;
+                offset += bytes.len() as u64;
+                chat.bytes += bytes.len() as u64;
                 Ok(())
             })?;
             captured = Some((
@@ -111,18 +116,21 @@ impl Input {
             .chats
             .get(id)
             .ok_or_else(|| AppError::internal("missing captured chat"))?;
+        if chat.messages == 0 {
+            return Ok(Vec::new());
+        }
         let mut file = self.messages.reopen().map_err(AppError::io)?;
         file.seek(std::io::SeekFrom::Start(chat.offset))
             .map_err(AppError::io)?;
-        let records = std::io::BufReader::new(file)
-            .lines()
-            .take(chat.messages)
-            .map(|line| {
-                serde_json::from_str(&line.map_err(AppError::io)?)
-                    .map_err(|_| AppError::internal("invalid gold input"))
-            })
+        let mut reader = std::io::BufReader::new(file);
+        let mut remaining = chat.bytes;
+        if scratch::read(&mut reader, &mut remaining)? != id.as_bytes() {
+            return Err(AppError::internal("invalid gold chat offset"));
+        }
+        let records = (0..chat.messages)
+            .map(|_| scratch::decode(&scratch::read(&mut reader, &mut remaining)?, id))
             .collect::<Result<Vec<SearchMessage>, AppError>>()?;
-        if records.len() != chat.messages || records.iter().any(|m| m.chat_id != id) {
+        if remaining != 0 {
             return Err(AppError::internal("incomplete gold input"));
         }
         Ok(records)
@@ -179,10 +187,19 @@ mod tests {
         let path = std::env::var_os("MASH_TEST_SILVER_DB").expect("set MASH_TEST_SILVER_DB");
         let started = std::time::Instant::now();
         let input = Input::capture(Path::new(&path)).unwrap();
+        let capture_milliseconds = started.elapsed().as_millis();
+        let reading = std::time::Instant::now();
+        let mut read_messages = 0;
+        for id in input.chats.keys() {
+            read_messages += input.read_chat(id).unwrap().len() as u64;
+        }
+        let readback_milliseconds = reading.elapsed().as_millis();
+        assert_eq!(read_messages, input.counts.messages);
         eprintln!(
             "{}",
             serde_json::json!({
-                "capture_milliseconds": started.elapsed().as_millis(),
+                "capture_milliseconds": capture_milliseconds,
+                "readback_milliseconds": readback_milliseconds,
                 "scratch_bytes": input.messages.as_file().metadata().unwrap().len(),
                 "chats": input.chats.len(),
                 "messages": input.counts.messages,
@@ -212,6 +229,7 @@ mod tests {
              VALUES ('m0','chat',0,'user',silver_pack('canonical'),'visible'),
                     ('m1','chat',1,'assistant',silver_pack('hidden canonical'),'');
              INSERT INTO chats(id,provider,title) VALUES ('other','codex','other');
+             INSERT INTO chats(id,provider,title) VALUES ('empty','codex','empty');
              INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection)
              VALUES ('other-message','other',0,'user',silver_pack('other canonical'),'other visible');",
             )
@@ -222,13 +240,16 @@ mod tests {
             "UPDATE messages SET content_packed=silver_pack(?1), metadata='unused tools', attachments='unused attachments'",
             ["large canonical payload ".repeat(10_000)],
         ).unwrap();
-        let slim = Input::capture(&path).unwrap();
+        let mut slim = Input::capture(&path).unwrap();
         assert_eq!(slim.chats["chat"].fingerprint, fingerprint);
         assert_eq!(slim.read_chat("chat").unwrap().len(), 2);
+        assert!(slim.read_chat("empty").unwrap().is_empty());
         let other = slim.read_chat("other").unwrap();
         assert_eq!(other.len(), 1);
         assert_eq!(other[0].projection, "other visible");
         assert!(slim.messages.as_file().metadata().unwrap().len() < 1024);
+        slim.chats.get_mut("chat").unwrap().offset = slim.chats["other"].offset;
+        assert!(slim.read_chat("chat").is_err());
         for change in [
             "UPDATE messages SET search_projection='changed' WHERE id='m0'",
             "UPDATE messages SET created_at=123 WHERE id='m0'",

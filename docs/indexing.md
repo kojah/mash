@@ -145,9 +145,16 @@ Replay reads search projections directly and omits canonical tool payloads and
 attachments from its preparation data. Explicit projections avoid decompressing
 canonical content; a missing projection still falls back to canonical text.
 Small records for hidden messages preserve parent links and inference batch
-boundaries. Local replay fingerprints cover search dependencies, so a change
-only to excluded canonical context does not force unchanged search documents
-to be rewritten.
+boundaries. Local fingerprints cover search dependencies, so incremental
+refresh can reuse unchanged chat projections after edits only to excluded
+canonical context. Explicit full rebuilds still rewrite search documents.
+
+The temporary snapshot uses length-prefixed Protobuf records, with bounded
+per-chat frames and no repeated chat IDs. Materialization reads reusable vectors
+in groups of up to 256 rows
+and prefetches one group while processing the preceding group. Model inference
+keeps its original 32-row boundaries, including hidden positions. Writes remain
+ordered and must complete before views are certified.
 
 Local and shared destinations use the same Qdrant schema and materialization
 code, with separate certification and namespaces. A first publication to both

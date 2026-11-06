@@ -1,6 +1,8 @@
 use super::*;
 use crate::views::{documents::EmbeddingInput, materialize::Writer};
+use axum::{Json, Router, extract::State, routing::post};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 fn model() -> crate::semantic::remote::Configuration {
     crate::semantic::remote::Configuration {
@@ -20,6 +22,111 @@ fn search_messages(fixture: &Fixture) -> Vec<crate::views::documents::SearchMess
         .into_iter()
         .map(Into::into)
         .collect()
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_materializer_prefetch_preserves_inference_batches_and_retry() {
+    #[derive(serde::Deserialize)]
+    struct Request {
+        input: Vec<String>,
+    }
+    async fn embed(
+        State(calls): State<Arc<Mutex<Vec<usize>>>>,
+        Json(request): Json<Request>,
+    ) -> Json<serde_json::Value> {
+        calls.lock().unwrap().push(request.input.len());
+        Json(
+            serde_json::json!({"data": request.input.iter().enumerate().map(|(index, _)| {
+            serde_json::json!({"index": index, "embedding": [1.0, 0.0, 0.0, 0.0]})
+        }).collect::<Vec<_>>()}),
+        )
+    }
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let model = crate::semantic::remote::Configuration {
+        url: format!("http://{}/embeddings", listener.local_addr().unwrap()),
+        model: "test".into(),
+        dimensions: 4,
+        api: crate::semantic::remote::Api::OpenaiCompatible,
+        token_env: None,
+        request_dimensions: true,
+        redaction: crate::redaction::Policy::ON,
+    };
+    let app = Router::new()
+        .route("/embeddings", post(embed))
+        .with_state(Arc::clone(&calls));
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let template = search_messages(&fixture).remove(0);
+    let mut messages = (0..601)
+        .map(|i| {
+            let mut message = template.clone();
+            message.id = format!("row-{i}");
+            message.ordinal = i;
+            message.projection = if i % 5 == 0 {
+                String::new()
+            } else {
+                format!("visible text {i}")
+            };
+            message
+        })
+        .collect::<Vec<_>>();
+    let expected = (0..601)
+        .collect::<Vec<_>>()
+        .chunks(32)
+        .map(|rows| rows.iter().filter(|i| *i % 5 != 0).count())
+        .collect::<Vec<_>>();
+    let visible = expected.iter().sum::<usize>() as u64;
+    for step in 0..4 {
+        if step == 2 {
+            messages[289].projection = "changed after prefetch boundary".into();
+            let mut unavailable = Writer::new(&fixture.store, &fixture.identity, None);
+            assert!(
+                unavailable
+                    .write_chat(&Fixture::chat(), &messages)
+                    .await
+                    .is_err()
+            );
+            assert!(calls.lock().unwrap().is_empty());
+            continue;
+        }
+        let mut writer = Writer::new(
+            &fixture.store,
+            &fixture.identity,
+            Some((Path::new(""), Some(&model))),
+        );
+        let built = writer
+            .write_chat(&Fixture::chat(), &messages)
+            .await
+            .unwrap();
+        assert!(built.complete);
+        assert_eq!(built.messages, 601);
+        assert_eq!(built.embeddings, visible);
+        let result = writer.finish().await.unwrap();
+        assert_eq!(
+            result.embeddings.model_inferences,
+            match step {
+                0 => visible,
+                1 => 0,
+                _ => 1,
+            }
+        );
+        let actual = std::mem::take(&mut *calls.lock().unwrap());
+        assert_eq!(
+            actual,
+            match step {
+                0 => expected.clone(),
+                1 => vec![],
+                _ => vec![1],
+            }
+        );
+    }
+    fixture.cleanup().await;
+    server.abort();
 }
 
 #[tokio::test]

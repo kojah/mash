@@ -179,6 +179,15 @@ Source mapping:
   fingerprint collisions are excluded. The `qdrant_materializer_*` backend
   regressions cover metadata edits, title/parent dependencies and corrupt-cache
   repair; bounded models do not establish the correctness of those hashes.
+  The materializer prefetches one bounded group of search inputs/cache evidence
+  while the preceding group embeds and writes. Prefetch is read-only; mutations
+  still have one ordered writer. `tokio::join!` waits for both branches even when
+  preparation fails, before returning to the coordinator. No task owns detached
+  mutations, and every flush still precedes certification. These read-only
+  steps stutter in this model; its durable actions/configurations are unchanged.
+  Inference retains the original 32-row boundaries inside each 256-row cache
+  group. `qdrant_materializer_prefetch_preserves_inference_batches_and_retry`
+  checks hidden rows, cross-group positions, reuse and edited-message retry.
 - `Crash` preserves completed durable writes and releases local ownership.
   Retry captures silver again and starts with invalidation. This is a safety
   model, without a delivery, retry fairness, or eventual recovery promise.
