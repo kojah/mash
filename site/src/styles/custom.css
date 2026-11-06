@@ -1,0 +1,29 @@
+:root {
+  --sl-color-accent-low: #30230c;
+  --sl-color-accent: #bc7a18;
+  --sl-color-accent-high: #f2d69e;
+  --sl-font-system: system-ui, sans-serif;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fff2d7;
+  --sl-color-accent: #875207;
+  --sl-color-accent-high: #593407;
+}
+.hero h1 {
+  letter-spacing: -0.045em;
+}
+.hero .tagline {
+  max-width: 39rem;
+}
+.site-title img {
+  border-radius: 50%;
+}
+.hero img {
+  border-radius: 2rem;
+}
+
+/* Change pages immediately without fading the entire document. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}

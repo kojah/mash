@@ -22,6 +22,7 @@ New to Mash? Start with the [quick start](../README.md#quick-start).
 - [Code organization](architecture.md): application modules and execution boundaries.
 - [Development](development.md): builds, tests, generated queries, and profiling.
 - [Correctness checks](verification.md): protocol models, fault injection, and mutation audits.
+- [Documentation website](documentation-site.md): editing, previewing, and publishing these guides.
 - [Fleet deployment](../deployment/README.md): preflight, builds, rollout, and readiness.
 
 Some reference pages link to documents pinned to an older commit. Those are

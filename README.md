@@ -172,4 +172,4 @@ before replacing binaries when the index schema changes.
 | Understand indexing and models | [Indexing](docs/indexing.md) |
 | Work on Mash | [Development](docs/development.md) |
 
-[All documentation](docs/README.md) · [Architecture](docs/agent-history.md) · [License](LICENSE)
+[Documentation website](https://mashapp.dev) · [All guides](docs/README.md) · [Architecture](docs/agent-history.md) · [License](LICENSE)

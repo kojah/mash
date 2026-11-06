@@ -1,0 +1,20 @@
+---
+import DefaultSearch from "@astrojs/starlight/components/Search.astro";
+---
+
+<!-- Keep search state and its global keyboard listener across client navigation. -->
+<div style="display: contents" transition:persist="mash-docs-search">
+  <DefaultSearch {...Astro.props} />
+</div>
+
+<script>
+  import type { TransitionBeforeSwapEvent } from 'astro:transitions/client';
+
+  document.addEventListener('astro:before-swap', (event) => {
+    const { newDocument } = event as TransitionBeforeSwapEvent;
+    const selector = '[data-astro-transition-persist="mash-docs-search"]';
+    // The existing search will move here. Prevent the discarded custom element
+    // from constructing and registering another global keyboard listener.
+    if (document.querySelector(selector)) newDocument.querySelector(selector)?.replaceChildren();
+  });
+</script>
