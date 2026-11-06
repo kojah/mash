@@ -77,7 +77,7 @@ impl Store {
                     Ok((
                         silver_store::chat(connection, &chat)?
                             .ok_or_else(|| AppError::internal("silver chat disappeared"))?,
-                        silver_store::chat_messages(connection, &chat)?,
+                        crate::storage::search_input::chat_messages(connection, &chat)?,
                     ))
                 })
                 .await?;

@@ -1,6 +1,6 @@
 //! Silver projection and embedding shared by direct and server workflows.
 //! Callers own silver snapshots, mutation admission and final certification.
-use super::documents::{ChatRecord, EmbeddingInput, MessageRecord};
+use super::documents::{ChatRecord, EmbeddingInput, SearchMessage};
 use super::qdrant::{Documents, Store};
 use super::scope::Scope;
 use super::shared::{self as embedding, Build};
@@ -44,7 +44,7 @@ impl<'a> Writer<'a> {
     pub(crate) async fn write_chat(
         &mut self,
         chat: &ChatRecord,
-        messages: &[MessageRecord],
+        messages: &[SearchMessage],
     ) -> Result<ChatBuild, AppError> {
         let mut units = super::units::Stream::default();
         let mut stored = 0;

@@ -13,6 +13,12 @@ pub(crate) struct Snapshot<'a> {
 }
 
 impl Snapshot<'_> {
+    pub(crate) fn visit_search_messages(
+        &self,
+        accept: impl FnMut(crate::views::documents::SearchMessage) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        super::search_input::visit(self.connection, None, accept)
+    }
     pub(crate) fn delta_base(
         &self,
         instance: Option<&str>,

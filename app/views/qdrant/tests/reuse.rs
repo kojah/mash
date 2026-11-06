@@ -14,6 +14,14 @@ fn model() -> crate::semantic::remote::Configuration {
     }
 }
 
+fn search_messages(fixture: &Fixture) -> Vec<crate::views::documents::SearchMessage> {
+    fixture
+        .messages("native")
+        .into_iter()
+        .map(Into::into)
+        .collect()
+}
+
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_empty_projection_publication_preserves_silver_and_removes_search_point() {
@@ -62,7 +70,7 @@ async fn qdrant_materializer_reuses_chat_vectors_after_metadata_edits_without_a_
     let fixture = Fixture::new(VectorIndex::default()).await;
     let model = model();
     let mut chat = Fixture::chat();
-    let mut messages = fixture.messages("native");
+    let mut messages = search_messages(&fixture);
     let mut writer = Writer::new(
         &fixture.store,
         &fixture.identity,
@@ -119,7 +127,7 @@ async fn qdrant_materializer_reuse_tracks_prepared_title_and_parent_context() {
     store.select_views(&fixture.identity, true).await.unwrap();
     let model = model();
     let mut chat = Fixture::chat();
-    let mut messages = fixture.messages("native");
+    let mut messages = search_messages(&fixture);
     for step in 0..4 {
         if step == 1 {
             chat.title = Some("new title".into());
@@ -159,7 +167,7 @@ async fn qdrant_materializer_reuse_requires_matching_source_model_and_input() {
         Some((Path::new(""), Some(&model))),
     );
     writer
-        .write_chat(&Fixture::chat(), &fixture.messages("native"))
+        .write_chat(&Fixture::chat(), &search_messages(&fixture))
         .await
         .unwrap();
     writer.finish().await.unwrap();
@@ -212,7 +220,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
         Some((Path::new(""), Some(&model))),
     );
     writer
-        .write_chat(&Fixture::chat(), &fixture.messages("native"))
+        .write_chat(&Fixture::chat(), &search_messages(&fixture))
         .await
         .unwrap();
     writer.finish().await.unwrap();
@@ -291,7 +299,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
             Some((Path::new(""), Some(&model))),
         );
         writer
-            .write_chat(&Fixture::chat(), &fixture.messages("native"))
+            .write_chat(&Fixture::chat(), &search_messages(&fixture))
             .await
             .unwrap();
         let result = writer.finish().await.unwrap();

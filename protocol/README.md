@@ -165,6 +165,13 @@ Source mapping:
   certificate and active settings. Only this final metadata write claims
   current views. Compatible unchanged point reuse is abstracted as writing the
   same projection; digest correctness is covered by Rust/backend regressions.
+  Local replay fingerprints cover chat metadata and minimal search-message
+  dependencies, including hidden positions and parent links that preserve
+  inference batch boundaries. Canonical-only tool/attachment/content changes
+  do not change those fingerprints; the captured silver revision still advances
+  certification. `gold_capture_fingerprints_search_dependencies_without_canonical_payloads`
+  and the generated search-input tests cover this dependency boundary. The
+  snapshot transaction, invalidation, mutation and certification ordering are unchanged.
   The common materializer may reuse a vector from an uncertified point only
   when its node, source, anchor, model generation, dimensions and prepared-text
   fingerprint match. It still writes fresh silver-derived evidence and follows

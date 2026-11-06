@@ -5,7 +5,7 @@ use super::{
     point_id, sparse, tokens,
 };
 use crate::silver::revision::State;
-use crate::views::documents::{ChatRecord, MessageRecord};
+use crate::views::documents::{ChatRecord, MessageRecord, SearchMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -259,7 +259,8 @@ impl Documents {
         chat: &ChatRecord,
         message: MessageRecord,
     ) -> Result<u64, AppError> {
-        self.push_native(store, identity, chat, message, None).await
+        self.push_native(store, identity, chat, message.into(), None)
+            .await
     }
 
     pub(crate) async fn push_native(
@@ -267,7 +268,7 @@ impl Documents {
         store: &Store,
         identity: &Scope,
         chat: &ChatRecord,
-        message: MessageRecord,
+        message: SearchMessage,
         embedding_fingerprint: Option<String>,
     ) -> Result<u64, AppError> {
         if message.chat_id != chat.id {

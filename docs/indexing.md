@@ -141,6 +141,14 @@ context excluded from dialogue search. If a message's search projection becomes
 empty, synchronization removes its previous search document. A full local views
 rebuild or shared server replay also removes older empty-projection documents.
 
+Replay reads search projections directly and omits canonical tool payloads and
+attachments from its preparation data. Explicit projections avoid decompressing
+canonical content; a missing projection still falls back to canonical text.
+Small records for hidden messages preserve parent links and inference batch
+boundaries. Local replay fingerprints cover search dependencies, so a change
+only to excluded canonical context does not force unchanged search documents
+to be rewritten.
+
 Local and shared destinations use the same Qdrant schema and materialization
 code, with separate certification and namespaces. A first publication to both
 destinations currently computes their embeddings independently; it does not

@@ -59,3 +59,35 @@ pub(crate) struct MessageRecord {
     #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
     pub tools: crate::tools::Activity,
 }
+
+/// Search dependencies only. Canonical content, attachments and tool activity
+/// stay in silver and in the publication protocol, never in replay scratch data.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SearchMessage {
+    pub id: String,
+    pub chat_id: String,
+    pub ordinal: i64,
+    pub context: crate::message_context::MessageContext,
+    pub role: crate::role::Role,
+    pub projection: String,
+    pub created_at: Option<i64>,
+    pub generation: Option<String>,
+    pub vector: Option<Vec<f64>>,
+}
+
+impl From<MessageRecord> for SearchMessage {
+    fn from(message: MessageRecord) -> Self {
+        Self {
+            id: message.id,
+            chat_id: message.chat_id,
+            ordinal: message.ordinal,
+            context: message.context,
+            role: message.role,
+            projection: message.projection,
+            created_at: message.created_at,
+            generation: message.generation,
+            vector: message.vector,
+        }
+    }
+}

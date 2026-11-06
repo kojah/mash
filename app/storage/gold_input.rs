@@ -2,7 +2,7 @@
 use super::{Counts, Storage};
 use crate::{
     AppError,
-    views::documents::{ChatRecord, MessageRecord},
+    views::documents::{ChatRecord, SearchMessage},
 };
 use std::{
     collections::BTreeMap,
@@ -40,6 +40,7 @@ impl Input {
                 if let Batch::Chats { records } = batch {
                     for record in records {
                         let mut hash = blake3::Hasher::new();
+                        hash.update(b"mash-search-input\0");
                         hash.update(
                             &serde_json::to_vec(&record)
                                 .map_err(|_| AppError::internal("encode gold input"))?,
@@ -58,29 +59,25 @@ impl Input {
                 }
                 Ok(())
             })?;
-            snapshot.visit_selected(BatchKind::Messages, true, None, |batch| {
-                if let Batch::Messages { records } = batch {
-                    for record in records {
-                        let bytes = serde_json::to_vec(&record)
-                            .map_err(|_| AppError::internal("encode gold input"))?;
-                        let chat = chats
-                            .get_mut(&record.chat_id)
-                            .ok_or_else(|| AppError::database_data("gold input has no chat"))?;
-                        if chat.messages == 0 {
-                            chat.offset = offset;
-                        }
-                        chat.messages += 1;
-                        hashes
-                            .get_mut(&record.chat_id)
-                            .ok_or_else(|| AppError::internal("missing chat digest"))?
-                            .update(&bytes);
-                        writer
-                            .write_all(&bytes)
-                            .and_then(|()| writer.write_all(b"\n"))
-                            .map_err(AppError::io)?;
-                        offset += bytes.len() as u64 + 1;
-                    }
+            snapshot.visit_search_messages(|record| {
+                let bytes = serde_json::to_vec(&record)
+                    .map_err(|_| AppError::internal("encode gold input"))?;
+                let chat = chats
+                    .get_mut(&record.chat_id)
+                    .ok_or_else(|| AppError::database_data("gold input has no chat"))?;
+                if chat.messages == 0 {
+                    chat.offset = offset;
                 }
+                chat.messages += 1;
+                hashes
+                    .get_mut(&record.chat_id)
+                    .ok_or_else(|| AppError::internal("missing chat digest"))?
+                    .update(&bytes);
+                writer
+                    .write_all(&bytes)
+                    .and_then(|()| writer.write_all(b"\n"))
+                    .map_err(AppError::io)?;
+                offset += bytes.len() as u64 + 1;
                 Ok(())
             })?;
             captured = Some((
@@ -109,7 +106,7 @@ impl Input {
         })
     }
 
-    pub(crate) fn read_chat(&self, id: &str) -> Result<Vec<MessageRecord>, AppError> {
+    pub(crate) fn read_chat(&self, id: &str) -> Result<Vec<SearchMessage>, AppError> {
         let chat = self
             .chats
             .get(id)
@@ -124,7 +121,7 @@ impl Input {
                 serde_json::from_str(&line.map_err(AppError::io)?)
                     .map_err(|_| AppError::internal("invalid gold input"))
             })
-            .collect::<Result<Vec<MessageRecord>, AppError>>()?;
+            .collect::<Result<Vec<SearchMessage>, AppError>>()?;
         if records.len() != chat.messages || records.iter().any(|m| m.chat_id != id) {
             return Err(AppError::internal("incomplete gold input"));
         }
@@ -174,6 +171,82 @@ mod tests {
         let connection = rusqlite::Connection::open(path).unwrap();
         crate::storage::schema::initialize_silver(&connection).unwrap();
         Storage::from_silver(connection)
+    }
+
+    #[test]
+    #[ignore = "read-only replay preparation measurement; requires MASH_TEST_SILVER_DB"]
+    fn gold_capture_real_snapshot_metrics() {
+        let path = std::env::var_os("MASH_TEST_SILVER_DB").expect("set MASH_TEST_SILVER_DB");
+        let started = std::time::Instant::now();
+        let input = Input::capture(Path::new(&path)).unwrap();
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "capture_milliseconds": started.elapsed().as_millis(),
+                "scratch_bytes": input.messages.as_file().metadata().unwrap().len(),
+                "chats": input.chats.len(),
+                "messages": input.counts.messages,
+                "searchable_messages": input.counts.searchable_messages,
+            })
+        );
+        assert_eq!(
+            input
+                .chats
+                .values()
+                .map(|chat| chat.messages as u64)
+                .sum::<u64>(),
+            input.counts.messages
+        );
+    }
+
+    #[test]
+    fn gold_capture_fingerprints_search_dependencies_without_canonical_payloads() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("silver.db");
+        let storage = create(&path);
+        storage
+            .connection
+            .execute_batch(
+                "INSERT INTO chats(id,provider,title) VALUES ('chat','codex','title');
+             INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection)
+             VALUES ('m0','chat',0,'user',silver_pack('canonical'),'visible'),
+                    ('m1','chat',1,'assistant',silver_pack('hidden canonical'),'');
+             INSERT INTO chats(id,provider,title) VALUES ('other','codex','other');
+             INSERT INTO messages(id,chat_id,ordinal,role,content_packed,search_projection)
+             VALUES ('other-message','other',0,'user',silver_pack('other canonical'),'other visible');",
+            )
+            .unwrap();
+        let original = Input::capture(&path).unwrap();
+        let fingerprint = original.chats["chat"].fingerprint.clone();
+        storage.connection.execute(
+            "UPDATE messages SET content_packed=silver_pack(?1), metadata='unused tools', attachments='unused attachments'",
+            ["large canonical payload ".repeat(10_000)],
+        ).unwrap();
+        let slim = Input::capture(&path).unwrap();
+        assert_eq!(slim.chats["chat"].fingerprint, fingerprint);
+        assert_eq!(slim.read_chat("chat").unwrap().len(), 2);
+        let other = slim.read_chat("other").unwrap();
+        assert_eq!(other.len(), 1);
+        assert_eq!(other[0].projection, "other visible");
+        assert!(slim.messages.as_file().metadata().unwrap().len() < 1024);
+        for change in [
+            "UPDATE messages SET search_projection='changed' WHERE id='m0'",
+            "UPDATE messages SET created_at=123 WHERE id='m0'",
+            "UPDATE messages SET context_parent='m0' WHERE id='m1'",
+            "UPDATE messages SET ordinal=2 WHERE id='m1'",
+            "UPDATE messages SET role='assistant' WHERE id='m0'",
+            "UPDATE chats SET title='changed'",
+            "UPDATE chats SET project='changed'",
+        ] {
+            storage.connection.execute_batch(
+                "UPDATE messages SET search_projection='visible', created_at=NULL, role='user' WHERE id='m0';
+                 UPDATE messages SET context_parent=NULL, ordinal=1 WHERE id='m1';
+                 UPDATE chats SET title='title', project=NULL;"
+            ).unwrap();
+            storage.connection.execute_batch(change).unwrap();
+            let changed = Input::capture(&path).unwrap();
+            assert_ne!(changed.chats["chat"].fingerprint, fingerprint, "{change}");
+        }
     }
 
     #[test]
