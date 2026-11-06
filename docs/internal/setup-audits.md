@@ -48,6 +48,12 @@ contain synthetic history only; never expand uploads to the runner's home or
 Copilot configuration directories. A successful workflow is not a usability pass:
 read the journey outcomes and ranked findings.
 
+Each saved journal ends with an evidence-linked findings table ranked P0–P3:
+critical harm or concealed failure, blocked journey, meaningful friction, then
+minor polish. Rankings include an impact rationale; uncertainty and runner
+limitations are recorded separately. The reviewer uses the same rubric and
+explains any severity changes. Missing coverage cannot establish a clean audit.
+
 The reviewer writes only `setup-review.md` in its workspace. The pinned gh-aw
 1.0.1 upload handler requires a workspace source and a relative allowed-path
 filter; an absolute path under `/tmp/gh-aw/agent` is rejected by this version.

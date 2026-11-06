@@ -80,8 +80,14 @@ Write setup-review.md in the GITHUB_WORKSPACE directory with:
 3. Rejected/uncertain candidates with brief reasons; missing or untested coverage.
 4. A short first-time-user verdict based only on observed evidence.
 
-Use P0 for data loss/security/false success, P1 for a blocked journey, and P2
-for confusion or avoidable effort. Identify infrastructure blockers separately.
+Use P0 for observed data loss/security exposure or false success concealing a
+failed user goal; P1 when the documented journey needs an undocumented workaround
+or outside intervention; P2 for meaningful confusion or avoidable effort; and
+P3 for minor polish that does not impede the journey. Sort accepted findings by
+severity and explain each ranking. Severity describes impact, not confidence;
+retain uncertain findings separately. Explain any change from a tester's ranking.
+Identify infrastructure blockers separately. Do not count missing platform
+coverage as evidence of a friction-free setup.
 If no tester ran, say so plainly and explain the missing prerequisite. Still
 save an incomplete-coverage report. Upload it with upload_artifact using the
 workspace-relative path `setup-review.md`. Creating this report in the workspace

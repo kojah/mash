@@ -45,9 +45,25 @@ Mash server, or change repository settings. Keep persistent files within this
 disposable runner. If you run Docker, use an explicit memory limit and disk-backed
 storage. Avoid model downloads unless needed for this word-search journey.
 
-End with “Exploration complete.” Then summarize findings as F-001-style rows:
-severity, observed problem, expected behavior, exact evidence entry IDs, and a
-concrete suggested fix. Separate product/documentation friction from limitations
-of this hosted runner or test-agent authentication. Include what was not tested.
+Before finishing, append a findings table to journal.md, sorted by severity
+(most severe first). Use stable F-001-style IDs and these severity definitions:
+
+- P0 — critical: observed data loss, security exposure, or false success that
+  conceals failure of the user's goal.
+- P1 — blocking: the documented setup/search journey cannot be completed without
+  an undocumented workaround or outside intervention.
+- P2 — meaningful friction: setup succeeds, but a misleading message, missing
+  guidance, or avoidable effort materially slows or confuses the user.
+- P3 — minor polish: cosmetic issues or small inconveniences that do not impede
+  the journey. Use this only for an observed issue, not a feature wish list.
+
+Each row must include severity, a brief reason for that severity, observed
+problem, expected behavior, exact J-001-style evidence IDs, and a concrete fix.
+Label uncertainty explicitly; severity describes impact, not confidence.
+Separate product/documentation findings from runner or test-agent limitations.
+If there are no notable findings, say so explicitly while retaining any minor
+findings and coverage gaps. Do not lower severity just because a workaround exists.
+The findings table must be in journal.md, not only in the console response.
+Include what was not tested. End with “Exploration complete.”
 Record the installed Mash version, commands that succeeded, and whether the
 original decision was actually read. A green agent process is not proof of success.
