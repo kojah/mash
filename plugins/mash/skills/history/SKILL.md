@@ -34,8 +34,10 @@ Mash, in the 'Local Qdrant architecture' session." For a quotation or precise
 claim, cite the supporting message after reading it with `view`.
 
 Use a real session or message link when one is available in the evidence. If no
-usable link is available, identify the conversation by its returned title, date
-and session/chat ID as available, plus the message ID for precise evidence.
+usable link is available, identify the conversation by its returned title and
+date, adding the provider or project when useful. Do not display raw session,
+chat or message IDs (including GUIDs) by default; include them only when the user
+explicitly asks for them. Keep IDs in internal tool lookups for verification.
 Never invent titles, dates, URLs or provider deep-link formats; a `lookup.view`
 argument is a tool lookup, not a web URL. The example title above is illustrative;
 substitute verified source metadata. Distinguish recalled evidence from a fresh
