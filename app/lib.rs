@@ -159,6 +159,7 @@ struct ErrorBody {
 #[serde(rename_all = "kebab-case")]
 enum ErrorKind {
     SharedIndex,
+    QdrantUnavailable,
     Configuration,
     Usage,
     DatabaseMissing,

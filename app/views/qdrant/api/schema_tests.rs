@@ -1,5 +1,39 @@
 use super::*;
 
+#[tokio::test]
+async fn unavailable_qdrant_names_endpoint_and_repair_without_exposing_api_key() {
+    // Hold the port but never serve HTTP: the bounded client times out reliably
+    // without racing another process for a released port.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let mut client = Client::new(&url, Some("private-api-key"), 1024).unwrap();
+    client.http = reqwest::Client::builder()
+        .timeout(Duration::from_millis(25))
+        .build()
+        .unwrap();
+    let startup = client.verify_version().await.unwrap_err();
+    let search = client
+        .retrieve::<()>("private-collection", &[])
+        .await
+        .err()
+        .expect("an unavailable service must fail the read");
+    for error in [startup, search] {
+        assert_eq!(error.error.kind, crate::ErrorKind::QdrantUnavailable);
+        assert!(error.error.retryable);
+        assert!(error.error.message.contains(&url));
+        assert!(
+            error
+                .error
+                .message
+                .contains("start the configured Qdrant service")
+        );
+        assert!(error.error.recommended_action.is_none());
+        let json = serde_json::to_string(&error).unwrap();
+        assert!(!json.contains("private-api-key"));
+        assert!(!json.contains("private-collection"));
+    }
+}
+
 #[test]
 fn native_accounting_accepts_optional_and_extensible_typed_response_fields() {
     let bare: Envelope<Vec<u64>> =

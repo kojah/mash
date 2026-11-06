@@ -92,7 +92,10 @@ download models. WSL uses the Linux instructions.
 
 ## Start the local search service
 
-With Docker running, this command works in Bash and PowerShell:
+With Docker running **Linux containers**, this command works in Bash and PowerShell.
+On Windows, use Docker Desktop's **Switch to Linux containers** option if
+`docker info --format '{{.OSType}}'` prints `windows`. A “no matching manifest
+for windows” error means the Docker daemon is using the wrong container mode.
 
 ```sh
 docker run -d --name mash-local-qdrant --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 -v mash-local-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
@@ -104,6 +107,23 @@ Mash does not install or manage Qdrant itself.
 
 An existing Qdrant 1.19+ service also works. Both HTTP and gRPC ports must reach
 the same instance. For nondefault endpoints, see [Qdrant configuration](configuration.md#local-qdrant).
+
+### Native Windows without Docker
+
+On Windows x64, download `qdrant-x86_64-pc-windows-msvc.zip` from the
+[Qdrant 1.19.1 release](https://github.com/qdrant/qdrant/releases/tag/v1.19.1)
+and extract it into a dedicated folder, such as `$HOME\qdrant`.
+In PowerShell, run:
+
+```powershell
+Set-Location "$HOME\qdrant"
+$env:QDRANT__SERVICE__HOST = '127.0.0.1'
+.\qdrant.exe
+```
+
+Keep this window open and use a second terminal for Mash. Qdrant stores its
+data in this folder; start it from the same folder next time. Binding to
+`127.0.0.1` keeps the service accessible only on this machine.
 
 ## Connect your histories
 
@@ -124,12 +144,15 @@ intend to replace it (the previous file is backed up).
 
 ```sh
 mash status
-mash search 'a word you remember' --intent exact-mention
+mash search 'migration' --intent exact-mention
 ```
 
 Replace the query with a distinctive word from a real chat. To include older
 history, run `mash index --all-history`. To browse in your browser, run
 `mash dash` and open [http://127.0.0.1:8790](http://127.0.0.1:8790).
+
+Without semantic models, multiple words must occur together as a phrase.
+“Log rotation” won't match “rotate the application logs”; try “rotate” first.
 
 You're ready for [searching](search.md), [the dashboard](dashboard.md), or
 [agent-assisted recall](agents.md). Add [semantic search](indexing.md#enable-semantic-search)

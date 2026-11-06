@@ -84,6 +84,10 @@ See [installation options](docs/installation.md) for npm, mise, and installer se
 
 With Docker installed, run Qdrant with persistent storage:
 
+On Windows, Docker Desktop must use **Linux containers**. See the
+[Windows setup options](docs/installation.md#native-windows-without-docker)
+for a PowerShell command and a native alternative without Docker.
+
 ```bash
 docker run -d --name mash-local-qdrant --memory 2g \
   -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 \
@@ -114,13 +118,17 @@ The history plugin’s hooks also require Python 3.9 or later.
 ## Try it
 
 ```bash
-mash search "database migration"
+mash search "migration"
 mash list-chats --provider codex --limit 10
 mash view MESSAGE_ID --context 3
 ```
 
 Use a message ID returned by search in the last command. CLI results are JSON;
 your connected agent can use the same operations through MCP.
+
+Start with one distinctive word you remember. Without semantic models, multiple
+words match a phrase: “log rotation” won't find “rotate the application logs.”
+Try “rotate,” or enable [search by meaning](docs/indexing.md#enable-semantic-search).
 
 Prefer browsing? Start the local, read-only dashboard:
 

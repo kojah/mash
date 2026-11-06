@@ -483,13 +483,27 @@ fn dense_name(info: &Info, dimensions: usize) -> Option<String> {
 }
 
 impl Client {
+    fn unavailable(&self) -> AppError {
+        // endpoint() accepts only an origin: no credentials, paths, or queries.
+        // Never include reqwest's error or the upstream response body.
+        AppError::new(
+            11,
+            crate::ErrorKind::QdrantUnavailable,
+            format!(
+                "Could not reach Qdrant at {}; start the configured Qdrant service and check its HTTP port, then retry. For local setup, see https://mashapp.dev/installation/",
+                self.url
+            ),
+            true,
+        )
+    }
+
     pub(super) async fn verify_version(&self) -> Result<(), AppError> {
         let response = self
             .http
             .get(self.url.clone())
             .send()
             .await
-            .map_err(|_| failure())?;
+            .map_err(|_| self.unavailable())?;
         if !response.status().is_success() {
             return Err(failure());
         }
@@ -601,7 +615,7 @@ impl Client {
             .send()
             .instrument(tracing::info_span!("qdrant_send_request"))
             .await
-            .map_err(|_| failure())?;
+            .map_err(|_| self.unavailable())?;
         tracing::Span::current().record("status", response.status().as_u16());
         if response.status() == StatusCode::NOT_FOUND {
             return Err(AppError::search_not_ready(
@@ -668,7 +682,7 @@ impl Client {
             .get(self.url.join(&path).map_err(|_| failure())?)
             .send()
             .await
-            .map_err(|_| failure())?;
+            .map_err(|_| self.unavailable())?;
         if exists.status() == StatusCode::NOT_FOUND {
             let vectors = dimensions.map_or_else(BTreeMap::new, |size| {
                 BTreeMap::from([(

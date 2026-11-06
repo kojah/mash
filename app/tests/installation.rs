@@ -293,6 +293,21 @@ fn installation_names_the_repair_and_fails_for_a_required_agent_that_is_not_conn
 }
 
 #[test]
+fn installation_probe_fails_for_missing_required_agent_integrations() {
+    let root = tempfile::tempdir().unwrap();
+    for agent in ["claude-code", "codex"] {
+        let (code, value) = report(isolated(root.path()).args([
+            "status",
+            "--installation",
+            "--agent",
+            agent,
+            "--probe",
+        ]));
+        assert_eq!(code, 1, "{agent}: {value}");
+    }
+}
+
+#[test]
 fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join(".codex")).unwrap();

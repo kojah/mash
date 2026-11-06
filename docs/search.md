@@ -6,6 +6,12 @@ Start with a distinctive word, filename, or phrase you remember:
 mash search 'authentication' --intent exact-mention
 ```
 
+Without semantic models, use wording from the conversation. Multiple words
+match a phrase, and different word forms may not match: “log rotation” won't
+find “rotate the application logs.” Try “rotate,” or use
+[search by meaning](#search-by-meaning) when you remember the idea rather than
+the wording.
+
 Results are JSON. By default they group matching messages by chat. Search reads
 the existing index; it does not refresh history. If you just had the conversation,
 run `mash index` first.
