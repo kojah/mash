@@ -330,7 +330,9 @@ impl Store {
                     chats.insert(id.clone(), record);
                 }
                 let entry = written.entry(id.clone()).or_default();
-                entry.ids.push(message.id.clone());
+                if !message.projection.is_empty() {
+                    entry.ids.push(message.id.clone());
+                }
                 entry.expected +=
                     u64::from(build.includes_dense(&message.role, &message.projection));
                 entry.embeddings += documents

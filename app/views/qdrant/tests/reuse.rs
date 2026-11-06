@@ -16,6 +16,48 @@ fn model() -> crate::semantic::remote::Configuration {
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
+async fn qdrant_empty_projection_publication_preserves_silver_and_removes_search_point() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    for (step, visible) in [false, true, false, true].into_iter().enumerate() {
+        let mut messages = fixture.messages("retained");
+        if !visible {
+            messages[0].projection.clear();
+            messages[0].vector = None;
+            messages[0].generation = None;
+        }
+        let file = Fixture::upload(&[
+            Event::Start(Fixture::start(i64::try_from(step + 1).unwrap())),
+            Event::Batch(Batch::Chats {
+                records: vec![Fixture::chat()],
+            }),
+            Event::Batch(Batch::Messages { records: messages }),
+            Event::Finish,
+        ]);
+        fixture.server.index(&fixture.identity, file).await.unwrap();
+        let stored = fixture
+            .store
+            .api
+            .retrieve::<Document>(
+                &collection(&fixture.identity.group_id, false),
+                &[document_id(&fixture.identity.node_id, "message-0")],
+            )
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), usize::from(visible));
+        assert_eq!(
+            fixture.search().await.semantic.len(),
+            1 + usize::from(visible)
+        );
+        let connection = fixture.silver.connect(&fixture.identity).unwrap();
+        let canonical = crate::shared::silver_store::chat_messages(&connection, "thread").unwrap();
+        assert_eq!(canonical.len(), 2);
+        assert_eq!(canonical[0].content, "needle canonical retained");
+    }
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
 async fn qdrant_materializer_reuses_chat_vectors_after_metadata_edits_without_a_model() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let model = model();

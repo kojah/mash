@@ -273,6 +273,12 @@ impl Documents {
         if message.chat_id != chat.id {
             return Err(failure());
         }
+        // Canonical context remains in silver. An empty projection contributes
+        // neither lexical nor dense evidence and needs no search document.
+        // Coordinators reconcile the nonempty IDs to remove formerly visible rows.
+        if message.projection.is_empty() {
+            return Ok(0);
+        }
         let words = tokens(&message.projection);
         let embedded = u64::from(message.vector.is_some());
         let vector = Self::vectors(

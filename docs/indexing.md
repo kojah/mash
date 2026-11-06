@@ -135,6 +135,12 @@ embeddings while preserving it for `view`. `--full` rebuilds derived search
 state. The default source horizon is 90 days; `--since-days N` overrides it and
 `--all-history` removes it for one run.
 
+Messages with empty search projections stay in silver for transcript viewing,
+but do not create Qdrant search documents. This includes tool-only activity and
+context excluded from dialogue search. If a message's search projection becomes
+empty, synchronization removes its previous search document. A full local views
+rebuild or shared server replay also removes older empty-projection documents.
+
 Local and shared destinations use the same Qdrant schema and materialization
 code, with separate certification and namespaces. A first publication to both
 destinations currently computes their embeddings independently; it does not

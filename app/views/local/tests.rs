@@ -126,6 +126,51 @@ fn query(text: &str) -> crate::views::retrieval::Search {
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+async fn local_qdrant_empty_projection_preserves_silver_and_removes_search_point() {
+    let fixture = Fixture::new();
+    for projection in ["", "native sentinel", "", "native restored"] {
+        fixture.write(projection);
+        fixture.build(false).await;
+        let local = fixture.open().await;
+        let response: serde_json::Value = reqwest::Client::new()
+            .post(format!(
+                "{}/collections/mash_views_{}_messages/points/count",
+                fixture.configuration.qdrant.url,
+                blake3::hash(local.scope.group_id.as_bytes()).to_hex(),
+            ))
+            .json(&serde_json::json!({"exact": true}))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            response["result"]["count"],
+            u64::from(!projection.is_empty())
+        );
+        assert_eq!(
+            local
+                .candidates(query("native"))
+                .await
+                .unwrap()
+                .lexical
+                .len(),
+            usize::from(!projection.is_empty()),
+        );
+        let storage = Storage::open_silver(&fixture.database).unwrap();
+        assert_eq!(storage.silver_counts().unwrap().messages, 1);
+        let canonical = storage.view("message", 0).unwrap();
+        assert_eq!(canonical.len(), 1);
+        assert_eq!(canonical[0].content, "canonical private context");
+    }
+    fixture.cleanup(&fixture.open().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn local_qdrant_exact_uses_certified_recipe_without_activating_dense_changes() {
     let mut fixture = Fixture::new();
     fixture.write("native sentinel");
