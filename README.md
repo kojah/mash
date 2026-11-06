@@ -53,19 +53,11 @@ irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
 Both scripts verify release checksums. They install to your user’s `.local/bin`
 directory; add it to `PATH` if needed.
 
-**Windows package managers — choose one**
-
-```powershell
-winget install --id kojah.mash --exact
-```
+**Scoop — Windows**
 
 ```powershell
 scoop bucket add kojah https://github.com/kojah/mash
 scoop install kojah/mash
-```
-
-```powershell
-choco install mash
 ```
 
 **apt — Debian / Ubuntu**
@@ -79,7 +71,7 @@ sudo apt update && sudo apt install mash
 ```
 
 Package channels depend on the release being published to their registry.
-See [installation options](docs/installation.md) for npm, mise, and installer settings.
+See [installation options](docs/installation.md) for mise, cargo-binstall, and installer settings.
 
 </details>
 

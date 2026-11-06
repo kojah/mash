@@ -51,19 +51,11 @@ Use the PowerShell installer:
 irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
 ```
 
-Or choose winget, Scoop, or Chocolatey:
-
-```powershell
-winget install --id kojah.mash --exact
-```
+Or use Scoop:
 
 ```powershell
 scoop bucket add kojah https://github.com/kojah/mash
 scoop install kojah/mash
-```
-
-```powershell
-choco install mash
 ```
 
 ### Debian or Ubuntu
@@ -75,10 +67,6 @@ sudo apt update && sudo apt install mash
 ```
 
 ### Other package managers
-
-```sh
-npm install -g @kojah/mash
-```
 
 ```sh
 mise use -g github:kojah/mash
