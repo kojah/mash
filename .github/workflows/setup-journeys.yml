@@ -1,0 +1,78 @@
+name: New user setup journeys
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: setup-journeys
+  cancel-in-progress: false
+
+jobs:
+  journey:
+    if: github.ref == 'refs/heads/main'
+    name: ${{ matrix.os }} tester ${{ matrix.tester }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+        tester: [a, b]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      UX_PLATFORM: ${{ matrix.os }}
+      UX_TESTER: ${{ matrix.tester }}
+      MASH_AUTO_INDEX: 'off'
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /README.md
+            /docs/*.md
+            !/docs/internal/
+            /.github/scripts/setup-journey.mjs
+            /.github/ux/setup-tester.md
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: '24'
+      - name: Prepare synthetic history and user documentation
+        run: node .github/scripts/setup-journey.mjs
+      - name: Check Copilot authentication is configured
+        shell: pwsh
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          if (-not $env:COPILOT_GITHUB_TOKEN) {
+            throw 'Add the COPILOT_GITHUB_TOKEN Actions secret (Copilot Requests: Read). No tester ran.'
+          }
+      - name: Install the test agent
+        run: npm install --global @github/copilot@1.0.106
+      - name: Follow setup as a new user
+        timeout-minutes: 35
+        shell: pwsh
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          Set-Location $env:UX_WORK
+          $prompt = Get-Content -Raw (Join-Path $env:UX_REPORT 'prompt.md')
+          copilot -p $prompt --no-custom-instructions --no-auto-update --no-ask-user --allow-all-tools --allow-all-paths --allow-all-urls --autopilot --max-autopilot-continues 10 --share (Join-Path $env:UX_REPORT 'session.md') 2>&1 | Tee-Object -FilePath (Join-Path $env:UX_REPORT 'console.txt')
+          $agentExit = $LASTEXITCODE
+          Set-Content -Path (Join-Path $env:UX_REPORT 'agent-exit-code.txt') -Value $agentExit
+          if ($agentExit -ne 0) { throw "Copilot exited $agentExit; inspect the console artifact." }
+          if (-not (Test-Path (Join-Path $env:UX_REPORT 'journal.md'))) {
+            throw 'Tester did not produce a journal; this is missing evidence, not a successful journey.'
+          }
+      - name: Preserve evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+        with:
+          name: setup-${{ matrix.os }}-${{ matrix.tester }}
+          path: ${{ runner.temp }}/setup-report/*
+          if-no-files-found: error
+          retention-days: 14

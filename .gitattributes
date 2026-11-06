@@ -2,3 +2,5 @@
 # and include_str! inputs are compared byte for byte, including on Windows,
 # where Git would otherwise convert them to CRLF.
 * text=auto eol=lf
+
+.github/workflows/*.lock.yml linguist-generated=true

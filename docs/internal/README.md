@@ -12,5 +12,6 @@ documentation website and its search. User guides live in [docs](../README.md).
 - [Configuration details](configuration.md) and [redaction](privacy.md)
 - [Upgrade operations](upgrades.md)
 - [Documentation website](documentation-site.md)
+- [Native first-user setup audits](setup-audits.md)
 - [Fleet deployment](../../deployment/README.md)
 - [Protocol models](../../protocol/README.md)
