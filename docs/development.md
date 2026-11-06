@@ -4,6 +4,29 @@
 
 ## Build and test
 
+### Dashboard browser checks
+
+Run `pnpm run lint`, `pnpm run check`, `pnpm run test`,
+`pnpm run test:browser`, and `pnpm run build` in `dashboard/`.
+The default browser suite uses mocked API responses to exercise UI behavior.
+It does not establish that a running dashboard can search its real index.
+
+Before handing over a preview, run the live browser checks against its actual
+URL, including its network hostname and protocol. Choose a query that occurs
+in that index:
+
+```bash
+MASH_DASHBOARD_URL=http://your-host:8790 MASH_DASHBOARD_QUERY=database pnpm run test:browser
+```
+
+This mode uses the deployed assets and real API without starting Vite or
+mocking requests. It checks both Enter and button submission, successful
+results, opening a matching transcript without a document reload, and browser
+errors. The target needs current Qdrant views and available query models.
+On Xenia, run these workloads through `agent-test` as for other tests.
+
+### Rust checks
+
 [Correctness checks](../docs/verification.md) describes generated Proptest
 sequences against real SQLite, disposable-backend replay interruptions and
 focused cargo-mutants audits. Property tests run with ordinary nextest tests;
