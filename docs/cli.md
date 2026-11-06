@@ -1,0 +1,41 @@
+# CLI reference
+
+[Documentation](README.md) · [Project home](../README.md)
+
+```text
+mash init [--force] [--no-agents] [--no-index] [--marketplace SOURCE]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
+mash index --rebuild-local-views [--full]
+mash search <query> [--unit chats|messages] [--local | --shared] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
+mash list-chats [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
+mash view <message-id> [--shared NODE_ID] [--context N]
+mash status [--shared]
+mash forget <chat-id>
+mash export <new-directory>
+mash import <export-directory> --into <new-database> [--keep-identity]
+mash models install
+mash dash
+mash mcp
+mash serve --server-config PATH
+```
+
+Use `list-chats` for chat discovery and `view` for complete message text.
+
+Search results, chat matches and listed chats identify their provider directly,
+for example `"provider": "codex"`. Messages and matching excerpts carry the agent's
+`role` directly, including provider-defined roles. Messages and matching excerpts
+include `turn_id` when they belong to a derived turn; `chat_id` identifies their chat.
+For storage compatibility and recovery, see [upgrades](../docs/upgrades.md).
+
+One-shot data commands emit one JSON value; watch mode emits newline-delimited
+results, and `mash mcp` serves the stdio protocol. `mash serve` runs the shared
+index HTTP API; it reports its listening address as JSON on stderr and keeps
+stdout empty. `mash --help` and subcommand `--help` return `{"help":"..."}`;
+`mash --version` returns `{"version":"..."}`. These informational requests
+exit successfully before loading configuration, models or indexes. Bare `mash`
+returns a JSON usage error containing help with exit code 2. Global
+options are `--config PATH`, `--db PATH`, and
+`--models-dir PATH`.
+
+CLI searches execute directly. MCP sessions reuse loaded models within their
+process. Search never starts a background process.
