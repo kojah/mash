@@ -4,6 +4,11 @@ Start with the TOML file created by `mash init`. Run `mash status` to see its
 resolved location, or select a file explicitly with `mash --config PATH status`.
 Use TOML for this file.
 
+To change history selection, coverage, or sharing interactively, rerun
+`mash init` in a terminal and choose **Review and edit settings**. The wizard
+preserves your other settings and keeps the previous file as a backup; comments
+and formatting are regenerated when saving edits.
+
 For one machine, keep the local setup created by `mash init`. Choose your
 history folders and search preferences below; shared connection settings are
 only needed when you enable multi-machine sharing.

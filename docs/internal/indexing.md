@@ -51,7 +51,7 @@ representations = "lexical-and-dense"
 intent = "related-discussion"
 ```
 
-For an uncustomized setup, `mash init --force` after installing models can
+For an uncustomized setup, `mash init --yes --force` after installing models can
 regenerate that configuration and index it. It saves the previous configuration
 as `config.toml.previous`; retain custom roots and shared settings when editing.
 

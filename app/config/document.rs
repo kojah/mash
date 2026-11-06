@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{DEFAULT_SINCE_DAYS, IndexDestination, MAX_SINCE_DAYS, SharedConfig};
 use crate::AppError;
@@ -21,7 +21,7 @@ pub(super) struct ParsedDocument {
     pub(super) destination: IndexDestination,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawDocument {
     #[serde(default)]
@@ -42,19 +42,50 @@ struct RawDocument {
 
 type RawProviders = BTreeMap<Provider, RawProvider>;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawProvider {
     roots: Vec<PathBuf>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawIndex {
     since_days: Option<u32>,
     #[serde(default)]
     all_history: bool,
     destination: Option<IndexDestination>,
+}
+
+/// Change only the settings offered by setup, preserving all other typed fields.
+pub(super) fn configure(text: &str, choices: &super::init::Choices) -> Result<String, AppError> {
+    parse_document(text.as_bytes())?;
+    let mut document: RawDocument = toml::from_str(text)
+        .map_err(|error| AppError::configuration(format!("invalid configuration: {error}")))?;
+    document.providers = choices
+        .providers
+        .iter()
+        .map(|(provider, roots)| {
+            (
+                *provider,
+                RawProvider {
+                    roots: roots.clone(),
+                },
+            )
+        })
+        .collect();
+    document.index.since_days = choices.since_days;
+    document.index.all_history = choices.since_days.is_none();
+    document.index.destination = Some(if choices.shared.is_some() {
+        IndexDestination::Both
+    } else {
+        IndexDestination::Local
+    });
+    document.shared.clone_from(&choices.shared);
+    let text = toml::to_string_pretty(&document)
+        .map_err(|error| AppError::configuration(format!("serialize configuration: {error}")))?;
+    parse_document(text.as_bytes())?;
+    Ok(text)
 }
 
 pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {

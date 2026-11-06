@@ -20,6 +20,16 @@ pub(crate) struct InitRequest {
     pub(crate) agents: bool,
     pub(crate) index: bool,
     pub(crate) marketplace: String,
+    /// Explicit wizard selections; absent for unattended setup.
+    pub(crate) plan: Option<InitPlan>,
+    pub(crate) selected_agents: Option<Vec<super::installation::Agent>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct InitPlan {
+    pub(crate) choices: crate::config::init::Choices,
+    /// Compare before writing so a config edited while prompting is not replaced.
+    pub(crate) previous: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,7 +80,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         .clone()
         .unwrap_or_else(super::default_models_path);
     let mut next = Vec::new();
-    let config = if config_path.exists() && !request.force {
+    let config = if config_path.exists() && !request.force && request.plan.is_none() {
         ConfigOutcome {
             path: config_path,
             written: false,
@@ -80,22 +90,14 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         }
     } else {
         let semantic = crate::semantic::Models::new(models).is_installed();
+        let editing = request
+            .plan
+            .as_ref()
+            .is_some_and(|plan| plan.previous.is_some());
         let path = config_path.clone();
-        let (providers, previous) = crate::blocking(move || {
-            let providers = crate::config::init::detect()?;
-            if providers.is_empty() {
-                return Err(AppError::configuration(format!(
-                    "no supported agent history was found in its default location; write {} by hand (see the README's Configuration section)",
-                    path.display()
-                )));
-            }
-            let previous = crate::config::init::write(
-                &path,
-                &crate::config::init::render(&providers, semantic)?,
-            )?;
-            Ok((providers, previous))
-        })
-        .await?;
+        let (providers, previous) =
+            crate::blocking(move || write_configuration(&path, semantic, request.plan.as_ref()))
+                .await?;
         if !semantic {
             next.push("For semantic search, run `mash models install`, then update your existing configuration as shown at https://mashapp.dev/indexing/#enable-semantic-search".to_owned());
         }
@@ -103,7 +105,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             path: config_path,
             written: true,
             providers: Some(providers),
-            search: Some(if semantic {
+            search: (!editing).then_some(if semantic {
                 "semantic"
             } else {
                 "exact-mention"
@@ -125,7 +127,12 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             }
         }
         command.push("mcp".into());
-        register(&command, &request.marketplace).await
+        register(
+            &command,
+            &request.marketplace,
+            request.selected_agents.as_deref(),
+        )
+        .await
     } else {
         Vec::new()
     };
@@ -142,6 +149,44 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         index: None,
         next,
     })
+}
+
+fn write_configuration(
+    path: &Path,
+    semantic: bool,
+    plan: Option<&InitPlan>,
+) -> Result<(crate::provider::ProviderRoots, Option<PathBuf>), AppError> {
+    let providers = match plan {
+        Some(plan) => plan.choices.providers.clone(),
+        None => crate::config::init::detect()?,
+    };
+    if providers.is_empty() {
+        return Err(AppError::configuration(format!(
+            "no supported agent history was found in its default location; write {} by hand (see the README's Configuration section)",
+            path.display()
+        )));
+    }
+    let text = if let Some(plan) = plan {
+        let current = match std::fs::read_to_string(path) {
+            Ok(text) => Some(text),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(AppError::io(error)),
+        };
+        if current != plan.previous {
+            return Err(AppError::configuration(
+                "configuration changed during setup; run `mash init` again",
+            ));
+        }
+        let base = match &plan.previous {
+            Some(text) => text.clone(),
+            None => crate::config::init::render(&providers, semantic)?,
+        };
+        crate::config::init::configure(&base, &plan.choices)?
+    } else {
+        crate::config::init::render(&providers, semantic)?
+    };
+    let previous = crate::config::init::write(path, &text)?;
+    Ok((providers, previous))
 }
 
 /// What each agent still needs after registration, and whether to restart.
@@ -184,7 +229,11 @@ pub(super) fn first_index() -> Operation {
 
 /// Register the MCP server and plugin with each agent CLI found on PATH. A
 /// failure is reported per step; it never stops the others.
-async fn register(command: &[OsString], marketplace: &str) -> Vec<AgentOutcome> {
+async fn register(
+    command: &[OsString],
+    marketplace: &str,
+    selected: Option<&[super::installation::Agent]>,
+) -> Vec<AgentOutcome> {
     let mut outcomes = Vec::new();
     for (agent, kind, name, install) in [
         (
@@ -195,6 +244,9 @@ async fn register(command: &[OsString], marketplace: &str) -> Vec<AgentOutcome> 
         ),
         ("codex", super::installation::Agent::Codex, "codex", "add"),
     ] {
+        if selected.is_some_and(|agents| !agents.contains(&kind)) {
+            continue;
+        }
         let Some(program) = which(name) else {
             continue;
         };
@@ -279,7 +331,47 @@ async fn run(program: &Path, arguments: &[impl AsRef<std::ffi::OsStr>]) -> Resul
     }
 }
 
-fn which(program: &str) -> Option<PathBuf> {
+pub(crate) fn which(program: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     crate::platform::find_program(program, &path, &std::env::current_dir().ok()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{Provider, ProviderRoots};
+
+    #[test]
+    fn setup_wizard_refuses_changed_config_and_preserves_backup() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.toml");
+        let providers = ProviderRoots::from([(Provider::Codex, vec![root.path().to_owned()])]);
+        let original = crate::config::init::render(&providers, false).unwrap();
+        std::fs::write(&path, &original).unwrap();
+        let plan = InitPlan {
+            choices: crate::config::init::Choices {
+                providers,
+                since_days: Some(14),
+                shared: None,
+            },
+            previous: Some(original.clone()),
+        };
+        std::fs::write(&path, "# concurrent edit\n").unwrap();
+        assert!(write_configuration(&path, false, Some(&plan)).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# concurrent edit\n"
+        );
+        assert!(!root.path().join("config.toml.previous").exists());
+        std::fs::write(&path, &original).unwrap();
+        write_configuration(&path, false, Some(&plan)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("config.toml.previous")).unwrap(),
+            original
+        );
+        assert_eq!(
+            crate::config::load(Some(&path)).unwrap().since_days,
+            Some(14)
+        );
+    }
 }

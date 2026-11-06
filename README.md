@@ -75,11 +75,16 @@ local models. Already initialized? See [model setup](docs/indexing.md).
 
 Prefer to choose folders first? Use `mash init --no-index`,
 [edit the configuration](docs/configuration.md), then run `mash index`.
-Otherwise, setup is one command:
+Otherwise, start the setup wizard:
 
 ```bash
 mash init
 ```
+
+In a terminal, Mash asks about local or shared search, history folders, coverage,
+and agent integrations, then shows a confirmation before changing anything.
+Choose **Just this computer** for the default local setup. Use `mash init --yes`
+to accept defaults without prompts; non-terminal runs are also non-interactive.
 
 Setup prints progress to stderr and a final JSON result to stdout. If the result
 has `"agents": []`, no agents were connected; check `next` for the reason and

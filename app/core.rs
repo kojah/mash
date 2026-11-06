@@ -14,7 +14,7 @@ mod maintenance;
 mod models;
 pub(crate) mod output;
 mod search;
-mod setup;
+pub(crate) mod setup;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{

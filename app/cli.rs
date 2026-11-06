@@ -11,6 +11,8 @@ use crate::AppError;
 use crate::core::default_models_path;
 use crate::core::{self, IndexRequest, Operation, Paths, Request};
 
+mod wizard;
+
 #[derive(Debug, Clone, Parser)]
 #[command(name = "mash", version, about, arg_required_else_help = true)]
 pub(crate) struct Cli {
@@ -32,9 +34,12 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum Command {
-    /// Set up Mash: write a configuration for this machine's agent histories,
-    /// register the MCP server and plugin with Claude Code and Codex, and index.
+    /// Set up Mash with a terminal wizard, or accept defaults with --yes.
+    /// Configure histories, connect agent integrations, and index.
     Init {
+        /// Accept defaults without prompting (also used automatically without a terminal).
+        #[arg(short = 'y', long)]
+        yes: bool,
         /// Replace an existing configuration (kept as config.toml.previous).
         #[arg(long)]
         force: bool,
@@ -345,6 +350,9 @@ pub(super) enum Response {
         watching: bool,
     },
     McpStopped,
+    InitCancelled {
+        cancelled: bool,
+    },
 }
 
 impl Cli {
@@ -368,11 +376,14 @@ impl Cli {
                 no_agents,
                 no_index,
                 marketplace,
+                yes: _,
             } => Operation::Init(crate::core::InitRequest {
                 force,
                 agents: !no_agents,
                 index: !no_index,
                 marketplace,
+                plan: None,
+                selected_agents: None,
             }),
             Command::ListChats {
                 input,
@@ -660,6 +671,16 @@ enum WatchRoleEvent {
 }
 
 async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
+    if let Command::Init { yes, .. } = &cli.command {
+        use std::io::IsTerminal;
+        if wizard::interactive(
+            *yes,
+            std::io::stdin().is_terminal(),
+            std::io::stderr().is_terminal(),
+        ) {
+            return wizard::run(cli).await;
+        }
+    }
     if let Command::Index {
         watch, debounce_ms, ..
     } = &mut cli.command

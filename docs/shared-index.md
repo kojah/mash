@@ -67,6 +67,17 @@ changing it.
 
 ## Connect each machine
 
+In a terminal, run `mash init` and choose **Connect to an existing shared server**.
+For an existing configuration, first choose **Review and edit settings**. Enter
+the server URL, group ID, this machine's unique ID, and the **name** of the
+environment variable containing its token. Set that variable before running the
+wizard and make it available to your agent clients too; the wizard does not
+store token values. It checks authentication before offering to index and upload.
+If you are not ready to host a server, choose **Set up sharing later** to finish
+local setup and return to this guide afterward.
+
+For manual configuration:
+
 Edit the node configuration created by `mash init`. Preserve its providers and
 local Qdrant settings. Change the existing `[index]` table and add:
 

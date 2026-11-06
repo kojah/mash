@@ -211,3 +211,18 @@ fn init_without_history_writes_nothing() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("no supported agent history"));
     assert!(!root.path().join(".config/mash/config.toml").exists());
 }
+
+#[test]
+fn init_yes_accepts_defaults_and_preserves_existing_configuration() {
+    let (root, env) = fixture(false);
+    let result = init(&env, &["--yes", "--no-index", "--no-agents"]);
+    assert_eq!(result["config"]["written"], true);
+    assert_eq!(result["agents"], serde_json::json!([]));
+    assert!(!root.path().join("calls.log").exists());
+    let path = root.path().join(".config/mash/config.toml");
+    let original = std::fs::read_to_string(&path).unwrap() + "\n# keep me\n";
+    std::fs::write(&path, &original).unwrap();
+    let result = init(&env, &["--yes", "--no-index", "--no-agents"]);
+    assert_eq!(result["config"]["written"], false);
+    assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+}

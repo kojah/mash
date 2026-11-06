@@ -10,6 +10,22 @@ use super::document::parse_document;
 use crate::AppError;
 use crate::provider::{Provider, ProviderRoots};
 
+#[derive(Debug, Clone)]
+pub(crate) struct Choices {
+    pub(crate) providers: ProviderRoots,
+    pub(crate) since_days: Option<u32>,
+    pub(crate) shared: Option<super::SharedConfig>,
+}
+
+pub(crate) fn configure(text: &str, choices: &Choices) -> Result<String, AppError> {
+    if choices.providers.is_empty() || choices.providers.values().any(Vec::is_empty) {
+        return Err(AppError::configuration(
+            "select at least one history location",
+        ));
+    }
+    super::document::configure(text, choices)
+}
+
 /// Default history locations that exist on this machine, per provider.
 pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
     let directories = BaseDirs::new()
@@ -132,7 +148,7 @@ pub(crate) fn render(providers: &ProviderRoots, semantic: bool) -> Result<String
     if !semantic {
         text.push_str(
             "\n# Models are not installed, so search matches words exactly. After\n\
-             # `mash models install`, run `mash init --force` for semantic search.\n\
+             # `mash models install`, follow https://mashapp.dev/indexing/#enable-semantic-search.\n\
              [views.build]\nrepresentations = \"lexical-only\"\n\n\
              [views.query]\nintent = \"exact-mention\"\n",
         );
@@ -167,4 +183,74 @@ pub(crate) fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, AppError
     fs::write(&staged, text).map_err(|error| failed("write", &error))?;
     fs::rename(&staged, path).map_err(|error| failed("install", &error))?;
     Ok(previous)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setup_wizard_preserves_custom_settings_and_applies_choices() {
+        let root = tempfile::tempdir().unwrap();
+        let providers = ProviderRoots::from([(Provider::Codex, vec![root.path().join("history")])]);
+        let original = format!(
+            "{}\n[qdrant]\nurl='http://localhost:7777'\ngrpc_url='http://localhost:7778'\n[redaction]\noutput=false\npublication=false\n",
+            render(&providers, false).unwrap()
+        );
+        let mut choices = Choices {
+            providers: ProviderRoots::from([(
+                Provider::ClaudeCode,
+                vec![root.path().join("new-history")],
+            )]),
+            since_days: None,
+            shared: Some(super::super::SharedConfig {
+                group_id: "g".into(),
+                node_id: "n".into(),
+                api_url: "https://example.com".into(),
+                token_env: "TOKEN".into(),
+                publication_redaction: crate::redaction::Policy::default(),
+            }),
+        };
+        let updated = configure(&original, &choices).unwrap();
+        let parsed = parse_document(updated.as_bytes()).unwrap();
+        assert_eq!(parsed.providers, choices.providers);
+        assert_eq!(parsed.since_days, None);
+        assert_eq!(parsed.destination, super::super::IndexDestination::Both);
+        assert_eq!(parsed.qdrant.url, "http://localhost:7777");
+        assert!(!parsed.redaction.output);
+        assert!(!parsed.redaction.publication);
+        let path = root.path().join("config.toml");
+        std::fs::write(&path, &updated).unwrap();
+        assert!(
+            !super::super::load(Some(&path))
+                .unwrap()
+                .shared
+                .unwrap()
+                .publication_redaction
+                .enabled()
+        );
+        choices.shared = None;
+        choices.since_days = Some(12);
+        let local = configure(&updated, &choices).unwrap();
+        let local = parse_document(local.as_bytes()).unwrap();
+        assert!(local.shared.is_none());
+        assert_eq!(local.destination, super::super::IndexDestination::Local);
+        assert_eq!(local.since_days, Some(12));
+    }
+
+    #[test]
+    fn setup_wizard_rejects_invalid_choices_before_writing() {
+        let root = tempfile::tempdir().unwrap();
+        let providers = ProviderRoots::from([(Provider::Codex, vec![root.path().join("history")])]);
+        let original = render(&providers, false).unwrap();
+        let mut choices = Choices {
+            providers,
+            since_days: Some(0),
+            shared: None,
+        };
+        assert!(configure(&original, &choices).is_err());
+        choices.since_days = Some(90);
+        choices.providers.clear();
+        assert!(configure(&original, &choices).is_err());
+    }
 }

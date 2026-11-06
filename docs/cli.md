@@ -3,6 +3,7 @@
 | I want to… | Command |
 | --- | --- |
 | Set up Mash | `mash init` |
+| Set up without interactive prompts | `mash init --yes` |
 | Find a conversation | `mash search 'a word you remember'` |
 | Find a chat by title | `mash list-chats --title-contains 'part of the title'` |
 | Read a matching message | `mash view MESSAGE_ID --context 3` |
@@ -18,6 +19,8 @@
 Replace `MESSAGE_ID` with a message ID returned by search.
 Terminal results are JSON; use the [dashboard](dashboard.md) or a
 [connected agent](agents.md) if you prefer reading conversations directly.
+`mash init` uses an interactive wizard when stdin and stderr are terminals;
+its prompts go to stderr and its final result remains JSON on stdout.
 
 Run `mash --help` or `mash COMMAND --help` for available options.
 Help and version output are JSON too. To display the help text with line breaks:

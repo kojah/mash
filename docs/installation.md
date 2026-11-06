@@ -187,18 +187,40 @@ download details and enabling it after setup.
 mash init
 ```
 
-This detects supported histories, writes TOML configuration, sets up Claude Code
-and Codex integrations when their CLIs are on `PATH`, and indexes sources modified
-within the last 90 days. This includes current sessions of all detected supported
-agents, including Copilot. The JSON result lists the selected provider folders.
+When stdin and stderr are terminals, `mash init` opens a setup wizard:
+
+1. Choose **Just this computer**, connect to an existing shared server, or set up
+   sharing later. Local search is the default.
+2. Select detected histories, or add or replace a provider's history path.
+3. Choose the last 90 days, all history, or a custom number of days.
+4. Select Claude Code and Codex integrations found on `PATH`.
+5. Review the summary and confirm. You can save configuration only or cancel.
+
+Mash checks local Qdrant connectivity and, when selected, shared-server
+authentication before confirmation. If a connection fails, save configuration
+and finish setup after fixing it. The Qdrant check verifies its HTTP endpoint;
+indexing also requires its configured gRPC endpoint.
+
+Press Esc or Ctrl-C during the prompts to cancel without changing configuration
+or agent settings. Prompts go to stderr; stdout remains JSON. No models are
+downloaded during setup.
+
+For scripts or to accept the detected defaults, use `mash init --yes`. Runs
+without terminal input or terminal stderr are non-interactive too. Defaults
+include sources modified within the last 90 days and available agent
+integrations. This includes current sessions of all detected supported agents,
+including Copilot. The JSON result lists the selected provider folders.
 To choose them yourself before indexing, use `mash init --no-index`, edit the
 [configuration](configuration.md), then run `mash index`. Restart your agents
 after setup.
 
 The history plugin's hooks need Python 3.9+; see [agent setup](agents.md).
 For CLI-only use, run `mash init --no-agents`. To configure without indexing,
-use `--no-index`. Existing configuration is kept; avoid `--force` unless you
-intend to replace it (the previous file is backed up).
+use `--no-index`. The wizard offers to keep existing settings or review them;
+reviewing preserves settings outside the wizard and backs up the previous file.
+Non-interactive setup keeps existing configuration unless `--force` is passed.
+With `--yes --force`, Mash regenerates configuration from detected histories;
+in the wizard, `--force` opens the settings review directly.
 
 If indexing fails because Qdrant is stopped, the configuration and history
 already saved are kept. Start Qdrant and rerun `mash init`; `written: false`
