@@ -20,18 +20,65 @@ You’ll need some existing agent history and a running local Qdrant search serv
 
 ### 1. Install Mash
 
+Public release packages have not been published yet. For now, build with Rust:
+
+```bash
+cargo +stable install --locked --git https://github.com/kojah/mash mash
+```
+
+<details>
+<summary>Release installers and package managers (available after publication)</summary>
+
+**Homebrew**
+
 ```bash
 brew install kojah/tap/mash
 ```
 
-Or use the installer on macOS or Linux:
+**Shell — macOS / Linux**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
 
-See [installation options](docs/installation.md) for Windows, apt, npm, mise,
-and building from source.
+**PowerShell — Windows x64**
+
+```powershell
+irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
+```
+
+Both scripts verify release checksums. They install to your user’s `.local/bin`
+directory; add it to `PATH` if needed.
+
+**Windows package managers — choose one**
+
+```powershell
+winget install --id kojah.mash --exact
+```
+
+```powershell
+scoop bucket add kojah https://github.com/kojah/mash
+scoop install kojah/mash
+```
+
+```powershell
+choco install mash
+```
+
+**apt — Debian / Ubuntu**
+
+```bash
+curl -fsSL https://kojah.github.io/mash/apt/mash-archive-keyring.gpg \
+  | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://kojah.github.io/mash/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/mash.list
+sudo apt update && sudo apt install mash
+```
+
+Package channels depend on the release being published to their registry.
+See [installation options](docs/installation.md) for npm, mise, and installer settings.
+
+</details>
 
 ### 2. Start the local search service
 

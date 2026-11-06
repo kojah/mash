@@ -4,6 +4,16 @@
 
 ## Choose an installer
 
+Public releases and package channels have not been published yet. Until they
+are available, build with Rust:
+
+```bash
+cargo +stable install --locked --git https://github.com/kojah/mash mash
+```
+
+The release workflow prepares the following installer channels. Commands that
+download a release or use a package registry require publication to that channel.
+
 Prebuilt binaries support macOS Apple Silicon, Linux x86_64 or arm64, and
 Windows x64. Choose one of the following installers for your platform.
 
@@ -18,6 +28,19 @@ or
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
+
+For Windows x64, the standalone PowerShell installer is:
+
+```powershell
+irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
+```
+
+Both scripts verify the archive against the release’s `SHA256SUMS` before
+installing. Set `MASH_VERSION` to a release tag such as `v0.8.0` to pin a version,
+or `MASH_INSTALL_DIR` to change the destination from your user’s `.local/bin`.
+They print a reminder if that directory needs adding to `PATH`; they do not
+change your shell profile or install models. For an existing index, follow
+[the upgrade guide](upgrades.md) before crossing database schemas.
 
 On Debian or Ubuntu, from the signed apt repository:
 
@@ -38,7 +61,7 @@ cargo binstall --git https://github.com/kojah/mash mash
 On Windows x64, use one of:
 
 ```powershell
-winget install kojah.mash
+winget install --id kojah.mash --exact
 scoop bucket add kojah https://github.com/kojah/mash; scoop install kojah/mash
 choco install mash
 ```

@@ -33,6 +33,12 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Check PowerShell installer without network or a real installation
+        shell: pwsh
+        run: ./tools/test-install-powershell.ps1
+      - name: Check installer with Windows PowerShell 5.1
+        shell: powershell
+        run: ./tools/test-install-powershell.ps1
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: stable

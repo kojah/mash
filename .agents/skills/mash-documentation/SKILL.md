@@ -42,6 +42,12 @@ carrying forward a factual claim. For behavior changes, search affected docs
 for the old term or instruction and update the existing explanation rather
 than appending a contradictory paragraph.
 
+For installation instructions, distinguish packaging templates from published
+packages. Check the actual release and registry endpoints before claiming an
+installer works. When a channel is pending, say so and provide a working path.
+Keep the user-requested platform install options discoverable in the README;
+compact sections or expandable examples can keep them from overwhelming setup.
+
 Remove obsolete release narration such as “this release now…” and instructions
 for retired paths when they no longer help a current user. Preserve necessary
 compatibility and recovery guidance in `docs/upgrades.md`. In particular, do
