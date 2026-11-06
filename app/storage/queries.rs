@@ -112,6 +112,35 @@ impl Storage {
         self.view_content(id, context, super::MessageContent::Canonical)
     }
 
+    /// One chat's messages by display position, `offset..offset + limit`.
+    pub(crate) fn chat_messages(
+        &self,
+        chat_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Message>, AppError> {
+        let rows = sql::ViewMessages::builder()
+            .chat_id(chat_id)
+            .first_ordinal(offset)
+            .last_ordinal(offset.saturating_add(limit).saturating_sub(1))
+            .build()
+            .query_many(&self.connection)
+            .map_err(AppError::database)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(Message {
+                    attachments: Vec::new(),
+                    id: row.id,
+                    ordinal: row.ordinal,
+                    role: row.role.into(),
+                    content: row.content,
+                    created_at: row.created_at,
+                    tools: crate::tools::Activity::decode(row.metadata.as_deref())?,
+                })
+            })
+            .collect()
+    }
+
     pub(crate) fn view_content(
         &self,
         id: &str,

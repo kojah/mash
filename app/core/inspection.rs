@@ -156,6 +156,31 @@ async fn local_gold_status(
     Ok(())
 }
 
+pub(super) async fn chat_messages(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    chat_id: String,
+    offset: u32,
+    limit: u32,
+) -> Result<ViewResponse, AppError> {
+    let output = configuration.redaction.output();
+    let database = database.to_path_buf();
+    crate::blocking(move || {
+        let storage = Storage::open_silver(&database)?;
+        let mut messages = storage.chat_messages(&chat_id, i64::from(offset), i64::from(limit))?;
+        for message in &mut messages {
+            message.content = output.text(&message.content);
+            output.tools(&mut message.tools);
+            message.attachments = storage.list_attachments(&message.id)?.attachments;
+        }
+        Ok(ViewResponse {
+            id: chat_id,
+            messages,
+        })
+    })
+    .await
+}
+
 fn local_view(
     database_path: &Path,
     id: String,

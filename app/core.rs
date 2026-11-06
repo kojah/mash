@@ -44,7 +44,7 @@ async fn execute_admitted(
         Operation::Index(_) => "index",
         Operation::ListChats { .. } => "list_chats",
         Operation::Search { .. } => "search",
-        Operation::View { .. } => "view",
+        Operation::View { .. } | Operation::ChatMessages { .. } => "view",
         Operation::Status { .. } | Operation::Installation { .. } => "status",
         Operation::Forget { .. } => "forget",
         Operation::QuerySilver { .. }
@@ -382,6 +382,13 @@ async fn dispatch(
             context,
             shared,
         } => inspection::view(configuration, database, id, context, shared)
+            .await
+            .map(Response::View),
+        Operation::ChatMessages {
+            chat_id,
+            offset,
+            limit,
+        } => inspection::chat_messages(configuration, database, chat_id, offset, limit)
             .await
             .map(Response::View),
         Operation::Status { shared, coverage } => {

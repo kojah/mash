@@ -50,6 +50,7 @@ fn router(state: Arc<Dash>) -> Router {
         .route("/api/chats", axum::routing::get(list_chats))
         .route("/api/search", axum::routing::get(search))
         .route("/api/view", axum::routing::get(view))
+        .route("/api/chat", axum::routing::get(chat))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
@@ -229,6 +230,39 @@ async fn view(
         id: params.id,
         context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
         shared: None,
+    };
+    json_result(
+        core::execute(Request {
+            paths: state.paths.clone(),
+            operation,
+        })
+        .await,
+    )
+}
+
+#[derive(serde::Deserialize)]
+struct ChatParams {
+    id: String,
+    #[serde(default)]
+    offset: u32,
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+/// Messages per page of a chat; whole small chats fit in one.
+const MAX_CHAT_PAGE: u32 = 2000;
+
+async fn chat(
+    State(state): State<Arc<Dash>>,
+    axum::extract::Query(params): axum::extract::Query<ChatParams>,
+) -> Response {
+    let operation = Operation::ChatMessages {
+        chat_id: params.id,
+        offset: params.offset,
+        limit: params
+            .limit
+            .unwrap_or(MAX_CHAT_PAGE)
+            .clamp(1, MAX_CHAT_PAGE),
     };
     json_result(
         core::execute(Request {

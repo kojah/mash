@@ -80,6 +80,12 @@ pub(crate) enum Operation {
         context: u32,
         shared: Option<String>,
     },
+    /// One local chat's messages by display position, for the dashboard.
+    ChatMessages {
+        chat_id: String,
+        offset: u32,
+        limit: u32,
+    },
     Status {
         shared: bool,
         coverage: Option<super::coverage::Scope>,
