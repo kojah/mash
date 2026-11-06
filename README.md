@@ -85,20 +85,12 @@ See [installation options](docs/installation.md) for npm, mise, and installer se
 
 ### 2. Start the local search service
 
-Install and start [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-on macOS/Windows, or [Docker Engine with Compose](https://docs.docker.com/compose/install/)
-on Linux. Windows must use **Linux containers**.
+Run Qdrant directly on your machine—Docker is not required. Follow the short
+instructions for [macOS/Linux](docs/installation.md#native-macos-or-linux-without-docker)
+or [Windows](docs/installation.md#native-windows-without-docker), then leave it
+running while you use Mash.
 
-Save our [compose.yaml](https://raw.githubusercontent.com/kojah/mash/main/compose.yaml)
-in a dedicated folder. In a terminal in that folder, run:
-
-```sh
-docker compose up -d --wait
-```
-
-Compose downloads Qdrant, keeps its data in a persistent volume, and waits for
-it to be ready. Mash itself runs on your machine to access your agent histories.
-[Setup details and alternatives →](docs/installation.md#start-the-local-search-service)
+Already use Docker? [Compose is an optional alternative](docs/installation.md#optional-docker-compose).
 
 ### 3. Connect your histories
 

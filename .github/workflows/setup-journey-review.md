@@ -57,9 +57,10 @@ label and architecture from each artifact; older runs may use different images.
 Check matching revision and document hashes and distinct platform identities.
 Missing journals, nonzero agent exits, and interrupted transcripts are incomplete
 coverage, not passing journeys. Do not infer platform success from CI success.
-Report Docker Compose coverage separately from native Qdrant fallback coverage.
-An unavailable Docker runtime is an infrastructure limitation, but a fallback
-success does not establish that the recommended Compose path works on that OS.
+Report native Qdrant and optional Docker Compose coverage separately. Native
+setup is the default; Docker is not a prerequisite. Evaluate older runs against
+their saved documentation, which may recommend Compose instead. Success with
+one setup does not establish coverage of the other.
 
 For each journal, classify every candidate as accepted-valid (sufficient direct
 evidence), rejected, or needs-more-evidence. There is only one tester per OS:
