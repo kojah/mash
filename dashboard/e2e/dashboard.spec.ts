@@ -7,6 +7,51 @@ const chat = {
   project: "/work/project",
   updated_at: Date.now(),
 };
+test("direct chats load before the catalogue and tool output stays literal", async ({ page }) => {
+  let release: (() => void) | undefined;
+  const catalogReady = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/chats**", async (route) => {
+    await catalogReady;
+    await route.fulfill({
+      json: { local_node: "local", truncated: false, chats: [{ ...chat, node_id: "local" }] },
+    });
+  });
+  await page.route("**/api/chat?**", (route) =>
+    route.fulfill({
+      json: {
+        messages: [
+          {
+            id: "reply",
+            ordinal: 0,
+            role: "assistant",
+            content:
+              '## A readable heading\n\n- First\n- Second\n\n```rust\nfn main() {\n    println!("hello");\n}\n```',
+          },
+          {
+            id: "tool",
+            ordinal: 1,
+            role: "user",
+            content: "# README\n\n<div>literal HTML</div>",
+            tools: { tool_results: [{ call_id: "call" }] },
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/#/chat/same-id");
+  try {
+    await expect(page.getByRole("heading", { name: "A readable heading" })).toBeVisible();
+    await expect(page.locator("main pre code")).toContainText('    println!("hello");');
+    await expect(page.getByRole("heading", { name: "README" })).toHaveCount(0);
+    await page.getByText("Tool output", { exact: true }).click();
+    await expect(page.locator("details pre")).toContainText("<div>literal HTML</div>");
+  } finally {
+    release?.();
+  }
+  await expect(page.getByRole("heading", { name: chat.title })).toBeVisible();
+});
 test("real API shapes, explicit search, source identity, safe content and stable refresh", async ({
   page,
 }) => {
@@ -93,6 +138,51 @@ test("real API shapes, explicit search, source identity, safe content and stable
   await page.getByRole("button", { name: "Next messages" }).click();
   await expect.poll(() => chatRequests.at(-1)?.searchParams.get("offset")).toBe("100");
   expect(errors).toEqual([]);
+});
+
+test("chat navigation retains the sidebar and polling preserves the displayed transcript", async ({
+  page,
+}) => {
+  let content = "Original answer";
+  await page.route("**/api/chats**", (route) =>
+    route.fulfill({
+      json: {
+        local_node: "local",
+        truncated: false,
+        chats: Array.from({ length: 80 }, (_, index) => ({
+          ...chat,
+          chat_id: `chat-${index}`,
+          title: `Chat ${index}`,
+          node_id: "local",
+        })),
+      },
+    }),
+  );
+  await page.route("**/api/chat?**", (route) =>
+    route.fulfill({
+      json: { messages: [{ id: "answer", ordinal: 0, role: "assistant", content }] },
+    }),
+  );
+  await page.clock.install();
+  await page.goto("/#/chat/chat-0?node=local");
+  await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
+  const sidebar = page.getByRole("complementary");
+  await sidebar.evaluate((element) => {
+    element.scrollTop = 500;
+    element.setAttribute("data-retained", "yes");
+  });
+  await page.evaluate(() => {
+    location.hash = "#/chat/chat-1?node=local";
+  });
+  await expect(page.getByRole("heading", { name: "Chat 1", exact: true })).toBeVisible();
+  await expect(sidebar).toHaveAttribute("data-retained", "yes");
+  expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
+  content = "Background replacement";
+  await page.clock.runFor(31_000);
+  await expect(page.getByRole("button", { name: /This page has changed/ })).toBeVisible();
+  await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
+  await expect(page.getByText("Background replacement", { exact: true })).toHaveCount(0);
+  expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
 });
 
 test("network errors are visible and recoverable", async ({ page }) => {

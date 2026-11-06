@@ -93,7 +93,23 @@ pub(super) async fn dashboard(
     let truncated = chats.len() > 10_000;
     chats.truncate(10_000);
     for chat in &mut chats {
+        // The dashboard needs display metadata, not provenance or entire prompts
+        // used as fallback titles. Avoid serializing/redacting unused evidence.
+        chat.metadata.enrichment = None;
+        // Redact before truncation: cutting a credential could prevent a pattern
+        // from recognizing it and expose its prefix in the title.
         config.redaction.output().metadata(&mut chat.metadata);
+        if let Some(title) = &mut chat.metadata.title {
+            let first = title
+                .lines()
+                .find(|line| !line.trim().is_empty())
+                .unwrap_or(title);
+            let mut preview: String = first.chars().take(240).collect();
+            if first.chars().count() > 240 {
+                preview.push('…');
+            }
+            *title = preview;
+        }
     }
     Ok(DashboardCatalog {
         chats,

@@ -9,9 +9,7 @@ const client = new QueryClient();
 
 <QueryClientProvider client={client}>
 {#if router.current.page === "chat"}
-  {#key JSON.stringify([router.current.id, router.current.node, router.current.message])}
     <TranscriptView id={router.current.id} node={router.current.node} messageId={router.current.message} />
-  {/key}
 {:else}
   <Home />
 {/if}

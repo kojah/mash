@@ -8,6 +8,9 @@ export const catalogOptions = queryOptions({
   refetchInterval: 30_000,
   refetchIntervalInBackground: false,
   retry: false,
+  refetchOnMount: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
 });
 /** Submitted searches and reading pages change only at the reader's request. */
 export const stableRead = {

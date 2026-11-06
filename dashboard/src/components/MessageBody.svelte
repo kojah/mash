@@ -3,16 +3,24 @@ import { markdown } from "../lib/markdown";
 
 let { text }: { text: string } = $props();
 let expanded = $state(false);
-const visible = $derived(expanded ? text : text.slice(0, 16_384));
 </script>
 
-<div class="prose min-w-0 break-words">{@html markdown(visible)}</div>
+<div class="prose min-w-0 break-words" class:collapsed={!expanded && text.length > 16_384}>{@html markdown(text)}</div>
 {#if text.length > 16_384}
   <button type="button" class="text-sm text-accent" onclick={() => expanded = !expanded}>{expanded ? "Collapse" : `Show full message (${text.length.toLocaleString()} characters)`}</button>
 {/if}
 
 <style>
+.collapsed { max-height: 32rem; overflow: hidden; mask-image: linear-gradient(black 90%, transparent); }
 .prose :global(p) { margin: 0 0 .75rem; }
+.prose :global(h1), .prose :global(h2), .prose :global(h3), .prose :global(h4) { font-weight: 650; line-height: 1.3; margin: 1.25rem 0 .65rem; }
+.prose :global(h1) { font-size: 1.5rem; }
+.prose :global(h2) { font-size: 1.25rem; }
+.prose :global(h3) { font-size: 1.1rem; }
+.prose :global(ul) { list-style: disc; padding-left: 1.5rem; margin-bottom: .8rem; }
+.prose :global(ol) { list-style: decimal; padding-left: 1.5rem; margin-bottom: .8rem; }
+.prose :global(li) { margin: .3rem 0; }
+.prose :global(blockquote) { border-left: 3px solid var(--color-line); padding-left: 1rem; color: var(--color-muted); }
 .prose :global(pre) { white-space: pre; overflow-x: auto; padding: .8rem; background: var(--color-fill); border-radius: .5rem; }
 .prose :global(code) { font-size: .85em; }
 .prose :global(a) { color: var(--color-accent); text-decoration: underline; }

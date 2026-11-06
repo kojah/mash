@@ -42,7 +42,14 @@ function onKey(event: KeyboardEvent): void {
   </div>
 
   <p class="m-0 text-xs text-muted">Indexed history · refreshes every 30 seconds while visible. Indexing runs separately.</p>
-  {#if catalogue.isPending}<p role="status">Loading chats…</p>{/if}
+  {#if catalogue.isPending}
+    <section role="status" class="rounded-xl bg-surface p-4">
+      <p class="m-0 text-sm text-muted">Loading chats…</p>
+      <div aria-hidden="true" class="mt-4 flex flex-col gap-5">
+        {#each [0, 1, 2, 3, 4] as row (row)}<div class="flex flex-col gap-2"><div class="h-4 w-4/5 rounded bg-fill"></div><div class="h-3 w-2/5 rounded bg-fill"></div></div>{/each}
+      </div>
+    </section>
+  {/if}
   {#if catalogue.error}<p role="alert">{catalogue.error.message} <button type="button" onclick={() => catalogue.refetch()}>Retry</button></p>{/if}
   {#if data}
     {#each data.warnings as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
@@ -52,10 +59,9 @@ function onKey(event: KeyboardEvent): void {
       <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
         {#each data.chats.slice(0, 5) as chat (JSON.stringify([chat.machine, chat.id]))}
           <li>
-            <a href={chatHref(chat.id, chat.machine)} class="row text-[15px]">
+            <a href={chatHref(chat.id, chat.machine)} title={`${chat.title}\n${chat.project}\n${chat.id}`} class="row text-[15px]">
               <AgentMark agent={chat.agent} />
-              <span class="min-w-0 flex-1 truncate">{chat.title}</span>
-              <span class="shrink-0 text-[13px] tabular-nums text-faint">{chat.updatedAt}</span>
+              <span class="min-w-0 flex-1"><span class="line-clamp-2">{chat.title}</span><span class="block text-xs text-muted">{chat.project.split('/').filter(Boolean).at(-1) || 'No project'} · {chat.machine} · {chat.updatedAt}</span></span>
               <ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" />
             </a>
           </li>

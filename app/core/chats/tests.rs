@@ -15,6 +15,7 @@ async fn dashboard_catalog_preserves_copies_and_partial_failure() {
                 provider: Provider::Codex,
                 node_id: "peer".into(),
                 metadata: ChatMetadata {
+                    title: Some(format!("\n{}\nHidden continuation", "界".repeat(300))),
                     updated_at: Some(106),
                     ..Default::default()
                 },
@@ -31,6 +32,16 @@ async fn dashboard_catalog_preserves_copies_and_partial_failure() {
     assert_eq!(response.local_node, "laptop");
     assert_eq!(response.chats.len(), 2);
     assert_eq!(response.chats[0].node_id, "peer");
+    assert_eq!(
+        response.chats[0].metadata.title.as_deref(),
+        Some(format!("{}…", "界".repeat(240)).as_str())
+    );
+    assert!(
+        response
+            .chats
+            .iter()
+            .all(|chat| chat.metadata.enrichment.is_none())
+    );
     assert_eq!(response.chats[1].node_id, "laptop");
     assert!(!response.truncated);
     assert!(response.shared_error.is_none());

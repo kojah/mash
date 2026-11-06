@@ -57,6 +57,8 @@ export interface Message {
   readonly role: string;
   readonly ordinal?: number;
   readonly activity?: string;
+  readonly presentation?: "dialogue" | "tool-call" | "tool-result" | "reasoning";
+  readonly toolLabel?: string;
   readonly at: string;
   readonly blocks: readonly Block[];
 }

@@ -163,12 +163,27 @@ export function parseMessages(value: unknown): MessagePage {
     messages: array(object(value).messages).map((value) => {
       const row = object(value);
       const tools = row.tools == null ? {} : object(row.tools);
+      const calls = tools.tool_calls == null ? [] : array(tools.tool_calls).map(object);
+      const results = tools.tool_results == null ? [] : array(tools.tool_results).map(object);
+      const content = string(row.content);
+      const role = string(row.role);
+      const presentation =
+        results.length || role === "tool"
+          ? "tool-result"
+          : calls.length
+            ? "tool-call"
+            : content.startsWith("[Thinking]")
+              ? "reasoning"
+              : "dialogue";
       return {
         id: string(row.id),
         ordinal: number(row.ordinal),
-        role: string(row.role),
+        role,
+        presentation,
+        toolLabel:
+          calls.map((call) => optionalString(call.name) ?? "Tool").join(", ") || "Tool output",
         at: date(timestamp(row.created_at)),
-        blocks: [{ type: "text", markdown: string(row.content) }],
+        blocks: [{ type: "text", markdown: content }],
         // Opaque provider inputs remain text, never interpreted as commands or markup.
         activity: Object.keys(tools).length ? JSON.stringify(tools, null, 2) : "",
       };
@@ -185,7 +200,12 @@ export async function transcript(
   return parseMessages(
     await read(
       "/api/chat",
-      new URLSearchParams({ id, node, offset: String(offset), limit: String(PAGE_SIZE) }),
+      new URLSearchParams({
+        id,
+        ...(node ? { node } : {}),
+        offset: String(offset),
+        limit: String(PAGE_SIZE),
+      }),
       signal,
     ),
   );
