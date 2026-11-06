@@ -82,6 +82,10 @@ test("direct search matches load without waiting for catalogue identity", async 
 test("real API shapes, explicit search, source identity, safe content and stable refresh", async ({
   page,
 }) => {
+  // Network HTTP previews do not expose this secure-context-only API.
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", { value: undefined });
+  });
   let title = chat.title;
   let content =
     "Initial **reply**\n\n<script>window.pwned = true</script><img src=https://evil.example/pixel onerror=alert(1)>[bad](javascript:alert(1))";

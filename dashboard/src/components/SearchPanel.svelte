@@ -36,7 +36,8 @@ let days = $state<number | null>(untrack(() => initial.days));
 let openFacet = $state<Facet | null>(null);
 const catalog = createQuery(() => catalogOptions);
 const catalogue = $derived(catalog.data?.chats ?? []);
-let submitted = $state<{ query: string; filters: SearchFilters; generation: string } | null>(null);
+let generation = 0;
+let submitted = $state<{ query: string; filters: SearchFilters; generation: number } | null>(null);
 let browsing = $state<SearchPage | null>(null);
 let offset = $state(0);
 const result = createQuery(() => ({
@@ -118,7 +119,7 @@ function run(): void {
       projects: [...selected.projects],
       days,
     },
-    generation: crypto.randomUUID(),
+    generation: ++generation,
   };
   browsing = query.trim() ? null : browse(catalog.data, submitted.filters, Date.now());
 }
