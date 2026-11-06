@@ -216,7 +216,12 @@ fn document_id(node: &str, message: &str) -> String {
     point_id(&["message", node, message])
 }
 fn failure() -> AppError {
-    AppError::shared("Qdrant operation failed; check service availability, credentials, and schema")
+    AppError::new(
+        11,
+        crate::ErrorKind::QdrantFailure,
+        "Qdrant operation failed; inspect Qdrant's logs for storage, credentials, or schema errors. With Compose, run `docker compose logs qdrant` in your services folder.",
+        true,
+    )
 }
 fn tokens(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphanumeric())

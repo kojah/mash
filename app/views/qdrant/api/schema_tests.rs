@@ -78,13 +78,50 @@ async fn missing_views_are_distinct_from_backend_authentication_failures() {
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     for (path, expected) in [
         ("missing", crate::ErrorKind::SearchNotReady),
-        ("denied", crate::ErrorKind::SharedIndex),
+        ("denied", crate::ErrorKind::QdrantFailure),
     ] {
         let error = client
             .call::<()>(Method::GET, path, None::<&()>)
             .await
             .unwrap_err();
         assert_eq!(error.error.kind, expected);
+        if path == "denied" {
+            assert!(error.error.message.contains("HTTP 401"));
+            assert!(error.error.message.contains("API key"));
+        }
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn qdrant_server_failure_explains_status_without_echoing_private_body() {
+    use axum::{Router, routing::get};
+    let router = Router::new().route(
+        "/",
+        get(|| async {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "private-storage-path and secret-token",
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let client = Client::new(&url, None, 1024).unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    for error in [
+        client.verify_version().await.unwrap_err(),
+        client
+            .call::<()>(Method::GET, "", None::<&()>)
+            .await
+            .unwrap_err(),
+    ] {
+        assert_eq!(error.error.kind, crate::ErrorKind::QdrantFailure);
+        assert!(error.error.message.contains(&url));
+        assert!(error.error.message.contains("HTTP 500"));
+        assert!(error.error.message.contains("docker compose logs qdrant"));
+        assert!(!error.error.message.contains("private-storage-path"));
+        assert!(!error.error.message.contains("secret-token"));
     }
     server.abort();
 }

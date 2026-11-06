@@ -160,6 +160,7 @@ struct ErrorBody {
 enum ErrorKind {
     SharedIndex,
     QdrantUnavailable,
+    QdrantFailure,
     Configuration,
     Usage,
     DatabaseMissing,

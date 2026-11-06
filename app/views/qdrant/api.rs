@@ -483,6 +483,24 @@ fn dense_name(info: &Info, dimensions: usize) -> Option<String> {
 }
 
 impl Client {
+    fn rejected(&self, status: StatusCode) -> AppError {
+        let remedy = if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            "Check that Mash's Qdrant API key matches the service configuration."
+        } else {
+            "Inspect Qdrant's logs for the cause; with Compose, run `docker compose logs qdrant` in your services folder."
+        };
+        AppError::new(
+            11,
+            crate::ErrorKind::QdrantFailure,
+            format!(
+                "Qdrant at {} returned HTTP {}. {remedy}",
+                self.url,
+                status.as_u16()
+            ),
+            true,
+        )
+    }
+
     fn unavailable(&self) -> AppError {
         // endpoint() accepts only an origin: no credentials, paths, or queries.
         // Never include reqwest's error or the upstream response body.
@@ -505,7 +523,7 @@ impl Client {
             .await
             .map_err(|_| self.unavailable())?;
         if !response.status().is_success() {
-            return Err(failure());
+            return Err(self.rejected(response.status()));
         }
         let instance: Instance = response.json().await.map_err(|_| failure())?;
         let mut parts = instance.version.split('.');
@@ -623,7 +641,7 @@ impl Client {
             ));
         }
         if !response.status().is_success() {
-            return Err(failure());
+            return Err(self.rejected(response.status()));
         }
         let bytes = async {
             let mut bytes = Vec::new();
@@ -722,7 +740,7 @@ impl Client {
             // A second API process may create the same collection. Always inspect it afterward.
             let _: Result<bool, _> = self.call(Method::PUT, &path, Some(&create)).await;
         } else if !exists.status().is_success() {
-            return Err(failure());
+            return Err(self.rejected(exists.status()));
         }
         if policy.activate {
             self.activate_memory(&path, dimensions, memory).await?;
