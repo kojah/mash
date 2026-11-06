@@ -16,7 +16,9 @@ GitHub. Each generated guide has an edit link to its original file.
 
 Add a guide to `docs/README.md` and, when appropriate, the sidebar in
 `site/astro.config.mjs`. New Markdown guides are included in builds and search
-automatically. Re-run the development command after editing source guides.
+automatically. Only top-level `docs/*.md` files are published. Keep engineering
+and maintenance notes in `docs/internal/`, outside the website and its search.
+Re-run the development command after editing source guides.
 
 ## Local preview and checks
 

@@ -1,29 +1,26 @@
 # Mash documentation
 
-New to Mash? Start with the [quick start](../README.md#quick-start).
+Mash helps you find conversations you've already had with your coding agents.
+New here? Follow the [quick start](../README.md#quick-start), or browse the
+[documentation website](https://mashapp.dev).
 
-## Using Mash
+## What would you like to do?
 
-- [Installation](installation.md): platform options, local Qdrant, and first-run setup.
-- [Search and filters](search.md): finding chats, reading evidence, and narrowing results.
-- [CLI reference](cli.md): commands, output, and global options.
-- [Agent integrations](agents.md): Claude Code, Codex, plugins, hooks, and troubleshooting.
-- [Configuration](configuration.md): history locations, search settings, and remote embeddings.
-- [Indexing](indexing.md): models, source coverage, recovery, and provider details.
-- [Synchronization](synchronization.md): background refresh, watch mode, and freshness.
-- [Privacy](privacy.md): redaction, sensitive history, and stored data.
+| Task | Guide |
+| --- | --- |
+| Install Mash and connect my histories | [Installation](installation.md) |
+| Find a chat or read the messages behind a result | [Find a conversation](search.md) |
+| Ask Claude Code or Codex about past work | [Use Mash with your agent](agents.md) |
+| Browse chats or download a transcript | [Dashboard](dashboard.md) |
+| Refresh new chats or keep watching for changes | [Keep history up to date](synchronization.md) |
+| Include older history or enable semantic search | [Indexing and models](indexing.md) |
+| Find history from another machine | [Multi-machine setup](shared-index.md) |
+| Back up, restore, or upgrade an index | [Upgrades and backups](upgrades.md) |
+| Remove a chat or understand what is shared | [Privacy](privacy.md) |
+| Fix empty results, setup errors, or stale history | [Troubleshooting](troubleshooting.md) |
 
-## Operating and extending Mash
+## More help
 
-- [Upgrades and backups](upgrades.md): compatibility checks and preserving history.
-- [Shared index](shared-index.md): multi-machine setup, publication, and API contracts.
-- [MCP reference](mcp.md): client setup, tools, attachments, and progress notifications.
-- [Agent history architecture](agent-history.md): the data model and storage boundaries.
-- [Code organization](architecture.md): application modules and execution boundaries.
-- [Development](development.md): builds, tests, generated queries, and profiling.
-- [Correctness checks](verification.md): protocol models, fault injection, and mutation audits.
-- [Documentation website](documentation-site.md): editing, previewing, and publishing these guides.
-- [Fleet deployment](../deployment/README.md): preflight, builds, rollout, and readiness.
-
-Some reference pages link to documents pinned to an older commit. Those are
-historical design notes or measurements, not current installation instructions.
+- [Useful commands](cli.md)
+- [Change your configuration](configuration.md)
+- [Connect another MCP client](mcp.md)

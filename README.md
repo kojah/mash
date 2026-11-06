@@ -68,9 +68,9 @@ choco install mash
 **apt — Debian / Ubuntu**
 
 ```bash
-curl -fsSL https://kojah.github.io/mash/apt/mash-archive-keyring.gpg \
+curl -fsSL https://mashapp.dev/apt/mash-archive-keyring.gpg \
   | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://kojah.github.io/mash/apt stable main" \
+echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://mashapp.dev/apt stable main" \
   | sudo tee /etc/apt/sources.list.d/mash.list
 sudo apt update && sudo apt install mash
 ```
@@ -148,7 +148,7 @@ With the default local setup, indexing and search stay on your machine.
 Sharing history and using remote embedding APIs are optional.
 
 Mash masks recognizable credentials in results by default, but detection is
-best effort. Local canonical history and exports can contain sensitive text;
+best effort. Local history and exports can contain sensitive text;
 treat backups like the original chats. Mash never modifies the agent’s source
 history. [Privacy and redaction →](docs/privacy.md)
 
@@ -159,7 +159,7 @@ to choose history locations, search defaults, or remote embeddings.
 To search across machines, set up an optional [shared index](docs/shared-index.md).
 
 Upgrading an existing installation? Read [the upgrade guide](docs/upgrades.md)
-before replacing binaries when the index schema changes.
+before replacing an existing installation.
 
 ## Learn more
 
@@ -167,9 +167,12 @@ before replacing binaries when the index schema changes.
 | --- | --- |
 | Narrow a search by project, provider, or date | [Search and filters](docs/search.md) |
 | Connect or troubleshoot an agent | [Agent integrations](docs/agents.md) |
+| Browse or save a transcript | [Dashboard](docs/dashboard.md) |
+| Find missing or stale history | [Troubleshooting](docs/troubleshooting.md) |
+| Search across my machines | [Shared index](docs/shared-index.md) |
+| Back up, restore, or upgrade | [Upgrades and backups](docs/upgrades.md) |
 | See all commands | [CLI reference](docs/cli.md) |
 | Configure an MCP client | [MCP reference](docs/mcp.md) |
 | Understand indexing and models | [Indexing](docs/indexing.md) |
-| Work on Mash | [Development](docs/development.md) |
 
-[Documentation website](https://mashapp.dev) · [All guides](docs/README.md) · [Architecture](docs/agent-history.md) · [License](LICENSE)
+[Documentation website](https://mashapp.dev) · [All guides](docs/README.md) · [License](LICENSE)

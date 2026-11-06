@@ -1,6 +1,6 @@
 # Correctness checks
 
-Mash combines bounded [protocol models](../protocol/README.md), tests
+Mash combines bounded [protocol models](../../protocol/README.md), tests
 against real storage, targeted failure regressions, and focused mutation audits.
 Each checks a different claim; none proves the whole distributed system correct.
 

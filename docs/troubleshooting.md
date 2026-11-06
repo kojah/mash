@@ -1,0 +1,100 @@
+# Troubleshooting
+
+Start with the command that matches the problem:
+
+```sh
+mash status
+mash status --installation
+```
+
+The first checks index/search readiness. The second checks provider locations and
+agent setup, even when the index is not ready. Use `mash status --shared` when
+the problem concerns another machine.
+
+## Search returns no results
+
+1. Try one distinctive word with `--intent exact-mention`. A multiword query
+   matches a phrase; those words may not appear together.
+2. Remove filters, then add them back one at a time. Project paths and repository
+   URLs must exactly match recorded metadata.
+3. Run `mash index` for new conversations, or `mash index --all-history` for
+   older sources outside the default 90-day horizon.
+4. Check `mash status --installation` for missing provider roots or failed scans.
+
+`mash list-chats --title-contains 'part of the title'` can find a chat without
+using search models. If it appears there, search inside its returned chat ID.
+
+Tool output and reasoning are retained for reading but excluded from dialogue
+search. Search for a nearby user/assistant message, then open the transcript.
+An empty result does not prove the conversation never happened.
+
+## Qdrant connection failed
+
+Start the existing local container:
+
+```sh
+docker start mash-local-qdrant
+```
+
+If it has not been created, follow [installation](installation.md#start-the-local-search-service).
+The HTTP and gRPC endpoints must point to the same Qdrant 1.19+ instance.
+See [custom endpoints](configuration.md#local-qdrant).
+
+You can still list chats, read messages, and export a backup while the search
+service is unavailable.
+
+## Models are missing
+
+For word/phrase search, use `--intent exact-mention`; it does not require models.
+For semantic search, follow [model setup](indexing.md#enable-semantic-search).
+Only `mash models install` downloads models.
+
+Installing models alone does not change an existing lexical-only configuration.
+Follow the configuration steps in that guide, then index. Preserve custom provider and shared
+settings instead of replacing your entire configuration.
+
+## Search views are missing or stale
+
+If the current database is compatible and its retained history is ready, rebuild
+the derived local search data:
+
+```sh
+mash index --rebuild-local-views --full
+```
+
+This uses stored history. It does not scan provider files, fix incomplete source
+coverage, or migrate schemas. For new or previously failed sources, use ordinary
+`mash index` and inspect the final result.
+
+## The index schema is older or newer than Mash
+
+Stop here and follow [upgrades and backups](upgrades.md). Keep the old executable
+and data. Export with the release that wrote the index, and validate an import
+with the new release at a separate path.
+
+Do not delete the database, change schema numbers, or expect `index --full` to
+migrate it. If an upgrade marker is present, recover or finish that upgrade
+before creating a new index.
+
+## My agent cannot find Mash
+
+Run `mash status --installation` and follow its repair suggestion. Restart the
+agent after setup or a binary/plugin upgrade. A successful `--probe` tests a new
+MCP process; an existing chat may still hold an old connection.
+
+If MCP is configured but the plugin is missing, MCP tools may still work.
+Plugin installation requires network access; hooks also need Python 3.9+.
+See [agent setup](agents.md).
+
+## Indexing is busy, incomplete, or shared-pending
+
+- **Busy:** another writer may be active. Let it finish or stop your watcher
+  before retrying. Do not delete lock files.
+- **Incomplete:** inspect the reported provider/source error, correct it, and
+  run `mash index` again. Valid retained history is preserved.
+- **Shared-pending:** local work may have succeeded. Check connectivity, token
+  configuration, and `mash status --shared`, then retry indexing.
+
+A combined search can return local results with a `shared_error`. Use
+`--local` if you want an explicitly local search, or repair the shared connection
+before relying on results across all machines.

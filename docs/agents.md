@@ -1,156 +1,72 @@
-# Agent integrations and history plugin
+# Use Mash with your agent
 
-[Documentation](README.md) · [Project home](../README.md)
+Mash can search histories from Claude Code, Codex, GitHub Copilot, Cursor,
+OpenCode, and Antigravity. Mash connects automatically to **Claude Code and Codex**. You can search the
+other supported histories from either of those agents or the dashboard.
 
-Discover local setup and inspect agent wiring without requiring search readiness:
+## Connect Claude Code or Codex
+
+After [installing Mash and starting Qdrant](installation.md), run:
+
+```bash
+mash init
+```
+
+Mash registers its MCP server and history plugin with the supported agent CLIs
+it finds on your `PATH`. Restart those agents afterward so they load the new
+connection and instructions.
+
+The plugin's hooks require Python 3.9+ (`python3`, `python`, or the Windows
+`py` launcher). Plugin installation needs network access. MCP search can still
+work if plugin installation fails; the plugin supplies guidance and refresh hooks.
+
+## Try it
+
+Ask your agent:
+
+- “Use Mash to find what we decided about authentication.”
+- “Find the chat where we discussed this repository's deployment.”
+- “What did we work on last week? Show me the messages behind the answer.”
+- “Find the earlier conversation about this error.”
+
+In Claude Code, you can explicitly invoke `/mash:history`. In Codex, select the
+plugin's `history` skill or ask the agent to use Mash.
+
+The skill tells agents to credit Mash when it helps and cite a readable thread
+title, date, or real link. Raw session/message IDs are reserved for explicit requests.
+A search result is a lead: the agent should read its source messages before
+summarizing a decision.
+
+## Confirm the connection
 
 ```bash
 mash status --installation
-mash status --installation --agent codex --agent claude-code
+```
+
+To check a specific integration and launch a fresh MCP connection:
+
+```bash
 mash status --installation --agent codex --probe
+mash status --installation --agent claude-code --probe
 ```
 
-The first command inspects local Codex and Claude Code user settings, installed
-Mash plugin/skill files, bundled hooks, hook trust records and the stdio MCP
-registration. Findings include the inspected path and a repair suggestion.
-The `resources` section checks the selected local database's schema, lists every
-supported provider with configured roots, root accessibility and recorded scan
-results. Missing scan evidence is not a successful connection check.
-Use `status --shared` for shared readiness and `status --coverage` for
-retained provider coverage. Missing default history directories may simply mean
-that provider is not used on this machine.
-The report also includes `resources.silver` and flags pending, incomplete or
-unverified history. A completed provider scan can coexist with older source
-checkpoints; matching the binary's database schema alone does not certify them.
-`--agent` explicitly requires an integration; without it, an enabled plugin or
-an MCP registration establishes that expectation. A CLI-only installation is valid.
-When an agent named with `--agent` needs attention, the command still prints the
-report and exits with status 1, so scripts can check wiring. `summary.clients[].connected`
-says whether each agent is configured with nothing left to fix, `missing` lists
-the parts not installed (`mcp`, `plugin`), and `summary.next_action` names what
-would make progress, or is null when there is nothing to do: `mash init` for a
-missing MCP registration, or the agent's own plugin commands when only the
-plugin is missing. Those need network access; Mash MCP search works without the
-plugin, which adds the history skill and session hooks.
-Ordinary `status` includes a compact installation summary, and `--help` (also
-`help` and subcommand help) adds a short warning when local checks find an
-incomplete integration or an incompatible/unreadable local index. Help respects
-`--db`, remains JSON and does not start subprocesses. Schema checks never migrate
-the index. A missing index alone cannot distinguish a fresh setup from an
-interrupted upgrade; recover retained history before indexing after an upgrade
-failure.
-An upgrade marker is reported even if the active database is absent. Diagnostics
-never clear it: first distinguish a running upgrade from an interrupted cutover
-and recover the retained database/attachments before retrying.
-Detected clients with no enabled Mash integration receive a softer setup notice
-and appear in `summary.unconfigured`, without making CLI-only use an error.
+A successful probe verifies a new process, not the connection in an already-open
+chat. Restart the agent after setup, repairs, or upgrades. If only the plugin is
+missing, follow the report's repair suggestion rather than repeatedly reindexing.
 
-Installation inspection works without a valid Mash configuration, index or
-models. It never installs plugins, trusts hooks, modifies agent settings or
-downloads models. `--probe` explicitly executes each configured user-level stdio
-command with its arguments/environment, using a ten-second deadline for MCP
-initialization and a Mash `help` contract check. Only probe commands run: hook
-scripts and indexing/search tools are never invoked. A configured `--watch` is
-not probed. Private launchers can have their own startup effects; inspect those
-before probing. Arguments, environment values and child stderr are not printed.
+## Keep new chats searchable
 
-These are observations of user settings on the current machine. Project overrides
-are reported as unverified and suppress the user-level MCP probe; managed policy,
-client profiles, remote clients and other agent integrations are not certified.
-Multiple cached Codex versions are ambiguous, not evidence that a particular
-version is active. A Codex trust record does not prove its hash still matches:
-review current hooks with `/hooks`. A successful probe checks a **new** process,
-not an existing agent connection or actual hook execution. Restart clients after
-repairs. Inspection exits successfully when it produces a report; use
-`summary.attention` and the individual states for automation.
+The plugin starts a background catch-up index when a session begins, at most
+once every ten minutes. It does not continuously follow the current conversation.
 
-Client-format references: [Codex plugins](https://developers.openai.com/plugins/build/plugins)
-and [Codex hook trust](https://learn.chatgpt.com/docs/hooks).
+For immediate updates, run `mash index`. For continuous updates, keep
+`mash index --watch` running in another terminal.
+See [keeping history current](synchronization.md).
 
-`plugins/mash` packages a shared `history` skill for both clients. It prefers
-Mash MCP, falls back to the CLI when MCP is unavailable, and guides chat
-discovery, scoped message searches and evidence-backed answers about past
-decisions. It uses the existing Mash connection rather than starting a duplicate
-MCP server. The plugin requires a configured Mash executable/index; install and
-connect Mash using the [installation guide](installation.md). Its hooks add
-session recall and prompt hints, and start a throttled
-background indexing pass on session start. `MASH_AUTO_INDEX=off` disables that
-pass. The plugin never downloads models.
+## Other MCP clients and manual setup
 
-`mash init` installs the plugin from the `kojah/mash` marketplace. From a
-clone of this repository, install the local plugin instead:
+Other stdio MCP clients can run `mash mcp`. Use the
+[MCP configuration example](mcp.md#connect-another-mcp-client), including any
+environment variables needed by your configuration.
 
-```bash
-codex plugin marketplace add .
-codex plugin add mash@mash
-
-claude plugin marketplace add "$PWD"
-claude plugin install mash@mash
-```
-
-If Claude Code does not already have the Mash MCP connection, register it:
-
-```bash
-claude mcp add --scope user mash -- /absolute/path/to/build/debug/mash mcp
-```
-
-Use your private node-environment launcher as the command when credentials or
-custom index paths are needed, as in [development setup](../docs/development.md#using-mash-in-codex-during-development). The skill uses
-`mash-dev` when available for CLI fallback, otherwise the normal Mash executable.
-
-Restart the client after installation. In Claude Code, invoke
-`/mash:history`; in Codex, select the plugin's `history` skill or let it activate
-for requests about past chats. For developing the Claude plugin directly,
-use `claude --plugin-dir ./plugins/mash` instead of installing it. After edits,
-reload the plugin or start a new session; installed copies may require a
-marketplace/plugin refresh. Rebuilding the Mash binary and reloading skill files
-are separate operations.
-
-### Session recall
-
-`plugins/mash/hooks/hooks.json` runs `session_start.py` on SessionStart
-(`startup|resume|clear|compact`). It resolves the session's project (the Git
-toplevel of `cwd` and its `origin` URL, matched against each chat's recorded
-project and repository) and adds at most 2,000 characters of context: this
-project's most recent agent chats with copyable `view` lookups, excluding the current session. It reads only `list-chats --local`, so it needs no models or current lexical views, and it fails open: any
-error, missing executable or index, or its 3-second deadline yields no output and
-exit status 0. The executable is `$MASH_BIN`, else `mash-dev`, else `mash`.
-
-On UserPromptSubmit it also runs `prompt_recall.py`, which reads only the prompt
-and never calls Mash. A prompt that looks back at earlier work ("yesterday",
-"do you remember", "what did we decide", "where did we leave off", "the diagram
-we made") gets a short note to search Mash history before answering or asking.
-A prompt that names an outside person, PR, issue or ticket ("aaron's changes",
-"PR 183", "#1394", "MASH-42") gets a softer note to search only if the agent does
-not recognize it. Slash commands, pasted content and fenced code are ignored. It
-fails open, and `MASH_PROMPT_RECALL=off` disables it.
-
-On PreToolUse for `Read` it runs `file_context.py`. When the file is inside the
-project and at least 1,500 bytes, it runs one local lexical
-`search --unit chats --intent exact-mention` for the project-relative path,
-scoped to the project's repository (else its path), and adds up to four earlier
-chats that mention it, with a dated excerpt and `view` lookup, within 1,200
-characters. Each file is shown once per session; the shown paths live in
-`<recall state>/sessions/`, and session files older than a week are removed. It
-needs current lexical views, has a 2-second deadline, fails open, and
-`MASH_FILE_RECALL=off` disables it.
-
-Hook throttling and per-session file hints live in
-`<Mash data directory>/recall/` (`~/.local/share/mash/recall` on Linux;
-override with `MASH_RECALL_STATE_DIR`). State files are replaced atomically.
-The scripts use only the Python 3.9+
-standard library. Codex runs the same `hooks/hooks.json` once you trust the
-plugin's hooks (`/hooks`); it sets `CLAUDE_PLUGIN_ROOT` for compatibility.
-
-Check the hooks with:
-
-```bash
-cd plugins/mash/hooks
-uv tool run --from ruff ruff check . && uv tool run --from ruff ruff format --check .
-uv tool run ty check .
-uv run --no-project python -m unittest discover -s tests
-```
-
-The manifests/catalogues follow the official
-[Codex plugin format](https://developers.openai.com/plugins/build/plugins) and
-[Claude Code marketplace format](https://code.claude.com/docs/en/plugin-marketplaces).
+For common connection problems, see [troubleshooting](troubleshooting.md).

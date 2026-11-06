@@ -10,7 +10,7 @@ test("internal links and browser history keep the current document alive", async
   await expect(page.locator("h1")).toHaveText("Quick start");
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(origin);
   await page.locator('nav.sidebar a[href="/installation/"]').click();
-  await expect(page.locator("h1")).toHaveText("Installation");
+  await expect(page.locator("h1")).toHaveText("Install Mash");
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(origin);
   await page.goBack();
   await expect(page.locator("h1")).toHaveText("Quick start");
@@ -31,13 +31,13 @@ test("mobile menu and theme still work after navigation", async ({ page }) => {
   await page.goto("/quick-start/");
   await page.getByRole("button", { name: "Menu", exact: true }).click();
   await page.locator('nav.sidebar a[href="/installation/"]').click();
-  await expect(page.locator("h1")).toHaveText("Installation");
+  await expect(page.locator("h1")).toHaveText("Install Mash");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("button", { name: "Menu", exact: true }).click();
   await page.locator("starlight-theme-select select:visible").selectOption("dark");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.locator('nav.sidebar a[href="/search/"]').click();
-  await expect(page.locator("h1")).toContainText("Searching");
+  await expect(page.locator("h1")).toHaveText("Find a conversation");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
@@ -45,8 +45,8 @@ test("direct links remain usable without JavaScript", async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto("http://127.0.0.1:8793/installation/");
-  await expect(page.locator("h1")).toHaveText("Installation");
+  await expect(page.locator("h1")).toHaveText("Install Mash");
   await page.locator('nav.sidebar a[href="/search/"]').click();
-  await expect(page.locator("h1")).toContainText("Searching");
+  await expect(page.locator("h1")).toHaveText("Find a conversation");
   await context.close();
 });

@@ -1,6 +1,6 @@
 # Code organization
 
-[Documentation](README.md) · [Project home](../README.md)
+[Documentation](../README.md) · [Project home](../../README.md)
 
 CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
 The core owns indexing, search, chat listing, view, status, forgetting, silver export/import, and model installation.

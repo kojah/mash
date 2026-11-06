@@ -20,20 +20,30 @@ belongs. Paths in this skill are relative to the repository root.
   links onward. Keep required dependencies visible. Aim for roughly 150 lines;
   if it grows beyond about 200, reconsider what belongs in a linked guide.
   These are review cues, not a reason to omit a prerequisite.
-- **`docs/`:** configuration, platform alternatives, search filters, model and
-  indexing behavior, agent setup, MCP/API contracts, synchronization,
-  architecture, troubleshooting, upgrades, and development details. Extend the
-  existing guide for the topic before adding another page. Use headings to make
-  longer references scannable and add new guides to `docs/README.md`.
+- **`docs/`:** user guides only: setup, search, agents, dashboard, refresh,
+  sharing, backups, configuration, and troubleshooting. Lead with the task and
+  a working example. Link new user guides from `docs/README.md`.
+- **`docs/internal/`:** architecture, storage, protocol contracts, tuning,
+  development, and maintenance. These files are not published on the website
+  or included in its search. Do not link them from public guides just to retain
+  technical detail. Preserve useful engineering information here when cutting it
+  from user documentation.
 - **Specialized references:** keep deployment procedures in
-  `deployment/README.md`, protocol modeling in `protocol/README.md`, and the
-  corresponding documentation linked from the index. Private operational logs,
+  `deployment/README.md`, protocol modeling in `protocol/README.md`, with links
+  from the internal documentation index. Private operational logs,
   machine-specific rollout notes, and captures stay outside Git.
 
-Give each detailed contract one maintained home. A short README explanation
-may link to it; do not copy the full flags, schema versions, limits, or recovery
-procedure into several pages. A new feature usually needs a reference update,
+Give each detailed contract one maintained home. Keep internal contracts out of
+the README; do not copy the full flags, schema versions, limits, or recovery
+procedure into several pages. A new feature usually needs an existing guide updated,
 not another README section.
+
+Lead user guides with a working task, expected result, and next step. Keep
+protocol fields and implementation details in unpublished internal notes. Check the common
+journeys: install, find/read a chat, connect an agent, browse/export a transcript,
+refresh/include older history, share across machines, back up/restore/upgrade,
+and diagnose missing results. Keep the website sidebar and docs index aligned;
+the website builds from `docs/`, so never edit its generated content copies.
 
 ## Describe current behavior
 
@@ -63,7 +73,8 @@ when moving it, and preserve concurrent edits to that material.
 
 Lead with the task and the command or outcome the reader needs. Introduce
 SQLite, Qdrant, silver, views, transport protocols, and internal module names
-only where they help the reader configure, operate, or develop Mash. Keep
+only where they help the reader set up or use Mash. Keep developer information
+out of public guides. Keep
 compiler workarounds, parser limits, benchmark results, and generated-code
 instructions out of the README quick start.
 

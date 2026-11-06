@@ -1,39 +1,42 @@
-# Privacy and stored history
+# Your history and privacy
 
-[Documentation](README.md) · [Project home](../README.md)
+## What stays on your machine
 
-Mash masks recognizable credentials in CLI/MCP search results, chat metadata,
-and `view` output, shared HTTP read responses and outgoing publications, and text
-sent to remote embedding APIs. Full values use `[REDACTED_SECRET]`; excerpts use
-masking characters to retain their source offsets. Original provider histories
-and local canonical SQLite data remain intact. Detection is best effort, not a
-guarantee that arbitrary or obfuscated secrets are absent.
+The default setup indexes and searches locally without changing your agents'
+original history files. The public documentation website receives none of
+your indexed chats.
 
-Text a person wraps in `<private>…</private>` (any case, closed in the same
-message) is replaced by `[PRIVATE]` before it is stored: in native message
-text, search projections, tool inputs and chat titles. Every index, view, export
-and publication derives from silver, so none of them holds it, whatever the
-`[redaction]` settings. An
-unclosed tag masks nothing. Mash cannot change the provider's own history files,
-and retained text attachments are stored as submitted.
+Sharing across machines uploads history to your configured Mash server.
+Remote embedding services, if you choose to use one, receive text from your
+history and your search queries.
 
-Masking is on by default and can be turned off per destination in the node
-configuration:
+The local dashboard has no login. Keep its default address or restrict access
+to a trusted private network.
 
-```toml
-[redaction]
-output = true             # CLI/MCP search, view and chat listing
-publication = true        # history uploaded to the shared server
-remote_embeddings = true  # text sent to a remote embedding API
+## Sensitive information
+
+Mash masks recognizable credentials in results and outgoing shared history by
+default. Detection is best effort: review anything you intend to share.
+
+Local history and portable backups can still contain credentials. Store
+backups privately, just as you would the original conversations.
+
+Text enclosed in `<private>…</private>` within a single message is omitted
+from Mash's stored message text. Both tags must be present. This does not
+remove text from the agent's own files or hide content inside attachments.
+
+## Remove a chat
+
+Find its `chat_id` with `mash list-chats` or search, then run:
+
+```sh
+mash forget CHAT_ID
 ```
 
-Turning `output` off shows canonical text, and lets search match inside
-credentials. Changing `publication` republishes this node's whole history on
-its next index, because masked and unmasked uploads must not mix. The shared
-server has its own `[redaction]` table with `responses` for HTTP read responses
-and `remote_embeddings` for text sent to remote embedding APIs during replay.
-Text attachments are masked when they are retained, so they stay masked regardless of these
-settings. Existing deployments
-and stored shared history require an upgrade and explicit re-indexing; rebuilding
-alone does not delete previous publications. See the
-[redaction evaluation and limits](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redaction-evaluation.md).
+Mash removes the local chat and remembers not to import it again. With sharing
+enabled, it also attempts to publish the removal; check the command's result
+for any pending work.
+
+This does not delete the agent's original files, earlier backups, or copies
+independently indexed on another machine. There is no undo command. Make
+[a backup](upgrades.md) first if you may need the chat later.

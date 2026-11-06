@@ -476,7 +476,7 @@ retirement without a validated import. No progress/liveness property is claimed.
 
 ### Shared vocabulary
 
-`docs/agent-history.md` defines the agent-history domain and the relationship
+`docs/internal/agent-history.md` defines the agent-history domain and the relationship
 between canonical chats, messages, derived turns, publication, and replay.
 Model changes here should keep that document in sync.
 

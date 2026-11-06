@@ -187,7 +187,7 @@ the selected source. Inspect surviving mutants for missing assertions, invalid
 test selection or equivalent behavior. Do not weaken production checks or add
 blanket exclusions to obtain a score. Unviable mutants and timeouts are not
 evidence that a test detected faulty behavior. Keep these audits manual rather
-than adding them to every development iteration; see `docs/verification.md`.
+than adding them to every development iteration; see `docs/internal/verification.md`.
 
 For failure ordering, prefer small per-instance test-only hooks at actual
 durable boundaries. Assert persisted state and recovery after interruption;

@@ -1,6 +1,6 @@
 # Development and verification
 
-[Documentation](README.md) · [Project home](../README.md)
+[Documentation](../README.md) · [Project home](../../README.md)
 
 ## Build and test
 
@@ -27,12 +27,12 @@ On Xenia, run these workloads through `agent-test` as for other tests.
 
 ### Rust checks
 
-[Correctness checks](../docs/verification.md) describes generated Proptest
+[Correctness checks](verification.md) describes generated Proptest
 sequences against real SQLite, disposable-backend replay interruptions and
 focused cargo-mutants audits. Property tests run with ordinary nextest tests;
 mutation audits run explicitly with `make mutation-tools` and `make mutation-check`.
 Bounded TLA+ checks for publication, tombstones and shared
-view recovery live in [protocol/](../protocol/README.md). Run `make protocol-tools`
+view recovery live in [protocol/](../../protocol/README.md). Run `make protocol-tools`
 once to install the pinned checker, then `make protocol-check`. These checks
 include explicit expected counterexamples, including the historical replay
 certification bug; they supplement implementation tests rather than certify
@@ -256,7 +256,7 @@ to re-ingest stale interpretation, rebuild local views and publish.
 
 Use `bash tools/fleet.sh deploy shared-api xenia` with a private inventory.
 Refresh remains explicit: `bash tools/fleet.sh sync xenia` or
-`bash tools/fleet.sh local-views xenia`. See [deployment setup](../deployment/README.md).
+`bash tools/fleet.sh local-views xenia`. See [deployment setup](../../deployment/README.md).
 Runner logs and reports stay private. Skipped targets are not installed or ready.
 
 ## Work tracking
@@ -273,5 +273,5 @@ configuration, stays local and is ignored by Git.
 
 Ordinary commits do not deploy the fleet. Follow the canonical preflight,
 validated build, installation and readiness workflow in
-[deployment/README.md](../deployment/README.md). Database upgrades require a
-separate preservation and recovery plan; see [upgrades](../docs/upgrades.md).
+[deployment/README.md](../../deployment/README.md). Database upgrades require a
+separate preservation and recovery plan; see [upgrades](../upgrades.md).
