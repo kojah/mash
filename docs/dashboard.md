@@ -1,6 +1,7 @@
 # Browse chats in the dashboard
 
-After [setup](installation.md), run:
+After [setup](installation.md), run the command below. For a Cargo source
+installation, build the web interface using the instructions below first.
 
 ```sh
 mash dash
@@ -9,6 +10,22 @@ mash dash
 Open **[http://127.0.0.1:8790](http://127.0.0.1:8790)** in your browser.
 Leave the terminal running; Ctrl-C stops the dashboard. If that port is busy,
 use `mash dash --listen 127.0.0.1:8791` and open port 8791 instead.
+
+If you installed with `cargo install --git`, the web interface is not bundled.
+Build it once using [Node.js 24+](https://nodejs.org/en/download), pnpm, and Rust:
+
+```sh
+git clone https://github.com/kojah/mash.git
+cd mash
+npm install --global pnpm@11.28.5
+pnpm --dir dashboard install --frozen-lockfile
+pnpm --dir dashboard run build
+cargo +stable install --locked --path .
+mash dash
+```
+
+Use the same repository revision as your existing Mash installation to avoid a
+schema mismatch.
 
 Choose a recent chat from the sidebar, or search for something you remember
 and open a matching message. Expand tool activity and reasoning when you need

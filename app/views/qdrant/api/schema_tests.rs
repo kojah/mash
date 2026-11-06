@@ -119,7 +119,7 @@ async fn qdrant_server_failure_explains_status_without_echoing_private_body() {
         assert_eq!(error.error.kind, crate::ErrorKind::QdrantFailure);
         assert!(error.error.message.contains(&url));
         assert!(error.error.message.contains("HTTP 500"));
-        assert!(error.error.message.contains("docker compose logs qdrant"));
+        assert!(error.error.message.contains("docker logs CONTAINER"));
         assert!(!error.error.message.contains("private-storage-path"));
         assert!(!error.error.message.contains("secret-token"));
     }

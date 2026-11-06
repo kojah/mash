@@ -57,9 +57,9 @@ label and architecture from each artifact; older runs may use different images.
 Check matching revision and document hashes and distinct platform identities.
 Missing journals, nonzero agent exits, and interrupted transcripts are incomplete
 coverage, not passing journeys. Do not infer platform success from CI success.
-Report native Qdrant and optional Docker Compose coverage separately. Native
+Report native Qdrant and optional Docker image coverage separately. Native
 setup is the default; Docker is not a prerequisite. Evaluate older runs against
-their saved documentation, which may recommend Compose instead. Success with
+their saved documentation, which may recommend a different setup. Success with
 one setup does not establish coverage of the other.
 
 For each journal, classify every candidate as accepted-valid (sufficient direct

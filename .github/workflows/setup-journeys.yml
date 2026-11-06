@@ -33,7 +33,6 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /README.md
-            /compose.yaml
             /assets/mash-logo.png
             /docs/*.md
             !/docs/internal/

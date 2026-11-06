@@ -11,8 +11,8 @@ normal location. The Copilot CLI running you is test infrastructure, not proof
 that Mash has connected to another agent. Runner tools may already be installed;
 record them. Docker Desktop and a graphical desktop may not be available.
 Do not assume Docker is available just because the docs use it.
-Follow the native Qdrant setup by default, even if Docker is available. Docker
-Compose is optional, primarily for development. Record native and Compose
+Follow the native Qdrant setup by default, even if Docker is available. The
+official Qdrant Docker image is optional. Record native and Docker
 coverage separately; success with one does not validate the other. Do not
 install an arbitrary substitute silently.
 

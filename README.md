@@ -90,7 +90,7 @@ instructions for [macOS/Linux](docs/installation.md#native-macos-or-linux-withou
 or [Windows](docs/installation.md#native-windows-without-docker), then leave it
 running while you use Mash.
 
-Already use Docker? [Compose is an optional alternative](docs/installation.md#optional-docker-compose).
+Prefer a container? [Run the official Qdrant Docker image](docs/installation.md#optional-qdrant-docker-image).
 
 ### 3. Connect your histories
 
@@ -99,10 +99,12 @@ mash init
 ```
 
 Setup prints progress and a JSON result for agents and scripts. For a visual
-way to browse afterward, run `mash dash`.
+way to browse afterward, see [dashboard setup](docs/dashboard.md).
 
 Mash finds supported histories in their usual locations and indexes the last
-90 days. It also connects Mash to the Claude Code and Codex CLIs it finds.
+90 days, including current sessions of supported agents. The setup result lists
+the provider folders selected; [customize them](docs/configuration.md) if needed.
+It also connects Mash to the Claude Code and Codex CLIs it finds.
 Restart those agents, then try asking:
 
 > “Use Mash to find where we discussed the database migration.”
@@ -127,7 +129,8 @@ Start with one distinctive word you remember. Without semantic models, multiple
 words match a phrase: “log rotation” won't find “rotate the application logs.”
 Try “rotate,” or enable [search by meaning](docs/indexing.md#enable-semantic-search).
 
-Prefer browsing? Start the local, read-only dashboard:
+Prefer browsing? [Build the web interface](docs/dashboard.md) for a source
+installation, then start the local, read-only dashboard:
 
 ```bash
 mash dash

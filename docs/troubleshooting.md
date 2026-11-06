@@ -30,18 +30,18 @@ An empty result does not prove the conversation never happened.
 
 ## Qdrant connection failed
 
-From the folder containing your Mash `compose.yaml`, start the local service
-and wait for readiness:
+For a native install, restart Qdrant from its original folder and inspect its
+terminal output. If you chose Docker, start the existing container and inspect
+its logs:
 
 ```sh
-docker compose up -d --wait
-docker compose logs qdrant
+docker start mash-local-qdrant
+docker logs mash-local-qdrant
 ```
 
 If it has not been created, follow [installation](installation.md#start-the-local-search-service).
-For the older `docker run` setup, use `docker start mash-local-qdrant` instead.
-For a native install, restart Qdrant from its original folder and inspect its
-terminal output.
+Wait for [the readiness check](http://127.0.0.1:6333/readyz) to report
+“all shards are ready.”
 The HTTP and gRPC endpoints must point to the same Qdrant 1.19+ instance.
 See [custom endpoints](configuration.md#local-qdrant).
 

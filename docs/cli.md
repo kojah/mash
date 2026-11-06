@@ -20,6 +20,13 @@ Terminal results are JSON; use the [dashboard](dashboard.md) or a
 [connected agent](agents.md) if you prefer reading conversations directly.
 
 Run `mash --help` or `mash COMMAND --help` for available options.
+Help and version output are JSON too. To display the help text with line breaks:
+
+```sh
+mash --help | python3 -c 'import json,sys; print(json.load(sys.stdin)["help"])'
+```
+
+In PowerShell, use `(mash --help | ConvertFrom-Json).help`.
 Use `--config PATH`, `--db PATH`, or `--models-dir PATH` when your files
 are outside their default locations.
 

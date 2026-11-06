@@ -15,10 +15,11 @@ For one machine, skip this setup: local search already works offline.
 - An HTTPS endpoint for the Mash API, or a trusted private network.
 
 Run Qdrant [directly on each host](installation.md#start-the-local-search-service).
-Docker and Compose are optional; an existing Qdrant service also works.
+The [official Docker image](installation.md#optional-qdrant-docker-image) is
+another option; an existing Qdrant service also works.
 
-The provided Compose file starts **Qdrant only**. Run the shared Mash API on
-the host with `mash serve`, as shown below. Connecting to an already-running
+Run the API on the host with `mash serve`, as shown below. Connecting to an
+already-running
 shared API does not require installing another server or Docker just for that
 connection; each publishing machine still needs its own local search service.
 

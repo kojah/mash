@@ -219,7 +219,7 @@ fn failure() -> AppError {
     AppError::new(
         11,
         crate::ErrorKind::QdrantFailure,
-        "Qdrant operation failed; inspect Qdrant's logs for storage, credentials, or schema errors. With Compose, run `docker compose logs qdrant` in your services folder.",
+        "Qdrant operation failed; inspect Qdrant's terminal output for storage, credentials, or schema errors, or use `docker logs CONTAINER` for a Docker installation.",
         true,
     )
 }

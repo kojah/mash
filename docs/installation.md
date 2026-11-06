@@ -18,6 +18,10 @@ mash --version
 
 If your shell cannot find `mash`, add Cargo's binary directory to `PATH`
 (usually `~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows).
+For the current terminal, use `export PATH="$HOME/.cargo/bin:$PATH"` on
+macOS/Linux, or `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` in PowerShell.
+Add the same directory through your shell profile or Windows environment settings
+to keep it available in new terminals.
 
 <details>
 <summary>Release installers and package managers — available after publication</summary>
@@ -93,8 +97,9 @@ download models. WSL uses the Linux instructions.
 ## Start the local search service
 
 Run Qdrant directly using the instructions for your platform below. It powers
-both word and semantic search. Docker is not required; [Compose](#optional-docker-compose)
-is an option if you already use it, and is useful for development.
+both word and semantic search. Alternatively, use the
+[official Qdrant Docker image](#optional-qdrant-docker-image). Mash and the
+dashboard run directly on your machine in either setup.
 
 An existing Qdrant 1.19+ service also works. Both HTTP and gRPC ports must reach
 the same instance. For nondefault endpoints, see [Qdrant configuration](configuration.md#local-qdrant).
@@ -146,30 +151,36 @@ Mash's default settings already point to it.
 In the second terminal, check readiness with
 `curl --fail http://127.0.0.1:6333/readyz` before running `mash init`.
 
-### Optional Docker Compose
+### Optional Qdrant Docker image
 
 If you prefer containers, install and start
 [Docker Desktop](https://www.docker.com/products/docker-desktop/) on macOS/Windows,
-or [Docker Engine and Compose](https://docs.docker.com/compose/install/) on Linux.
+or [Docker Engine](https://docs.docker.com/engine/install/) on Linux.
 Windows needs Linux containers; Windows Server/Engine-only hosts may not support
 them. Use the native Windows instructions above in that case.
 
-Save [compose.yaml](https://raw.githubusercontent.com/kojah/mash/main/compose.yaml)
-in a dedicated folder and run:
+Run this command in Bash or PowerShell:
 
 ```sh
-docker compose up -d --wait
+docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.19.1
 ```
 
-Compose downloads Qdrant, waits for readiness, and keeps its data in a persistent
-volume. Only this machine can access it. From the same folder, use
-`docker compose logs qdrant` to inspect it and `docker compose stop` to stop it.
-Start it again with `docker compose up -d --wait`.
+Docker downloads Qdrant and keeps its data in a persistent volume. Only this
+machine can access it. Open [the readiness check](http://127.0.0.1:6333/readyz)
+and wait for “all shards are ready” before running `mash init`.
+
+```sh
+docker logs mash-local-qdrant
+docker stop mash-local-qdrant
+docker start mash-local-qdrant
+```
 
 Qdrant restarts with Docker unless you explicitly stopped it. Stopping preserves
-data; `docker compose down --volumes` deletes it. If switching from another
-Qdrant instance, stop the old one to free ports 6333/6334. Compose has a separate
-data volume; populate it with `mash index --rebuild-local-views --full`.
+data; do not delete the `mash-qdrant-data` volume unless you intend to discard it.
+If the container already exists, use `docker start` rather than `docker run`.
+When switching from native Qdrant, stop it first to free ports 6333/6334. The
+container has separate storage; populate it with
+`mash index --rebuild-local-views --full`.
 
 ## Connect your histories
 
@@ -179,7 +190,11 @@ mash init
 
 This detects supported histories, writes TOML configuration, sets up Claude Code
 and Codex integrations when their CLIs are on `PATH`, and indexes sources modified
-within the last 90 days. Restart your agents after setup.
+within the last 90 days. This includes current sessions of all detected supported
+agents, including Copilot. The JSON result lists the selected provider folders.
+To choose them yourself before indexing, use `mash init --no-index`, edit the
+[configuration](configuration.md), then run `mash index`. Restart your agents
+after setup.
 
 The history plugin's hooks need Python 3.9+; see [agent setup](agents.md).
 For CLI-only use, run `mash init --no-agents`. To configure without indexing,
@@ -202,8 +217,9 @@ mash search 'migration' --intent exact-mention
 ```
 
 Replace the query with a distinctive word from a real chat. To include older
-history, run `mash index --all-history`. To browse in your browser, run
-`mash dash` and open [http://127.0.0.1:8790](http://127.0.0.1:8790).
+history, run `mash index --all-history`. To browse in your browser, follow
+[dashboard setup](dashboard.md); source installations need to build the web
+interface first.
 
 Without semantic models, multiple words must occur together as a phrase.
 “Log rotation” won't match “rotate the application logs”; try “rotate” first.

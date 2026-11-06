@@ -487,7 +487,7 @@ impl Client {
         let remedy = if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
             "Check that Mash's Qdrant API key matches the service configuration."
         } else {
-            "Inspect Qdrant's logs for the cause; with Compose, run `docker compose logs qdrant` in your services folder."
+            "Inspect Qdrant's terminal output for the cause, or use `docker logs CONTAINER` for a Docker installation."
         };
         AppError::new(
             11,
