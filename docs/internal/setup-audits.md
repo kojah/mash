@@ -1,7 +1,7 @@
 # Native first-user setup audits
 
-Run `gh workflow run setup-journeys.yml --ref main` to start two independent
-Copilot testers on each of Linux, macOS, and Windows. This is manual-only;
+Run `gh workflow run setup-journeys.yml --ref main` to start one independent
+Copilot tester on each of Linux, macOS, and Windows. This is manual-only;
 there is no scheduled model spend or automatic issue creation.
 
 Add `COPILOT_GITHUB_TOKEN` to the repository's Actions secrets first. Use a
@@ -30,7 +30,9 @@ within 25 minutes. Three jobs can run at once. Interrupted jobs retain available
 evidence via an `always()` upload; cancellation before preparation may leave none.
 
 On completion, `setup-journey-review.md` runs as a GitHub Agentic Workflow on
-Linux and reviews the six transcripts. GitHub Agentic Workflows cannot host
+Linux and reviews the three transcripts. Findings have one observer per OS;
+the review must not claim independent reproduction on the same platform.
+GitHub Agentic Workflows cannot host
 their firewall sandbox on native macOS or Windows, so standard Actions owns
 native execution and gh-aw owns synthesis. Missing evidence and authentication
 failures are never counted as successful setup or as Mash defects.
