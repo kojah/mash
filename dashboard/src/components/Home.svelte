@@ -59,7 +59,7 @@ function onKey(event: KeyboardEvent): void {
       <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
         {#each data.chats.slice(0, 5) as chat (JSON.stringify([chat.machine, chat.id]))}
           <li>
-            <a href={chatHref(chat.id, chat.machine)} title={`${chat.title}\n${chat.project}\n${chat.id}`} class="row text-[15px]">
+            <a href={chatHref(chat.id, chat.machine)} title={`${chat.title}\n${chat.project}\n${chat.id}`} class="row py-2 text-[15px]">
               <AgentMark agent={chat.agent} />
               <span class="min-w-0 flex-1"><span class="line-clamp-2">{chat.title}</span><span class="block text-xs text-muted">{chat.project.split('/').filter(Boolean).at(-1) || 'No project'} · {chat.machine} · {chat.updatedAt}</span></span>
               <ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" />
