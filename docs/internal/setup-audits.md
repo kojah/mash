@@ -4,6 +4,10 @@ Run `gh workflow run setup-journeys.yml --ref main` to start one independent
 Copilot tester on each of Linux, macOS, and Windows. This is manual-only;
 there is no scheduled model spend or automatic issue creation.
 
+The macOS tester uses the macOS 26 Apple Silicon image. A job that never acquires
+a runner is missing coverage, not a setup failure; inspect GitHub's allocation
+annotations and retry when hosted capacity is available.
+
 Add `COPILOT_GITHUB_TOKEN` to the repository's Actions secrets first. Use a
 fine-grained token with Account permissions → Copilot Requests: Read, rather
 than a repository write token. Never put it in a workflow, prompt, or artifact.
@@ -43,6 +47,10 @@ the journal, CLI session, console output, and agent exit code. The review upload
 contain synthetic history only; never expand uploads to the runner's home or
 Copilot configuration directories. A successful workflow is not a usability pass:
 read the journey outcomes and ranked findings.
+
+The reviewer writes only `setup-review.md` in its workspace. The pinned gh-aw
+1.0.1 upload handler requires a workspace source and a relative allowed-path
+filter; an absolute path under `/tmp/gh-aw/agent` is rejected by this version.
 
 To repeat synthesis for a completed run:
 
