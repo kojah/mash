@@ -25,25 +25,22 @@ macOS/Linux, or `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` in PowerSh
 Add the same directory through your shell profile or Windows environment settings
 to keep it available in new terminals.
 
-<details>
-<summary>Release installers and package managers — available after publication</summary>
+### Recommended release installers
+
+The shell and PowerShell scripts are the primary way to install published Mash
+releases. They download a prebuilt binary without requiring Rust. The commands
+below will work once the first release is published.
 
 Prebuilt release targets are macOS Apple Silicon, Linux x86_64/arm64, and
 Windows x64. Choose **one** installation method.
 
-### macOS or Linux
-
-```sh
-brew install kojah/tap/mash
-```
-
-Or use the shell installer:
+#### macOS or Linux
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
 
-### Windows x64
+#### Windows x64
 
 Use the PowerShell installer:
 
@@ -51,14 +48,31 @@ Use the PowerShell installer:
 irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
 ```
 
-Or use Scoop:
+The scripts verify release checksums and default to your user's `.local/bin`
+directory. Add that directory to `PATH` if needed. Set `MASH_VERSION` to a
+published tag to pin a release, or `MASH_INSTALL_DIR` to choose another directory.
+The scripts do not modify your shell profile or download models. WSL uses the
+Linux instructions.
+
+### Package manager alternatives
+
+If you prefer a package manager, choose one of these instead. Each channel must
+have a published release before its command works.
+
+**Homebrew — macOS or Linux**
+
+```sh
+brew install kojah/tap/mash
+```
+
+**Scoop — Windows**
 
 ```powershell
 scoop bucket add kojah https://github.com/kojah/mash
 scoop install kojah/mash
 ```
 
-### Debian or Ubuntu
+**apt — Debian or Ubuntu**
 
 ```sh
 curl -fsSL https://mashapp.dev/apt/mash-archive-keyring.gpg | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
@@ -66,23 +80,17 @@ echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://masha
 sudo apt update && sudo apt install mash
 ```
 
-### Other package managers
+**mise**
 
 ```sh
 mise use -g github:kojah/mash
 ```
 
+**cargo-binstall**
+
 ```sh
 cargo binstall --git https://github.com/kojah/mash mash
 ```
-
-The shell and PowerShell scripts verify release checksums and default to your
-user's `.local/bin` directory. Add that directory to `PATH` if needed.
-Set `MASH_VERSION` to a published tag to pin a release, or `MASH_INSTALL_DIR`
-to choose another directory. The scripts do not modify your shell profile or
-download models. WSL uses the Linux instructions.
-
-</details>
 
 ## Start the local search service
 

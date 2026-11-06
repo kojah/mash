@@ -29,14 +29,9 @@ cargo +stable install --locked --git https://github.com/kojah/mash mash
 
 The first build can take several minutes.
 
-<details>
-<summary>Release installers and package managers (available after publication)</summary>
-
-**Homebrew**
-
-```bash
-brew install kojah/tap/mash
-```
+**Recommended for published releases: the install scripts.** They download a
+prebuilt binary without requiring Rust. These commands will work once the first
+release is published:
 
 **Shell — macOS / Linux**
 
@@ -53,27 +48,8 @@ irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
 Both scripts verify release checksums. They install to your user’s `.local/bin`
 directory; add it to `PATH` if needed.
 
-**Scoop — Windows**
-
-```powershell
-scoop bucket add kojah https://github.com/kojah/mash
-scoop install kojah/mash
-```
-
-**apt — Debian / Ubuntu**
-
-```bash
-curl -fsSL https://mashapp.dev/apt/mash-archive-keyring.gpg \
-  | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://mashapp.dev/apt stable main" \
-  | sudo tee /etc/apt/sources.list.d/mash.list
-sudo apt update && sudo apt install mash
-```
-
-Package channels depend on the release being published to their registry.
-See [installation options](docs/installation.md) for mise, cargo-binstall, and installer settings.
-
-</details>
+Prefer a package manager? See [alternative installation methods](docs/installation.md#package-manager-alternatives)
+for Homebrew, mise, Scoop, apt, and cargo-binstall.
 
 ### 2. Start the local search service
 
