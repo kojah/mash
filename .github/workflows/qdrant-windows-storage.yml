@@ -1,0 +1,27 @@
+name: Diagnose native Windows Qdrant storage
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Compare fresh relative and absolute storage paths
+        shell: pwsh
+        run: .github/scripts/qdrant-windows-storage.ps1
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+        if: always()
+        with:
+          name: qdrant-windows-storage
+          path: ${{ runner.temp }}/qdrant-path-probe/reports
+          if-no-files-found: error
+          retention-days: 14
