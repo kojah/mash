@@ -219,7 +219,7 @@ chat but are excluded from search, so the searchable count can be much smaller.
 
 ```sh
 mash status
-mash search 'migration' --intent exact-mention
+mash search 'migration'
 ```
 
 Replace the query with a distinctive word from a real chat. To include older

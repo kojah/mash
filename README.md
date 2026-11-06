@@ -102,6 +102,10 @@ Word and phrase search works immediately. Want search by meaning instead?
 Run `mash models install` **before** the setup command below to add the optional
 local models. Already initialized? See [model setup](docs/indexing.md).
 
+Prefer to choose folders first? Use `mash init --no-index`,
+[edit the configuration](docs/configuration.md), then run `mash index`.
+Otherwise, setup is one command:
+
 ```bash
 mash init
 ```
