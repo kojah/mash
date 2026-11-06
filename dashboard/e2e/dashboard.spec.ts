@@ -185,6 +185,68 @@ test("chat navigation retains the sidebar and polling preserves the displayed tr
   expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
 });
 
+test("Export downloads the entire chat as safe HTML and Markdown", async ({ page }) => {
+  await page.route("**/api/chats**", (route) =>
+    route.fulfill({
+      json: { local_node: "local", truncated: false, chats: [{ ...chat, node_id: "local" }] },
+    }),
+  );
+  await page.route("**/api/chat?**", (route) => {
+    const offset = Number(new URL(route.request().url()).searchParams.get("offset"));
+    return route.fulfill({
+      json: {
+        messages:
+          offset >= 200
+            ? []
+            : [
+                {
+                  id: `message-${offset}`,
+                  ordinal: offset,
+                  role: "assistant",
+                  content:
+                    offset === 0
+                      ? "First **message** <script>window.pwned=true</script><img src=https://evil.example/pixel>"
+                      : "Last message on another page",
+                },
+              ],
+      },
+    });
+  });
+  await page.goto("/#/chat/same-id?node=local");
+  await expect(page.getByRole("heading", { name: chat.title })).toBeVisible();
+  await page
+    .locator("summary")
+    .filter({ hasText: /^Export$/ })
+    .click();
+  for (const format of ["Markdown", "HTML"]) {
+    const downloaded = page.waitForEvent("download");
+    await page.getByRole("button", { name: `Export to ${format}`, exact: true }).click();
+    const download = await downloaded;
+    const stream = await download.createReadStream();
+    if (!stream) throw new Error("Missing export download");
+    let content = "";
+    for await (const chunk of stream) content += chunk.toString();
+    expect(content).toContain("Last message on another page");
+    if (format === "HTML") {
+      expect(content).toContain("<strong>message</strong>");
+      expect(content).not.toContain("<script>");
+      expect(content).not.toContain("<img");
+    }
+  }
+  await expect(page.getByRole("button", { name: "Export to PDF", exact: true })).toBeEnabled();
+  await page.context().addInitScript(() => {
+    window.print = () => {};
+  });
+  const opened = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Export to PDF", exact: true }).click();
+  const preview = await opened;
+  await expect(preview.getByText("Last message on another page", { exact: true })).toBeVisible();
+  await expect(preview.locator("script, img")).toHaveCount(0);
+  const pdf = await preview.pdf();
+  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+  await preview.close();
+});
+
 test("network errors are visible and recoverable", async ({ page }) => {
   await page.route("**/api/chats**", (route) =>
     route.fulfill({ status: 503, body: "unavailable" }),

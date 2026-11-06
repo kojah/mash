@@ -33,6 +33,18 @@ Ordinary replies render sanitized Markdown; long replies expand without
 cutting Markdown syntax. Catalogue titles use the first nonempty line, capped
 at 240 characters; canonical history remains unchanged.
 
+The transcript's **Export** menu downloads the entire chat as Markdown or
+standalone HTML, including tool output. **Export to PDF** opens a printable
+copy in a new tab; select **Save as PDF** in your browser's print dialog.
+Exports read all pages from the selected machine, independently of the page
+you are reading. You can cancel while they load. A failed read saves no
+partial file. Browser exports are limited to 100,000 message positions and
+50 million text characters; exceeding either limit reports an error.
+These paged reads are not a database snapshot: avoid exporting during an
+index update if you need a stable copy. The CLI `export` command remains the
+portable canonical-history backup format. Treat downloaded transcripts as
+sensitive chat history.
+
 Search results, chat matches and listed chats identify their provider directly,
 for example `"provider": "codex"`. Messages and matching excerpts carry the agent's
 `role` directly, including provider-defined roles. Messages and matching excerpts

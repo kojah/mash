@@ -4,6 +4,14 @@ import { createQuery } from "@tanstack/svelte-query";
 import { tick } from "svelte";
 import { agents } from "../lib/agents";
 import { context, type MessagePage, PAGE_SIZE, transcript } from "../lib/api";
+import {
+  collectChat,
+  downloadChat,
+  type ExportFormat,
+  htmlExport,
+  markdownExport,
+  messageText,
+} from "../lib/export";
 import { catalogOptions } from "../lib/queries";
 import { chatHref } from "../lib/route.svelte";
 import type { Message } from "../lib/types";
@@ -21,6 +29,8 @@ let offset = $state(0);
 let anchor = $state("");
 let searchOpen = $state(false);
 let notice = $state("");
+let exporting = $state(false);
+let exportController: AbortController | undefined;
 let snapshot = $state<{ key: string; page: MessagePage } | null>(null);
 // Keep the sidebar mounted across chat navigation. Only explicit navigation
 // resets the reading page; catalogue polling never touches it.
@@ -31,6 +41,7 @@ $effect(() => {
   notice = "";
   searchOpen = false;
   window.scrollTo({ top: 0, behavior: "instant" });
+  return () => exportController?.abort();
 });
 const key = $derived(JSON.stringify([id, machine, offset, anchor]));
 const live = createQuery(() => ({
@@ -68,13 +79,7 @@ $effect(() => {
 });
 
 function plainText(message: Message): string {
-  return (
-    message.blocks
-      .map((block) =>
-        block.type === "text" ? block.markdown : block.type === "code" ? block.code : "",
-      )
-      .join("\n\n") + (message.activity ? `\n\n${message.activity}` : "")
-  );
+  return messageText(message);
 }
 async function copy(message: Message): Promise<void> {
   try {
@@ -84,15 +89,56 @@ async function copy(message: Message): Promise<void> {
     notice = "Copy failed. Select the message text to copy it manually.";
   }
 }
-function exportPage(): void {
-  if (!loaded) return;
-  const text = `# ${chat?.title ?? id}\n\nMachine: ${machine}\n\nExport of the displayed page only.\n\n${loaded.messages.map((message) => `## ${message.role} · ${message.at}\n\n${plainText(message)}`).join("\n\n")}`;
-  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "mash-chat-page.md";
-  link.click();
-  URL.revokeObjectURL(url);
+async function exportChat(format: ExportFormat): Promise<void> {
+  if (exporting) return;
+  const popup = format === "pdf" ? window.open("", "_blank") : null;
+  if (format === "pdf" && !popup) {
+    notice = "Allow a new tab to prepare the PDF export.";
+    return;
+  }
+  if (popup) {
+    popup.opener = null;
+    popup.document.body.textContent = "Preparing the entire chat for printing…";
+  }
+  const controller = new AbortController();
+  exportController = controller;
+  const title = chat?.title ?? id;
+  const source = displayMachine;
+  exporting = true;
+  notice = "Preparing export…";
+  try {
+    const messages = await collectChat(id, machine, controller.signal, (count) => {
+      notice = `Preparing export: ${count.toLocaleString()} messages…`;
+    });
+    controller.signal.throwIfAborted();
+    if (format === "pdf" && popup) {
+      if (popup.closed) throw new Error("The PDF preview tab was closed.");
+      popup.document.open();
+      popup.document.write(htmlExport(title, source, messages));
+      popup.document.close();
+      popup.focus();
+      popup.print();
+      notice = "Choose Save as PDF in the print dialog. The preview includes the entire chat.";
+    } else {
+      downloadChat(
+        format === "markdown"
+          ? markdownExport(title, source, messages)
+          : htmlExport(title, source, messages),
+        format === "markdown" ? "markdown" : "html",
+      );
+      notice = `Exported ${messages.length.toLocaleString()} messages.`;
+    }
+  } catch (error) {
+    popup?.close();
+    notice = controller.signal.aborted
+      ? "Export cancelled."
+      : error instanceof Error
+        ? error.message
+        : "Export failed.";
+  } finally {
+    exporting = false;
+    exportController = undefined;
+  }
 }
 function page(next: number): void {
   anchor = "";
@@ -122,7 +168,16 @@ function page(next: number): void {
         <p class="m-0 text-sm text-muted">{chat ? agents[chat.agent].name : ""} · {displayMachine} · {chat?.project ?? ""}</p>
         <p class="m-0 text-xs text-muted">{anchor ? "Context around the selected search match" : `Message positions ${offset}–${offset + PAGE_SIZE - 1}`} · Browser Find searches this page. Branches are shown in recorded display order.</p>
         <div class="flex flex-wrap gap-4 text-sm text-accent">
-          <button type="button" disabled={!loaded} onclick={exportPage}>Export this page as Markdown</button>
+          <details class="relative">
+            <summary class="cursor-pointer">Export</summary>
+            <div class="absolute left-0 top-7 z-10 flex w-56 flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-lg">
+              <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('pdf')}>Export to PDF</button>
+              <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('html')}>Export to HTML</button>
+              <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('markdown')}>Export to Markdown</button>
+              <span class="text-xs text-muted">Entire chat, including tool output. PDF uses your browser’s print dialog.</span>
+            </div>
+          </details>
+          {#if exporting}<button type="button" onclick={() => exportController?.abort()}>Cancel export</button>{/if}
           <button type="button" onclick={() => live.refetch()}>Check for updates</button>
           {#if anchor}<button type="button" onclick={() => page(0)}>Read from the beginning</button>{/if}
         </div>
