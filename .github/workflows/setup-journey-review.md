@@ -78,6 +78,14 @@ that documentation omits a prerequisite solely from the tester's assertion.
 Keep expected JSON output, distinct revision/schema counters, and the test
 agent's own indexed history separate from confirmed product defects.
 
+The user explicitly chose one-command setup: `mash init` indexes all detected
+supported histories, with `--no-index` available for optional review. JSON-only
+CLI output is also an intentional product contract. Assess whether these
+behaviors are explained before users encounter them and whether they work as
+documented. Concrete confusion remains reportable; distinguish it from a
+preference for a different product contract. Suggest clarity fixes within these
+contracts rather than adding mandatory confirmation or a non-JSON output mode.
+
 Write setup-review.md in the GITHUB_WORKSPACE directory with:
 1. Source run link, tested revision, platform coverage and outcome per tester.
 2. Ranked accepted findings: severity, platform, friction, concrete fix, evidence.
