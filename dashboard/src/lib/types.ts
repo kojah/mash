@@ -8,7 +8,8 @@ export interface ChatSummary {
   readonly machine: string;
   readonly project: string;
   readonly updatedAt: string;
-  readonly messageCount: number;
+  readonly messageCount?: number;
+  readonly updatedMs?: number;
 }
 
 export interface Machine {
@@ -53,7 +54,9 @@ export type Block =
 
 export interface Message {
   readonly id: string;
-  readonly role: "user" | "agent";
+  readonly role: string;
+  readonly ordinal?: number;
+  readonly activity?: string;
   readonly at: string;
   readonly blocks: readonly Block[];
 }

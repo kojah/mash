@@ -1,167 +1,153 @@
 <script lang="ts">
-import Check from "@lucide/svelte/icons/check";
-import ChevronDown from "@lucide/svelte/icons/chevron-down";
-import Code from "@lucide/svelte/icons/code";
-import Copy from "@lucide/svelte/icons/copy";
-import Download from "@lucide/svelte/icons/download";
-import FileCode from "@lucide/svelte/icons/file-code";
-import FileText from "@lucide/svelte/icons/file-text";
 import Search from "@lucide/svelte/icons/search";
-import { agents as agentInfo } from "../lib/agents";
-import { chats, transcript } from "../lib/api";
+import { createQuery } from "@tanstack/svelte-query";
+import { tick, untrack } from "svelte";
+import { agents } from "../lib/agents";
+import { context, type MessagePage, PAGE_SIZE, transcript } from "../lib/api";
+import { catalogOptions } from "../lib/queries";
 import { chatHref } from "../lib/route.svelte";
-import type { ChatSummary, Message, Transcript } from "../lib/types";
+import type { Message } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
-import CodeBlock from "./CodeBlock.svelte";
+import MessageBody from "./MessageBody.svelte";
 import SearchPanel from "./SearchPanel.svelte";
-import ToolCard from "./ToolCard.svelte";
 
-let { id }: { id: string } = $props();
-
-let sessions = $state<readonly ChatSummary[]>([]);
-let loaded = $state<Transcript | undefined>(undefined);
+let { id, node, messageId }: { id: string; node: string; messageId: string } = $props();
+const catalogue = createQuery(() => catalogOptions);
+const machine = $derived(node || catalogue.data?.localNode || "");
+const sessions = $derived(catalogue.data?.chats ?? []);
+const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine === machine));
+let offset = $state(0);
+let anchor = $state(untrack(() => messageId));
 let searchOpen = $state(false);
-let exportOpen = $state(false);
-let copiedId = $state<string | null>(null);
+let notice = $state("");
+let snapshot = $state<{ key: string; page: MessagePage } | null>(null);
+const key = $derived(JSON.stringify([id, machine, offset, anchor]));
+const live = createQuery(() => ({
+  queryKey: ["transcript", id, machine, offset, anchor],
+  enabled: catalogue.data !== undefined,
+  queryFn: ({ signal }) =>
+    anchor
+      ? context(anchor, machine, catalogue.data?.localNode ?? "", signal)
+      : transcript(id, machine, offset, signal),
+  staleTime: 15_000,
+  refetchInterval: 30_000,
+  refetchIntervalInBackground: false,
+  retry: false,
+}));
+const loaded = $derived(snapshot?.key === key ? snapshot.page : undefined);
+const changed = $derived(
+  loaded && live.data && JSON.stringify(loaded) !== JSON.stringify(live.data),
+);
 
 $effect(() => {
-  chats().then((all) => {
-    sessions = all;
-  });
+  if (live.data && snapshot?.key !== key) {
+    snapshot = { key, page: live.data };
+    if (anchor)
+      tick()
+        .then(() =>
+          document.getElementById(`message-${anchor}`)?.scrollIntoView({ block: "center" }),
+        )
+        .catch(() => {
+          notice = "Use Find to locate the selected message.";
+        });
+  }
 });
-$effect(() => {
-  const wanted = id;
-  transcript(wanted).then((found) => {
-    if (wanted === id) loaded = found;
-  });
-});
-
-const chat = $derived(loaded?.chat ?? sessions.find((candidate) => candidate.id === id));
 
 function plainText(message: Message): string {
-  return message.blocks
-    .map((block) =>
-      block.type === "text" ? block.markdown : block.type === "code" ? block.code : "",
-    )
-    .filter((part) => part !== "")
-    .join("\n\n");
+  return (
+    message.blocks
+      .map((block) =>
+        block.type === "text" ? block.markdown : block.type === "code" ? block.code : "",
+      )
+      .join("\n\n") + (message.activity ? `\n\n${message.activity}` : "")
+  );
 }
-
-async function copyReply(message: Message): Promise<void> {
-  await navigator.clipboard?.writeText(plainText(message));
-  copiedId = message.id;
-  setTimeout(() => {
-    if (copiedId === message.id) copiedId = null;
-  }, 1500);
+async function copy(message: Message): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(plainText(message));
+    notice = "Copied message.";
+  } catch {
+    notice = "Copy failed. Select the message text to copy it manually.";
+  }
 }
-
-const exports = [
-  { label: "Export to PDF", icon: FileText },
-  { label: "Export to HTML", icon: Code },
-  { label: "Export to Markdown", icon: FileCode },
-];
+function exportPage(): void {
+  if (!loaded) return;
+  const text = `# ${chat?.title ?? id}\n\nMachine: ${machine}\n\nExport of the displayed page only.\n\n${loaded.messages.map((message) => `## ${message.role} · ${message.at}\n\n${plainText(message)}`).join("\n\n")}`;
+  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "mash-chat-page.md";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+function page(next: number): void {
+  anchor = "";
+  offset = next;
+}
 </script>
 
-<svelte:window onkeydown={(event) => event.key === "Escape" && ((searchOpen = false), (exportOpen = false))} />
-
+<svelte:window onkeydown={(event) => event.key === "Escape" && (searchOpen = false)} />
 <div class="min-h-screen px-5 pt-6 pb-16">
   <header class="mx-auto mb-7 flex max-w-[1120px] items-center gap-5">
-    <a href="#/" aria-label="Mash home" class="inline-flex size-10 shrink-0 items-center justify-center">
-      <img src="/mash-logo.png" alt="" width="34" height="31" class="block" />
-    </a>
-    <div class="relative flex max-w-[560px] flex-1">
-      <button type="button" onclick={() => (searchOpen = true)} class="flex min-h-10 flex-1 cursor-text items-center gap-2 rounded-[10px] border-0 bg-fill px-2.5 text-left text-sm text-faint">
-        <Search size={15} strokeWidth={1.75} />Search chats
-      </button>
-      {#if searchOpen}
-        <button type="button" aria-label="Close search" class="fixed inset-0 z-10 cursor-default border-0 bg-transparent" onclick={() => (searchOpen = false)}></button>
-        <div role="dialog" aria-label="Search" class="absolute -top-1.5 -left-1.5 z-20 max-h-[70vh] w-[min(640px,calc(100vw-32px))] rounded-2xl bg-surface p-2 shadow-[0_16px_48px_rgba(0,0,0,0.14),0_0_0_0.5px_rgba(0,0,0,0.08)]">
-          <SearchPanel compact onClose={() => (searchOpen = false)} />
-        </div>
-      {/if}
-    </div>
+    <a href="#/" aria-label="Mash home"><img src="/mash-logo.png" alt="" width="34" height="31" /></a>
+    <button type="button" onclick={() => searchOpen = true} class="flex min-h-10 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 text-left text-sm text-muted"><Search size={15} />Search chats</button>
   </header>
-
   <div class="mx-auto grid max-w-[1120px] items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">
-    <aside aria-label="Sessions" class="sticky top-6 flex min-w-0 flex-col gap-0.5 max-[700px]:hidden">
-      {#each sessions as session (session.id)}
-        {@const current = session.id === id}
-        <a href={chatHref(session.id)} aria-current={current ? "page" : undefined} class="flex min-h-[46px] items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 no-underline {current ? 'bg-accent text-white' : 'text-ink hover:bg-fill/60'}">
-          <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-full {current ? 'bg-white/90' : 'bg-fill'}"><AgentMark agent={session.agent} size={15} /></span>
-          <span class="flex min-w-0 flex-1 flex-col">
-            <span class="flex items-baseline gap-2"><span class="min-w-0 flex-1 truncate text-sm font-medium">{session.title}</span><span class="shrink-0 text-xs {current ? 'text-white/85' : 'text-faint'}">{session.updatedAt}</span></span>
-            <span class="truncate text-xs {current ? 'text-white/85' : 'text-faint'}">{session.machine} · {session.project}</span>
-          </span>
+    <aside aria-label="Recent sessions" class="sticky top-6 max-h-[90vh] overflow-auto max-[700px]:hidden">
+      {#each sessions.slice(0, 100) as session (JSON.stringify([session.machine, session.id]))}
+        {@const current = session.id === id && session.machine === machine}
+        <a href={chatHref(session.id, session.machine)} aria-current={current ? "page" : undefined} class="flex min-h-[46px] items-center gap-2 rounded-[10px] p-2 no-underline {current ? 'bg-accent text-white' : 'text-ink hover:bg-fill'}">
+          <AgentMark agent={session.agent} />
+          <span class="min-w-0"><span class="block truncate text-sm font-medium">{session.title}</span><span class="block truncate text-xs">{session.machine} · {session.project}</span></span>
         </a>
       {/each}
     </aside>
-
-    <main class="flex min-w-0 max-w-[760px] flex-col gap-6">
-      {#if chat}
-        <header class="flex flex-wrap items-start gap-x-4 gap-y-3">
-          <div class="flex min-w-[240px] flex-1 flex-col gap-2">
-            <h1 class="m-0 text-[28px] font-semibold tracking-[-0.022em]">{chat.title}</h1>
-            <p class="m-0 flex flex-wrap gap-x-1.5 gap-y-0.5 text-sm text-muted">
-              <span class="whitespace-nowrap">{agentInfo[chat.agent].name}</span>·<span class="whitespace-nowrap">{chat.machine}</span>·<span class="whitespace-nowrap">{chat.project}</span>·<span class="whitespace-nowrap">{chat.messageCount} messages</span>
-            </p>
-            <p class="m-0 text-[13px] whitespace-nowrap text-faint"><kbd class="rounded-[5px] border border-b-2 border-line bg-surface px-1.5 py-px font-sans text-xs text-ink-2">⌘F</kbd> to find in this chat</p>
-          </div>
-          <div class="relative">
-            <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)} class="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-line bg-surface px-3.5 text-sm text-ink">
-              <Download size={16} strokeWidth={1.75} />Export<ChevronDown size={14} strokeWidth={1.75} class="text-faint" />
-            </button>
-            {#if exportOpen}
-              <ul role="menu" class="absolute top-[50px] right-0 z-10 m-0 min-w-[220px] list-none rounded-xl bg-surface p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.16),0_0_0_0.5px_rgba(0,0,0,0.06)]">
-                {#each exports as item (item.label)}
-                  <li role="none">
-                    <button type="button" role="menuitem" onclick={() => (exportOpen = false)} class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-ink hover:bg-ground">
-                      <item.icon size={16} strokeWidth={1.75} class="text-faint" />{item.label}
-                    </button>
-                  </li>
+    <main class="flex min-w-0 flex-col gap-6">
+      <header class="flex flex-col gap-2">
+        <h1 class="m-0 text-[28px] font-semibold">{chat?.title ?? "Chat"}</h1>
+        <p class="m-0 text-sm text-muted">{chat ? agents[chat.agent].name : ""} · {machine} · {chat?.project ?? ""}</p>
+        <p class="m-0 text-xs text-muted">{anchor ? "Context around the selected search match" : `Message positions ${offset}–${offset + PAGE_SIZE - 1}`} · Browser Find searches this page. Branches are shown in recorded display order.</p>
+        <div class="flex flex-wrap gap-4 text-sm text-accent">
+          <button type="button" disabled={!loaded} onclick={exportPage}>Export this page as Markdown</button>
+          <button type="button" onclick={() => live.refetch()}>Check for updates</button>
+          {#if anchor}<button type="button" onclick={() => page(0)}>Read from the beginning</button>{/if}
+        </div>
+      </header>
+      {#if catalogue.error}<p role="alert">{catalogue.error.message} <button type="button" onclick={() => catalogue.refetch()}>Retry catalogue</button></p>{/if}
+      {#each catalogue.data?.warnings ?? [] as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
+      {#if live.isPending}<p role="status">Loading messages…</p>{/if}
+      {#if live.error}<p role="alert">{live.error.message} <button type="button" onclick={() => live.refetch()}>Retry</button></p>{/if}
+      {#if changed}<button type="button" class="rounded-lg bg-accent-soft p-3 text-accent-ink" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}>This page has changed. Show updated messages</button>{/if}
+      {#if notice}<p role="status" class="text-sm text-muted">{notice}</p>{/if}
+      {#if loaded}
+        {#if !loaded.messages.length}<p>No messages at this position. The chat may have been removed or this is the end.</p>{/if}
+        <ol class="m-0 flex list-none flex-col gap-6 p-0">
+          {#each loaded.messages as message (message.id)}
+            <li id="message-{message.id}" class="flex min-w-0 flex-col gap-2 scroll-mt-8 {message.id === messageId ? 'rounded-lg ring-2 ring-accent p-3' : ''}">
+              <span class="text-xs text-muted">{message.role} · {message.at}</span>
+              <div class="min-w-0 {message.role === 'user' ? 'ml-auto max-w-[85%] rounded-2xl bg-accent-soft p-3' : ''}">
+                {#each message.blocks as block, i (i)}
+                  {#if block.type === "text"}<MessageBody text={block.markdown} />{/if}
                 {/each}
-              </ul>
-            {/if}
-          </div>
-        </header>
-
-        {#if loaded}
-          <ol class="m-0 flex list-none flex-col gap-4 p-0">
-            {#each loaded.messages as message (message.id)}
-              {#if message.role === "user"}
-                <li class="flex flex-col items-end gap-1">
-                  <span class="text-xs text-faint select-none">{message.at}</span>
-                  {#each message.blocks as block, i (i)}
-                    {#if block.type === "text"}
-                      <p class="m-0 max-w-[78%] rounded-[20px_20px_6px_20px] bg-accent px-3.5 py-2 text-[15px] leading-snug whitespace-pre-wrap text-white">{block.markdown}</p>
-                    {/if}
-                  {/each}
-                </li>
-              {:else}
-                <li class="flex flex-col gap-3.5 py-1">
-                  {#each message.blocks as block, i (i)}
-                    {#if block.type === "text"}
-                      <p class="m-0 text-[15px] leading-relaxed whitespace-pre-wrap">{block.markdown}</p>
-                    {:else if block.type === "code"}
-                      <CodeBlock code={block.code} language={block.language} file={block.file} />
-                    {:else}
-                      <ToolCard calls={block.calls} />
-                    {/if}
-                  {/each}
-                  <div class="-ml-2.5 flex select-none">
-                    <button type="button" onclick={() => copyReply(message)} class="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted">
-                      {#if copiedId === message.id}<Check size={14} strokeWidth={2.25} class="text-ok" /><span aria-live="polite">Copied</span>{:else}<Copy size={14} strokeWidth={1.75} /><span aria-live="polite">Copy</span>{/if}
-                    </button>
-                  </div>
-                </li>
-              {/if}
-            {/each}
-          </ol>
-        {:else}
-          <p class="m-0 text-sm text-faint">This chat's messages will load from <code class="font-mono">mash dash</code>; the sample data only includes “Flaky watcher test on macOS”.</p>
+              </div>
+              {#if message.activity}<details class="rounded-lg bg-fill p-3"><summary class="cursor-pointer text-sm">Recorded tool activity</summary><pre class="max-h-80 overflow-auto text-xs whitespace-pre-wrap">{message.activity}</pre></details>{/if}
+              <button type="button" class="self-start text-xs text-muted" onclick={() => copy(message)}>Copy</button>
+            </li>
+          {/each}
+        </ol>
+        {#if !anchor}
+          <nav aria-label="Message pages" class="flex gap-5">
+            <button type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}>Previous messages</button>
+            <button type="button" disabled={!loaded.messages.length} onclick={() => page(offset + PAGE_SIZE)}>Next messages</button>
+          </nav>
         {/if}
-      {:else}
-        <p class="m-0 text-sm text-faint">Chat not found.</p>
       {/if}
     </main>
   </div>
 </div>
+{#if searchOpen}
+  <button type="button" aria-label="Close search" class="fixed inset-0 z-10 bg-black/30" onclick={() => searchOpen = false}></button>
+  <div role="dialog" aria-modal="true" aria-label="Search" class="fixed top-[12vh] left-1/2 z-20 max-h-[76vh] w-[min(720px,calc(100vw-32px))] -translate-x-1/2 overflow-auto rounded-2xl bg-ground p-6">
+    <SearchPanel onClose={() => searchOpen = false} />
+  </div>
+{/if}

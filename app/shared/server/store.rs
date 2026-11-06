@@ -605,6 +605,17 @@ impl Store {
         input: crate::chat_catalog::Request,
     ) -> Result<crate::chat_catalog::Page, AppError> {
         let mut collector = crate::chat_catalog::Collector::new(input.clone())?;
+        for chat in self.catalog(identity, &input).await? {
+            collector.push(chat);
+        }
+        Ok(collector.finish())
+    }
+
+    pub(crate) async fn catalog(
+        &self,
+        identity: &Identity,
+        input: &crate::chat_catalog::Request,
+    ) -> Result<Vec<crate::chat_catalog::Chat>, AppError> {
         let mut threads = Vec::new();
         for node in self.heads(&identity.group_id).await?.into_keys() {
             if !input.admits_node(&node, &identity.node_id) {
@@ -618,9 +629,10 @@ impl Store {
                 .await?,
             );
         }
+        let mut chats = Vec::new();
         for thread in threads {
             let row = thread.chat;
-            collector.push(crate::chat_catalog::Chat {
+            chats.push(crate::chat_catalog::Chat {
                 chat_id: row.id.clone(),
                 provider: row.provider,
                 node_id: thread.node_id,
@@ -634,7 +646,27 @@ impl Store {
                 },
             });
         }
-        Ok(collector.finish())
+        Ok(chats)
+    }
+
+    pub(crate) async fn chat_page(
+        &self,
+        identity: &Identity,
+        input: protocol::ChatPage,
+    ) -> Result<Vec<crate::storage::Message>, AppError> {
+        crate::shared::validation::valid_id(&input.node_id)?;
+        if !self
+            .silver
+            .nodes(&identity.group_id)
+            .contains(&input.node_id)
+        {
+            return Ok(Vec::new());
+        }
+        let node = silver_store::node_identity(&identity.group_id, &input.node_id);
+        self.read(&node, move |connection| {
+            silver_store::read::chat_page(connection, &input)
+        })
+        .await
     }
 
     /// Fail before streaming when shared silver is unreachable.

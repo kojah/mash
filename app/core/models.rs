@@ -55,6 +55,7 @@ pub(crate) enum Operation {
     /// Configure, register with agents and index for the first time.
     Init(super::setup::InitRequest),
     Index(IndexRequest),
+    DashboardCatalog,
     ListChats {
         input: Box<crate::chat_catalog::Request>,
         local: bool,
@@ -80,11 +81,12 @@ pub(crate) enum Operation {
         context: u32,
         shared: Option<String>,
     },
-    /// One local chat's messages by display position, for the dashboard.
+    /// One local or shared chat's messages by display position, for the dashboard.
     ChatMessages {
         chat_id: String,
         offset: u32,
         limit: u32,
+        node: Option<String>,
     },
     Status {
         shared: bool,
@@ -140,6 +142,7 @@ pub(crate) enum Response {
     Init(super::setup::InitResponse),
     Index(IndexResponse),
     ListChats(super::chats::Response),
+    DashboardCatalog(super::chats::DashboardCatalog),
     Search(SearchResponse),
     View(ViewResponse),
     Status(Box<StatusResponse>),

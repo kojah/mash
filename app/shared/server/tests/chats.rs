@@ -9,6 +9,76 @@ use crate::chat_catalog::{Direction, Page, Request, Sort};
 
 mod integrated;
 
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_dashboard_catalog_and_pages_preserve_group_scope() {
+    let service = Service::qdrant(384).await;
+    assert_eq!(
+        service.upload(FIRST, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        service.upload(SECOND, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    let catalog = service.get("catalog", FIRST).await;
+    assert_eq!(catalog.as_array().unwrap().len(), 1);
+    assert_eq!(catalog[0]["node_id"], "second");
+    let catalog = service.get("catalog", OTHER).await;
+    assert_eq!(catalog, json!([]));
+    let input = json!({"node_id":"first","chat_id":"conversation","offset":1,"limit":1});
+    let page: Value = service
+        .request("chat", SECOND)
+        .json(&input)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(page.as_array().unwrap().len(), 1);
+    assert_eq!(page[0]["id"], "opposite");
+    let page: Value = service
+        .request("chat", OTHER)
+        .json(&input)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(page, json!([]));
+    for limit in [0, 501] {
+        let mut invalid = input.clone();
+        invalid["limit"] = json!(limit);
+        assert_eq!(
+            service
+                .request("chat", FIRST)
+                .json(&invalid)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        service
+            .request("chat", "wrong-token")
+            .json(&input)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    service.cleanup().await;
+}
+
 fn catalog_snapshot(revision: i64) -> Vec<Value> {
     let mut events = snapshot(revision);
     events[1]["records"] = json!([

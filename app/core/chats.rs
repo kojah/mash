@@ -38,6 +38,71 @@ pub(crate) struct Diagnostics {
     stages: Vec<Measurement>,
 }
 
+/// A bounded catalogue, retaining machine identity even for copied histories.
+#[derive(Debug, Serialize)]
+pub(crate) struct DashboardCatalog {
+    pub(crate) chats: Vec<Chat>,
+    pub(crate) local_node: String,
+    pub(crate) truncated: bool,
+    pub(crate) shared_error: Option<String>,
+}
+
+pub(super) async fn dashboard(
+    config: &ResolvedConfig,
+    database: &Path,
+) -> Result<DashboardCatalog, AppError> {
+    let local_node = config
+        .shared
+        .as_ref()
+        .map_or("local", |shared| shared.node_id.as_str())
+        .to_owned();
+    let node = local_node.clone();
+    let path = database.to_path_buf();
+    let local = crate::blocking(move || {
+        Storage::open_silver(&path)?.chat_candidates(
+            &Request {
+                limit: 100,
+                offset: 10_000,
+                ..Default::default()
+            },
+            &node,
+        )
+    });
+    let remote = async {
+        match &config.shared {
+            Some(shared) => shared::catalog(shared).await,
+            None => Ok(Vec::new()),
+        }
+    };
+    let (local, remote) = tokio::join!(local, remote);
+    let mut chats = local?;
+    let shared_error = match remote {
+        Ok(remote) => {
+            chats.extend(remote.into_iter().filter(|chat| chat.node_id != local_node));
+            None
+        }
+        Err(error) => Some(error.error.message),
+    };
+    chats.sort_by(|a, b| {
+        b.metadata
+            .updated_at
+            .cmp(&a.metadata.updated_at)
+            .then_with(|| a.node_id.cmp(&b.node_id))
+            .then_with(|| a.chat_id.cmp(&b.chat_id))
+    });
+    let truncated = chats.len() > 10_000;
+    chats.truncate(10_000);
+    for chat in &mut chats {
+        config.redaction.output().metadata(&mut chat.metadata);
+    }
+    Ok(DashboardCatalog {
+        chats,
+        local_node,
+        truncated,
+        shared_error,
+    })
+}
+
 #[tracing::instrument(name = "list_chats", skip_all)]
 pub(super) async fn run(
     config: &ResolvedConfig,

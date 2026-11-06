@@ -19,6 +19,7 @@ mod assets {
 struct Dash {
     paths: Paths,
     hosts: Vec<String>,
+    model_work: tokio::sync::Semaphore,
 }
 
 pub(crate) async fn run(paths: Paths, listen: SocketAddr) -> Result<(), AppError> {
@@ -31,6 +32,7 @@ pub(crate) async fn run(paths: Paths, listen: SocketAddr) -> Result<(), AppError
     let state = Arc::new(Dash {
         paths,
         hosts: allowed_hosts(address),
+        model_work: tokio::sync::Semaphore::new(1),
     });
     crate::write_json(
         &mut std::io::stderr(),
@@ -90,8 +92,12 @@ async fn guard(
     if request.method() != axum::http::Method::GET && request.method() != axum::http::Method::HEAD {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
+    let api = request.uri().path().starts_with("/api/");
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
+    if api {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
@@ -116,12 +122,7 @@ async fn health() -> Response {
 async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
     let request = Request {
         paths: state.paths.clone(),
-        operation: Operation::ListChats {
-            input: Box::new(crate::chat_catalog::Request::default()),
-            local: false,
-            shared: false,
-            diagnostics: false,
-        },
+        operation: Operation::DashboardCatalog,
     };
     json_result(core::execute(request).await)
 }
@@ -137,6 +138,7 @@ struct SearchParams {
     /// Comma-separated recorded working directories.
     project: String,
     days: Option<u32>,
+    offset: usize,
 }
 
 fn split(list: &str) -> Vec<String> {
@@ -184,9 +186,9 @@ fn search_operation(params: SearchParams) -> Result<Operation, AppError> {
         shared_vector_search: None,
         query: params.q,
         intent: None,
-        limit: None,
-        offset: 0,
-        unit: None,
+        limit: Some(20),
+        offset: params.offset,
+        unit: Some(crate::search_results::SearchUnit::Chats),
         fusion: crate::views::config::FusionOverrides::default(),
         ranking: None,
         diagnostics: false,
@@ -202,10 +204,13 @@ async fn search(
 ) -> Response {
     match search_operation(params) {
         Ok(operation) => json_result(
-            core::execute(Request {
-                paths: state.paths.clone(),
-                operation,
-            })
+            core::execute_with_model_limit(
+                Request {
+                    paths: state.paths.clone(),
+                    operation,
+                },
+                &state.model_work,
+            )
             .await,
         ),
         Err(error) => json_result(Err(error)),
@@ -217,6 +222,7 @@ struct ViewParams {
     id: String,
     #[serde(default)]
     context: Option<u32>,
+    shared: Option<String>,
 }
 
 /// Messages on each side of the anchor; chunked chat reads are tracked in mash-twg6.
@@ -229,7 +235,7 @@ async fn view(
     let operation = Operation::View {
         id: params.id,
         context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
-        shared: None,
+        shared: params.shared,
     };
     json_result(
         core::execute(Request {
@@ -247,10 +253,11 @@ struct ChatParams {
     offset: u32,
     #[serde(default)]
     limit: Option<u32>,
+    node: Option<String>,
 }
 
 /// Messages per page of a chat; whole small chats fit in one.
-const MAX_CHAT_PAGE: u32 = 2000;
+const MAX_CHAT_PAGE: u32 = 500;
 
 async fn chat(
     State(state): State<Arc<Dash>>,
@@ -259,6 +266,7 @@ async fn chat(
     let operation = Operation::ChatMessages {
         chat_id: params.id,
         offset: params.offset,
+        node: params.node,
         limit: params
             .limit
             .unwrap_or(MAX_CHAT_PAGE)
@@ -324,6 +332,58 @@ fn content_type(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{Operation, SearchParams, allowed_hosts, content_type, search_operation};
+
+    #[tokio::test]
+    async fn dashboard_http_guards_host_methods_and_serves_real_catalogue() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.toml");
+        std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+        let database = directory.path().join("index.sqlite3");
+        let mut storage = crate::storage::Storage::open_writer(&database).unwrap();
+        storage.commit_writer().unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = super::router(std::sync::Arc::new(super::Dash {
+            paths: crate::core::Paths {
+                config: Some(config),
+                db: Some(database),
+                models_dir: None,
+            },
+            hosts: allowed_hosts(address),
+            model_work: tokio::sync::Semaphore::new(1),
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        let url = format!("http://{address}/api/chats");
+        let response = client.get(&url).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none()
+        );
+        assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["local_node"], "local");
+        assert_eq!(body["chats"], serde_json::json!([]));
+        assert_eq!(
+            client
+                .get(&url)
+                .header("Host", "attacker.invalid")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            reqwest::StatusCode::MISDIRECTED_REQUEST
+        );
+        assert_eq!(
+            client.post(&url).send().await.unwrap().status(),
+            reqwest::StatusCode::METHOD_NOT_ALLOWED
+        );
+        server.abort();
+    }
 
     #[test]
     fn empty_queries_list_chats_and_queries_search_with_filters() {

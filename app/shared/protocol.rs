@@ -206,6 +206,15 @@ pub(crate) struct View {
     pub content: crate::storage::MessageContent,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ChatPage {
+    pub node_id: String,
+    pub chat_id: String,
+    pub offset: u32,
+    pub limit: u32,
+}
+
 /// A bounded search-only batch; the explicit view API retains larger radii.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

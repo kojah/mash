@@ -124,6 +124,22 @@ pub(crate) fn message(record: MessageRecord, projection: bool) -> Message {
     }
 }
 
+pub(crate) fn chat_page(
+    connection: &Connection,
+    input: &crate::shared::protocol::ChatPage,
+) -> Result<Vec<Message>, AppError> {
+    sql::MessageWindow::builder()
+        .chat_id(&input.chat_id)
+        .first_ordinal(i64::from(input.offset))
+        .last_ordinal(i64::from(input.offset) + i64::from(input.limit) - 1)
+        .build()
+        .query_many(connection)
+        .map_err(database)?
+        .into_iter()
+        .map(|row| Ok(message(message_record!(row)?, false)))
+        .collect()
+}
+
 #[cfg(test)]
 /// Writes one JSON object member per row without collecting the node in memory.
 struct Members<'a, W: Write> {

@@ -4,20 +4,20 @@ import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Clock from "@lucide/svelte/icons/clock";
 import Laptop from "@lucide/svelte/icons/laptop";
 import Search from "@lucide/svelte/icons/search";
+import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
-import { type Overview, overview } from "../lib/api";
+import { catalogOptions } from "../lib/queries";
 import { chatHref } from "../lib/route.svelte";
+import type { SearchFilters } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import SearchPanel from "./SearchPanel.svelte";
 
-let data = $state<Overview | null>(null);
+const catalogue = createQuery(() => catalogOptions);
+const data = $derived(catalogue.data);
+const machines = $derived([...new Set(data?.chats.map((chat) => chat.machine) ?? [])]);
+const agents = $derived([...new Set(data?.chats.map((chat) => chat.agent) ?? [])]);
+let initial = $state<SearchFilters>({ agents: [], machines: [], projects: [], days: null });
 let searching = $state(false);
-
-$effect(() => {
-  overview().then((loaded) => {
-    data = loaded;
-  });
-});
 
 function onKey(event: KeyboardEvent): void {
   if (event.key === "Escape") searching = false;
@@ -41,13 +41,18 @@ function onKey(event: KeyboardEvent): void {
     />
   </div>
 
+  <p class="m-0 text-xs text-muted">Indexed history · refreshes every 30 seconds while visible. Indexing runs separately.</p>
+  {#if catalogue.isPending}<p role="status">Loading chats…</p>{/if}
+  {#if catalogue.error}<p role="alert">{catalogue.error.message} <button type="button" onclick={() => catalogue.refetch()}>Retry</button></p>{/if}
   {#if data}
+    {#each data.warnings as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
+    {#if !data.chats.length}<p>No indexed chats yet. Run Mash indexing, then refresh.</p>{/if}
     <section aria-labelledby="recent" class="flex flex-col gap-2">
       <h2 id="recent" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><Clock size={15} strokeWidth={1.75} />Recent</h2>
       <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
-        {#each data.recent as chat (chat.id)}
+        {#each data.chats.slice(0, 5) as chat (JSON.stringify([chat.machine, chat.id]))}
           <li>
-            <a href={chatHref(chat.id)} class="row text-[15px]">
+            <a href={chatHref(chat.id, chat.machine)} class="row text-[15px]">
               <AgentMark agent={chat.agent} />
               <span class="min-w-0 flex-1 truncate">{chat.title}</span>
               <span class="shrink-0 text-[13px] tabular-nums text-faint">{chat.updatedAt}</span>
@@ -62,14 +67,13 @@ function onKey(event: KeyboardEvent): void {
       <section aria-labelledby="machines" class="flex flex-col gap-2">
         <h2 id="machines" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><Laptop size={15} strokeWidth={1.75} />Machines</h2>
         <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
-          {#each data.machines as machine (machine.name)}
+          {#each machines as machine (machine)}
             <li>
-              <a href="#/" class="row text-[15px]" aria-label="{machine.name}{machine.needsAttention ? ', needs attention' : ''}">
+              <button type="button" class="row w-full text-left text-[15px]" onclick={() => { initial = { agents: [], machines: [machine], projects: [], days: null }; searching = true; }}>
                 <Laptop size={18} strokeWidth={1.75} class="shrink-0 text-ink-2" />
-                <span class="flex-1">{machine.name}</span>
-                {#if machine.needsAttention}<span aria-hidden="true" class="size-2 rounded-full bg-warn"></span>{/if}
+                <span class="flex-1">{machine}</span><span class="text-xs text-muted">{data.chats.filter(chat => chat.machine === machine).length}</span>
                 <ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" />
-              </a>
+              </button>
             </li>
           {/each}
         </ul>
@@ -78,14 +82,13 @@ function onKey(event: KeyboardEvent): void {
       <section aria-labelledby="agents" class="flex flex-col gap-2">
         <h2 id="agents" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><Bot size={15} strokeWidth={1.75} />Agents</h2>
         <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
-          {#each data.agents as summary (summary.agent)}
+          {#each agents as agent (agent)}
             <li>
-              <a href="#/" class="row text-[15px]" aria-label="{agentInfo[summary.agent].name}{summary.quiet ? `, quiet for ${summary.lastChat}` : ''}">
-                <AgentMark agent={summary.agent} />
-                <span class="min-w-0 flex-1 truncate">{agentInfo[summary.agent].name}</span>
-                {#if summary.quiet}<span aria-hidden="true" class="size-2 rounded-full bg-[#aeaeb2]"></span>{/if}
+              <button type="button" class="row w-full text-left text-[15px]" onclick={() => { initial = { agents: [agent], machines: [], projects: [], days: null }; searching = true; }}>
+                <AgentMark agent={agent} />
+                <span class="min-w-0 flex-1 truncate">{agentInfo[agent].name}</span><span class="text-xs text-muted">{data.chats.filter(chat => chat.agent === agent).length}</span>
                 <ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" />
-              </a>
+              </button>
             </li>
           {/each}
         </ul>
@@ -97,6 +100,6 @@ function onKey(event: KeyboardEvent): void {
 {#if searching}
   <button type="button" aria-label="Close search" class="fixed inset-0 z-10 cursor-default border-0 bg-black/30" onclick={() => (searching = false)}></button>
   <div role="dialog" aria-modal="true" aria-label="Search" class="fixed top-[12vh] left-1/2 z-20 flex max-h-[76vh] w-[min(720px,calc(100vw-32px))] -translate-x-1/2 flex-col rounded-[18px] bg-ground p-6 shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
-    <SearchPanel onClose={() => (searching = false)} />
+    <SearchPanel {initial} onClose={() => (searching = false)} />
   </div>
 {/if}

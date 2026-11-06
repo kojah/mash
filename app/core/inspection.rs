@@ -162,8 +162,38 @@ pub(super) async fn chat_messages(
     chat_id: String,
     offset: u32,
     limit: u32,
+    node: Option<String>,
 ) -> Result<ViewResponse, AppError> {
+    if limit == 0 || limit > 500 {
+        return Err(AppError::usage("chat page limit must be between 1 and 500"));
+    }
     let output = configuration.redaction.output();
+    if let Some(node) = node.filter(|node| {
+        node != configuration
+            .shared
+            .as_ref()
+            .map_or("local", |shared| shared.node_id.as_str())
+    }) {
+        let mut messages = shared::chat_page(
+            required_shared(configuration)?,
+            &shared::protocol::ChatPage {
+                node_id: node,
+                chat_id: chat_id.clone(),
+                offset,
+                limit,
+            },
+        )
+        .await?;
+        for message in &mut messages {
+            message.content = output.text(&message.content);
+            output.tools(&mut message.tools);
+            output.attachments(&mut message.attachments);
+        }
+        return Ok(ViewResponse {
+            id: chat_id,
+            messages,
+        });
+    }
     let database = database.to_path_buf();
     crate::blocking(move || {
         let storage = Storage::open_silver(&database)?;
@@ -172,6 +202,7 @@ pub(super) async fn chat_messages(
             message.content = output.text(&message.content);
             output.tools(&mut message.tools);
             message.attachments = storage.list_attachments(&message.id)?.attachments;
+            output.attachments(&mut message.attachments);
         }
         Ok(ViewResponse {
             id: chat_id,

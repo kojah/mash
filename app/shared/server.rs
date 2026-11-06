@@ -137,6 +137,8 @@ fn router(app: App) -> Router {
         .route("/v1/freshness", get(freshness))
         .route("/v1/search", post(search))
         .route("/v1/chats", post(list_chats))
+        .route("/v1/catalog", get(catalog))
+        .route("/v1/chat", post(chat_page))
         .route("/v1/view", post(view))
         .route("/v1/contexts", post(contexts::read))
         .route("/v1/query", post(query))
@@ -333,6 +335,58 @@ async fn view(
         return Err(AppError::usage("invalid view request").into());
     }
     let mut messages = app.store.view(&id, input).await?;
+    let redaction = app.store.responses();
+    for message in &mut messages {
+        message.content = redaction.text(&message.content);
+        redaction.attachments(&mut message.attachments);
+        redaction.tools(&mut message.tools);
+    }
+    Ok(Json(messages))
+}
+
+async fn catalog(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+) -> Result<Json<Vec<crate::chat_catalog::Chat>>, ApiError> {
+    let mut chats = app
+        .store
+        .catalog(
+            &id,
+            &crate::chat_catalog::Request {
+                exclude_self: true,
+                ..Default::default()
+            },
+        )
+        .await?;
+    chats.sort_by(|a, b| {
+        b.metadata
+            .updated_at
+            .cmp(&a.metadata.updated_at)
+            .then_with(|| a.node_id.cmp(&b.node_id))
+            .then_with(|| a.chat_id.cmp(&b.chat_id))
+    });
+    // One extra row lets the dashboard report an incomplete catalogue.
+    chats.truncate(10_001);
+    for chat in &mut chats {
+        app.store.responses().metadata(&mut chat.metadata);
+    }
+    Ok(Json(chats))
+}
+
+async fn chat_page(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+    input: Result<Json<protocol::ChatPage>, JsonRejection>,
+) -> Result<Json<Vec<crate::storage::Message>>, ApiError> {
+    let input = json(input)?;
+    if input.limit == 0
+        || input.limit > 500
+        || input.chat_id.is_empty()
+        || input.chat_id.len() > 4096
+    {
+        return Err(AppError::usage("invalid chat page request").into());
+    }
+    let mut messages = app.store.chat_page(&id, input).await?;
     let redaction = app.store.responses();
     for message in &mut messages {
         message.content = redaction.text(&message.content);

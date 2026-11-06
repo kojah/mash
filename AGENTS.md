@@ -100,14 +100,15 @@ create compatibility copies or versioned replacement files.
 
 ## Dashboard front end
 
-`dashboard/` holds the front end for `mash dash`, a planned local, read-only web
+`dashboard/` holds the front end for `mash dash`, a local, read-only web
 dashboard (Beads mash-twg6; design mockup linked there). It uses Svelte 5, Vite,
 TypeScript 7 (`svelte-check --tsgo`, with TypeScript 6 kept only as its
 compatibility dependency), Tailwind CSS 4, Lucide Svelte, pnpm, Biome and Vitest;
 follow `.agents/skills/frontend-development-prefs/SKILL.md` and
-`.agents/skills/typescript-coding-conventions/SKILL.md`. Until the Rust command
-serves its JSON API, `dashboard/src/lib/api.ts` returns sample data with the
-same shapes. Before completing front-end changes, run `pnpm run lint`,
+`.agents/skills/typescript-coding-conventions/SKILL.md`. TanStack Query owns
+server-state caching and refresh; `dashboard/src/lib/api.ts` validates real API
+responses. Keep submitted search results and displayed transcript text stable
+until the reader requests an update. Before completing front-end changes, run `pnpm run lint`,
 `pnpm run check`, `pnpm run test` and `pnpm run build` in `dashboard/`.
 Render all chat content as text or through a sanitizer; archived history is
 untrusted.

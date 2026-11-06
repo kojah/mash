@@ -42,7 +42,7 @@ async fn execute_admitted(
     let operation = match &request.operation {
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
-        Operation::ListChats { .. } => "list_chats",
+        Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
         Operation::Search { .. } => "search",
         Operation::View { .. } | Operation::ChatMessages { .. } => "view",
         Operation::Status { .. } | Operation::Installation { .. } => "status",
@@ -332,6 +332,9 @@ async fn dispatch(
         } => inspection::get_attachment(configuration, database, message_id, attachment_id, shared)
             .await
             .map(Response::GetAttachment),
+        Operation::DashboardCatalog => chats::dashboard(configuration, database)
+            .await
+            .map(Response::DashboardCatalog),
         Operation::ListChats {
             input,
             local,
@@ -388,7 +391,8 @@ async fn dispatch(
             chat_id,
             offset,
             limit,
-        } => inspection::chat_messages(configuration, database, chat_id, offset, limit)
+            node,
+        } => inspection::chat_messages(configuration, database, chat_id, offset, limit, node)
             .await
             .map(Response::View),
         Operation::Status { shared, coverage } => {

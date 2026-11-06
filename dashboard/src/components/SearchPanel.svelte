@@ -3,13 +3,20 @@ import Check from "@lucide/svelte/icons/check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Search from "@lucide/svelte/icons/search";
 import X from "@lucide/svelte/icons/x";
+import { createQuery } from "@tanstack/svelte-query";
+import { untrack } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
-import { chats, search } from "../lib/api";
+import { browse, isAgent, type SearchPage, search } from "../lib/api";
+import { catalogOptions, stableRead } from "../lib/queries";
 import { chatHref } from "../lib/route.svelte";
-import type { Agent, ChatSummary, SearchHit } from "../lib/types";
+import type { Agent, SearchFilters } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 
-let { onClose, compact = false }: { onClose: () => void; compact?: boolean } = $props();
+let {
+  onClose,
+  compact = false,
+  initial = { agents: [], machines: [], projects: [], days: null },
+}: { onClose: () => void; compact?: boolean; initial?: SearchFilters } = $props();
 
 type Facet = "agents" | "machines" | "projects";
 const dates = [
@@ -21,25 +28,41 @@ const dates = [
 
 let query = $state("");
 let selected = $state<{ agents: Agent[]; machines: string[]; projects: string[] }>({
-  agents: [],
-  machines: [],
-  projects: [],
+  agents: untrack(() => [...initial.agents]),
+  machines: untrack(() => [...initial.machines]),
+  projects: untrack(() => [...initial.projects]),
 });
-let days = $state<number | null>(null);
+let days = $state<number | null>(untrack(() => initial.days));
 let openFacet = $state<Facet | null>(null);
-let results = $state<readonly SearchHit[] | null>(null);
-let catalogue = $state<readonly ChatSummary[]>([]);
-
-$effect(() => {
-  chats().then((all) => {
-    catalogue = all;
-  });
-});
+const catalog = createQuery(() => catalogOptions);
+const catalogue = $derived(catalog.data?.chats ?? []);
+let submitted = $state<{ query: string; filters: SearchFilters; generation: string } | null>(null);
+let browsing = $state<SearchPage | null>(null);
+let offset = $state(0);
+const result = createQuery(() => ({
+  ...stableRead,
+  queryKey: ["search", submitted, offset],
+  enabled: submitted !== null && catalog.data !== undefined,
+  queryFn: ({ signal }) => {
+    if (!submitted || !catalog.data) throw new Error("Catalogue is not ready.");
+    if (!submitted.query.trim()) {
+      const page = browsing;
+      if (!page) throw new Error("Submit the filters to browse chats.");
+      return {
+        ...page,
+        hits: page.hits.slice(offset, offset + 20),
+        nextOffset: offset + 20 < page.hits.length ? offset + 20 : null,
+      };
+    }
+    return search(submitted.query, submitted.filters, offset, catalog.data.localNode, signal);
+  },
+}));
+const results = $derived(result.data?.hits ?? null);
 
 const options = $derived({
   agents: [...new Set(catalogue.map((chat) => chat.agent))],
   machines: [...new Set(catalogue.map((chat) => chat.machine))],
-  projects: [...new Set(catalogue.map((chat) => chat.project))],
+  projects: [...new Set(catalogue.map((chat) => chat.project).filter(Boolean))],
 });
 
 const tags = $derived([
@@ -62,10 +85,15 @@ const tags = $derived([
 ]);
 
 function toggle(facet: Facet, value: string): void {
-  const list = selected[facet] as string[];
-  selected[facet] = (
-    list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
-  ) as never;
+  if (facet === "agents") {
+    if (isAgent(value))
+      selected.agents = selected.agents.includes(value)
+        ? selected.agents.filter((v) => v !== value)
+        : [...selected.agents, value];
+  } else {
+    const list = selected[facet];
+    selected[facet] = list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+  }
 }
 
 function removeTag(facet: Facet | "days", value: string): void {
@@ -78,9 +106,21 @@ function clearAll(): void {
   days = null;
 }
 
-async function run(): Promise<void> {
+function run(): void {
+  if (!catalog.data) return;
   openFacet = null;
-  results = await search(query, { ...selected, days });
+  offset = 0;
+  submitted = {
+    query,
+    filters: {
+      agents: [...selected.agents],
+      machines: [...selected.machines],
+      projects: [...selected.projects],
+      days,
+    },
+    generation: crypto.randomUUID(),
+  };
+  browsing = query.trim() ? null : browse(catalog.data, submitted.filters, Date.now());
 }
 
 function label(facet: Facet): string {
@@ -167,21 +207,25 @@ const chip =
     {/each}
   </div>
 
-  {#if results === null}
+  {#if catalog.error}<p role="alert">{catalog.error.message}</p>{/if}
+  {#if result.error}<p role="alert">{result.error.message} <button type="button" onclick={() => result.refetch()}>Retry</button></p>{/if}
+  {#if submitted && result.isPending}<p role="status">Searching…</p>{/if}
+  {#each result.data?.warnings ?? [] as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
+  {#if results === null && !submitted}
     <p class="m-0 py-8 text-center text-sm text-faint">Press Return to search</p>
-  {:else}
+  {:else if results}
     <section aria-label="Search results" class="flex min-h-0 flex-col gap-2 overflow-y-auto">
       <p class="m-0 text-[13px] text-muted">
-        {results.length} chat{results.length === 1 ? "" : "s"}{query.trim() === "" ? " · newest first" : ""}
+        {results.length} chat{results.length === 1 ? "" : "s"} on this page · {submitted?.query.trim() || "Newest first"}
       </p>
       <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
-        {#each results as hit (hit.chat.id + hit.messageId)}
+        {#each results as hit (JSON.stringify([hit.chat.machine, hit.chat.id, hit.messageId]))}
           <li>
-            <a href={chatHref(hit.chat.id)} onclick={onClose} class="row items-start py-3">
+            <a href={chatHref(hit.chat.id, hit.chat.machine, hit.messageId)} onclick={onClose} class="row items-start py-3">
               <AgentMark agent={hit.chat.agent} />
               <span class="flex min-w-0 flex-1 flex-col gap-1">
                 <span class="text-[15px] font-medium">{hit.chat.title}</span>
-                {#if hit.match}
+                {#if hit.before || hit.match}
                   <span class="line-clamp-2 text-sm leading-snug text-ink-2">{hit.before}<mark class="rounded-sm bg-[#fff1b8] text-inherit">{hit.match}</mark>{hit.after}</span>
                 {/if}
                 <span class="text-xs text-faint">{agentInfo[hit.chat.agent].name} · {hit.chat.machine} · {hit.chat.updatedAt}</span>
@@ -190,6 +234,7 @@ const chip =
           </li>
         {/each}
       </ul>
+      <div class="flex gap-4"><button type="button" disabled={offset === 0} onclick={() => offset = Math.max(0, offset - 20)}>Previous</button><button type="button" disabled={result.data?.nextOffset == null} onclick={() => offset = result.data?.nextOffset ?? offset}>Next</button></div>
     </section>
   {/if}
 </div>

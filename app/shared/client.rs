@@ -46,6 +46,8 @@ pub(super) enum Endpoint {
     Search,
     Fingerprints,
     Chats,
+    Catalog,
+    ChatPage,
     View,
     Contexts,
     /// Bulk-shape fixture for transport tests; the legacy index route it named
@@ -78,6 +80,8 @@ impl Endpoint {
             Self::Search => "search",
             Self::Fingerprints => "fingerprints",
             Self::Chats => "chats",
+            Self::Catalog => "catalog",
+            Self::ChatPage => "chat",
             Self::View => "view",
             Self::Contexts => "contexts",
             Self::Index => "index",
@@ -356,6 +360,18 @@ pub(crate) async fn list_chats(
 ) -> Result<crate::chat_catalog::Page, AppError> {
     input.validate()?;
     post(config, Endpoint::Chats, input).await
+}
+pub(crate) async fn catalog(
+    config: &SharedConfig,
+) -> Result<Vec<crate::chat_catalog::Chat>, AppError> {
+    get(config, Endpoint::Catalog).await
+}
+
+pub(crate) async fn chat_page(
+    config: &SharedConfig,
+    input: &protocol::ChatPage,
+) -> Result<Vec<Message>, AppError> {
+    post(config, Endpoint::ChatPage, input).await
 }
 pub(crate) async fn view(
     config: &SharedConfig,

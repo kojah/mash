@@ -5,6 +5,42 @@ use axum::{Json, Router, routing::post};
 
 mod failures;
 
+#[tokio::test]
+async fn dashboard_catalog_preserves_copies_and_partial_failure() {
+    let app = Router::new().route(
+        "/v1/catalog",
+        axum::routing::get(|| async {
+            Json(vec![Chat {
+                chat_id: "thread-105".into(),
+                provider: Provider::Codex,
+                node_id: "peer".into(),
+                metadata: ChatMetadata {
+                    updated_at: Some(106),
+                    ..Default::default()
+                },
+            }])
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let directory = tempfile::tempdir().unwrap();
+    let config = config(directory.path(), &url);
+    let database = database(directory.path());
+    let response = dashboard(&config, &database).await.unwrap();
+    assert_eq!(response.local_node, "laptop");
+    assert_eq!(response.chats.len(), 2);
+    assert_eq!(response.chats[0].node_id, "peer");
+    assert_eq!(response.chats[1].node_id, "laptop");
+    assert!(!response.truncated);
+    assert!(response.shared_error.is_none());
+    server.abort();
+    let _ = server.await;
+    let response = dashboard(&config, &database).await.unwrap();
+    assert_eq!(response.chats.len(), 1);
+    assert!(response.shared_error.is_some());
+}
+
 fn config(directory: &Path, url: &str) -> ResolvedConfig {
     let path = directory.join("config.toml");
     std::fs::write(&path, format!("version = 1\nproviders = {{}}\n[shared]\ngroup_id = 'group'\nnode_id = 'laptop'\napi_url = '{url}'\ntoken_env = 'HOME'\n")).unwrap();
