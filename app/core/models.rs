@@ -56,6 +56,12 @@ pub(crate) enum Operation {
     Init(super::setup::InitRequest),
     Index(IndexRequest),
     DashboardCatalog,
+    /// Dashboard node identities resolve locally without first listing chats.
+    ChatContext {
+        id: String,
+        context: u32,
+        node: Option<String>,
+    },
     ListChats {
         input: Box<crate::chat_catalog::Request>,
         local: bool,

@@ -218,11 +218,12 @@ async fn search(
 }
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ViewParams {
     id: String,
     #[serde(default)]
     context: Option<u32>,
-    shared: Option<String>,
+    node: Option<String>,
 }
 
 /// Messages on each side of the anchor; chunked chat reads are tracked in mash-twg6.
@@ -232,10 +233,10 @@ async fn view(
     State(state): State<Arc<Dash>>,
     axum::extract::Query(params): axum::extract::Query<ViewParams>,
 ) -> Response {
-    let operation = Operation::View {
+    let operation = Operation::ChatContext {
         id: params.id,
         context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
-        shared: params.shared,
+        node: params.node,
     };
     json_result(
         core::execute(Request {
@@ -368,6 +369,32 @@ mod tests {
         let body: serde_json::Value = response.json().await.unwrap();
         assert_eq!(body["local_node"], "local");
         assert_eq!(body["chats"], serde_json::json!([]));
+        // Resolving the local node must not require shared configuration or a
+        // catalogue request. Remote nodes must still fail rather than fall back.
+        for node in ["", "local"] {
+            let response = client
+                .get(format!("http://{address}/api/view?id=missing&node={node}"))
+                .send()
+                .await
+                .unwrap();
+            if node.is_empty() {
+                // An explicitly empty name is not the local identity.
+                assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+            } else {
+                assert_eq!(response.status(), reqwest::StatusCode::OK);
+                let body: serde_json::Value = response.json().await.unwrap();
+                assert_eq!(body["messages"], serde_json::json!([]));
+            }
+        }
+        assert_eq!(
+            client
+                .get(format!("http://{address}/api/view?id=missing&node=remote"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            reqwest::StatusCode::BAD_REQUEST
+        );
         assert_eq!(
             client
                 .get(&url)

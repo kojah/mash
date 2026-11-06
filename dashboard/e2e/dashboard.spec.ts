@@ -52,6 +52,33 @@ test("direct chats load before the catalogue and tool output stays literal", asy
   }
   await expect(page.getByRole("heading", { name: chat.title })).toBeVisible();
 });
+test("direct search matches load without waiting for catalogue identity", async ({ page }) => {
+  let release: (() => void) | undefined;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/chats**", async (route) => {
+    await ready;
+    await route.fulfill({ json: { local_node: "workstation", truncated: false, chats: [] } });
+  });
+  await page.route("**/api/view?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get("node")).toBe("workstation");
+    expect(params.get("id")).toBe("anchor");
+    return route.fulfill({
+      json: {
+        messages: [{ id: "anchor", ordinal: 42, role: "assistant", content: "Selected message" }],
+      },
+    });
+  });
+  await page.goto("/#/chat/same-id?node=workstation&message=anchor");
+  try {
+    await expect(page.getByText("Selected message", { exact: true })).toBeVisible();
+  } finally {
+    release?.();
+  }
+});
+
 test("real API shapes, explicit search, source identity, safe content and stable refresh", async ({
   page,
 }) => {
@@ -123,7 +150,7 @@ test("real API shapes, explicit search, source identity, safe content and stable
     .getByRole("link", { name: /Real fixture chat/ })
     .click();
   await expect(page.getByText("Initial", { exact: false }).last()).toBeVisible();
-  expect(chatRequests.at(-1)?.searchParams.get("shared")).toBe("remote");
+  expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
   expect(await page.locator("main script, main img, main a[href^='javascript:']").count()).toBe(0);
   await expect(page.locator("main strong")).toHaveText("reply");
   content = "Updated reply";

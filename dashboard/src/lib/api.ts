@@ -210,13 +210,8 @@ export async function transcript(
     ),
   );
 }
-export async function context(
-  id: string,
-  node: string,
-  localNode: string,
-  signal: AbortSignal,
-): Promise<MessagePage> {
+export async function context(id: string, node: string, signal: AbortSignal): Promise<MessagePage> {
   const params = new URLSearchParams({ id, context: "25" });
-  if (node !== localNode) params.set("shared", node);
+  if (node) params.set("node", node);
   return parseMessages(await read("/api/view", params, signal));
 }

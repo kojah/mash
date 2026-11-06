@@ -1,7 +1,7 @@
 <script lang="ts">
 import Search from "@lucide/svelte/icons/search";
 import { createQuery } from "@tanstack/svelte-query";
-import { tick } from "svelte";
+import { tick, untrack } from "svelte";
 import { agents } from "../lib/agents";
 import { context, type MessagePage, PAGE_SIZE, transcript } from "../lib/api";
 import {
@@ -26,7 +26,7 @@ const displayMachine = $derived(machine || catalogue.data?.localNode || "Local")
 const sessions = $derived(catalogue.data?.chats ?? []);
 const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine === displayMachine));
 let offset = $state(0);
-let anchor = $state("");
+let anchor = $state(untrack(() => messageId));
 let searchOpen = $state(false);
 let notice = $state("");
 let exporting = $state(false);
@@ -46,11 +46,8 @@ $effect(() => {
 const key = $derived(JSON.stringify([id, machine, offset, anchor]));
 const live = createQuery(() => ({
   queryKey: ["transcript", id, machine, offset, anchor],
-  enabled: !anchor || catalogue.data !== undefined,
   queryFn: ({ signal }) =>
-    anchor
-      ? context(anchor, machine, catalogue.data?.localNode ?? "", signal)
-      : transcript(id, machine, offset, signal),
+    anchor ? context(anchor, machine, signal) : transcript(id, machine, offset, signal),
   staleTime: 15_000,
   refetchInterval: 30_000,
   refetchIntervalInBackground: false,
@@ -153,7 +150,7 @@ function page(next: number): void {
     <button type="button" onclick={() => searchOpen = true} class="flex min-h-10 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 text-left text-sm text-muted"><Search size={15} />Search chats</button>
   </header>
   <div class="mx-auto grid max-w-[1120px] items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">
-    <aside aria-label="Recent sessions" class="sticky top-6 max-h-[90vh] overflow-auto max-[700px]:hidden">
+    <aside aria-label="Recent chats" class="sticky top-6 max-h-[90vh] overflow-auto max-[700px]:hidden">
       {#each sessions.slice(0, 100) as session (JSON.stringify([session.machine, session.id]))}
         {@const current = session.id === id && session.machine === displayMachine}
         <a href={chatHref(session.id, session.machine)} title={`${session.title}\n${session.project}\n${session.updatedAt}\n${session.id}`} aria-current={current ? "page" : undefined} class="flex min-h-[46px] items-start gap-2 rounded-[10px] p-2 no-underline {current ? 'bg-accent text-white' : 'text-ink hover:bg-fill'}">

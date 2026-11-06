@@ -25,7 +25,9 @@ Use `list-chats` for chat discovery and `view` for complete message text.
 30 seconds while the page is visible. An open transcript keeps its displayed
 messages until you select **Show updated messages**; **Check for updates**
 requests a fresh comparison. Navigating between chats retains the sidebar.
-Direct chat links load messages independently of the catalogue.
+Direct chat links and links to individual search matches load messages
+independently of the catalogue. The backend resolves the requested machine
+without a preliminary chat-list request.
 
 Tool calls, tool output and reasoning appear in expandable sections. Tool
 output is literal text, even when its recorded provider role is `user`.

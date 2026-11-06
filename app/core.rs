@@ -44,7 +44,9 @@ async fn execute_admitted(
         Operation::Index(_) => "index",
         Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
         Operation::Search { .. } => "search",
-        Operation::View { .. } | Operation::ChatMessages { .. } => "view",
+        Operation::View { .. } | Operation::ChatMessages { .. } | Operation::ChatContext { .. } => {
+            "view"
+        }
         Operation::Status { .. } | Operation::Installation { .. } => "status",
         Operation::Forget { .. } => "forget",
         Operation::QuerySilver { .. }
@@ -380,6 +382,17 @@ async fn dispatch(
         )
         .await
         .map(Response::Search),
+        Operation::ChatContext { id, context, node } => {
+            let remote = node.filter(|node| {
+                node != configuration
+                    .shared
+                    .as_ref()
+                    .map_or("local", |shared| shared.node_id.as_str())
+            });
+            inspection::view(configuration, database, id, context, remote)
+                .await
+                .map(Response::View)
+        }
         Operation::View {
             id,
             context,
