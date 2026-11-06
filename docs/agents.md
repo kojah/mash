@@ -54,6 +54,12 @@ A successful probe verifies a new process, not the connection in an already-open
 chat. Restart the agent after setup, repairs, or upgrades. If only the plugin is
 missing, follow the report's repair suggestion rather than repeatedly reindexing.
 
+The report distinguishes an agent's data directory from its CLI being on `PATH`.
+Old histories can be searchable even when that agent is no longer installed.
+To connect an absent agent, install its CLI first, then rerun `mash init`.
+Requiring an incomplete integration with `--agent` exits with status 1 while
+still returning the diagnostic report.
+
 ## Keep new chats searchable
 
 The plugin starts a background catch-up index when a session begins, at most

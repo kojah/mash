@@ -64,7 +64,8 @@ struct Finding {
 #[derive(Debug, Serialize)]
 struct Client {
     agent: Agent,
-    detected: bool,
+    data_directory_found: bool,
+    cli_path: Option<PathBuf>,
     expected: bool,
     findings: Vec<Finding>,
     #[serde(skip)]
@@ -131,7 +132,7 @@ impl Report {
         self.summary.unconfigured = self
             .clients
             .iter()
-            .filter(|client| client.detected && !client.expected)
+            .filter(|client| client.data_directory_found && !client.expected)
             .count();
         self.summary.clients = self
             .clients
@@ -200,6 +201,23 @@ impl Report {
     }
 
     fn next_action(&self) -> Option<String> {
+        for client in &self.clients {
+            if client.expected
+                && client.cli_path.is_none()
+                && client.findings.iter().any(|finding| {
+                    matches!(finding.component, Component::Mcp | Component::Plugin)
+                        && finding.state.needs_attention()
+                })
+            {
+                let command = match client.agent {
+                    Agent::Codex => "codex",
+                    Agent::ClaudeCode => "claude",
+                };
+                return Some(format!(
+                    "Install the {command} CLI and make `{command}` available on PATH, then run `mash init`. CLI search and the dashboard work without this integration."
+                ));
+            }
+        }
         // Unconfigured agents are valid CLI-only use. A missing MCP server is
         // what `init` repairs; a missing plugin alone needs the agent's own
         // plugin commands and network access, since rerunning `init` offline
@@ -351,7 +369,7 @@ pub(crate) fn help_notice(paths: &super::Paths) -> Option<&'static str> {
         )
     } else if summary.unconfigured > 0 {
         Some(
-            "Installation notice: Mash integration is not configured for some detected agents. CLI-only use is valid; run `mash status --installation` for setup details.",
+            "Installation notice: agent data exists without a configured Mash integration. CLI-only use is valid; run `mash status --installation` for setup details.",
         )
     } else {
         None

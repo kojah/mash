@@ -48,6 +48,13 @@ See [custom endpoints](configuration.md#local-qdrant).
 You can still list chats, read messages, and export a backup while the search
 service is unavailable.
 
+On native Windows, a Qdrant log mentioning `gridstore`, “path specified,” and
+`os error 3` can mean its data path is too long. Use the short absolute paths in
+the [native Windows setup](installation.md#native-windows-without-docker).
+For an existing installation, stop Qdrant before moving its data and keep a
+backup; do not delete storage as a first troubleshooting step. Merely changing
+the configured path starts a separate empty store rather than moving your data.
+
 ## Models are missing
 
 For word/phrase search, use `--intent exact-mention`; it does not require models.

@@ -114,7 +114,14 @@ pub(super) fn inspect(
     };
     let mut client = Client {
         agent,
-        detected: root.exists(),
+        data_directory_found: root.exists(),
+        cli_path: executable(
+            match agent {
+                Agent::Codex => "codex",
+                Agent::ClaudeCode => "claude",
+            },
+            environment,
+        ),
         expected: explicitly_expected,
         findings: vec![],
         launch: None,
@@ -123,6 +130,17 @@ pub(super) fn inspect(
     match agent {
         Agent::Codex => codex(&mut client, environment),
         Agent::ClaudeCode => claude(&mut client, environment),
+    }
+    if client.cli_path.is_none() {
+        for finding in &mut client.findings {
+            if matches!(finding.component, Component::Mcp | Component::Plugin)
+                && finding.state.needs_attention()
+            {
+                finding.remediation = finding.remediation.take().map(|remedy| {
+                    format!("The agent CLI was not found on PATH. Install it or fix PATH first. {remedy}")
+                });
+            }
+        }
     }
     if !client.expected {
         client.add(Component::Configuration, State::NotConfigured, Some(root),

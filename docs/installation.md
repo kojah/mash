@@ -140,17 +140,21 @@ the same instance. For nondefault endpoints, see [Qdrant configuration](configur
 
 On Windows x64, download `qdrant-x86_64-pc-windows-msvc.zip` from the
 [Qdrant 1.19.1 release](https://github.com/qdrant/qdrant/releases/tag/v1.19.1)
-and extract it into a dedicated folder, such as `$HOME\qdrant`.
+and extract it into `C:\mash-qdrant` (or another short, writable folder).
+Use a short absolute data path: longer paths under your user profile can make
+Qdrant's payload indexes fail even when its startup health check succeeds.
 In PowerShell, run:
 
 ```powershell
-Set-Location "$HOME\qdrant"
+Set-Location 'C:\mash-qdrant'
 $env:QDRANT__SERVICE__HOST = '127.0.0.1'
+$env:QDRANT__STORAGE__STORAGE_PATH = 'C:\mash-qdrant\storage'
+$env:QDRANT__STORAGE__SNAPSHOTS_PATH = 'C:\mash-qdrant\snapshots'
 .\qdrant.exe
 ```
 
 Keep this window open and use a second terminal for Mash. Qdrant stores its
-data in this folder; start it from the same folder next time. Binding to
+data in these folders; use the same settings next time. Binding to
 `127.0.0.1` keeps the service accessible only on this machine.
 
 ### Native macOS or Linux without Docker

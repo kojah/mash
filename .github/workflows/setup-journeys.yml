@@ -34,6 +34,7 @@ jobs:
           sparse-checkout: |
             /README.md
             /compose.yaml
+            /assets/mash-logo.png
             /docs/*.md
             !/docs/internal/
             /.github/scripts/setup-journey.mjs

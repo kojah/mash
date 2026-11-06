@@ -27,6 +27,8 @@ Public release packages have not been published yet. For now, build with Rust:
 cargo +stable install --locked --git https://github.com/kojah/mash mash
 ```
 
+The first build can take several minutes.
+
 <details>
 <summary>Release installers and package managers (available after publication)</summary>
 
@@ -103,6 +105,9 @@ it to be ready. Mash itself runs on your machine to access your agent histories.
 ```bash
 mash init
 ```
+
+Setup prints progress and a JSON result for agents and scripts. For a visual
+way to browse afterward, run `mash dash`.
 
 Mash finds supported histories in their usual locations and indexes the last
 90 days. It also connects Mash to the Claude Code and Codex CLIs it finds.

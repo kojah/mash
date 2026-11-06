@@ -19,6 +19,20 @@ fn json(command: &mut Command) -> Value {
     value
 }
 
+// These status checks discover the agent CLI but never execute it.
+fn agent_path(root: &Path, agent: &str) -> std::path::PathBuf {
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let executable = bin.join(format!("{agent}{}", std::env::consts::EXE_SUFFIX));
+    std::fs::write(&executable, "discovery-only test fixture").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    bin
+}
+
 /// The report and exit status; an agent named with `--agent` that needs
 /// attention exits 1 with the full report.
 fn report(command: &mut Command) -> (i32, Value) {
@@ -270,8 +284,11 @@ fn installation_names_the_repair_and_fails_for_a_required_agent_that_is_not_conn
     assert_eq!(unused["summary"]["next_action"], Value::Null);
     // Requiring the agent makes its missing integration a failure that names
     // `mash init` and the agent's own registration command.
-    let (code, required) =
-        report(isolated(root.path()).args(["status", "--installation", "--agent", "codex"]));
+    let (code, required) = report(
+        isolated(root.path())
+            .env("PATH", agent_path(root.path(), "codex"))
+            .args(["status", "--installation", "--agent", "codex"]),
+    );
     assert_eq!(code, 1, "{required}");
     assert_eq!(required["summary"]["next_action"], "mash init");
     assert_eq!(required["summary"]["clients"][0]["connected"], false);
@@ -308,6 +325,30 @@ fn installation_probe_fails_for_missing_required_agent_integrations() {
 }
 
 #[test]
+fn installation_distinguishes_agent_data_from_a_missing_cli() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".claude")).unwrap();
+    let (code, value) = report(
+        isolated(root.path())
+            .env("PATH", root.path().join("no-cli"))
+            .args(["status", "--installation", "--agent", "claude-code"]),
+    );
+    assert_eq!(code, 1);
+    assert_eq!(value["clients"][0]["data_directory_found"], true);
+    assert!(value["clients"][0]["cli_path"].is_null());
+    assert!(value["clients"][0].get("detected").is_none());
+    let action = value["summary"]["next_action"].as_str().unwrap();
+    assert!(action.starts_with("Install the claude CLI"), "{action}");
+    let (_, installed) = report(
+        isolated(root.path())
+            .env("PATH", agent_path(root.path(), "claude"))
+            .args(["status", "--installation", "--agent", "claude-code"]),
+    );
+    assert!(installed["clients"][0]["cli_path"].is_string());
+    assert_eq!(installed["summary"]["next_action"], "mash init");
+}
+
+#[test]
 fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join(".codex")).unwrap();
@@ -320,8 +361,11 @@ fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init()
         ),
     )
     .unwrap();
-    let (code, report) =
-        report(isolated(root.path()).args(["status", "--installation", "--agent", "codex"]));
+    let (code, report) = report(
+        isolated(root.path())
+            .env("PATH", agent_path(root.path(), "codex"))
+            .args(["status", "--installation", "--agent", "codex"]),
+    );
     assert_eq!(code, 1, "{report}");
     assert_eq!(
         report["summary"]["clients"][0]["missing"],
