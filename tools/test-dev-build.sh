@@ -7,7 +7,7 @@ cleanup() {
     rm -rf "$scratch"
 }
 trap cleanup EXIT
-mkdir -p "$scratch/repository/tools" "$scratch/repository/app" "$scratch/bin" "$scratch/target"
+mkdir -p "$scratch/repository/tools" "$scratch/repository/app" "$scratch/repository/dashboard" "$scratch/bin" "$scratch/target"
 cp "$repository/tools/build-dev-linux.sh" "$scratch/repository/tools/"
 cp "$repository/Makefile" "$scratch/repository/"
 for helper in generate-history-skill test-dev-api test-dev-build test-run-ansible test-controller-environment test-ansible test-upgrade-local-index; do
@@ -34,12 +34,20 @@ if [[ $1 == build && ! -e $TEST_BUILD_CHILD ]]; then
     echo "$!" > "$TEST_BUILD_CHILD"
 fi
 CARGO
+cat > "$scratch/bin/pnpm" <<'PNPM'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $PWD == */repository/dashboard ]]
+printf 'pnpm %s\n' "$*" >> "$TEST_BUILD_CALLS"
+if [[ $1 == run && -e $TEST_BUILD_FRONTEND_FAIL ]]; then exit 1; fi
+PNPM
 printf '#!/usr/bin/env bash\necho "${TEST_BUILD_COMPILER_VERSION:-rustc-fixture}"\n' > "$scratch/bin/rustc"
-chmod 755 "$scratch/bin/cargo" "$scratch/bin/rustc"
+chmod 755 "$scratch/bin/cargo" "$scratch/bin/rustc" "$scratch/bin/pnpm"
 export PATH="$scratch/bin:$PATH" CARGO_TARGET_DIR="$scratch/target"
 export TEST_BUILD_CALLS="$scratch/calls" TEST_BUILD_FAIL="$scratch/fail" TEST_BUILD_MUTATE="$scratch/mutate"
 export TEST_BUILD_CHILD="$scratch/compiler-daemon.pid"
 export TEST_BUILD_CLIPPY_FAIL="$scratch/clippy-fail"
+export TEST_BUILD_FRONTEND_FAIL="$scratch/frontend-fail"
 run_build() { timeout 10 bash "$scratch/repository/tools/build-dev-linux.sh" "$@"; }
 timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
     DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' >/dev/null
@@ -60,6 +68,8 @@ grep -Fxq 'test-clif --locked --profile ci --test-threads 4' "$TEST_BUILD_CALLS"
 ! grep -q '^build --release' "$TEST_BUILD_CALLS"
 run_build >/dev/null
 [[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
+grep -Fxq 'pnpm install --frozen-lockfile' "$TEST_BUILD_CALLS"
+grep -Fxq 'pnpm run build' "$TEST_BUILD_CALLS"
 run_build >/dev/null
 [[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 1 ]]
 [[ $(grep -c '^build --release' "$TEST_BUILD_CALLS") == 2 ]]
@@ -92,4 +102,8 @@ RUSTFLAGS=test-flags run_build >/dev/null
 rm "$scratch/repository/app/source.rs"
 run_build >/dev/null
 [[ $(grep -c '^test-clif' "$TEST_BUILD_CALLS") == 9 ]]
+builds_before_failure=$(grep -c '^build --release' "$TEST_BUILD_CALLS")
+touch "$TEST_BUILD_FRONTEND_FAIL"
+if run_build >/dev/null 2>&1; then echo 'Failed frontend build was accepted.' >&2; exit 1; fi
+[[ $(grep -c '^build --release' "$TEST_BUILD_CALLS") == "$builds_before_failure" ]]
 echo 'Development build gate reuse and invalidation checks passed.'
