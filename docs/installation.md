@@ -70,6 +70,13 @@ have a published release before its command works.
 brew install kojah/tap/mash
 ```
 
+**Scoop — Windows**
+
+```powershell
+scoop bucket add kojah https://github.com/kojah/mash
+scoop install kojah/mash
+```
+
 **mise**
 
 ```sh
