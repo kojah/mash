@@ -33,6 +33,7 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /README.md
+            /compose.yaml
             /docs/*.md
             !/docs/internal/
             /.github/scripts/setup-journey.mjs

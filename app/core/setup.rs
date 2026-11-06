@@ -130,7 +130,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         Vec::new()
     };
     if agents.is_empty() && request.agents {
-        next.push("No Claude Code or Codex CLI was found on PATH; see the README to connect another agent.".to_owned());
+        next.push("No Claude Code or Codex CLI was found on PATH. CLI search and the dashboard still work; to connect an agent, see https://mashapp.dev/agents/".to_owned());
     }
     next.extend(agent_next_steps(&agents));
     if !request.index {

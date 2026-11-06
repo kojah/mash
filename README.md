@@ -17,6 +17,7 @@ terminal, or browse conversations in the dashboard.
 ## Quick start
 
 You’ll need some existing agent history and a running local Qdrant search service.
+Qdrant powers both word search and semantic search; semantic models are optional.
 
 ### 1. Install Mash
 
@@ -82,21 +83,20 @@ See [installation options](docs/installation.md) for npm, mise, and installer se
 
 ### 2. Start the local search service
 
-With Docker installed, run Qdrant with persistent storage:
+Install and start [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+on macOS/Windows, or [Docker Engine with Compose](https://docs.docker.com/compose/install/)
+on Linux. Windows must use **Linux containers**.
 
-On Windows, Docker Desktop must use **Linux containers**. See the
-[Windows setup options](docs/installation.md#native-windows-without-docker)
-for a PowerShell command and a native alternative without Docker.
+Save our [compose.yaml](https://raw.githubusercontent.com/kojah/mash/main/compose.yaml)
+in a dedicated folder. In a terminal in that folder, run:
 
-```bash
-docker run -d --name mash-local-qdrant --memory 2g \
-  -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 \
-  -v mash-local-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
+```sh
+docker compose up -d --wait
 ```
 
-Mash uses these local addresses by default. Keep Qdrant running while indexing
-or searching; after stopping the container, use `docker start mash-local-qdrant`.
-[Custom endpoints and setup details →](docs/installation.md)
+Compose downloads Qdrant, keeps its data in a persistent volume, and waits for
+it to be ready. Mash itself runs on your machine to access your agent histories.
+[Setup details and alternatives →](docs/installation.md#start-the-local-search-service)
 
 ### 3. Connect your histories
 

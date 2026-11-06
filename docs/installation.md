@@ -92,18 +92,46 @@ download models. WSL uses the Linux instructions.
 
 ## Start the local search service
 
-With Docker running **Linux containers**, this command works in Bash and PowerShell.
+Docker Compose is the recommended setup. Install and start
+[Docker Desktop](https://www.docker.com/products/docker-desktop/) on macOS/Windows,
+or [Docker Engine and the Compose plugin](https://docs.docker.com/compose/install/)
+on Linux. Check that `docker compose version` works.
 On Windows, use Docker Desktop's **Switch to Linux containers** option if
 `docker info --format '{{.OSType}}'` prints `windows`. A “no matching manifest
 for windows” error means the Docker daemon is using the wrong container mode.
 
+Save [compose.yaml](https://raw.githubusercontent.com/kojah/mash/main/compose.yaml)
+in a dedicated folder, such as `~/mash-services`. Open a terminal in that folder
+and run this command (the same in Bash and PowerShell):
+
 ```sh
-docker run -d --name mash-local-qdrant --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 -v mash-local-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
+docker compose up -d --wait
 ```
 
-The named volume keeps search data across container restarts. After a reboot,
-start the existing container with `docker start mash-local-qdrant`.
-Mash does not install or manage Qdrant itself.
+Compose downloads the pinned Qdrant image and waits for search-service readiness.
+It uses a persistent Docker volume and binds the service to this machine only.
+Qdrant powers both word and semantic search. Mash and the optional `mash dash`
+dashboard run on the host, where your histories and configuration are available.
+
+Run these from the same folder to manage the service:
+
+```sh
+docker compose logs qdrant
+docker compose stop
+docker compose up -d --wait
+```
+
+Qdrant restarts when Docker starts unless you explicitly stopped it. Enable
+Docker Desktop's start-at-login option if you want this after signing in.
+Stopping the service keeps its data; `docker compose down --volumes` deletes it.
+
+Already using the old `docker run` instructions? Keep that service running;
+you do not need a second instance. Stop it before switching to Compose to free
+ports 6333/6334. Compose uses a separate volume; run
+`mash index --rebuild-local-views --full` to populate it from your existing index.
+
+If Docker is unavailable, the advanced native alternatives below can also run
+Qdrant. A native run does not validate the recommended Compose setup.
 
 An existing Qdrant 1.19+ service also works. Both HTTP and gRPC ports must reach
 the same instance. For nondefault endpoints, see [Qdrant configuration](configuration.md#local-qdrant).
@@ -125,6 +153,29 @@ Keep this window open and use a second terminal for Mash. Qdrant stores its
 data in this folder; start it from the same folder next time. Binding to
 `127.0.0.1` keeps the service accessible only on this machine.
 
+### Native macOS or Linux without Docker
+
+Download the archive for your machine from the
+[Qdrant 1.19.1 release](https://github.com/qdrant/qdrant/releases/tag/v1.19.1):
+
+| Machine | Archive |
+| --- | --- |
+| macOS, Apple Silicon | `qdrant-aarch64-apple-darwin.tar.gz` |
+| macOS, Intel | `qdrant-x86_64-apple-darwin.tar.gz` |
+| Linux, x86_64 | `qdrant-x86_64-unknown-linux-musl.tar.gz` |
+| Linux, ARM64 | `qdrant-aarch64-unknown-linux-musl.tar.gz` |
+
+Extract it into a dedicated folder, such as `~/qdrant`. Open a terminal there:
+
+```sh
+cd "$HOME/qdrant"
+QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant
+```
+
+Keep that terminal open and run Mash in another. Start Qdrant from the same
+folder next time to reuse its data. The service listens only on this machine;
+Mash's default settings already point to it.
+
 ## Connect your histories
 
 ```sh
@@ -139,6 +190,14 @@ The history plugin's hooks need Python 3.9+; see [agent setup](agents.md).
 For CLI-only use, run `mash init --no-agents`. To configure without indexing,
 use `--no-index`. Existing configuration is kept; avoid `--force` unless you
 intend to replace it (the previous file is backed up).
+
+If indexing fails because Qdrant is stopped, the configuration and history
+already saved are kept. Start Qdrant and rerun `mash init`; `written: false`
+means the existing configuration was reused, not that setup failed.
+
+Setup prints JSON results and progress. Searchable messages are the user and
+assistant dialogue; tool output and reasoning remain available when reading a
+chat but are excluded from search, so the searchable count can be much smaller.
 
 ## Try your first search
 
