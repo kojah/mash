@@ -22,6 +22,22 @@
   border-radius: 2rem;
 }
 
+@media (width < 50rem) {
+  .sl-menu-button {
+    inset-inline-start: var(--sl-nav-pad-x);
+    inset-inline-end: auto;
+  }
+
+  [data-has-sidebar] header.header {
+    padding-inline-start: calc(
+      var(--sl-nav-pad-x) +
+      var(--sl-menu-button-size) +
+      var(--sl-nav-gap)
+    );
+    padding-inline-end: var(--sl-nav-pad-x);
+  }
+}
+
 /* Change pages immediately without fading the entire document. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
