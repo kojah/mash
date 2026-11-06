@@ -22,6 +22,10 @@ Before each meaningful action, append to the journal:
 - Perceived latency: instant, noticeable, or slow, before measuring it.
 - Confusion, missing instructions, or surprising behavior in your own words.
 
+Capture the native command's exit status immediately (`$LASTEXITCODE` in
+PowerShell, `$?` in Bash), before formatting its output or running another
+command. Do not infer success from a tool wrapper or a pipeline's final command.
+
 Read only user documentation and command help during exploration. Do not read
 AGENTS.md, implementation source, tests, internal docs, issues, or other testers'
 reports. A compiler can download source as part of a documented installation;

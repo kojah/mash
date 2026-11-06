@@ -16,12 +16,14 @@ const home = local ? join(temporary, 'fixture-home') : homedir();
 await mkdir(work, { recursive: true });
 await mkdir(report, { recursive: true });
 await mkdir(join(work, 'docs'), { recursive: true });
+await mkdir(join(report, 'user-docs', 'docs'), { recursive: true });
 const files = ['README.md', ...(await readdir('docs')).filter(n => n.endsWith('.md')).map(n => `docs/${n}`)];
 const documents = {};
 for (const file of files) {
   const content = await readFile(file);
   documents[file] = createHash('sha256').update(content).digest('hex');
   await cp(file, join(work, file));
+  await cp(file, join(report, 'user-docs', file));
 }
 const history = join(home, '.claude', 'projects', '-work-log-service');
 await mkdir(history, { recursive: true });
@@ -37,6 +39,7 @@ await writeFile(join(history, `${chat}.jsonl`), messages.map(m => JSON.stringify
 await writeFile(join(report, 'metadata.json'), JSON.stringify({
   revision: process.env.GITHUB_SHA ?? 'local-validation',
   platform: process.env.UX_PLATFORM ?? process.platform,
+  architecture: process.arch,
   tester: process.env.UX_TESTER ?? 'local',
   run: process.env.GITHUB_RUN_ID ?? null,
   attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,

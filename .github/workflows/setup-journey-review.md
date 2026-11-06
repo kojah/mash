@@ -65,6 +65,15 @@ recurrence only when separate journals support it. Separate runner limitations, 
 other infrastructure failures from Mash bugs. Deduplicate accepted findings
 across platforms while preserving the original journal and entry references.
 
+Verify claims against the actual commands and outputs in session.md, not just
+the journal's interpretation. In particular, `$?` after a pipeline may describe
+`head` or `tail`, not Mash. Treat such exit-code claims as unverified. Compare
+documentation claims with the user-docs snapshot when available, checking its
+hashes against metadata. If an older run has no snapshot, do not accept claims
+that documentation omits a prerequisite solely from the tester's assertion.
+Keep expected JSON output, distinct revision/schema counters, and the test
+agent's own indexed history separate from confirmed product defects.
+
 Write setup-review.md in the GITHUB_WORKSPACE directory with:
 1. Source run link, tested revision, platform coverage and outcome per tester.
 2. Ranked accepted findings: severity, platform, friction, concrete fix, evidence.
