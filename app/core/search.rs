@@ -22,6 +22,58 @@ pub(super) struct Input {
     pub(super) local: bool,
 }
 
+fn freshness_warnings(database: &Path, providers: &[crate::provider::Provider]) -> Vec<String> {
+    if providers.is_empty() {
+        return Vec::new();
+    }
+    let mut warnings = Vec::new();
+    match crate::watch::active(database) {
+        Ok(false) => warnings.push("Live indexing is inactive for this local database. New messages may be missing until the next indexing run. Run `mash index` to catch up or `mash index --watch` for ongoing updates. No watcher does not by itself prove stale data; source freshness has not been checked.".into()),
+        Ok(true) => {},
+        Err(_) => warnings.push("Watcher activity could not be determined for this local database. Recent history may be missing; check `mash status` and run `mash index` to refresh.".into()),
+    }
+    let Ok(storage) = Storage::open(database) else {
+        warnings.push("Recorded local provider scan evidence could not be read; history freshness is unknown.".into());
+        return warnings;
+    };
+    for &provider in providers {
+        match storage.coverage_scan(provider) {
+            Ok((crate::silver::certificate::Completeness::Complete, 0)) => {},
+            Ok((state, rejected)) => warnings.push(format!(
+                "Local {provider} scan evidence is {state:?} with {rejected} rejected sources. Results may omit history even if a watcher is active. Run `mash index` and inspect its result."
+            )),
+            Err(_) => warnings.push(format!("Local {provider} scan evidence is unavailable; history freshness is unknown.")),
+        }
+    }
+    warnings
+}
+
+#[test]
+fn freshness_warnings_distinguish_watch_and_scan_evidence() {
+    use crate::provider::Provider;
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("silver.sqlite3");
+    let mut storage = Storage::open_writer(&database).unwrap();
+    storage.begin_silver_scan(Provider::Codex).unwrap();
+    storage.finish_silver_scan(Provider::Codex, true).unwrap();
+    storage.commit_writer().unwrap();
+    drop(storage);
+    assert_eq!(freshness_warnings(&database, &[]), Vec::<String>::new());
+    let warnings = freshness_warnings(&database, &[Provider::Codex]);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("Live indexing is inactive"));
+    let lock = std::fs::File::create(directory.path().join("silver.sqlite3.watch-lock")).unwrap();
+    lock.lock().unwrap();
+    assert_eq!(
+        freshness_warnings(&database, &[Provider::Codex]),
+        Vec::<String>::new()
+    );
+    let warnings = freshness_warnings(&database, &[Provider::ClaudeCode]);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("Unverified"));
+    drop(lock);
+}
+
 pub(super) async fn preflight(
     configuration: &ResolvedConfig,
     operation: &super::Operation,
@@ -173,6 +225,12 @@ pub(super) async fn run(
         None
     };
     let mut response = run_inner(configuration, database, models, input).await?;
+    if !shared_only && configuration.views.query.freshness_warnings {
+        let database = database.to_path_buf();
+        let providers = configuration.providers.keys().copied().collect::<Vec<_>>();
+        response.freshness_warnings =
+            crate::blocking(move || Ok(freshness_warnings(&database, &providers))).await?;
+    }
     // Only the page's results are reordered: pages still partition the
     // relevance ranking, so paging never skips or repeats a result.
     if sort == crate::search_filter::Sort::Recent {
@@ -320,6 +378,7 @@ async fn shared_hybrid(
     let collected =
         crate::search_results::collect(results, unit, page, &query, options.output_redaction);
     Ok(SearchResponse {
+        freshness_warnings: Vec::new(),
         notice: None,
         diagnostics: None,
         intent: crate::views::exact::Intent::RelatedDiscussion,
@@ -359,6 +418,7 @@ async fn shared_exact(
     let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
     Ok(SearchResponse {
         notice: None,
+        freshness_warnings: Vec::new(),
         diagnostics: None,
         intent: crate::views::exact::Intent::ExactMention,
         realized_mode: exact_mode(shared_error.is_some(), database.is_none()),
@@ -401,6 +461,7 @@ async fn local_exact(
     let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
     Ok(SearchResponse {
         notice: None,
+        freshness_warnings: Vec::new(),
         diagnostics: None,
         intent: crate::views::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
@@ -488,6 +549,7 @@ async fn local_search(
     );
     Ok(SearchResponse {
         notice: None,
+        freshness_warnings: Vec::new(),
         diagnostics: None,
         intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,

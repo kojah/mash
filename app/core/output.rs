@@ -159,6 +159,8 @@ enum SearchResults<'a> {
 
 #[derive(Serialize)]
 struct Search<'a> {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    freshness_warnings: &'a Vec<String>,
     query: &'a str,
     intent: crate::views::exact::Intent,
     realized_mode: &'a SearchMode,
@@ -209,6 +211,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
             ),
         };
         Self {
+            freshness_warnings: &value.freshness_warnings,
             query: &value.query,
             intent: value.intent,
             realized_mode: &value.realized_mode,

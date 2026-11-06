@@ -245,6 +245,8 @@ pub(crate) enum SearchMode {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchResponse {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) freshness_warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) diagnostics: Option<crate::views::diagnostics::Diagnostics>,
     pub(crate) query: String,

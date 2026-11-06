@@ -206,6 +206,8 @@ impl Build {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Query {
+    /// Include read-only local indexing freshness warnings with search results.
+    pub(crate) freshness_warnings: bool,
     pub(crate) intent: super::exact::Intent,
     pub(crate) unit: SearchUnit,
     pub(crate) limit: usize,
@@ -340,6 +342,7 @@ impl Options {
 impl Default for Query {
     fn default() -> Self {
         Self {
+            freshness_warnings: true,
             intent: super::exact::Intent::default(),
             unit: SearchUnit::Chats,
             limit: 20,
@@ -348,6 +351,15 @@ impl Default for Query {
             experimental_gpu_reranking: false,
         }
     }
+}
+
+#[test]
+fn freshness_warnings_default_on_and_can_be_disabled() {
+    let default: Configuration = toml::from_str("").unwrap();
+    assert!(default.query.freshness_warnings);
+    let disabled: Configuration = toml::from_str("[query]\nfreshness_warnings = false").unwrap();
+    assert!(!disabled.query.freshness_warnings);
+    assert_eq!(default.build, disabled.build);
 }
 
 impl Configuration {

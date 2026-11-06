@@ -1753,6 +1753,25 @@ watcher separately; all MCP sessions reading that database see its committed
 updates without reconnecting. With no watcher, freshness advances only when an
 explicit CLI or MCP `index` operation runs. No daemon is installed.
 
+Local and combined searches include `freshness_warnings` in JSON and MCP text
+when no watcher holds the database's leader lock, watcher activity cannot be
+checked, or configured providers have incomplete/unverified scan evidence.
+These warnings do not block results or start indexing. Shared-only searches do
+not inspect the caller's local watcher. A running watcher and a completed scan
+do not prove that current provider files are indexed: this lightweight check
+does not crawl history, detect newly created files, or report a last-success
+timestamp or historical indexing error. Check the watcher's output for failures.
+To suppress these warnings (enabled by default, no rebuild required):
+
+```toml
+[views.query]
+freshness_warnings = false
+```
+
+This switch does not suppress schema incompatibility errors. MCP returns those
+as errors in both text and structured output, with reconnect/upgrade guidance
+for newer silver schemas and export/import guidance for older ones.
+
 Long-lived MCP and CLI watch processes register locked records beside the
 selected database in `<database>.runtimes`. Installation diagnostics list their
 PIDs, running revisions, invocation paths and whether those executables still

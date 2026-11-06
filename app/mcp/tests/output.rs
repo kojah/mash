@@ -1,5 +1,76 @@
 use super::*;
 
+#[tokio::test]
+async fn schema_mismatch_guidance_reaches_mcp_even_with_freshness_warnings_disabled() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("silver.sqlite3");
+    let config = directory.path().join("config.toml");
+    std::fs::write(
+        &config,
+        "version=1\nproviders={}\n[views.query]\nfreshness_warnings=false\n",
+    )
+    .unwrap();
+    let server = Mash {
+        runtime: None,
+        paths: Arc::new(Paths {
+            config: Some(config),
+            db: Some(database.clone()),
+            models_dir: Some(directory.path().join("models")),
+        }),
+        gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+    };
+    for (version, guidance) in [
+        (1, "mash import --keep-identity"),
+        (i32::MAX, "Reconnect Mash MCP"),
+    ] {
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        connection
+            .pragma_update(None, "user_version", version)
+            .unwrap();
+        drop(connection);
+        let before = std::fs::read(&database).unwrap();
+        for detail in [Detail::Compact, Detail::Extended] {
+            let request: Search = serde_json::from_value(json!({
+                "query": "recent chat", "intent": "exact-mention", "local": true
+            }))
+            .unwrap();
+            let result = server.execute_detailed(request.operation(), detail).await;
+            assert_eq!(result.is_error, Some(true));
+            let data = result.structured_content.unwrap();
+            assert_eq!(data["error"]["kind"], "schema-incompatible");
+            assert!(
+                data["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains(guidance)
+            );
+            assert!(result.content[0].as_text().unwrap().text.contains(guidance));
+            assert_eq!(std::fs::read(&database).unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn freshness_warning_survives_compact_and_extended_search_output() {
+    let warning = "Live indexing is inactive; recent messages may be missing.";
+    for detail in [Detail::Compact, Detail::Extended] {
+        let response: core::SearchResponse = serde_json::from_value(serde_json::json!({
+            "query": "missing recent chat", "realized_mode": "local-lexical",
+            "unit": "chats", "results": [], "shared": false,
+            "freshness_warnings": [warning]
+        }))
+        .unwrap();
+        let result = tool_result_detailed(Ok(core::Response::Search(response)), detail);
+        assert_ne!(result.is_error, Some(true));
+        assert_eq!(
+            result.structured_content.unwrap()["freshness_warnings"][0],
+            warning
+        );
+        assert!(result.content[0].as_text().unwrap().text.contains(warning));
+    }
+}
+
 #[test]
 fn database_lock_error_preserves_evidence_in_mcp_text_and_structure() {
     for detail in [Detail::Compact, Detail::Extended] {

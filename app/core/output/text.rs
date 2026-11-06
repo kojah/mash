@@ -154,6 +154,9 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
     line(out, &format!("Shared results included: {}", value.shared));
     warning(out, "shared search", value.shared_error);
     warning(out, "shared context", value.shared_context_error);
+    for message in value.freshness_warnings {
+        warning(out, "local indexing", Some(message));
+    }
     if count == 0 {
         line(
             out,

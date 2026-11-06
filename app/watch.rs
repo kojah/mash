@@ -14,6 +14,42 @@ const RETRY: Duration = Duration::from_secs(30);
 const RECONCILE: Duration = Duration::from_secs(300);
 const STANDBY_POLL: Duration = Duration::from_secs(1);
 
+/// Observe the leader lock without creating files or registering a watcher.
+/// A held lock is evidence of leadership, not successful indexing or freshness.
+pub(crate) fn active(database: &Path) -> std::io::Result<bool> {
+    let mut path = std::fs::canonicalize(database)?.into_os_string();
+    path.push(".watch-lock");
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    match file.try_lock_shared() {
+        Ok(()) => Ok(false), // Dropping the file releases our temporary probe.
+        Err(std::fs::TryLockError::WouldBlock) => Ok(true),
+        Err(std::fs::TryLockError::Error(error)) => Err(error),
+    }
+}
+
+#[test]
+fn freshness_probe_observes_lock_ownership_not_file_existence() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("silver.sqlite3");
+    std::fs::write(&database, []).unwrap();
+    assert!(!active(&database).unwrap());
+    let path = directory.path().join("silver.sqlite3.watch-lock");
+    assert!(!path.exists());
+    let leader = try_lead(&path).unwrap().unwrap();
+    assert!(active(&database).unwrap());
+    drop(leader);
+    assert!(!active(&database).unwrap());
+    assert!(try_lead(&path).unwrap().is_some());
+    let other_probe = std::fs::File::open(&path).unwrap();
+    other_probe.lock_shared().unwrap();
+    assert!(!active(&database).unwrap());
+    assert!(active(&directory.path().join("missing")).is_err());
+}
+
 /// Whether this process indexes for its database or waits for the leader to exit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
