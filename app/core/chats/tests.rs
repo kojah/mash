@@ -52,6 +52,50 @@ async fn dashboard_catalog_preserves_copies_and_partial_failure() {
     assert!(response.shared_error.is_some());
 }
 
+#[test]
+fn dashboard_redaction_reuses_values_without_crossing_policy_or_source_changes() {
+    let source = "password=\"sensitive-value\"";
+    let make = |value: &str| Chat {
+        chat_id: value.into(),
+        provider: Provider::Codex,
+        node_id: "local".into(),
+        metadata: ChatMetadata {
+            title: Some(value.into()),
+            project: Some(value.into()),
+            repository: Some(value.into()),
+            ..Default::default()
+        },
+    };
+    let response = finish_dashboard(
+        vec![make(source), make(source)],
+        "local".into(),
+        None,
+        crate::redaction::Policy::ON,
+    );
+    for chat in response.chats {
+        assert_eq!(
+            chat.metadata.title.as_deref(),
+            Some("password=\"[REDACTED_SECRET]\"")
+        );
+        assert_eq!(chat.metadata.project, chat.metadata.title);
+        assert_eq!(chat.metadata.repository, chat.metadata.title);
+    }
+    let raw = finish_dashboard(
+        vec![make(source)],
+        "local".into(),
+        None,
+        crate::redaction::Policy::new(false),
+    );
+    assert_eq!(raw.chats[0].metadata.title.as_deref(), Some(source));
+    let changed = finish_dashboard(
+        vec![make("benign")],
+        "local".into(),
+        None,
+        crate::redaction::Policy::ON,
+    );
+    assert_eq!(changed.chats[0].metadata.title.as_deref(), Some("benign"));
+}
+
 fn config(directory: &Path, url: &str) -> ResolvedConfig {
     let path = directory.join("config.toml");
     std::fs::write(&path, format!("version = 1\nproviders = {{}}\n[shared]\ngroup_id = 'group'\nnode_id = 'laptop'\napi_url = '{url}'\ntoken_env = 'HOME'\n")).unwrap();

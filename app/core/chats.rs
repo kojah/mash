@@ -83,6 +83,16 @@ pub(super) async fn dashboard(
         }
         Err(error) => Some(error.error.message),
     };
+    let output = config.redaction.output();
+    crate::blocking(move || Ok(finish_dashboard(chats, local_node, shared_error, output))).await
+}
+
+fn finish_dashboard(
+    mut chats: Vec<Chat>,
+    local_node: String,
+    shared_error: Option<String>,
+    output: crate::redaction::Policy,
+) -> DashboardCatalog {
     chats.sort_by(|a, b| {
         b.metadata
             .updated_at
@@ -92,13 +102,31 @@ pub(super) async fn dashboard(
     });
     let truncated = chats.len() > 10_000;
     chats.truncate(10_000);
+    // Project/repository values and fallback titles repeat across many chats.
+    // Reuse only within this response, under one output policy. No persisted
+    // cache can outlive a policy or source change.
+    let mut masked = std::collections::HashMap::<String, String>::new();
     for chat in &mut chats {
         // The dashboard needs display metadata, not provenance or entire prompts
         // used as fallback titles. Avoid serializing/redacting unused evidence.
         chat.metadata.enrichment = None;
         // Redact before truncation: cutting a credential could prevent a pattern
         // from recognizing it and expose its prefix in the title.
-        config.redaction.output().metadata(&mut chat.metadata);
+        for value in [
+            &mut chat.metadata.title,
+            &mut chat.metadata.project,
+            &mut chat.metadata.repository,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(safe) = masked.get(value.as_str()) {
+                *value = safe.clone();
+            } else {
+                let safe = output.text(value);
+                masked.insert(std::mem::replace(value, safe.clone()), safe);
+            }
+        }
         if let Some(title) = &mut chat.metadata.title {
             let first = title
                 .lines()
@@ -111,12 +139,12 @@ pub(super) async fn dashboard(
             *title = preview;
         }
     }
-    Ok(DashboardCatalog {
+    DashboardCatalog {
         chats,
         local_node,
         truncated,
         shared_error,
-    })
+    }
 }
 
 #[tracing::instrument(name = "list_chats", skip_all)]
