@@ -75,6 +75,36 @@ upgrade preserves a private export and runs one explicit sync to re-ingest stale
 source interpretation, rebuild views and publish. Missing models require explicit installation. The API helper
 locks rollouts, rolls back failed releases and keeps identical healthy releases.
 
+For a systemd-owned API, configure the trusted inventory commands to call
+`tools/restart-systemd-api.sh` with `preflight`, `install`, or `check`. Its remaining
+arguments are the user service unit, candidate artifact, installed binary,
+server TOML, environment file, release pointer, API URL, token variable name,
+private backup root, and shared-silver directory. The unit must run that binary
+with the supplied configuration and environment, and own every server writer to
+that directory. Do not substitute the legacy PID-based installer.
+Use `--next-environment PATH` to switch a prepared environment file while the
+service is stopped, for example to select a fresh Qdrant instance. The old file
+is retained and restored with the binary on pre-activation failure. After
+activation, keep both the new environment and new state during forward recovery.
+
+Schema changes require the explicit `--retire-incompatible-silver` option and a
+verified republish plan for every affected node. While the service is stopped,
+the systemd installer retains the **entire** old shared-silver directory,
+including its transfer catalogue and spool, under the private backup root on
+the same filesystem. All nodes then need to republish; shared search is incomplete
+until they do. Verify local export/import compatibility and retained histories
+before starting this operation. Archive record versions can change independently
+of the SQLite schema; the local upgrade tool does not convert arbitrary archives.
+
+The systemd installer restores old state only if failure occurs before candidate
+activation. Once activation starts, the new process may have accepted writes even
+if readiness fails, so automatic rollback is forbidden. Failures leave a
+`POINTER.systemd-pending` marker identifying the retained directory and phase.
+Inspect and recover that release forward before removing the marker; rerunning
+deployment does not bypass it. Process-crash recovery is conservative and manual;
+the script does not promise power-loss atomicity or control separately launched
+servers. See the `SystemdCutover` model and disposable shell fixtures.
+
 The probe verifies build and contract identity, query readiness, shared freshness
 and bounded lexical/available semantic searches. Restart existing Mash MCP
 connections after upgrading the binary, and reload updated plugin instructions.

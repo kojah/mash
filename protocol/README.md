@@ -75,6 +75,30 @@ regressions use Rust tests; no protocol-model transition changes are required.
 
 ## Models and source boundaries
 
+### SystemdCutover: shared-state retirement and activation
+
+`SystemdCutover.tla` maps to `tools/restart-systemd-api.sh`. Preparation writes
+the pending marker; `Stop` represents a successful systemd stop and zero MainPID.
+`Retire` is the same-filesystem rename of the entire shared-silver directory,
+including its transfer catalogue and spool. `Activate` records the recovery
+boundary before `systemctl start`; `Start` and `Accept` permit a new acknowledged
+write before readiness or the release-pointer update succeeds. `Rollback` is
+allowed only before activation. After activation, failures retain the marker and
+require forward recovery. A process interruption can leave any completed step
+intact; a subsequent invocation refuses an existing marker.
+
+The model checks that receipts stay with their history, retirement stops the old
+owner, and rollback cannot discard new acknowledgements. Two deliberate mutations
+retain the old catalogue or permit rollback after activation; both must produce
+the named counterexample. Shell fixtures exercise pre-activation restoration,
+failed starts with a simulated accepted write, pending-marker rejection, and
+successful coupled retirement. These fixtures mock systemctl; they do not prove
+systemd process containment. The live service must own all writers to its root,
+and operators must prevent independent server starts during cutover. Metadata
+durability after power loss and manual recovery are outside this model. The
+script retains old state for recovery; it does not migrate archive formats or
+establish that every node can republish. Validate those prerequisites separately.
+
 ### MutationAdmission: bounded FIFO waiting and worker ownership
 
 `MutationAdmission.tla` models four requests, one or two active slots and two

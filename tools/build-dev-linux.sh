@@ -51,6 +51,7 @@ else
     cheap_checks
     source tools/controller-environment.sh
     run bash tools/test-dev-api.sh
+    run bash tools/test-systemd-api.sh
     run bash tools/test-dev-build.sh
     run bash tools/test-run-ansible.sh
     run bash tools/test-controller-environment.sh
