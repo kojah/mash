@@ -98,6 +98,13 @@ JSON limited to opaque provider tool payloads and SDK boundaries requiring it.
 Use `apply_patch` for source edits. Preserve unrelated worktree changes. Do not
 create compatibility copies or versioned replacement files.
 
+## Documentation
+
+Use `.agents/skills/mash-documentation/SKILL.md` for README/documentation work
+and documentation updates accompanying user-visible behavior changes. Keep the
+README focused on first-time setup and use; place technical reference in the
+appropriate guide linked from `docs/README.md`.
+
 ## Dashboard front end
 
 `dashboard/` holds the front end for `mash dash`, a local, read-only web
