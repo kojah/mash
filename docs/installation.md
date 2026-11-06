@@ -211,7 +211,13 @@ If indexing fails because Qdrant is stopped, the configuration and history
 already saved are kept. Start Qdrant and rerun `mash init`; `written: false`
 means the existing configuration was reused, not that setup failed.
 
-Setup prints JSON results and progress. Searchable messages are the user and
+Setup writes progress to stderr and the final JSON result to stdout. Both appear
+in your terminal by default. `"agents": []` means no agents were connected;
+successful indexing does not mean an agent connection was set up. Read `next`
+in the result for the reason and follow [agent setup](agents.md) to connect one.
+You can use CLI search without connecting an agent.
+
+Searchable messages are the user and
 assistant dialogue; tool output and reasoning remain available when reading a
 chat but are excluded from search, so the searchable count can be much smaller.
 

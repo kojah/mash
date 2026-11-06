@@ -110,12 +110,14 @@ Otherwise, setup is one command:
 mash init
 ```
 
-Setup prints progress and a JSON result for agents and scripts. For a visual
-way to browse afterward, see [dashboard setup](docs/dashboard.md).
+Setup prints progress to stderr and a final JSON result to stdout. If the result
+has `"agents": []`, no agents were connected; check `next` for the reason and
+[connection instructions](docs/agents.md). You can still search with the CLI.
+For a visual way to browse afterward, see [dashboard setup](docs/dashboard.md).
 
 The setup result lists the provider folders selected;
 [customize them](docs/configuration.md) if needed.
-Restart those agents, then try asking:
+Restart any agents that setup connected, then try asking:
 
 > “Use Mash to find where we discussed the database migration.”
 
