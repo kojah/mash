@@ -32,7 +32,7 @@ fn freshness_warnings(database: &Path, providers: &[crate::provider::Provider]) 
         Ok(true) => {},
         Err(_) => warnings.push("Watcher activity could not be determined for this local database. Recent history may be missing; check `mash status` and run `mash index` to refresh.".into()),
     }
-    let Ok(storage) = Storage::open(database) else {
+    let Ok(storage) = Storage::open_silver(database) else {
         warnings.push("Recorded local provider scan evidence could not be read; history freshness is unknown.".into());
         return warnings;
     };
@@ -46,6 +46,19 @@ fn freshness_warnings(database: &Path, providers: &[crate::provider::Provider]) 
         }
     }
     warnings
+}
+
+#[test]
+fn freshness_inspection_never_creates_a_missing_database() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("missing.sqlite3");
+    let warnings = freshness_warnings(&database, &[crate::provider::Provider::Codex]);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("could not be read"))
+    );
+    assert!(!database.exists());
 }
 
 #[test]
