@@ -82,6 +82,15 @@ fi
 }
 # Repeat runtime verification before stopping anything.
 check_service
+digest=$(sha256sum "$artifact")
+config_digest=$(sha256sum "$config")
+environment_digest=$(sha256sum "${next_environment:-$environment}")
+if ! $incompatible && jq -e --arg binary "${digest%% *}" --arg config "${config_digest%% *}" \
+    --arg environment "${environment_digest%% *}" \
+    '.binary_sha256 == $binary and .config_sha256 == $config and .environment_sha256 == $environment' "$pointer" >/dev/null; then
+    echo '{"deployed":false,"unchanged":true}'
+    exit 0
+fi
 cp "$destination" "$scratch/previous-mash"
 cp "$pointer" "$scratch/previous-release.json"
 cp "$environment" "$scratch/previous-environment"

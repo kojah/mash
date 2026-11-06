@@ -117,6 +117,9 @@ run install
 [[ $(jq -r .deployed "$scratch/pointer") == true ]]
 [[ $(jq -r .republish_required "$scratch/pointer") == false ]]
 [[ $(cat "$scratch/silver/group/new-write") == accepted ]]
+live_pid=$(cat "$scratch/pid")
+[[ $(run install | jq -r .unchanged) == true ]]
+[[ $(cat "$scratch/pid") == "$live_pid" ]]
 cp "$backup/shared-state/group/node.sqlite3" "$scratch/silver/group/node.sqlite3"
 mkdir "$scratch/silver/sync"
 cp "$backup/shared-state/sync/catalog.sqlite3" "$scratch/silver/sync/catalog.sqlite3"
