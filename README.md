@@ -16,6 +16,9 @@ terminal, or browse conversations in the dashboard.
 
 ## Quick start
 
+Start with Mash on one machine. This is the default setup: your agent histories,
+index, and search service stay on that machine. You can add sharing later.
+
 You’ll need some existing agent history and a running local Qdrant search service.
 Qdrant powers both word search and semantic search; semantic models are optional.
 

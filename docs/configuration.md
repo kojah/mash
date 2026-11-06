@@ -4,6 +4,10 @@ Start with the TOML file created by `mash init`. Run `mash status` to see its
 resolved location, or select a file explicitly with `mash --config PATH status`.
 Use TOML for this file.
 
+For one machine, keep the local setup created by `mash init`. Choose your
+history folders and search preferences below; shared connection settings are
+only needed when you enable multi-machine sharing.
+
 ## Choose histories and an age limit
 
 Each configured provider is enabled. Roots must be absolute paths to that

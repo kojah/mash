@@ -1,7 +1,12 @@
 # Install Mash
 
-You need some existing history from a supported coding agent and a local
-Qdrant search service. Shared hosting and semantic models are optional.
+This guide sets up Mash on one machine, the default for everyday use. Install
+Mash and run Qdrant on the same computer as your coding-agent histories.
+Indexing and search stay local; semantic models are optional.
+
+Follow the steps below to install, connect your histories, and search. Add
+[multi-machine sharing](shared-index.md) later if you want to search chats from
+another computer.
 
 Already using Mash? Read [upgrades and backups](upgrades.md) before replacing
 a release that uses a different database schema.
