@@ -134,7 +134,22 @@ fn collect_inner(paths: &Paths, mut init: InitRequest) -> Result<Draft, Failure>
         });
     }
     select_agents(&mut init)?;
-    let mut summary = format!("Configuration: {}\n", current.path.display());
+    let summary = setup_summary(&current.path, &choices, &init);
+    eprintln!("{summary}");
+    Ok(Draft {
+        init,
+        qdrant: current.qdrant,
+        shared: choices.shared,
+        summary,
+    })
+}
+
+fn setup_summary(
+    path: &std::path::Path,
+    choices: &config::init::Choices,
+    init: &InitRequest,
+) -> String {
+    let mut summary = format!("Configuration: {}\n", path.display());
     summary.push_str(if choices.shared.is_some() {
         "Search: local and shared; indexed history will be uploaded to your server.\n"
     } else {
@@ -176,13 +191,7 @@ fn collect_inner(paths: &Paths, mut init: InitRequest) -> Result<Draft, Failure>
         "Agent integrations: {}",
         if agents.is_empty() { "none" } else { &agents }
     );
-    eprintln!("{summary}");
-    Ok(Draft {
-        init,
-        qdrant: current.qdrant,
-        shared: choices.shared,
-        summary,
-    })
+    summary
 }
 
 fn select_agents(init: &mut InitRequest) -> Result<(), Failure> {
@@ -203,9 +212,9 @@ fn select_agents(init: &mut InitRequest) -> Result<(), Failure> {
             eprintln!("No Claude Code or Codex CLI found. You can connect an agent later.");
             Vec::new()
         } else {
-            MultiSelect::new("Which agents should Mash connect to?", labels)
+            MultiSelect::new("Which agents should get access to Mash search?", labels)
                 .with_default(&defaults)
-                .with_help_message("Installs the Mash MCP connection and history plugin; select none for CLI-only use.")
+                .with_help_message("These agents can search all histories selected above. Installs the Mash MCP connection and history plugin; select none for CLI-only use.")
                 .prompt()?.into_iter().filter_map(|label| available.iter().find(|(name, _, _)| *name == label).map(|(_, _, kind)| *kind)).collect()
         };
         init.agents = !selected.is_empty();
@@ -278,9 +287,10 @@ fn histories(mut roots: ProviderRoots) -> Result<ProviderRoots, Failure> {
                 }
             }
             let defaults: Vec<_> = (0..providers.len()).collect();
-            let selected = MultiSelect::new("Which agent histories should Mash search?", providers)
-                .with_default(&defaults)
-                .prompt()?;
+            let selected =
+                MultiSelect::new("Which conversation histories should Mash index?", providers)
+                    .with_default(&defaults)
+                    .prompt()?;
             roots.retain(|provider, _| selected.contains(provider));
         }
         if roots.is_empty()
