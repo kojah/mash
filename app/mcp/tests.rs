@@ -418,6 +418,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "list_records",
             "models_install",
             "query_silver",
+            "recall_records",
             "record",
             "search",
             "status",

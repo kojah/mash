@@ -8,6 +8,27 @@ does not prove that an interpretation is correct.
 The current implementation provides local recording, shared reads and portable
 backups. Automatic recall integration is still being added.
 
+For a small context packet, ask your agent to call `recall_records` with an exact
+`scope`, such as `{"kind":"repository","identity":"YOUR_REPOSITORY_ID"}`.
+An optional `query` ranks matching words; this is lexical retrieval and needs no
+embedding model. Current established records rank first, with bounded boosts for
+distinct confirmations and recent recording dates. Reading never confirms them.
+Use `get_record` on an item's ID to inspect its supporting evidence.
+
+Recall returns at most eight records by default and limits its structured JSON
+result to 6,000 bytes. Set `limit` (1–20) and `byte_budget` (1,024–32,768) to adjust
+those limits. `truncated` means a relevant result did not fit; `scan_limited`
+means more than 256 recent records existed in the selected scope. Use
+`list_records` and its pagination for a complete inspection.
+
+`include_review` adds records labeled `candidate`, `stale_evidence` or `inactive`
+after current records. These labels are not approval. Personal records are only
+included alongside another scope when explicitly requested with `include_personal`.
+For file context, supply `file: "src/main.rs"` with a repository or local-project
+scope. It matches that exact relative path in the record text or retained quotes,
+not `other/src/main.rs` or `src/main.rs.bak`; personal scope expansion is disabled
+for file requests. Hook integration is still pending.
+
 Ordinary `mash export` backups include records, their revisions, evidence and
 confirmations. A normal import creates a new owner and remaps record IDs and
 links. An `import --keep-identity` restore retains IDs and retry receipts; retire

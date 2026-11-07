@@ -41,7 +41,7 @@ async fn execute_admitted(
     use tracing::Instrument;
     let operation = match &request.operation {
         Operation::RecordMutation(_) => "record_mutation",
-        Operation::Records(_) | Operation::Record(_) => "records",
+        Operation::Records(_) | Operation::Record(_) | Operation::RecallRecords(_) => "records",
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
         Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
@@ -271,6 +271,15 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::RecallRecords(request) => {
+            let database = database.to_path_buf();
+            let policy = configuration.redaction.output();
+            crate::blocking(move || {
+                crate::storage::Storage::open_silver(&database)?.recall_records(&request, policy)
+            })
+            .await
+            .map(Response::RecallRecords)
+        }
         Operation::RecordMutation(request) => {
             let database = database.to_path_buf();
             crate::blocking(move || {

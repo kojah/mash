@@ -55,6 +55,17 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
         history.structured_content.unwrap()["revisions"][0]["evidence_current"],
         true
     );
+    let recalled = call(
+        "recall_records",
+        json!({"scope":{"kind":"chat","id":"decision-thread"},"query":"Qdrant","byte_budget":1024}),
+    )
+    .await
+    .unwrap();
+    assert_ne!(recalled.is_error, Some(true), "{recalled:?}");
+    let packet = recalled.structured_content.unwrap();
+    assert_eq!(packet["records"][0]["id"], receipt["record_id"]);
+    assert_eq!(packet["records"][0]["status"], "current");
+    assert!(serde_json::to_vec(&packet).unwrap().len() <= 1024);
     let question = call("record", json!({"operation_id":"sdk-question","change":{"action":"create","scope":{"kind":"chat","id":"decision-thread"},"body":{"statement":"Which engine?","review":"established","recorded_by":"test agent","details":{"kind":"open_question","state":"open"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}})).await.unwrap();
     assert_ne!(question.is_error, Some(true), "{question:?}");
     let question = question.structured_content.unwrap();

@@ -55,6 +55,7 @@ pub(crate) enum Operation {
     RecordMutation(crate::records::Mutation),
     Records(crate::records::List),
     Record(crate::records::Get),
+    RecallRecords(crate::records::recall::Request),
     /// Configure, register with agents and index for the first time.
     Init(super::setup::InitRequest),
     Index(IndexRequest),
@@ -151,6 +152,7 @@ pub(crate) enum Response {
     RecordMutation(crate::records::Receipt),
     Records(crate::records::Page),
     Record(crate::records::Record),
+    RecallRecords(crate::records::recall::Response),
     Init(super::setup::InitResponse),
     Index(IndexResponse),
     ListChats(super::chats::Response),

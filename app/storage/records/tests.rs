@@ -1,5 +1,6 @@
 use super::*;
 use crate::records::{DecisionState, FactState, PreferenceState};
+mod recall;
 
 fn database() -> (tempfile::TempDir, Storage) {
     let directory = tempfile::tempdir().unwrap();

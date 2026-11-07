@@ -3,6 +3,7 @@ use rmcp::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::AppError;
+pub(crate) mod recall;
 pub(crate) mod transfer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
