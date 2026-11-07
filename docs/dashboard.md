@@ -38,7 +38,7 @@ documentation website.
 
 Below the chat sections, the front page has a **Memory** section with icons for **Decisions**, **Preferences**,
 **Facts** and **Questions**. Choose a kind to browse it directly, or use the
-**Memory** navigation link to browse all kinds. Search their statements,
+**Memory** section title to browse all kinds. Search their statements,
 filter by kind, status or review, and choose
 local records or records published to your configured shared group. Choose
 **Apply filters** to run the search; use **Next page** to continue.

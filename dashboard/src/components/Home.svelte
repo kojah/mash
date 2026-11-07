@@ -39,7 +39,6 @@ function onKey(event: KeyboardEvent): void {
 <svelte:window onkeydown={onKey} />
 
 <main class="mx-auto flex max-w-[520px] flex-col gap-9 px-5 py-16">
-  <nav class="flex gap-5 text-sm"><span aria-current="page" class="font-semibold">Chats</span><a href="#/records">Memory</a></nav>
   <div class="relative flex items-center">
     <Search size={20} strokeWidth={1.75} class="pointer-events-none absolute left-4 text-faint" />
     <label for="home-search" class="sr-only">Search your agent chats</label>
@@ -115,7 +114,7 @@ function onKey(event: KeyboardEvent): void {
     </div>
   {/if}
   <section aria-labelledby="home-records" class="flex flex-col gap-2">
-    <h2 id="home-records" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><NotebookText size={15} strokeWidth={1.75} />Memory</h2>
+    <h2 id="home-records" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><NotebookText size={15} strokeWidth={1.75} /><a href={recordsHref()}>Memory</a></h2>
     <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
       {#each recordCategories as category (category.kind)}
         <li><a class="row text-[15px]" href={recordsHref(new URLSearchParams({ kind: category.kind }))}><category.icon size={18} strokeWidth={1.75} class="shrink-0 text-ink-2" aria-hidden="true" /><span class="flex-1">{category.label}</span><ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" /></a></li>
