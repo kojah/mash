@@ -3,11 +3,13 @@ import Bot from "@lucide/svelte/icons/bot";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Clock from "@lucide/svelte/icons/clock";
 import Laptop from "@lucide/svelte/icons/laptop";
+import NotebookText from "@lucide/svelte/icons/notebook-text";
 import Search from "@lucide/svelte/icons/search";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import { catalogOptions } from "../lib/queries";
-import { chatHref } from "../lib/route.svelte";
+import type { Kind } from "../lib/records";
+import { chatHref, recordsHref } from "../lib/route.svelte";
 import type { SearchFilters } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import SearchPanel from "./SearchPanel.svelte";
@@ -18,6 +20,12 @@ const machines = $derived([...new Set(data?.chats.map((chat) => chat.machine) ??
 const agents = $derived([...new Set(data?.chats.map((chat) => chat.agent) ?? [])]);
 let initial = $state<SearchFilters>({ agents: [], machines: [], projects: [], days: null });
 let searching = $state(false);
+const recordCategories: readonly { kind: Kind; label: string }[] = [
+  { kind: "decision", label: "Decisions" },
+  { kind: "preference", label: "Preferences" },
+  { kind: "fact", label: "Facts" },
+  { kind: "open_question", label: "Questions" },
+];
 
 function onKey(event: KeyboardEvent): void {
   if (event.key === "Escape") searching = false;
@@ -41,6 +49,15 @@ function onKey(event: KeyboardEvent): void {
       class="min-h-[52px] w-full cursor-text rounded-xl border border-line bg-surface py-0 pr-[18px] pl-[46px] text-[17px] text-ink"
     />
   </div>
+
+  <section aria-labelledby="home-records" class="flex flex-col gap-2">
+    <h2 id="home-records" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><NotebookText size={15} strokeWidth={1.75} />Records</h2>
+    <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
+      {#each recordCategories as category (category.kind)}
+        <li><a class="row text-[15px]" href={recordsHref(new URLSearchParams({ kind: category.kind }))}><span class="flex-1">{category.label}</span><ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" /></a></li>
+      {/each}
+    </ul>
+  </section>
 
   <p class="m-0 text-xs text-muted">Indexed history · refreshes every 30 seconds while visible. Indexing runs separately.</p>
   {#if catalogue.isPending}

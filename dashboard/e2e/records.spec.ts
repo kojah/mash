@@ -1,6 +1,33 @@
 import { expect, test } from "@playwright/test";
 import { recordFixture } from "./record-fixtures";
 
+test("front page record categories work even when chat history is unavailable", async ({
+  page,
+}) => {
+  await page.route("**/api/chats**", (route) => route.fulfill({ status: 503 }));
+  await page.route("**/api/records?**", (route) =>
+    route.fulfill({ json: { records: [], next_offset: null } }),
+  );
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") documents++;
+  });
+  await page.goto("/");
+  for (const [label, kind] of [
+    ["Decisions", "decision"],
+    ["Preferences", "preference"],
+    ["Facts", "fact"],
+    ["Questions", "open_question"],
+  ] as const) {
+    const section = page.getByRole("region", { name: "Records", exact: true });
+    await section.getByRole("link", { name: label, exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Kind", exact: true })).toHaveValue(kind);
+    await expect(page.getByText(/No records match these filters/)).toBeVisible();
+    await page.getByRole("link", { name: "Chats", exact: true }).click();
+  }
+  expect(documents).toBe(1);
+});
+
 test("records filter on submission, expose history and safe citations, and navigate without reloads", async ({
   page,
 }) => {

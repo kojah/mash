@@ -36,8 +36,10 @@ documentation website.
 
 ## Inspect conversation records
 
-Choose **Records** to browse saved decisions, preferences, facts and open
-questions. Search their statements, filter by kind, status or review, and choose
+The front page has a **Records** section with **Decisions**, **Preferences**,
+**Facts** and **Questions**. Choose a kind to browse it directly, or use the
+**Records** navigation link to browse all kinds. Search their statements,
+filter by kind, status or review, and choose
 local records or records published to your configured shared group. Choose
 **Apply filters** to run the search; use **Next page** to continue.
 
