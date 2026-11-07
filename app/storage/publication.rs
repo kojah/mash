@@ -13,6 +13,32 @@ pub(crate) struct Snapshot<'a> {
 }
 
 impl Snapshot<'_> {
+    pub(crate) fn visit_records(
+        &self,
+        after: Option<i64>,
+        policy: crate::redaction::Policy,
+        mut accept: impl FnMut(Batch) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        let mut records = Vec::new();
+        let mut bytes = 0;
+        super::records::transfer::visit_shared(self.connection, after, policy, |row| {
+            bytes += serde_json::to_vec(&row)
+                .map_err(|_| AppError::internal("serialize recall row"))?
+                .len();
+            records.push(row);
+            if records.len() >= 128 || bytes >= 1024 * 1024 {
+                accept(Batch::Records {
+                    records: std::mem::take(&mut records),
+                })?;
+                bytes = 0;
+            }
+            Ok(())
+        })?;
+        if !records.is_empty() {
+            accept(Batch::Records { records })?;
+        }
+        Ok(())
+    }
     pub(crate) fn visit_search_messages(
         &self,
         accept: impl FnMut(crate::views::documents::SearchMessage) -> Result<(), AppError>,
@@ -121,6 +147,9 @@ impl Snapshot<'_> {
         let mut bytes = 0;
         while let Some(row) = rows.next().map_err(AppError::database)? {
             let size = match &mut batch {
+                Batch::Records { .. } => {
+                    return Err(AppError::internal("recall rows require the record visitor"));
+                }
                 Batch::Chats { records } => {
                     let record = ChatRecord {
                         enrichment: row

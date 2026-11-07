@@ -468,7 +468,7 @@ pub(crate) struct SourceCertificate {
 
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct NativeRecord {
-    #[prost(oneof = "native_record::Body", tags = "1, 2, 3, 4")]
+    #[prost(oneof = "native_record::Body", tags = "1, 2, 3, 4, 5")]
     pub body: Option<native_record::Body>,
 }
 
@@ -483,6 +483,9 @@ pub(crate) mod native_record {
         Tombstone(super::Tombstone),
         #[prost(string, tag = "4")]
         Remove(String),
+        /// Canonical typed recall row, validated on decoding and application.
+        #[prost(bytes, tag = "5")]
+        Recall(Vec<u8>),
     }
 }
 
@@ -845,6 +848,18 @@ pub(crate) fn encode_publication(
     let mut chats = 0u32;
     for event in events {
         match event {
+            Event::Batch(protocol::Batch::Records { records }) => {
+                for record in records {
+                    NativeRecord {
+                        body: Some(native_record::Body::Recall(
+                            serde_json::to_vec(record)
+                                .map_err(|_| AppError::internal("encode recall record"))?,
+                        )),
+                    }
+                    .encode_length_delimited(&mut decoded)
+                    .map_err(|_| AppError::internal("encode recall envelope"))?;
+                }
+            }
             Event::Batch(protocol::Batch::Chats { records }) => {
                 for record in records {
                     NativeRecord::from(record)
@@ -1048,6 +1063,11 @@ fn decode_records(mut input: &[u8]) -> Result<Vec<Event>, AppError> {
                 records: vec![record.try_into()?],
             }),
             native_record::Body::Remove(id) => Event::Remove { id },
+            native_record::Body::Recall(row) => Event::Batch(protocol::Batch::Records {
+                records: vec![
+                    serde_json::from_slice(&row).map_err(|_| invalid("invalid recall record"))?,
+                ],
+            }),
         };
         merge_event(&mut pending, event, &mut events);
     }
@@ -1059,6 +1079,13 @@ fn decode_records(mut input: &[u8]) -> Result<Vec<Event>, AppError> {
 
 fn merge_event(pending: &mut Option<Event>, next: Event, output: &mut Vec<Event>) {
     let merged = match (pending.as_mut(), &next) {
+        (
+            Some(Event::Batch(protocol::Batch::Records { records: left })),
+            Event::Batch(protocol::Batch::Records { records: right }),
+        ) if left.len() < 128 => {
+            left.extend(right.iter().cloned());
+            true
+        }
         (
             Some(Event::Batch(protocol::Batch::Chats { records: left })),
             Event::Batch(protocol::Batch::Chats { records: right }),
@@ -1712,6 +1739,38 @@ mod tests {
             }),
             Event::Remove { id: "old".into() },
         ]
+    }
+
+    #[test]
+    fn recall_publication_round_trip_preserves_owner_revision_and_provenance() {
+        use crate::records::{Evidence, EvidenceUse, transfer::Row};
+        let events = vec![Event::Batch(protocol::Batch::Records {
+            records: vec![
+                Row::Owner { id: "owner".into() },
+                Row::Evidence {
+                    id: "record/owner/choice".into(),
+                    revision: 2,
+                    position: 0,
+                    source: Evidence {
+                        chat_id: "chat".into(),
+                        message_id: "approval".into(),
+                        fingerprint: "a".repeat(64),
+                        quote: "yes".into(),
+                        purpose: Some(EvidenceUse::Endorsement),
+                        source_role: Some(crate::role::Role::User),
+                    },
+                },
+            ],
+        })];
+        let encoded = encode_publication(&events, DEFAULT_MAX_DECODED_BYTES).unwrap();
+        assert_eq!(encoded.record_count, 2);
+        assert_eq!(encoded.chat_count, 0);
+        let decoded = decode_publication(&encoded.pieces, DEFAULT_MAX_DECODED_BYTES).unwrap();
+        assert_eq!(
+            serde_json::to_value(decoded).unwrap(),
+            serde_json::to_value(&events).unwrap()
+        );
+        assert!(encode_publication(&events, 16).is_err());
     }
 
     #[test]

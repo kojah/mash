@@ -169,6 +169,7 @@ pub(crate) fn chat(record: &mut crate::shared::protocol::ChatRecord) {
 pub(crate) fn batch(batch: &mut crate::shared::protocol::Batch) {
     use crate::shared::protocol::Batch;
     match batch {
+        Batch::Records { records } => records.iter_mut().for_each(|row| row.redact(Policy::ON)),
         Batch::Chats { records } => records.iter_mut().for_each(chat),
         Batch::Messages { records } => {
             for record in records {

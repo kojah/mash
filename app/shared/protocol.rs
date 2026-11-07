@@ -80,9 +80,18 @@ pub(crate) enum Event {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Batch {
-    Tombstones { records: Vec<Tombstone> },
-    Chats { records: Vec<ChatRecord> },
-    Messages { records: Vec<MessageRecord> },
+    Records {
+        records: Vec<crate::records::transfer::Row>,
+    },
+    Tombstones {
+        records: Vec<Tombstone>,
+    },
+    Chats {
+        records: Vec<ChatRecord>,
+    },
+    Messages {
+        records: Vec<MessageRecord>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -95,6 +104,9 @@ pub(crate) enum BatchKind {
 impl Batch {
     pub(crate) fn take(&mut self) -> Self {
         match self {
+            Self::Records { records } => Self::Records {
+                records: std::mem::take(records),
+            },
             Self::Tombstones { records } => Self::Tombstones {
                 records: std::mem::take(records),
             },
@@ -108,6 +120,7 @@ impl Batch {
     }
     pub(crate) fn len(&self) -> usize {
         match self {
+            Self::Records { records } => records.len(),
             Self::Tombstones { records } => records.len(),
             Self::Chats { records } => records.len(),
             Self::Messages { records } => records.len(),

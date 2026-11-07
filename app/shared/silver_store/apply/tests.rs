@@ -89,6 +89,101 @@ fn retained(store: &SilverStore) -> Retained {
     }
 }
 
+fn with_recall(statement: &str, revision: i64) -> tempfile::NamedTempFile {
+    use crate::records::{
+        Body, Details, Evidence, FactState, Review, Scope, transfer::Kind, transfer::Row,
+    };
+    let input = file(Some("original"), revision);
+    let lines = std::fs::read_to_string(input.path()).unwrap();
+    let mut output = tempfile::NamedTempFile::new().unwrap();
+    for line in lines.lines() {
+        let event: Event = serde_json::from_str(line).unwrap();
+        if matches!(event, Event::Finish) {
+            let rows = vec![
+                Row::Owner { id: "owner".into() },
+                Row::Header {
+                    id: "fact".into(),
+                    owner: "owner".into(),
+                    kind: Kind::Fact,
+                    scope: Some(Scope::Personal),
+                    revision: 1,
+                    forgotten: false,
+                },
+                Row::Revision {
+                    id: "fact".into(),
+                    revision: 1,
+                    recorded_at: 1,
+                    body: Body {
+                        statement: statement.into(),
+                        rationale: String::new(),
+                        recorded_by: "test".into(),
+                        review: Review::Candidate,
+                        effective_at: None,
+                        details: Details::Fact {
+                            state: FactState::Current,
+                            reported_by: "user".into(),
+                            valid_until: None,
+                        },
+                    },
+                },
+                Row::Evidence {
+                    id: "fact".into(),
+                    revision: 1,
+                    position: 0,
+                    source: Evidence {
+                        chat_id: "chat".into(),
+                        message_id: "message".into(),
+                        quote: "original".into(),
+                        fingerprint: blake3::hash(b"original").to_hex().to_string(),
+                        purpose: None,
+                        source_role: None,
+                    },
+                },
+            ];
+            serde_json::to_writer(&mut output, &Event::Batch(Batch::Records { records: rows }))
+                .unwrap();
+            writeln!(output).unwrap();
+        }
+        serde_json::to_writer(&mut output, &event).unwrap();
+        writeln!(output).unwrap();
+    }
+    output
+}
+
+#[test]
+fn shared_record_snapshot_retry_rejects_changed_record_text_and_rolls_back() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = SilverStore::open(directory.path(), [&identity()]).unwrap();
+    let build = Build::default();
+    let progress = Progress::default();
+    let input = with_recall("original claim", 1);
+    write(&store, &identity(), &input, &build, &progress, None, false).unwrap();
+    let before =
+        crate::storage::records::transfer::fingerprint(&store.connect(&identity()).unwrap())
+            .unwrap();
+    let error = write(
+        &store,
+        &identity(),
+        &with_recall("changed claim", 1),
+        &build,
+        &progress,
+        None,
+        false,
+    )
+    .unwrap_err();
+    assert!(error.error.message.contains("different records"));
+    assert_eq!(
+        crate::storage::records::transfer::fingerprint(&store.connect(&identity()).unwrap())
+            .unwrap(),
+        before
+    );
+    assert!(
+        write(&store, &identity(), &input, &build, &progress, None, false)
+            .unwrap()
+            .duplicate
+    );
+}
+
 #[test]
 fn retry_outer_rollback_preserves_committed_history_across_interruption() {
     let directory = tempfile::tempdir().unwrap();

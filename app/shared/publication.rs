@@ -576,6 +576,7 @@ pub(crate) async fn publish_backfill(
         },
     )
     .await?;
+    let server_revision = finish_record_backfill(config, &plan, server_revision).await?;
     // Every batch is committed and covered; progress no longer needs retaining.
     let _ = std::fs::remove_file(&receipts_path);
     acknowledge_with(
@@ -589,6 +590,42 @@ pub(crate) async fn publish_backfill(
     // now differs from the local one deltas are journaled against.
     record_server_base(path, &target_key, revision, server_revision);
     Ok(server_revision)
+}
+
+/// Records follow the complete chat baseline, so their citations and links can
+/// be validated in one transaction. The deterministic envelope is retryable
+/// through the ordinary durable synchronization receipt.
+async fn finish_record_backfill(
+    config: &SharedConfig,
+    plan: &super::sync::client::BackfillPlan,
+    server_revision: i64,
+) -> Result<i64, AppError> {
+    if plan.record_events.is_empty() {
+        return Ok(server_revision);
+    }
+    let revision = server_revision
+        .checked_add(1)
+        .ok_or_else(|| AppError::usage("publication revision exhausted"))?;
+    let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
+    write_event(
+        &mut file,
+        &Event::Start(protocol::Start {
+            views_build: plan.start.views_build.clone(),
+            source_silver: plan.start.source_silver.clone(),
+            instance: plan.start.instance.clone(),
+            revision: Some(revision),
+            base_revision: Some(server_revision),
+            snapshot: false,
+            forgets: Vec::new(),
+        }),
+        config.publication_redaction,
+    )?;
+    for event in &plan.record_events {
+        write_event(&mut file, event, config.publication_redaction)?;
+    }
+    write_event(&mut file, &Event::Finish, config.publication_redaction)?;
+    file.flush().map_err(AppError::io)?;
+    Ok(upload(config, &file).await?.revision)
 }
 
 /// Backfill identity qualified by the destination it belongs to.

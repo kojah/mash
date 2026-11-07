@@ -49,6 +49,24 @@ pub(crate) enum Row {
     },
 }
 
+impl Row {
+    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+        match self {
+            Self::Revision { body, .. } => body.redact(policy),
+            Self::Evidence { source, .. } => source.quote = policy.text(&source.quote),
+            Self::Header {
+                scope: Some(Scope::Repository { identity }),
+                ..
+            } => *identity = policy.text(identity),
+            Self::Header {
+                scope: Some(Scope::LocalProject { path }),
+                ..
+            } => *path = policy.text(path),
+            _ => {}
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Kind {

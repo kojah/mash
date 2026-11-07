@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(Publication BackfillOrdering BackfillReceipts CoverageMerge SharedViews NativeSilver RetryViews LocalUpgrade LocalWriter LocalGold RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify SystemdCutover SilverMigration Records)
+models=(Publication BackfillOrdering BackfillReceipts CoverageMerge SharedViews NativeSilver RetryViews LocalUpgrade LocalWriter LocalGold RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify SystemdCutover SilverMigration Records SharedRecords RecallBackfill)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            Publication|BackfillOrdering|BackfillReceipts|CoverageMerge|SharedViews|NativeSilver|RetryViews|LocalUpgrade|LocalWriter|LocalGold|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify|SystemdCutover|SilverMigration|Records) ;;
+            Publication|BackfillOrdering|BackfillReceipts|CoverageMerge|SharedViews|NativeSilver|RetryViews|LocalUpgrade|LocalWriter|LocalGold|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify|SystemdCutover|SilverMigration|Records|SharedRecords|RecallBackfill) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -111,6 +111,8 @@ done
 if $self_test; then
     check Records RecordsSplitReceipt CompleteReceipt
     check Records RecordsNoRevisionGuard SingleSuccessor
+    check SharedRecords SharedRecordsLostPrior ForgottenStaysErased
+    check RecallBackfill RecallBackfillEarlyAck AcknowledgedIncludesRecords
     check SilverMigration SilverMigrationNoAdmission WriterExcluded
     check SystemdCutover SystemdCutoverRollback NoLostAcknowledgements
     check SystemdCutover SystemdCutoverReceipts ReceiptsMatchHistory

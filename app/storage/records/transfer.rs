@@ -3,7 +3,75 @@ use crate::{
     AppError,
     records::{bounded, decode, encode, transfer::Row},
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
+
+/// Select owner-authored changes, excluding machine-local project scopes.
+pub(crate) fn visit_shared(
+    connection: &Connection,
+    after: Option<i64>,
+    policy: crate::redaction::Policy,
+    mut emit: impl FnMut(Row) -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    let mut statement = connection.prepare(
+        "SELECT r.id FROM records r WHERE (r.forgotten=1 OR json_extract(r.scope,'$.kind')<>'local_project')
+         AND (?1 IS NULL OR EXISTS(SELECT 1 FROM record_changes c WHERE c.record_id=r.id AND c.revision>?1))"
+    ).map_err(AppError::database)?;
+    let selected = statement
+        .query_map([after], |row| row.get::<_, String>(0))
+        .map_err(AppError::database)?
+        .collect::<Result<std::collections::BTreeSet<_>, _>>()
+        .map_err(AppError::database)?;
+    visit(connection, |mut row| {
+        let include = match &row {
+            Row::Owner { .. } => true,
+            Row::Header { id, .. }
+            | Row::Revision { id, .. }
+            | Row::Evidence { id, .. }
+            | Row::Confirmation { id, .. } => selected.contains(id),
+            Row::Link { link } => selected.contains(&link.source_id),
+            Row::Operation { .. } | Row::Checkpoint { .. } => false,
+        };
+        if !include {
+            return Ok(());
+        }
+        if let Row::Evidence { source, .. } = &mut row {
+            let content: Option<String> = connection
+                .query_row(
+                    "SELECT content FROM messages WHERE id=?1 AND chat_id=?2",
+                    params![source.message_id, source.chat_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(AppError::database)?;
+            source.fingerprint = match content {
+                Some(content)
+                    if blake3::hash(content.as_bytes()).to_hex().as_str() == source.fingerprint =>
+                {
+                    blake3::hash(policy.text(&content).as_bytes())
+                        .to_hex()
+                        .to_string()
+                }
+                _ => "0".repeat(64),
+            };
+        }
+        row.redact(policy);
+        emit(row)
+    })
+}
+
+pub(crate) fn fingerprint(connection: &Connection) -> Result<String, AppError> {
+    let mut hash = blake3::Hasher::new();
+    visit(connection, |row| {
+        if !matches!(row, Row::Operation { .. } | Row::Checkpoint { .. }) {
+            let bytes = serde_json::to_vec(&row)
+                .map_err(|_| AppError::internal("serialize record fingerprint"))?;
+            hash.update(&(bytes.len() as u64).to_le_bytes());
+            hash.update(&bytes);
+        }
+        Ok(())
+    })?;
+    Ok(hash.finalize().to_hex().to_string())
+}
 
 pub(crate) fn visit(
     connection: &Connection,
@@ -106,6 +174,8 @@ pub(crate) struct Import {
     source_owner: Option<String>,
     target_owner: String,
     keep_identity: bool,
+    shared_snapshot: Option<bool>,
+    seen_headers: std::collections::BTreeSet<String>,
 }
 
 impl Import {
@@ -114,7 +184,17 @@ impl Import {
             source_owner: None,
             target_owner: super::owner(connection)?,
             keep_identity,
+            shared_snapshot: None,
+            seen_headers: std::collections::BTreeSet::new(),
         })
+    }
+
+    pub(crate) fn shared(connection: &Connection, snapshot: bool) -> Result<Self, AppError> {
+        let mut importer = Self::new(connection, true)?;
+        connection.execute_batch("DROP TABLE IF EXISTS temp.recall_prior_headers;
+            CREATE TEMP TABLE recall_prior_headers AS SELECT id,owner,kind,scope,revision,forgotten FROM records;").map_err(AppError::database)?;
+        importer.shared_snapshot = Some(snapshot);
+        Ok(importer)
     }
 
     fn id(&self, id: &str) -> Result<String, AppError> {
@@ -140,6 +220,17 @@ impl Import {
             if self.source_owner.is_some() {
                 return Err(AppError::usage("duplicate record owner in archive"));
             }
+            if let Some(snapshot) = self.shared_snapshot {
+                let populated: bool = connection
+                    .query_row("SELECT EXISTS(SELECT 1 FROM records)", [], |row| row.get(0))
+                    .map_err(AppError::database)?;
+                if populated && self.target_owner != id {
+                    return Err(AppError::usage("shared record owner changed"));
+                }
+                if snapshot {
+                    connection.execute_batch("DELETE FROM records WHERE forgotten=0; DELETE FROM record_operations; DELETE FROM record_checkpoints; DELETE FROM record_changes;").map_err(AppError::database)?;
+                }
+            }
             if self.keep_identity {
                 connection
                     .execute("UPDATE record_owner SET id=?1 WHERE singleton=1", [&id])
@@ -162,6 +253,21 @@ impl Import {
                 revision,
                 forgotten,
             } => {
+                if !self.seen_headers.insert(id.clone()) {
+                    return Err(AppError::usage("duplicate record header"));
+                }
+                if self.shared_snapshot.is_none() {
+                    let exists: bool = connection
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM records WHERE id=?1)",
+                            [self.id(&id)?],
+                            |row| row.get(0),
+                        )
+                        .map_err(AppError::database)?;
+                    if exists {
+                        return Err(AppError::usage("record already exists in import target"));
+                    }
+                }
                 if &owner != source_owner
                     || !(1..=1001).contains(&revision)
                     || forgotten != scope.is_none()
@@ -170,10 +276,37 @@ impl Import {
                 }
                 if let Some(scope) = &scope {
                     super::validate_scope(scope)?;
+                    if self.shared_snapshot.is_some()
+                        && matches!(scope, crate::records::Scope::LocalProject { .. })
+                    {
+                        return Err(AppError::usage("local project records cannot be shared"));
+                    }
+                }
+                if self.shared_snapshot.is_some() {
+                    let id = self.id(&id)?;
+                    let invalid: bool = connection.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM recall_prior_headers WHERE id=?1 AND
+                            (owner<>?2 OR kind<>?3 OR revision>?4 OR (forgotten=1 AND ?5=0) OR (?5=0 AND scope<>?6)))",
+                        params![id,owner,kind.as_str(),revision,forgotten,encode(&scope)?], |row| row.get(0),
+                    ).map_err(AppError::database)?;
+                    if invalid {
+                        return Err(AppError::usage(
+                            "shared record identity changed or revision went backwards",
+                        ));
+                    }
+                    connection
+                        .execute("DELETE FROM record_revisions WHERE record_id=?1", [&id])
+                        .map_err(AppError::database)?;
+                    connection
+                        .execute(
+                            "DELETE FROM record_links WHERE source_id=?1 OR (?2 AND target_id=?1)",
+                            params![id, forgotten],
+                        )
+                        .map_err(AppError::database)?;
                 }
                 connection
                     .execute(
-                        "INSERT INTO records VALUES(?1,?2,?3,?4,?5,?6)",
+                        "INSERT INTO records VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,kind=excluded.kind,scope=excluded.scope,revision=excluded.revision,forgotten=excluded.forgotten",
                         params![
                             self.id(&id)?,
                             self.target_owner,
@@ -191,6 +324,7 @@ impl Import {
                 body,
                 recorded_at,
             } => {
+                self.require_header(&id)?;
                 body.validate()?;
                 let id = self.id(&id)?;
                 let valid: bool = connection
@@ -216,6 +350,7 @@ impl Import {
                 position,
                 source,
             } => {
+                self.require_header(&id)?;
                 bounded(&source.chat_id, 512, "evidence chat ID")?;
                 bounded(&source.message_id, 512, "evidence message ID")?;
                 bounded(&source.quote, 8192, "evidence quote")?;
@@ -246,6 +381,7 @@ impl Import {
                     .map_err(AppError::database)?;
             }
             Row::Link { link } => {
+                self.require_header(&link.source_id)?;
                 let source = self.id(&link.source_id)?;
                 let target = self.id(&link.target_id)?;
                 let same_scope:bool=connection.query_row("SELECT a.owner=b.owner AND a.scope=b.scope AND a.forgotten=0 AND b.forgotten=0 FROM records a,records b WHERE a.id=?1 AND b.id=?2",params![source,target],|row|row.get(0)).map_err(AppError::database)?;
@@ -266,6 +402,7 @@ impl Import {
                 message_id,
                 confirmed_at,
             } => {
+                self.require_header(&id)?;
                 bounded(&message_id, 512, "confirmation message ID")?;
                 let id = self.id(&id)?;
                 let cited:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM record_evidence WHERE record_id=?1 AND revision=?2 AND message_id=?3)",params![id,revision,message_id],|row|row.get(0)).map_err(AppError::database)?;
@@ -284,6 +421,9 @@ impl Import {
                 digest: hash,
                 result,
             } => {
+                if self.shared_snapshot.is_some() {
+                    return Err(AppError::usage("operation receipts are owner-local"));
+                }
                 bounded(&id, 256, "record operation ID")?;
                 digest(&hash)?;
                 self.validate_receipt(connection, &result.record_id, result.revision)?;
@@ -306,6 +446,9 @@ impl Import {
                 chat_id,
                 source_fingerprint,
             } => {
+                if self.shared_snapshot.is_some() {
+                    return Err(AppError::usage("extraction checkpoints are owner-local"));
+                }
                 super::validate_scope(&scope)?;
                 bounded(&chat_id, 512, "checkpoint chat ID")?;
                 bounded(&source_fingerprint, 256, "checkpoint fingerprint")?;
@@ -316,6 +459,15 @@ impl Import {
                     )
                     .map_err(AppError::database)?;
             }
+        }
+        Ok(())
+    }
+
+    fn require_header(&self, id: &str) -> Result<(), AppError> {
+        if self.shared_snapshot.is_some() && !self.seen_headers.contains(id) {
+            return Err(AppError::usage(
+                "shared record row has no replacement header",
+            ));
         }
         Ok(())
     }

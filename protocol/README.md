@@ -555,6 +555,30 @@ only explicit forgetting corresponds to `Forget`.
 
 ### Shared vocabulary
 
+`SharedRecords.tla` bounds replacement snapshots and record deltas across four
+publication revisions. `storage/records/transfer.rs::Import::shared` retains
+the previous headers before a snapshot removes live records; `insert` checks
+those headers before accepting a lower record revision or reviving a forgotten
+identity. The shared `apply` transaction commits the rows and node head together.
+The deliberate lost-prior-headers variant must violate `ForgottenStaysErased`.
+
+The model assumes SQLite transaction atomicity and exclusive node write admission.
+It models rejection/interruption as no committed change and does not establish
+delivery, semantic evidence quality, privacy masking, or backfill completion.
+`native_records_shared_forget_cannot_be_reversed_by_an_older_snapshot` exercises
+the retained-header guard and checks persisted deletion after rollback.
+
+`RecallBackfill.tla` models the separate durable boundaries in
+`publication.rs::publish_backfill`: chat baseline completion, the ordinary
+record upload's commit/receipt, then local acknowledgement. Losing the response
+can require replay of the same deterministic upload; it cannot permit early
+acknowledgement. The early-ack variant must violate
+`AcknowledgedIncludesRecords`. This model assumes the ordinary sync receipt
+contract verified by `SyncTransfer`; it does not model source changes, network
+progress, or the amount of data in the final upload. The planner regression
+verifies that recall rows remain separate from chat batches. Disposable-backend
+acceptance for the final record step remains required before feature completion.
+
 `docs/internal/agent-history.md` defines the agent-history domain and the relationship
 between canonical chats, messages, derived turns, publication, and replay.
 Model changes here should keep that document in sync.

@@ -342,34 +342,40 @@ impl Record {
             Scope::Personal | Scope::Chat { .. } => {}
         }
         for revision in &mut self.revisions {
-            let body = &mut revision.body;
-            body.statement = policy.text(&body.statement);
-            body.rationale = policy.text(&body.rationale);
-            body.recorded_by = policy.text(&body.recorded_by);
-            match &mut body.details {
-                Details::Decision {
-                    alternatives,
-                    consequences,
-                    ..
-                } => {
-                    for text in alternatives.iter_mut().chain(consequences.iter_mut()) {
-                        *text = policy.text(text);
-                    }
-                }
-                Details::Preference { conditions, .. } => {
-                    for text in conditions {
-                        *text = policy.text(text);
-                    }
-                }
-                Details::Fact { reported_by, .. } => *reported_by = policy.text(reported_by),
-                Details::OpenQuestion { answer, .. } => {
-                    if let Some(text) = answer {
-                        *text = policy.text(text);
-                    }
-                }
-            }
+            revision.body.redact(policy);
             for source in &mut revision.evidence {
                 source.quote = policy.text(&source.quote);
+            }
+        }
+    }
+}
+
+impl Body {
+    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+        let body = self;
+        body.statement = policy.text(&body.statement);
+        body.rationale = policy.text(&body.rationale);
+        body.recorded_by = policy.text(&body.recorded_by);
+        match &mut body.details {
+            Details::Decision {
+                alternatives,
+                consequences,
+                ..
+            } => {
+                for text in alternatives.iter_mut().chain(consequences.iter_mut()) {
+                    *text = policy.text(text);
+                }
+            }
+            Details::Preference { conditions, .. } => {
+                for text in conditions {
+                    *text = policy.text(text);
+                }
+            }
+            Details::Fact { reported_by, .. } => *reported_by = policy.text(reported_by),
+            Details::OpenQuestion { answer, .. } => {
+                if let Some(text) = answer {
+                    *text = policy.text(text);
+                }
             }
         }
     }

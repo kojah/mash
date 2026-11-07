@@ -589,6 +589,133 @@ fn native_records_archive_rejects_receipts_for_missing_records() {
     }
 }
 
+fn shared_rows(storage: &Storage, after: Option<i64>) -> Vec<crate::records::transfer::Row> {
+    let mut rows = Vec::new();
+    transfer::visit_shared(
+        &storage.connection,
+        after,
+        crate::redaction::Policy::ON,
+        |row| {
+            rows.push(row);
+            Ok(())
+        },
+    )
+    .unwrap();
+    rows
+}
+
+fn apply_shared_rows(
+    storage: &Storage,
+    rows: Vec<crate::records::transfer::Row>,
+    snapshot: bool,
+) -> Result<(), AppError> {
+    let transaction = storage
+        .connection
+        .unchecked_transaction()
+        .map_err(AppError::database)?;
+    let mut importer = transfer::Import::shared(&transaction, snapshot)?;
+    for row in rows {
+        importer.insert(&transaction, row)?;
+    }
+    transfer::Import::finish(&transaction)?;
+    transaction.commit().map_err(AppError::database)
+}
+
+#[test]
+fn native_records_shared_delta_preserves_history_without_changing_chat_certificate() {
+    let (_source_dir, mut source) = database();
+    let (_target_dir, target) = database();
+    let initial = source
+        .mutate_record(&create_request("initial", decision()))
+        .unwrap();
+    apply_shared_rows(&target, shared_rows(&source, None), true).unwrap();
+    let certificate = target.silver_certificate().unwrap();
+    let base: i64 = source
+        .connection
+        .query_row("SELECT revision FROM shared_publication", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let successor = source
+        .mutate_record(&Mutation {
+            operation_id: "replacement".into(),
+            change: Change::Supersede {
+                expected: expected(&initial),
+                body: decision(),
+                evidence: vec![citation("yes", "yes")],
+            },
+        })
+        .unwrap();
+    apply_shared_rows(&target, shared_rows(&source, Some(base)), false).unwrap();
+    assert_eq!(target.silver_certificate().unwrap(), certificate);
+    assert_eq!(
+        target.records(&List::default()).unwrap().records[0].id,
+        successor.record_id
+    );
+    assert!(
+        target.record(&initial.record_id, true).unwrap().revisions[0]
+            .body
+            .details
+            .superseded()
+    );
+    assert_eq!(
+        target
+            .connection
+            .query_row("SELECT count(*) FROM record_operations", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn native_records_shared_forget_cannot_be_reversed_by_an_older_snapshot() {
+    let (_source_dir, mut source) = database();
+    let (_target_dir, target) = database();
+    let initial = source
+        .mutate_record(&create_request("initial", decision()))
+        .unwrap();
+    let stale = shared_rows(&source, None);
+    apply_shared_rows(&target, stale.clone(), true).unwrap();
+    source
+        .mutate_record(&Mutation {
+            operation_id: "forget".into(),
+            change: Change::Forget {
+                expected: expected(&initial),
+            },
+        })
+        .unwrap();
+    apply_shared_rows(&target, shared_rows(&source, None), false).unwrap();
+    assert!(apply_shared_rows(&target, stale, true).is_err());
+    assert!(target.record(&initial.record_id, true).is_err());
+    assert_eq!(
+        target
+            .connection
+            .query_row("SELECT count(*) FROM record_revisions", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn native_records_shared_projection_excludes_local_scopes_and_owner_receipts() {
+    use crate::records::transfer::Row;
+    let (_directory, mut source) = database();
+    let mut request = create_request("local", decision());
+    if let Change::Create { scope, .. } = &mut request.change {
+        *scope = Scope::LocalProject {
+            path: "/project".into(),
+        };
+    }
+    source.mutate_record(&request).unwrap();
+    assert!(
+        shared_rows(&source, None)
+            .iter()
+            .all(|row| matches!(row, Row::Owner { .. }))
+    );
+}
+
 proptest::proptest! {
     #![proptest_config(proptest::test_runner::Config::with_cases(16))]
     #[test]

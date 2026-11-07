@@ -206,6 +206,7 @@ impl Upload<'_> {
     }
 
     fn tombstone(&mut self, record: &Tombstone) -> Result<(), AppError> {
+        crate::storage::records::forget_chat(self.tx, &record.chat_id)?;
         let forgotten_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| AppError::internal("system clock precedes Unix epoch"))?
@@ -404,6 +405,11 @@ fn apply(
     // A resent revision changes no silver; views synchronization still runs
     // when views are stale, including after a group recipe change.
     let (revision, duplicate) = start(previous.as_ref(), &input)?;
+    let prior_records = if duplicate {
+        Some(crate::storage::records::transfer::fingerprint(tx)?)
+    } else {
+        None
+    };
     if input
         .views_build
         .as_ref()
@@ -452,6 +458,7 @@ fn apply(
         upload.applied.deleted.extend(existing.into_keys());
         upload.applied.changed = true;
     }
+    let mut records = crate::storage::records::transfer::Import::shared(tx, input.snapshot)?;
     let mut finished = false;
     for line in lines {
         if finished {
@@ -473,6 +480,12 @@ fn apply(
                     return Err(AppError::usage("index batch exceeds 128 records"));
                 }
                 match batch {
+                    Batch::Records { records: rows } => {
+                        for row in rows {
+                            records.insert(tx, row)?;
+                            progress.advance(1);
+                        }
+                    }
                     Batch::Tombstones { records } => {
                         for record in records {
                             valid_id(&record.chat_id)?;
@@ -515,6 +528,7 @@ fn apply(
     if !finished {
         return Err(AppError::usage("incomplete index stream"));
     }
+    crate::storage::records::transfer::Import::finish(tx)?;
     if upload.missing_parents()? {
         return Err(AppError::usage("missing message context parent"));
     }
@@ -537,6 +551,13 @@ fn apply(
     let canonical = upload.canonical()?;
     let mut applied = upload.applied;
     if duplicate {
+        if prior_records.as_deref()
+            != Some(crate::storage::records::transfer::fingerprint(tx)?.as_str())
+        {
+            return Err(conflict(
+                "snapshot revision already committed with different records",
+            ));
+        }
         let retained = previous.as_ref().and_then(|h| h.silver_revision.as_ref());
         if retained.is_none_or(|state| state.fingerprint != canonical) {
             return Err(conflict(

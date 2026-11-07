@@ -758,7 +758,7 @@ fn backfill_members(events: &[Event]) -> Result<Vec<wire::BackfillMember>, AppEr
                     );
                 }
             }
-            Event::Batch(protocol::Batch::Messages { .. })
+            Event::Batch(protocol::Batch::Records { .. } | protocol::Batch::Messages { .. })
             | Event::Remove { .. }
             | Event::Start(_)
             | Event::Finish => {}
@@ -871,6 +871,7 @@ pub(crate) struct BackfillPlan {
     pub(crate) manifest_digest: String,
     pub(crate) manifest_bytes: u64,
     pub(crate) batches: Vec<PlannedBatch>,
+    pub(crate) record_events: Vec<Event>,
 }
 
 /// What a previous attempt already completed for this baseline.
@@ -931,8 +932,12 @@ pub(crate) fn plan_backfill(
     }
 
     let mut groups: std::collections::BTreeMap<String, Group> = std::collections::BTreeMap::new();
+    let mut record_events = Vec::new();
     for event in events {
         match event {
+            Event::Batch(protocol::Batch::Records { records }) => {
+                record_events.push(Event::Batch(protocol::Batch::Records { records }));
+            }
             Event::Batch(protocol::Batch::Chats { records }) => {
                 for record in records {
                     let updated_at = record.updated_at.unwrap_or(0);
@@ -1025,6 +1030,7 @@ pub(crate) fn plan_backfill(
         manifest_digest,
         manifest_bytes,
         batches,
+        record_events,
     })
 }
 
@@ -1390,6 +1396,33 @@ mod tests {
             snapshot: false,
             forgets: Vec::new(),
         }
+    }
+
+    #[test]
+    fn backfill_keeps_recall_rows_for_the_final_ordered_publication() {
+        let owner = Event::Batch(protocol::Batch::Records {
+            records: vec![crate::records::transfer::Row::Owner { id: "owner".into() }],
+        });
+        let plan = plan_backfill(
+            start(),
+            vec![chat("chat", 1), owner],
+            BackfillLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(plan.members.len(), 1);
+        assert_eq!(plan.record_events.len(), 1);
+        let rows = wire::decode_publication(
+            &plan.batches[0].encoded.pieces,
+            wire::DEFAULT_MAX_DECODED_BYTES,
+        )
+        .unwrap();
+        assert!(
+            rows.iter()
+                .all(|event| !matches!(event, Event::Batch(protocol::Batch::Records { .. })))
+        );
+        assert!(
+            matches!(&plan.record_events[0], Event::Batch(protocol::Batch::Records { records }) if records.len()==1)
+        );
     }
 
     #[test]

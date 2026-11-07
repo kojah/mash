@@ -112,6 +112,9 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                 }
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
+            snapshot.visit_records(base, target.redaction, |batch| {
+                write_event(&mut writer, &Event::Batch(batch), target.redaction)
+            })?;
             write_event(&mut writer, &Event::Finish, target.redaction)
         })?;
         writer.flush().map_err(AppError::io)?;
