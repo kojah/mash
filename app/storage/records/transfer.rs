@@ -12,30 +12,7 @@ pub(crate) fn visit_shared(
     policy: crate::redaction::Policy,
     mut emit: impl FnMut(Row) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
-    let mut statement = connection.prepare(
-        "SELECT r.id FROM records r WHERE (r.forgotten=1 OR json_extract(r.scope,'$.kind')<>'local_project')
-         AND (?1 IS NULL OR EXISTS(SELECT 1 FROM record_changes c WHERE c.record_id=r.id AND c.revision>?1))"
-    ).map_err(AppError::database)?;
-    let selected = statement
-        .query_map([after], |row| row.get::<_, String>(0))
-        .map_err(AppError::database)?
-        .collect::<Result<std::collections::BTreeSet<_>, _>>()
-        .map_err(AppError::database)?;
-    visit(connection, |mut row| {
-        let include = match &row {
-            Row::Owner { .. } => true,
-            Row::Header { id, .. }
-            | Row::Revision { id, .. }
-            | Row::Evidence { id, .. }
-            | Row::Confirmation { id, .. } => selected.contains(id),
-            Row::Link { link } => selected.contains(&link.source_id),
-            Row::Operation { .. } | Row::ExtractionOperation { .. } | Row::Checkpoint { .. } => {
-                false
-            }
-        };
-        if !include {
-            return Ok(());
-        }
+    visit_selected(connection, Selection::Shared { after }, |mut row| {
         if let Row::Evidence { source, .. } = &mut row {
             let content: Option<String> = connection
                 .query_row(
@@ -63,16 +40,11 @@ pub(crate) fn visit_shared(
 
 pub(crate) fn fingerprint(connection: &Connection) -> Result<String, AppError> {
     let mut hash = blake3::Hasher::new();
-    visit(connection, |row| {
-        if !matches!(
-            row,
-            Row::Operation { .. } | Row::ExtractionOperation { .. } | Row::Checkpoint { .. }
-        ) {
-            let bytes = serde_json::to_vec(&row)
-                .map_err(|_| AppError::internal("serialize record fingerprint"))?;
-            hash.update(&(bytes.len() as u64).to_le_bytes());
-            hash.update(&bytes);
-        }
+    visit_selected(connection, Selection::Canonical, |row| {
+        let bytes = serde_json::to_vec(&row)
+            .map_err(|_| AppError::internal("serialize record fingerprint"))?;
+        hash.update(&(bytes.len() as u64).to_le_bytes());
+        hash.update(&bytes);
         Ok(())
     })?;
     Ok(hash.finalize().to_hex().to_string())
@@ -80,12 +52,41 @@ pub(crate) fn fingerprint(connection: &Connection) -> Result<String, AppError> {
 
 pub(crate) fn visit(
     connection: &Connection,
+    emit: impl FnMut(Row) -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    visit_selected(connection, Selection::Archive, emit)
+}
+
+#[derive(Clone, Copy)]
+enum Selection {
+    Archive,
+    Canonical,
+    Shared { after: Option<i64> },
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the fixed archive table order and typed row mappings together."
+)]
+fn visit_selected(
+    connection: &Connection,
+    selection: Selection,
     mut emit: impl FnMut(Row) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
     macro_rules! table {
-        ($sql:expr,$convert:expr) => {{
-            let mut statement = connection.prepare($sql).map_err(AppError::database)?;
-            let mut rows = statement.query([]).map_err(AppError::database)?;
+        ($table:literal, $columns:literal, $key:literal, $order:literal, $convert:expr) => {{
+            // Every identifier comes from the fixed table declarations below;
+            // the only input value (revision) is bound as a SQL parameter.
+            let predicate = match selection {
+                Selection::Shared { .. } => concat!(" WHERE ", $key, " IN (SELECT r.id FROM records r WHERE (r.forgotten=1 OR json_extract(r.scope,'$.kind')<>'local_project') AND (?1 IS NULL OR r.id IN (SELECT record_id FROM record_changes WHERE revision>?1)))"),
+                _ => "",
+            };
+            let sql = format!("SELECT {} FROM {}{} ORDER BY {}", $columns, $table, predicate, $order);
+            let mut statement = connection.prepare(&sql).map_err(AppError::database)?;
+            let mut rows = match selection {
+                Selection::Shared { after } => statement.query([after]),
+                _ => statement.query([]),
+            }.map_err(AppError::database)?;
             while let Some(row) = rows.next().map_err(AppError::database)? {
                 let item: Row = ($convert)(row)?;
                 emit(item)?;
@@ -102,7 +103,10 @@ pub(crate) fn visit(
         id: super::owner(connection)?,
     })?;
     table!(
-        "SELECT id,owner,kind,scope,revision,forgotten FROM records ORDER BY id",
+        "records",
+        "id,owner,kind,scope,revision,forgotten",
+        "id",
+        "id",
         |row| Ok::<_, AppError>(Row::Header {
             id: value(row, 0)?,
             owner: value(row, 1)?,
@@ -113,7 +117,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT record_id,revision,body,recorded_at FROM record_revisions ORDER BY record_id,revision",
+        "record_revisions",
+        "record_id,revision,body,recorded_at",
+        "record_id",
+        "record_id,revision",
         |row| Ok::<_, AppError>(Row::Revision {
             id: value(row, 0)?,
             revision: value(row, 1)?,
@@ -122,7 +129,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT record_id,revision,position,chat_id,message_id,fingerprint,quote,purpose,source_role FROM record_evidence ORDER BY record_id,revision,position",
+        "record_evidence",
+        "record_id,revision,position,chat_id,message_id,fingerprint,quote,purpose,source_role",
+        "record_id",
+        "record_id,revision,position",
         |row| Ok::<_, AppError>(Row::Evidence {
             id: value(row, 0)?,
             revision: value(row, 1)?,
@@ -138,7 +148,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT source_id,target_id,relation FROM record_links ORDER BY source_id,target_id,relation",
+        "record_links",
+        "source_id,target_id,relation",
+        "source_id",
+        "source_id,target_id,relation",
         |row| Ok::<_, AppError>(Row::Link {
             link: crate::records::Link {
                 source_id: value(row, 0)?,
@@ -148,7 +161,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT record_id,revision,message_id,confirmed_at FROM record_confirmations ORDER BY record_id,revision,message_id",
+        "record_confirmations",
+        "record_id,revision,message_id,confirmed_at",
+        "record_id",
+        "record_id,revision,message_id",
         |row| Ok::<_, AppError>(Row::Confirmation {
             id: value(row, 0)?,
             revision: value(row, 1)?,
@@ -156,8 +172,14 @@ pub(crate) fn visit(
             confirmed_at: value(row, 3)?
         })
     );
+    if !matches!(selection, Selection::Archive) {
+        return Ok(());
+    }
     table!(
-        "SELECT operation_id,request_digest,result FROM record_operations ORDER BY operation_id",
+        "record_operations",
+        "operation_id,request_digest,result",
+        "operation_id",
+        "operation_id",
         |row| Ok::<_, AppError>(Row::Operation {
             id: value(row, 0)?,
             digest: value(row, 1)?,
@@ -165,7 +187,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT operation_id,request_digest,result FROM record_extractions ORDER BY operation_id",
+        "record_extractions",
+        "operation_id,request_digest,result",
+        "operation_id",
+        "operation_id",
         |row| Ok::<_, AppError>(Row::ExtractionOperation {
             id: value(row, 0)?,
             digest: value(row, 1)?,
@@ -173,7 +198,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT scope,chat_id,source_fingerprint FROM record_checkpoints ORDER BY scope,chat_id",
+        "record_checkpoints",
+        "scope,chat_id,source_fingerprint",
+        "chat_id",
+        "scope,chat_id",
         |row| Ok::<_, AppError>(Row::Checkpoint {
             scope: decode(&value::<String>(row, 0)?)?,
             chat_id: value(row, 1)?,

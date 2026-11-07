@@ -577,6 +577,11 @@ a multi-request snapshot: freshness and confirmations may change between reads,
 and offset-based lists/links may change when their membership changes. Rust
 regressions cover revision insertion between pages, size-based continuations,
 link pagination and the public MCP path; no write-protocol transition changes.
+Selecting shared records in SQL before decoding does not change the publication
+snapshot transaction, emitted row order or mutation boundaries. Canonical
+fingerprints skip owner-local receipt/checkpoint tables at query time. Projection
+tests verify unchanged fingerprints and ensure excluded rows are not decoded;
+this read-path optimization adds no protocol transition.
 
 ### Extraction checkpoints
 

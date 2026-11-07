@@ -90,6 +90,12 @@ certificate or require Qdrant embeddings. Shared uploads must explicitly carry
 record-only changes, snapshots, and deletion intent under the existing publication
 revision guards. References are checked against the final transaction state.
 
+Shared record reads select eligible IDs in SQLite before decoding their history;
+incremental uploads select from the record journal. They never visit owner-local
+operation receipts, extraction receipts or checkpoints. Canonical fingerprints
+also exclude those tables at query time; portable archives retain them. These
+paths preserve the same canonical table ordering and row encoding.
+
 Archive import validates and remaps record ownership, citation identities and
 links. A normal copy import gets new ownership; identity-preserving restoration
 retains ownership. Import cannot claim successful portability while silently
