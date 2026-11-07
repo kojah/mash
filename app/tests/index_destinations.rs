@@ -13,6 +13,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_server(true)
+    }
+
+    fn with_server(start_server: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         let config = root.join("config.toml");
@@ -27,7 +31,12 @@ impl Fixture {
 "#).unwrap();
         Self::write_codex(&codex);
         let group = format!("routing-{}", root.file_name().unwrap().to_string_lossy());
-        let server = std::env::var("MASH_TEST_QDRANT_URL").ok().map(|_| {
+        let backend = if start_server {
+            std::env::var("MASH_TEST_QDRANT_URL").ok()
+        } else {
+            None
+        };
+        let server = backend.map(|_| {
             shared_server::Server::new(
                 root,
                 &group,
@@ -263,7 +272,9 @@ fn local_destination_never_publishes() {
 
 #[test]
 fn shared_only_configuration_is_rejected_before_opening_sqlite() {
-    let fixture = Fixture::new();
+    // Configuration validation must not need a running backend, even when the
+    // wider test job supplies backend settings for unrelated integration tests.
+    let fixture = Fixture::with_server(false);
     fixture.configure("shared", "remote");
     for command in [
         vec!["index"],
