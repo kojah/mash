@@ -2,6 +2,9 @@
 # Disposable process/lifecycle fixtures; never invokes the real systemctl.
 set -euo pipefail
 repository=$(cd "$(dirname "$0")/.." && pwd)
+fixture_schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
+[[ $fixture_schema =~ ^[1-9][0-9]*$ ]]
+export TEST_SYSTEMD_SCHEMA=$fixture_schema
 scratch=$(mktemp -d "${TMPDIR:?}/systemd-api-test.XXXXXXXX")
 export TEST_SYSTEMD_ROOT=$scratch
 mkdir -p "$scratch/bin" "$scratch/logs" "$scratch/silver/group" "$scratch/silver/sync"
@@ -9,7 +12,7 @@ trap 'if [[ -f $scratch/pid ]]; then kill "$(cat "$scratch/pid")" 2>/dev/null ||
 cat > "$scratch/fixture.rs" <<'RS'
 fn main() {
     if std::env::args().any(|a| a == "--version") {
-        println!("{{\"silver_schema\":62}}");
+        println!("{{\"silver_schema\":{}}}", std::env::var("TEST_SYSTEMD_SCHEMA").unwrap());
         return;
     }
     loop { std::thread::sleep(std::time::Duration::from_secs(1)); }
