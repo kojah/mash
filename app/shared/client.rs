@@ -46,6 +46,8 @@ pub(super) enum Endpoint {
     Search,
     Fingerprints,
     Chats,
+    Records,
+    Record,
     Catalog,
     ChatPage,
     View,
@@ -80,6 +82,8 @@ impl Endpoint {
             Self::Search => "search",
             Self::Fingerprints => "fingerprints",
             Self::Chats => "chats",
+            Self::Records => "records",
+            Self::Record => "record",
             Self::Catalog => "catalog",
             Self::ChatPage => "chat",
             Self::View => "view",
@@ -352,6 +356,20 @@ pub(super) async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
         endpoint,
     )
     .await
+}
+
+pub(crate) async fn list_records(
+    config: &SharedConfig,
+    input: &crate::records::List,
+) -> Result<crate::records::Page, AppError> {
+    post(config, Endpoint::Records, input).await
+}
+
+pub(crate) async fn get_record(
+    config: &SharedConfig,
+    input: &crate::records::Get,
+) -> Result<crate::records::Record, AppError> {
+    post(config, Endpoint::Record, input).await
 }
 
 pub(crate) async fn list_chats(

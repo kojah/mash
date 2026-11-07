@@ -483,7 +483,8 @@ pub(crate) fn forget_chat(connection: &Connection, chat: &str) -> Result<usize, 
     Ok(ids.len())
 }
 
-fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
+pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
+    bounded(id, 512, "record ID")?;
     let row = connection
         .query_row(
             "SELECT owner,scope,revision FROM records WHERE id=?1 AND forgotten=0",
@@ -574,6 +575,7 @@ fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppE
         })
         .collect::<Result<_, AppError>>()?;
     Ok(Record {
+        node_id: None,
         id: id.into(),
         owner,
         scope: decode(&scope)?,
@@ -632,57 +634,61 @@ impl Storage {
     }
 
     pub(crate) fn records(&self, request: &List) -> Result<Page, AppError> {
-        let limit = request.limit.unwrap_or(20);
-        if !(1..=100).contains(&limit) || request.offset > 100_000 {
-            return Err(AppError::usage(
-                "record limit must be 1..100 and offset at most 100000",
-            ));
-        }
-        if let Some(scope) = &request.scope {
-            validate_scope(scope)?;
-        }
-        if let Some(query) = &request.query {
-            bounded(query, 1024, "record query")?;
-        }
-        let transaction = self
-            .connection
-            .unchecked_transaction()
-            .map_err(AppError::database)?;
-        let mut statement = transaction.prepare("SELECT r.id FROM records r JOIN record_revisions v ON v.record_id=r.id AND v.revision=r.revision WHERE r.forgotten=0 AND (?1 IS NULL OR r.scope=?1) AND (?2 IS NULL OR instr(lower(json_extract(v.body,'$.statement')),lower(?2))>0) ORDER BY v.recorded_at DESC,r.id LIMIT ?3 OFFSET ?4").map_err(AppError::database)?;
-        let mut ids = statement
-            .query_map(
-                params![
-                    request.scope.as_ref().map(encode).transpose()?,
-                    request.query,
-                    i64::try_from(limit + 1)
-                        .map_err(|_| AppError::usage("record limit out of range"))?,
-                    i64::try_from(request.offset)
-                        .map_err(|_| AppError::usage("record offset out of range"))?
-                ],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(AppError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(AppError::database)?;
-        let next_offset = (ids.len() > limit).then_some(request.offset + limit);
-        ids.truncate(limit);
-        let mut records = ids
-            .into_iter()
-            .map(|id| read(&transaction, &id, false))
-            .collect::<Result<Vec<_>, _>>()?;
-        if !request.include_inactive {
-            let timestamp = now()?;
-            records.retain(|record| {
-                record.revisions.first().is_some_and(|revision| {
-                    revision.body.review == Review::Established
-                        && revision.body.applies_at(timestamp)
-                        && revision.evidence_current
-                })
-            });
-        }
-        Ok(Page {
-            records,
-            next_offset,
-        })
+        list(&self.connection, request)
     }
+}
+
+pub(crate) fn list(connection: &Connection, request: &List) -> Result<Page, AppError> {
+    let limit = request.limit.unwrap_or(20);
+    if !(1..=100).contains(&limit) || request.offset > 100_000 {
+        return Err(AppError::usage(
+            "record limit must be 1..100 and offset at most 100000",
+        ));
+    }
+    if let Some(scope) = &request.scope {
+        validate_scope(scope)?;
+    }
+    if let Some(query) = &request.query {
+        bounded(query, 1024, "record query")?;
+    }
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(AppError::database)?;
+    let mut statement = transaction.prepare("SELECT r.id FROM records r JOIN record_revisions v ON v.record_id=r.id AND v.revision=r.revision WHERE r.forgotten=0 AND (?1 IS NULL OR r.scope=?1) AND (?2 IS NULL OR instr(lower(json_extract(v.body,'$.statement')),lower(?2))>0) ORDER BY v.recorded_at DESC,r.id LIMIT ?3 OFFSET ?4").map_err(AppError::database)?;
+    let mut ids = statement
+        .query_map(
+            params![
+                request.scope.as_ref().map(encode).transpose()?,
+                request.query,
+                i64::try_from(limit + 1)
+                    .map_err(|_| AppError::usage("record limit out of range"))?,
+                i64::try_from(request.offset)
+                    .map_err(|_| AppError::usage("record offset out of range"))?
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(AppError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::database)?;
+    let next_offset = (ids.len() > limit).then_some(request.offset + limit);
+    ids.truncate(limit);
+    let mut records = ids
+        .into_iter()
+        .map(|id| read(&transaction, &id, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    if !request.include_inactive {
+        let timestamp = now()?;
+        records.retain(|record| {
+            record.revisions.first().is_some_and(|revision| {
+                revision.body.review == Review::Established
+                    && revision.body.applies_at(timestamp)
+                    && revision.evidence_current
+            })
+        });
+    }
+    Ok(Page {
+        records,
+        next_offset,
+        next_cursor: None,
+    })
 }

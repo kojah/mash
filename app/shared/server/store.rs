@@ -13,6 +13,7 @@ use std::sync::Arc;
 mod replay;
 #[cfg(test)]
 pub(crate) use replay::ReplayFault;
+mod records;
 mod sync;
 
 /// Serializes publications per node while other nodes proceed.

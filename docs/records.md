@@ -5,8 +5,8 @@ citations to your indexed chats. Ask your agent to inspect the source discussion
 before recording a conclusion. Records are interpretations; a matching quote
 does not prove that an interpretation is correct.
 
-The current implementation provides local MCP operations and portable backups.
-Shared publication and automatic recall integration are still being added.
+The current implementation provides local recording, shared reads and portable
+backups. Automatic recall integration is still being added.
 
 Ordinary `mash export` backups include records, their revisions, evidence and
 confirmations. A normal import creates a new owner and remaps record IDs and
@@ -24,6 +24,18 @@ Follow `next_offset` to continue, even if a page contains no current records.
 Use `get_record` with the returned ID. Set `history` to `true` to inspect prior
 revisions, evidence, confirmations and links to replacement records. Reading does
 not confirm or change anything.
+
+To read published records, call `list_records` with `shared: true`. Results
+include `node_id` and `owner`; identical statements from different owners remain
+separate records. You can select one node with `node_id`. Shared pages visit
+nodes in order: pass `next_cursor` back as `cursor`, preserving the other filters,
+until no cursor remains. A page can be empty when its records are inactive.
+
+Pass the result's `node_id` alongside its `id` to `get_record` to read that shared
+copy. Shared reads use your configured group's authentication and need no models.
+They do not silently fall back to local records when the server is unavailable.
+Edits still happen on the owning node and reach the shared copy through normal
+publication. Records scoped to a local project path stay local.
 
 ## Save a conclusion
 

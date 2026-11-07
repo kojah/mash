@@ -137,6 +137,8 @@ fn router(app: App) -> Router {
         .route("/v1/freshness", get(freshness))
         .route("/v1/search", post(search))
         .route("/v1/chats", post(list_chats))
+        .route("/v1/records", post(list_records))
+        .route("/v1/record", post(get_record))
         .route("/v1/catalog", get(catalog))
         .route("/v1/chat", post(chat_page))
         .route("/v1/view", post(view))
@@ -312,6 +314,28 @@ pub(super) fn prepare_candidates(
         }
     }
 }
+async fn list_records(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+    input: Result<Json<crate::records::List>, JsonRejection>,
+) -> Result<Json<crate::records::Page>, ApiError> {
+    let mut page = app.store.list_records(&id, json(input)?).await?;
+    for record in &mut page.records {
+        record.redact(app.store.responses());
+    }
+    Ok(Json(page))
+}
+
+async fn get_record(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+    input: Result<Json<crate::records::Get>, JsonRejection>,
+) -> Result<Json<crate::records::Record>, ApiError> {
+    let mut record = app.store.get_record(&id, json(input)?).await?;
+    record.redact(app.store.responses());
+    Ok(Json(record))
+}
+
 async fn list_chats(
     State(app): State<App>,
     Extension(id): Extension<Identity>,

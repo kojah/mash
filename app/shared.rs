@@ -32,7 +32,9 @@ mod views_manifest;
 
 #[cfg(test)]
 pub(crate) use client::query_with_token;
-pub(crate) use client::{catalog, chat_page, fingerprints, freshness, list_chats, query, view};
+pub(crate) use client::{
+    catalog, chat_page, fingerprints, freshness, get_record, list_chats, list_records, query, view,
+};
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;

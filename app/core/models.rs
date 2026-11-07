@@ -54,10 +54,7 @@ pub(crate) struct IndexRequest {
 pub(crate) enum Operation {
     RecordMutation(crate::records::Mutation),
     Records(crate::records::List),
-    Record {
-        id: String,
-        history: bool,
-    },
+    Record(crate::records::Get),
     /// Configure, register with agents and index for the first time.
     Init(super::setup::InitRequest),
     Index(IndexRequest),

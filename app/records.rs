@@ -326,6 +326,8 @@ pub(crate) struct RecordRevision {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Record {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
     pub id: String,
     pub owner: String,
     pub scope: Scope,
@@ -399,6 +401,10 @@ pub(crate) enum Relation {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct List {
+    #[serde(default)]
+    pub shared: bool,
+    pub node_id: Option<String>,
+    pub cursor: Option<Cursor>,
     pub scope: Option<Scope>,
     pub query: Option<String>,
     #[serde(default)]
@@ -414,6 +420,24 @@ pub(crate) struct List {
 pub(crate) struct Page {
     pub records: Vec<Record>,
     pub next_offset: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<Cursor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Cursor {
+    pub node_id: String,
+    pub offset: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Get {
+    pub id: String,
+    #[serde(default)]
+    pub history: bool,
+    pub node_id: Option<String>,
 }
 
 pub(crate) fn bounded(value: &str, max: usize, field: &str) -> Result<(), AppError> {

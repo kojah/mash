@@ -41,7 +41,7 @@ async fn execute_admitted(
     use tracing::Instrument;
     let operation = match &request.operation {
         Operation::RecordMutation(_) => "record_mutation",
-        Operation::Records(_) | Operation::Record { .. } => "records",
+        Operation::Records(_) | Operation::Record(_) => "records",
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
         Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
@@ -280,6 +280,17 @@ async fn dispatch(
             .map(Response::RecordMutation)
         }
         Operation::Records(request) => {
+            if request.shared || request.node_id.is_some() {
+                let mut page =
+                    crate::shared::list_records(required_shared(configuration)?, &request).await?;
+                for record in &mut page.records {
+                    record.redact(configuration.redaction.output());
+                }
+                return Ok(Response::Records(page));
+            }
+            if request.cursor.is_some() {
+                return Err(AppError::usage("record cursors require shared=true"));
+            }
             let database = database.to_path_buf();
             let policy = configuration.redaction.output();
             crate::blocking(move || {
@@ -293,12 +304,18 @@ async fn dispatch(
             .await
             .map(Response::Records)
         }
-        Operation::Record { id, history } => {
+        Operation::Record(request) => {
+            if request.node_id.is_some() {
+                let mut record =
+                    crate::shared::get_record(required_shared(configuration)?, &request).await?;
+                record.redact(configuration.redaction.output());
+                return Ok(Response::Record(record));
+            }
             let database = database.to_path_buf();
             let policy = configuration.redaction.output();
             crate::blocking(move || {
-                let mut record =
-                    crate::storage::Storage::open_silver(&database)?.record(&id, history)?;
+                let mut record = crate::storage::Storage::open_silver(&database)?
+                    .record(&request.id, request.history)?;
                 record.redact(policy);
                 Ok(record)
             })

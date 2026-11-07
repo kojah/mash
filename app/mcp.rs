@@ -204,14 +204,6 @@ struct Forget {
     chat_id: String,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct GetRecord {
-    id: String,
-    #[serde(default)]
-    history: bool,
-}
-
 impl Mash {
     async fn execute_detailed(&self, operation: Operation, detail: Detail) -> CallToolResult {
         let server = self.clone();
@@ -427,7 +419,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "List local native records without models. By default returns established current records with matching source evidence. include_inactive also exposes candidates, retired records and stale evidence. Scope identity is exact; repository basenames are not identities. Follow next_offset even when a page is empty after current-evidence filtering."
+        description = "List native records without models. Local by default; shared=true reads the configured group, optionally filtered by node_id. Returns established current records with matching source evidence; include_inactive exposes candidates, retired records and stale evidence. Scope identity is exact. Follow next_offset locally or pass next_cursor as cursor for shared pages, even when a page is empty. Shared records retain their node and owner; reading never confirms them."
     )]
     async fn list_records(
         &self,
@@ -438,14 +430,13 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read a local native record and its evidence, source freshness, confirmations and supersession links. Set history=true for all retained revisions. Reading never confirms a record. Fact records represent reported claims, not independent verification."
+        description = "Read a native record and its evidence, source freshness, confirmations and supersession links. Local by default; supply node_id from a shared list result to read that owner's published copy. Set history=true for all retained revisions. Reading never confirms a record. Fact records represent reported claims, not independent verification."
     )]
-    async fn get_record(&self, Parameters(input): Parameters<GetRecord>) -> CallToolResult {
-        self.perform(Operation::Record {
-            id: input.id,
-            history: input.history,
-        })
-        .await
+    async fn get_record(
+        &self,
+        Parameters(input): Parameters<crate::records::Get>,
+    ) -> CallToolResult {
+        self.perform(Operation::Record(input)).await
     }
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),

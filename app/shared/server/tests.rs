@@ -15,6 +15,7 @@ mod exact;
 mod freshness;
 mod native;
 mod query;
+mod records;
 mod redaction;
 mod relevance;
 mod restart;
