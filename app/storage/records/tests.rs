@@ -277,6 +277,59 @@ fn native_records_supersession_is_atomic_and_reversals_keep_three_identities() {
 }
 
 #[test]
+fn native_records_changed_or_unknown_source_role_requires_review() {
+    let (_directory, mut storage) = database();
+    let created = storage
+        .mutate_record(&create_request("create", decision()))
+        .unwrap();
+    storage
+        .connection
+        .execute("UPDATE messages SET role='assistant' WHERE id='yes'", [])
+        .unwrap();
+    let record = storage.record(&created.record_id, false).unwrap();
+    assert!(!record.revisions[0].evidence_current);
+    assert_eq!(
+        record.revisions[0].evidence[1].source_role,
+        Some(crate::role::Role::User)
+    );
+    assert!(
+        storage
+            .records(&List::default())
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    storage
+        .connection
+        .execute("UPDATE messages SET role='user' WHERE id='yes'", [])
+        .unwrap();
+    assert!(storage.record(&created.record_id, false).unwrap().revisions[0].evidence_current);
+    // Migrated evidence with unknown provenance must not acquire an inferred approval.
+    storage
+        .connection
+        .execute(
+            "UPDATE record_evidence SET source_role=NULL WHERE message_id='yes'",
+            [],
+        )
+        .unwrap();
+    assert!(!storage.record(&created.record_id, false).unwrap().revisions[0].evidence_current);
+    assert!(
+        storage
+            .records(&List::default())
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    let retained = storage
+        .records(&List {
+            include_inactive: true,
+            ..List::default()
+        })
+        .unwrap();
+    assert_eq!(retained.records.len(), 1);
+}
+
+#[test]
 fn native_records_source_refresh_marks_stale_but_forget_scrubs_all_revisions() {
     let (_directory, mut storage) = database();
     let request = create_request("create", decision());

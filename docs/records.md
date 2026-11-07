@@ -76,6 +76,9 @@ not authenticated human identity.
 Retained evidence includes its stated purpose and the source message's role at
 recording time. Older records that did not retain these fields show them as
 unknown; Mash does not guess whether an old quote was an endorsement.
+Changed or unknown source roles make the evidence stale, even if the quoted text
+still matches. Use `include_inactive` to review these records and revise them
+with verified sources before relying on them again.
 
 | Kind | States | Additional fields |
 | --- | --- | --- |

@@ -1,7 +1,7 @@
 # Audit silver revision, timestamp provenance and common search-document guards.
 # Qdrant freshness belongs to the disposable-backend certification audit.
 examine_globs = ["app/silver/revision.rs", "app/silver/enrichment.rs", "app/views/qdrant.rs", "app/storage/gold_input.rs", "app/storage/gold_input/*.rs", "app/storage/search_input.rs", "app/storage/records.rs"]
-examine_re = ["app/silver/revision.rs", "Timestamps::is_current_for", "document_hit", "app/storage/gold_input", "app/storage/search_input.rs", '(replace |in )(current|requires_endorsement)( ->|$)']
+examine_re = ["app/silver/revision.rs", "Timestamps::is_current_for", "document_hit", "app/storage/gold_input", "app/storage/search_input.rs", '(replace |in )(current|source_current|requires_endorsement)( ->|$)']
 test_package = ["mash"]
 test_tool = "nextest"
 # Mutated bodies can leave arguments unused; tests must judge those mutations.

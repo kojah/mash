@@ -483,6 +483,21 @@ pub(crate) fn forget_chat(connection: &Connection, chat: &str) -> Result<usize, 
     Ok(ids.len())
 }
 
+fn source_current(
+    source: &Evidence,
+    content: Option<&str>,
+    role: Option<&crate::role::Role>,
+) -> bool {
+    content.is_some_and(|content| {
+        blake3::hash(content.as_bytes()).to_hex().as_str() == source.fingerprint
+            && content.contains(&source.quote)
+            && source
+                .source_role
+                .as_ref()
+                .is_some_and(|saved| role == Some(saved))
+    })
+}
+
 pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
     bounded(id, 512, "record ID")?;
     let row = connection
@@ -514,7 +529,7 @@ pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<R
     let mut revisions = Vec::new();
     for row in rows {
         let (revision, body, recorded_at) = row.map_err(AppError::database)?;
-        let mut sources = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content,e.purpose,e.source_role FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
+        let mut sources = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content,e.purpose,e.source_role,m.role FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
         let sources = sources
             .query_map(params![id, revision], |row| {
                 Ok((
@@ -527,17 +542,15 @@ pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<R
                         source_role: row.get(6)?,
                     },
                     row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<crate::role::Role>>(7)?,
                 ))
             })
             .map_err(AppError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(AppError::database)?;
         let evidence_current = !sources.is_empty()
-            && sources.iter().all(|(source, content)| {
-                content.as_ref().is_some_and(|content| {
-                    blake3::hash(content.as_bytes()).to_hex().as_str() == source.fingerprint
-                        && content.contains(&source.quote)
-                })
+            && sources.iter().all(|(source, content, role)| {
+                source_current(source, content.as_deref(), role.as_ref())
             });
         let confirmations = connection
             .query_row(
@@ -550,7 +563,7 @@ pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<R
             revision,
             body: decode(&body)?,
             recorded_at,
-            evidence: sources.into_iter().map(|(source, _)| source).collect(),
+            evidence: sources.into_iter().map(|(source, _, _)| source).collect(),
             evidence_current,
             confirmations,
         });
