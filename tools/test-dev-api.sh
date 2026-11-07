@@ -138,6 +138,28 @@ kill -0 "$previous_pid"
 mkdir -p "$scratch/compatible-silver/group"
 cp "$silver/group/current.sqlite3" "$scratch/compatible-silver/group/current.sqlite3"
 bash "$repository/tools/check-shared-silver.sh" "$scratch/schema.rs" "$scratch/compatible-silver" >/dev/null
+# Supported migration versions pass without modifying history; versions on
+# either side of the interval fail. Schema zero remains a new database.
+printf 'const BASELINE: i64 = 49;\npub(crate) const SCHEMA_VERSION: i64 = 51;\n' > "$scratch/migrating-schema.rs"
+for version in 0 48 49 50 51 52; do
+    python3 - "$scratch/compatible-silver/group/current.sqlite3" "$version" <<'PY'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute(f'PRAGMA user_version={int(sys.argv[2])}')
+PY
+    sha256sum "$scratch/compatible-silver/group/current.sqlite3" > "$scratch/migration-before.sha256"
+    if bash "$repository/tools/check-shared-silver.sh" "$scratch/migrating-schema.rs" "$scratch/compatible-silver" >/dev/null 2>&1; then
+        [[ $version == 0 || ( $version -ge 49 && $version -le 51 ) ]]
+    else
+        [[ $version == 48 || $version == 52 ]]
+    fi
+    sha256sum --check "$scratch/migration-before.sha256" >/dev/null
+done
+cp "$silver/group/current.sqlite3" "$scratch/compatible-silver/group/current.sqlite3"
+printf 'const BASELINE: i64 = 52;\npub(crate) const SCHEMA_VERSION: i64 = 51;\n' > "$scratch/migrating-schema.rs"
+if bash "$repository/tools/check-shared-silver.sh" "$scratch/migrating-schema.rs" "$scratch/compatible-silver" 2>/dev/null; then
+    echo 'Invalid migration interval passed preflight.' >&2; exit 1
+fi
 printf 'not a schema declaration\n' > "$scratch/invalid-schema.rs"
 if bash "$repository/tools/check-shared-silver.sh" "$scratch/invalid-schema.rs" "$silver" 2>/dev/null; then
     echo 'Unverified target schema passed preflight.' >&2; exit 1

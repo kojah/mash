@@ -89,6 +89,24 @@ run() {
 }
 if run preflight; then echo 'Incompatible state passed without opt-in' >&2; exit 1; fi
 run preflight --retire-incompatible-silver
+# Migration-capable schemas preserve the existing shared root and receipts.
+fixture_baseline=$(sed -nE 's/^const BASELINE: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
+for version in "$fixture_baseline" "$fixture_schema"; do
+    python3 - "$scratch/silver/group/node.sqlite3" "$version" <<'PY'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute(f'PRAGMA user_version={int(sys.argv[2])}')
+PY
+    sha256sum "$scratch/silver/group/node.sqlite3" > "$scratch/migration-before.sha256"
+    run preflight > "$scratch/migration-preflight"
+    grep -Fq 'shared-state retirement required: false' "$scratch/migration-preflight"
+    sha256sum --check "$scratch/migration-before.sha256" >/dev/null
+done
+python3 - "$scratch/silver/group/node.sqlite3" <<'PY'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute('PRAGMA user_version=54')
+PY
 [[ -f $scratch/silver/sync/catalog.sqlite3 ]]
 live_pid=$(cat "$scratch/pid")
 printf '%s\n' "$$" > "$scratch/pid"

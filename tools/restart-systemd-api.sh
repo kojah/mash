@@ -45,8 +45,7 @@ check_service() {
 check_service
 [[ $action != check ]] || exit 0
 [[ -w $destination && -w $pointer && -w $(dirname "$pointer") ]]
-schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$(dirname "$0")/../app/storage/schema.rs")
-[[ $schema =~ ^[1-9][0-9]*$ ]]
+silver_schema_range "$(dirname "$0")/../app/storage/schema.rs"
 if [[ $action == install ]]; then
     [[ -x $artifact ]]
     candidate_schema=$("$artifact" --version | jq -er '.silver_schema | select(type == "number" and . > 0)')
@@ -61,7 +60,7 @@ for directory in "$silver" "$silver"/*; do
 done
 for file in "$silver"/*/*.sqlite3; do
     version=$(silver_version "$file")
-    [[ $version == 0 || $version == "$schema" ]] || incompatible=true
+    silver_schema_supported "$version" || incompatible=true
 done
 if $incompatible && ! $retire; then
     echo 'Shared silver is incompatible; explicitly plan full shared-state retirement and node republishing.' >&2

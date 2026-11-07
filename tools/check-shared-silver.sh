@@ -7,11 +7,7 @@ set -euo pipefail
     exit 2
 }
 source "$(dirname "$0")/dev-api-common.sh"
-schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$1")
-[[ $schema =~ ^[1-9][0-9]*$ ]] || {
-    echo 'Cannot determine the target silver schema; shared compatibility is unverified.' >&2
-    exit 1
-}
+silver_schema_range "$1"
 shopt -s nullglob
 incompatible=false
 for directory in "$2" "$2"/*; do
@@ -23,7 +19,7 @@ for directory in "$2" "$2"/*; do
 done
 for file in "$2"/*/*.sqlite3; do
     version=$(silver_version "$file")
-    if [[ $version != 0 && $version != "$schema" ]]; then incompatible=true; fi
+    if ! silver_schema_supported "$version"; then incompatible=true; fi
 done
 if [[ $incompatible == true ]]; then
     echo "Shared silver is incompatible with target schema $schema. Prepare a schema-aware rollout preserving node history and transfer receipts before deployment; no deployment performed." >&2

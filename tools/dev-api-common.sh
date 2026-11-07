@@ -51,6 +51,23 @@ check_api_http() {
     [[ "$status" == 401 ]]
 }
 
+# Read the migration interval declared by the candidate source.
+silver_schema_range() {
+    local source=$1
+    schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$source")
+    schema_min=$(sed -nE 's/^const BASELINE: i64 = ([0-9]+);$/\1/p' "$source")
+    # Releases without migrations only open their exact schema.
+    schema_min=${schema_min:-$schema}
+    [[ $schema =~ ^[1-9][0-9]*$ && $schema_min =~ ^[1-9][0-9]*$ && $schema_min -le $schema ]] || {
+        echo 'Cannot determine the target silver schema range; shared compatibility is unverified.' >&2
+        return 1
+    }
+}
+
+silver_schema_supported() {
+    [[ $1 =~ ^[0-9]+$ ]] && (( $1 == 0 || ($1 >= schema_min && $1 <= schema) ))
+}
+
 # A shared silver database's schema version, read without writing to it.
 silver_version() {
     python3 - "$1" <<'PYTHON'
