@@ -2,9 +2,12 @@
 
 [Documentation](../README.md) · [Project home](../../README.md)
 
-Mash releases open only their own database and search-index schemas. An
-incompatible index is rejected without modification. `mash index` does not
-migrate it, and replacing the executable does not upgrade its data.
+The [migration policy and design](database-migrations.md) prefers upgrading
+existing SQLite databases and preserving valid Qdrant search data independently.
+The current schema-62 implementation still rejects incompatible databases without
+modification. `mash index` does not yet migrate them. The procedures below describe
+that implementation's export/import fallback, not a requirement for every future
+schema change.
 
 ## Make a portable backup
 
@@ -101,8 +104,10 @@ when its instructions change. Check local and shared readiness separately.
 
 ## Shared deployments
 
-Clients and server must run matching releases. Shared silver is republished by
-its owning nodes; Qdrant views are rebuilt from that history. An empty shared
+Clients and server must run matching releases. With the current legacy retirement
+procedure, shared silver is republished by its owning nodes and Qdrant views are
+rebuilt from that history. A future supported SQLite migration should preserve
+shared history and valid search data instead. An empty shared
 silver directory cannot be recovered by `--replay-views` alone.
 
 Treat shared silver, transfer receipts/catalog, upload spool, attachments,

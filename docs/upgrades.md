@@ -31,6 +31,12 @@ or model directory, also pass `--config PATH` or `--models-dir PATH`.
 
 ## Upgrade an existing installation
 
+Mash's upgrade policy is to preserve existing databases through supported
+migrations and keep valid search data. The current schema-62 binary does not
+implement those migrations yet; the instructions below are its fallback for
+incompatible databases. Do not assume an older database can already be upgraded
+in place, or change its version number by hand.
+
 Back up before replacing Mash, and keep the old executable until you have
 checked that the new version can read your history.
 

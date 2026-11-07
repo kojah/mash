@@ -51,8 +51,9 @@ contracts. Chat records describe history; archived parent positions are resolved
 to stable message IDs within the import transaction before commit. Earlier
 record schemas are rejected rather than translated.
 
-Live silver and views schemas are strict per release. There are no in-place
-schema migrations. Local history crosses releases through export/import only
-when archive schemas are compatible; shared history is republished and views
-are rebuilt. Shared synchronization requires protocol 3 and sync catalog schema
+The [migration policy](database-migrations.md) calls for shared local/server
+SQLite migrations and independent preservation of valid Qdrant data. Schema-62
+binaries do not implement migrations yet: incompatible local history still needs
+compatible export/import, and retired shared history needs republishing and a
+views rebuild. Shared synchronization requires protocol 3 and sync catalog schema
 1; existing unversioned catalogs are rejected untouched.

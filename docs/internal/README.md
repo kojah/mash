@@ -11,6 +11,7 @@ documentation website and its search. User guides live in [docs](../README.md).
 - [Synchronization](synchronization-reference.md) and [shared API](shared-api.md)
 - [Configuration details](configuration.md) and [redaction](privacy.md)
 - [Upgrade operations](upgrades.md)
+- [Database migration policy and design](database-migrations.md)
 - [Documentation website](documentation-site.md)
 - [Native first-user setup audits](setup-audits.md)
 - [Fleet deployment](../../deployment/README.md)

@@ -41,12 +41,16 @@ release-stamp override do not invalidate validation; always stamp the current re
 once per platform. API installation uses authenticated readiness, rollout locking,
 atomic release pointers and rollback; identical healthy releases stay running.
 
-Ordinary deployment never ingests history or downloads models. Each release
-opens only its silver schema: required upgrades export with the installed binary,
-retain private sensitive backups, import with the new binary keeping identity,
-then explicitly sync to re-ingest stale source interpretation, rebuild views and
-publish. Never add schema aliases or
-alter provider files. Missing query models require explicit models install.
+Ordinary deployment never ingests history or downloads models. Prefer tested
+in-place SQLite migrations for explicitly supported starting versions, shared
+by local and server databases. Stop writes and exclude stale runtimes during
+upgrades. Preserve valid Qdrant data independently of SQLite version changes;
+refresh only data affected by a source, model or search-contract change.
+Migration support is not implemented in schema-62 binaries: retain the existing
+export/import recovery path for those binaries and unsupported legacy transitions,
+with private backups and verified archive compatibility. Never bypass version
+guards or alter provider files. Inspect an ongoing rollout before changing its
+upgrade plan. Missing query models require explicit models install.
 
 For explicit refresh use `bash tools/fleet.sh sync xenia` or
 `bash tools/fleet.sh local-views xenia`; the latter stays local. Fresh readiness

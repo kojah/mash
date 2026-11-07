@@ -23,10 +23,21 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   for branch ancestry. Do not introduce a generic object model, external content
   connectors, connector ingress, or a Python SDK. Slack, Obsidian, and other
   non-agent content are outside the product boundary.
-- Do not check in schema upgrade code. Each release opens only its own silver
-  and views schemas and rejects others untouched; views are rebuilt, shared silver
-  is republished, and local silver crosses releases only through export and
-  `import --keep-identity` (`tools/upgrade-local-index.sh`).
+- Prefer in-place SQLite migrations for supported older schemas, using the same
+  migration definitions for local silver and each node's shared silver database.
+  Reject newer and unsupported schemas untouched. Evaluate `rusqlite_migration`
+  first, including its ownership of `user_version`; consider `refinery` only if
+  migration history and edited-migration checks justify it. Explicitly define
+  supported starting versions; do not assume schema 54 to 62 is safe.
+  Coordinate with all writers and stale long-running processes; test interrupted
+  upgrades, history/identity preservation and newer-schema rejection. Keep
+  export/import for portability, recovery and unsupported legacy transitions.
+- SQLite changes must not automatically invalidate Qdrant. Preserve valid search
+  data; use targeted payload, filter-index and supported settings updates.
+  Recompute vectors only when their model or relevant input changes. Keep
+  freshness checks truthful and search replayable from silver. Start without a
+  separate Qdrant migration framework; replacement collections serving alongside
+  old collections are a possible later design, not a requirement.
 - Use an authenticated Axum HTTP API for one shared index per configured node
   group. Shared silver is server-side SQLite (no views tables); shared views live in
   Qdrant.

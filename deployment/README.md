@@ -87,7 +87,14 @@ service is stopped, for example to select a fresh Qdrant instance. The old file
 is retained and restored with the binary on pre-activation failure. After
 activation, keep both the new environment and new state during forward recovery.
 
-Schema changes require the explicit `--retire-incompatible-silver` option and a
+The upgrade policy prefers tested in-place SQLite migrations and preservation of
+valid Qdrant data. The current schema-62 tools do not implement migrations yet;
+the following retirement procedure is a legacy fallback, not the default design
+for future schema changes. See [migration design](../docs/internal/database-migrations.md).
+Inspect any active rollout and recovery markers before changing its plan.
+
+Unsupported shared schema changes handled by these tools require the explicit
+`--retire-incompatible-silver` option and a
 verified republish plan for every affected node. While the service is stopped,
 the systemd installer retains the **entire** old shared-silver directory,
 including its transfer catalogue and spool, under the private backup root on
@@ -110,7 +117,7 @@ and bounded lexical/available semantic searches. Restart existing Mash MCP
 connections after upgrading the binary, and reload updated plugin instructions.
 Canonical exports and Runner logs remain private.
 
-Local schema upgrades require a quiescent node: stop index watchers and agent MCP
+The existing export/import upgrade path requires a stopped node: stop index watchers and agent MCP
 sessions and keep them stopped through cutover. The upgrader checks open database
 files with `lsof` before export and again before cutover; this is not a fence
 against newly started processes. Targets need `jq` and `lsof`. It validates a
