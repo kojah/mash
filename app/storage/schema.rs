@@ -6,6 +6,7 @@ use crate::database_error::Operation;
 
 /// First supported migration baseline. Earlier releases require export/import.
 const BASELINE: i64 = 62;
+pub(crate) const MIN_SCHEMA_VERSION: i64 = BASELINE;
 pub(crate) const SCHEMA_VERSION: i64 = 65;
 
 /// The one silver schema, shared by local nodes and the shared server.

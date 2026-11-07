@@ -46,7 +46,9 @@ second copy alongside it.
 ## Before replacing a release
 
 1. Check the installed and target releases with `mash --version`; each reports
-   its `silver_schema`.
+   its `silver_schema` and `silver_schema_min`. The inclusive interval is the
+   supported migration range; schema zero creates a new database. Older releases
+   without the minimum field support only their exact reported schema.
 2. Preserve the installed executable, configuration, canonical SQLite database,
    and adjacent `.attachments` directory. Stop writers before making file-level
    backups; copying a live SQLite main file alone can miss committed WAL data.

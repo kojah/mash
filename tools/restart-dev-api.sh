@@ -46,11 +46,11 @@ if [[ -z "$activate_query$replay_views" ]] && jq -e \
     '.binary_sha256 == $binary and .config_sha256 == $config and .environment_sha256 == $environment' "$pointer" >/dev/null; then
     compatible=true
     if [[ -n "$silver_dir" ]]; then
-        schema=$("$artifact" --version | jq -er '.silver_schema | select(type == "number")')
+        silver_binary_range "$artifact"
         shopt -s nullglob
         for file in "$silver_dir"/*/*.sqlite3; do
             version=$(silver_version "$file")
-            [[ "$version" == 0 || "$version" == "$schema" ]] || compatible=false
+            silver_schema_supported "$version" || compatible=false
         done
     fi
     if [[ "$compatible" == true ]]; then
@@ -114,12 +114,12 @@ rollback() {
 }
 retire_silver() {
     [[ -n "$silver_dir" ]] || return 0
-    local schema file version group node
-    schema=$("$binary" --version | jq -er '.silver_schema | select(type == "number")')
+    local schema schema_min file version group node
+    silver_binary_range "$binary"
     shopt -s nullglob
     for file in "$silver_dir"/*/*.sqlite3; do
         version=$(silver_version "$file")
-        [[ "$version" == 0 || "$version" == "$schema" ]] && continue
+        silver_schema_supported "$version" && continue
         group=$(basename "$(dirname "$file")")
         node=$(basename "$file" .sqlite3)
         mkdir -p "$scratch/retired-silver/$group"

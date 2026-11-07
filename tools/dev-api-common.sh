@@ -68,6 +68,15 @@ silver_schema_supported() {
     [[ $1 =~ ^[0-9]+$ ]] && (( $1 == 0 || ($1 >= schema_min && $1 <= schema) ))
 }
 
+# Older releases without this field support only their own exact schema.
+silver_binary_range() {
+    local report
+    report=$("$1" --version) || return 1
+    schema=$(jq -er '.silver_schema | select(type == "number" and . > 0 and floor == .)' <<<"$report") || return 1
+    schema_min=$(jq -er '(if has("silver_schema_min") then .silver_schema_min else .silver_schema end) | select(type == "number" and . > 0 and floor == .)' <<<"$report") || return 1
+    [[ $schema_min -le $schema ]]
+}
+
 # A shared silver database's schema version, read without writing to it.
 silver_version() {
     python3 - "$1" <<'PYTHON'

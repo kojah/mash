@@ -23,6 +23,12 @@ fn standalone_server_has_separate_arguments_and_side_effect_free_information() {
         } else {
             assert_eq!(response["version"], env!("CARGO_PKG_VERSION"));
             assert!(response["silver_schema"].as_i64().unwrap() > 0);
+            let minimum = response["silver_schema_min"].as_i64().unwrap();
+            assert!(minimum > 0 && minimum <= response["silver_schema"].as_i64().unwrap());
+            assert_eq!(
+                response["silver_schema_min"],
+                run_json(&["--version"])["silver_schema_min"]
+            );
         }
     }
     for args in [
@@ -182,7 +188,9 @@ fn informational_flags_succeed_without_initializing_application_resources() {
         if arguments.contains(&"--version") || arguments.contains(&"-V") {
             assert_eq!(response["version"], env!("CARGO_PKG_VERSION"));
             assert!(response["silver_schema"].as_i64().is_some_and(|v| v > 0));
-            assert_eq!(response.as_object().unwrap().len(), 2);
+            let minimum = response["silver_schema_min"].as_i64().unwrap();
+            assert!(minimum > 0 && minimum <= response["silver_schema"].as_i64().unwrap());
+            assert_eq!(response.as_object().unwrap().len(), 3);
         } else {
             assert_eq!(response.as_object().unwrap().len(), 1);
             let help = response["help"].as_str().unwrap();

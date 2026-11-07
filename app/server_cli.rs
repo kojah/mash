@@ -41,6 +41,7 @@ pub(super) enum Information {
     Version {
         version: &'static str,
         silver_schema: i64,
+        silver_schema_min: i64,
     },
 }
 
@@ -59,6 +60,7 @@ where
                 clap::error::ErrorKind::DisplayVersion => Ok(Some(Information::Version {
                     version: env!("CARGO_PKG_VERSION"),
                     silver_schema: crate::storage::schema::SCHEMA_VERSION,
+                    silver_schema_min: crate::storage::schema::MIN_SCHEMA_VERSION,
                 })),
                 _ => Err(AppError::usage(error.to_string())),
             };

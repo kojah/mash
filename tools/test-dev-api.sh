@@ -106,14 +106,14 @@ silver="$scratch/silver"
 mkdir -p "$silver/group"
 python3 - "$silver/group" <<'PYTHON'
 import sqlite3, sys
-for name, version in (("old", 46), ("current", 51)):
+for name, version in (("old", 46), ("current", 51), ("migratable", 50)):
     connection = sqlite3.connect(f"{sys.argv[1]}/{name}.sqlite3")
     connection.execute(f"PRAGMA user_version = {version}")
     connection.commit()
 PYTHON
 cat > "$scratch/release" <<'RELEASE'
 #!/usr/bin/env bash
-if [[ ${1:-} == --version ]]; then echo '{"version":"test","silver_schema":51}'; exit 0; fi
+if [[ ${1:-} == --version ]]; then echo '{"version":"test","silver_schema":51,"silver_schema_min":49}'; exit 0; fi
 printf '%s\n' "$@" > "$TEST_API_ARGUMENTS"
 while :; do sleep 0.1; done
 RELEASE
@@ -199,6 +199,7 @@ report=$(bash "$repository/tools/restart-dev-api.sh" "$scratch/release" fixture.
 [[ "$(jq -c .republish <<<"$report")" == '["old"]' ]]
 [[ "$(jq -r .publications_preserved <<<"$report")" == false ]]
 [[ ! -e "$silver/group/old.sqlite3" && -e "$silver/group/current.sqlite3" ]]
+[[ -e "$silver/group/migratable.sqlite3" ]]
 [[ -e "$(jq -r .retired_silver "$TEST_API_POINTER")/group/old.sqlite3" ]]
 recorded_pid=$(jq -r .pid "$TEST_API_POINTER")
 cp -f "$TEST_API_POINTER" "$scratch/valid-pointer.json"

@@ -5,6 +5,8 @@ repository=$(cd "$(dirname "$0")/.." && pwd)
 fixture_schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
 [[ $fixture_schema =~ ^[1-9][0-9]*$ ]]
 export TEST_SYSTEMD_SCHEMA=$fixture_schema
+fixture_baseline=$(sed -nE 's/^const BASELINE: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
+export TEST_SYSTEMD_BASELINE=$fixture_baseline
 scratch=$(mktemp -d "${TMPDIR:?}/systemd-api-test.XXXXXXXX")
 export TEST_SYSTEMD_ROOT=$scratch
 mkdir -p "$scratch/bin" "$scratch/logs" "$scratch/silver/group" "$scratch/silver/sync"
@@ -12,7 +14,7 @@ trap 'if [[ -f $scratch/pid ]]; then kill "$(cat "$scratch/pid")" 2>/dev/null ||
 cat > "$scratch/fixture.rs" <<'RS'
 fn main() {
     if std::env::args().any(|a| a == "--version") {
-        println!("{{\"silver_schema\":{}}}", std::env::var("TEST_SYSTEMD_SCHEMA").unwrap());
+        println!("{{\"silver_schema\":{},\"silver_schema_min\":{}}}", std::env::var("TEST_SYSTEMD_SCHEMA").unwrap(), std::env::var("TEST_SYSTEMD_BASELINE").unwrap());
         return;
     }
     loop { std::thread::sleep(std::time::Duration::from_secs(1)); }
@@ -89,8 +91,13 @@ run() {
 }
 if run preflight; then echo 'Incompatible state passed without opt-in' >&2; exit 1; fi
 run preflight --retire-incompatible-silver
+TEST_SYSTEMD_BASELINE=$fixture_schema
+if run install --retire-incompatible-silver 2> "$scratch/range-error"; then
+    echo 'Candidate with a different migration range passed source verification' >&2; exit 1
+fi
+grep -Fq 'Candidate schema range does not match preflight source' "$scratch/range-error"
+TEST_SYSTEMD_BASELINE=$fixture_baseline
 # Migration-capable schemas preserve the existing shared root and receipts.
-fixture_baseline=$(sed -nE 's/^const BASELINE: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
 for version in "$fixture_baseline" "$fixture_schema"; do
     python3 - "$scratch/silver/group/node.sqlite3" "$version" <<'PY'
 import sqlite3, sys

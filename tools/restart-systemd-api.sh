@@ -48,9 +48,10 @@ check_service
 silver_schema_range "$(dirname "$0")/../app/storage/schema.rs"
 if [[ $action == install ]]; then
     [[ -x $artifact ]]
-    candidate_schema=$("$artifact" --version | jq -er '.silver_schema | select(type == "number" and . > 0)')
-    [[ $candidate_schema == "$schema" ]] || {
-        echo 'Candidate schema does not match preflight source.' >&2; exit 1;
+    source_schema=$schema source_schema_min=$schema_min
+    silver_binary_range "$artifact"
+    [[ $schema == "$source_schema" && $schema_min == "$source_schema_min" ]] || {
+        echo 'Candidate schema range does not match preflight source.' >&2; exit 1;
     }
 fi
 incompatible=false
