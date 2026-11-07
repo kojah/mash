@@ -3,6 +3,7 @@ use rmcp::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::AppError;
+pub(crate) mod matches;
 pub(crate) mod recall;
 pub(crate) mod transfer;
 
@@ -256,6 +257,20 @@ pub(crate) struct Expected {
     pub revision: i64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DuplicatePolicy {
+    #[default]
+    Report,
+    Reuse,
+}
+
+impl DuplicatePolicy {
+    pub(crate) const fn is_report(&self) -> bool {
+        matches!(self, Self::Report)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Change {
@@ -263,6 +278,8 @@ pub(crate) enum Change {
         scope: Scope,
         body: Body,
         evidence: Vec<Citation>,
+        #[serde(default, skip_serializing_if = "DuplicatePolicy::is_report")]
+        on_duplicate: DuplicatePolicy,
     },
     Revise {
         expected: Expected,
@@ -302,6 +319,8 @@ pub(crate) struct Receipt {
     pub record_id: String,
     pub revision: i64,
     pub related: Option<Expected>,
+    #[serde(default)]
+    pub reused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

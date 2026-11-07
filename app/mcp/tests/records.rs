@@ -1,6 +1,52 @@
 use super::*;
 
 #[tokio::test]
+async fn native_records_sdk_duplicate_suggestions_and_explicit_reuse() {
+    let root = tempfile::tempdir().unwrap();
+    let server = Mash {
+        paths: Arc::new(super::workflows::decision_history(root.path())),
+        gate: Arc::default(),
+        runtime: None,
+        model_work: Arc::new(tokio::sync::Semaphore::new(0)),
+    };
+    let (server_io, client_io) = tokio::io::duplex(128 * 1024);
+    let serving = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+    let client = ().serve(client_io).await.unwrap();
+    let service = serving.await.unwrap();
+    let call = |name: &'static str, args: serde_json::Value| {
+        client.call_tool(
+            CallToolRequestParams::new(name).with_arguments(args.as_object().unwrap().clone()),
+        )
+    };
+    let body = json!({"statement":"Use Qdrant","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}});
+    let scope = json!({"kind":"chat","id":"decision-thread"});
+    let mut request = json!({"operation_id":"first","change":{"action":"create","scope":scope,"body":body,"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}});
+    let created = call("record", request.clone()).await.unwrap();
+    assert_ne!(created.is_error, Some(true), "{created:?}");
+    let receipt = created.structured_content.unwrap();
+    let matches = call("find_record_matches", json!({"scope":scope,"body":body}))
+        .await
+        .unwrap();
+    assert_ne!(matches.is_error, Some(true), "{matches:?}");
+    let matches = matches.structured_content.unwrap();
+    assert_eq!(matches["suggestions"][0]["id"], receipt["record_id"]);
+    assert_eq!(matches["suggestions"][0]["exact"], true);
+    request["operation_id"] = json!("repeat");
+    assert_eq!(
+        call("record", request.clone()).await.unwrap().is_error,
+        Some(true)
+    );
+    request["change"]["on_duplicate"] = json!("reuse");
+    let reused = call("record", request).await.unwrap();
+    assert_ne!(reused.is_error, Some(true), "{reused:?}");
+    let reused = reused.structured_content.unwrap();
+    assert_eq!(reused["reused"], true);
+    assert_eq!(reused["record_id"], receipt["record_id"]);
+    client.cancel().await.unwrap();
+    service.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models() {
     let root = tempfile::tempdir().unwrap();
     let paths = super::workflows::decision_history(root.path());

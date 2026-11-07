@@ -67,6 +67,20 @@ publication. Records scoped to a local project path stay local.
 
 ## Save a conclusion
 
+Before creating a record, call `find_record_matches` with its proposed `scope`
+and `body`. It returns up to eight exact or similar-wording suggestions of the
+same kind and scope, scanning at most 256 recent records. Review their current
+state, review status and evidence; similar wording does not prove agreement.
+Suggestions never merge records or add confirmations.
+
+`create` reports an identical live record by default. To explicitly reuse it,
+set `on_duplicate: "reuse"` inside the create change. The receipt then has
+`reused: true`; its ID and revision identify the existing record. This adds no
+evidence or confirmation and does not change the original attribution. An exact
+match requires all interpretation fields to agree, including state, review and
+effective time, but ignores which agent recorded it. Retired choices are never
+revived through reuse. Use `revise` or `supersede` when the interpretation changed.
+
 The `record` MCP tool accepts an operation ID and a typed change. Reuse the same
 operation ID when retrying the same request after a lost response; use a new one
 for a different operation. This example records a decision after reading its

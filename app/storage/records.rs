@@ -1,6 +1,7 @@
 //! Transactional record state. Source refresh and privacy forgetting are distinct.
 use super::Storage;
 
+mod matches;
 mod recall;
 #[cfg(test)]
 mod tests;
@@ -213,12 +214,26 @@ fn change(
             scope,
             body,
             evidence,
+            on_duplicate,
         } => {
+            validate_scope(scope)?;
+            body.validate()?;
+            self::evidence(connection, scope, evidence, requires_endorsement(body))?;
+            if let Some(receipt) = matches::duplicate(connection, scope, body, timestamp)? {
+                if matches!(on_duplicate, records::DuplicatePolicy::Report) {
+                    return Err(conflict(&format!(
+                        "exact live record already exists: {} at revision {}; inspect it or explicitly set on_duplicate=reuse",
+                        receipt.record_id, receipt.revision
+                    )));
+                }
+                return Ok(receipt);
+            }
             create(connection, &id, scope, body, evidence, timestamp)?;
             Ok(Receipt {
                 record_id: id,
                 revision: 1,
                 related: None,
+                reused: false,
             })
         }
         Change::Revise {
@@ -255,6 +270,7 @@ fn change(
                 record_id: expected.id.clone(),
                 revision: expected.revision + 1,
                 related: None,
+                reused: false,
             })
         }
     }
@@ -290,6 +306,7 @@ fn revise(
         record_id: expected.id.clone(),
         revision: expected.revision + 1,
         related: None,
+        reused: false,
     })
 }
 
@@ -342,6 +359,7 @@ fn supersede(
             id: expected.id.clone(),
             revision: expected.revision + 1,
         }),
+        reused: false,
     })
 }
 
@@ -416,6 +434,7 @@ fn confirm(
         record_id: expected.id.clone(),
         revision: expected.revision,
         related: None,
+        reused: false,
     })
 }
 
@@ -478,6 +497,7 @@ fn resolve(
         record_id: expected.id.clone(),
         revision: expected.revision + 1,
         related: resolved_by.cloned(),
+        reused: false,
     })
 }
 

@@ -1,5 +1,6 @@
 use super::*;
 use crate::records::{DecisionState, FactState, PreferenceState};
+mod matches;
 mod recall;
 
 fn database() -> (tempfile::TempDir, Storage) {
@@ -54,6 +55,7 @@ fn create_request(operation: &str, body: Body) -> Mutation {
                 citation("proposal", "Choose Qdrant"),
                 citation("yes", "yes"),
             ],
+            on_duplicate: records::DuplicatePolicy::Report,
         },
     }
 }
@@ -130,8 +132,17 @@ fn native_records_retry_receipts_and_failures_are_atomic() {
         crate::ErrorKind::Conflict
     );
     storage.connection.execute_batch("CREATE TEMP TRIGGER interrupt_receipt BEFORE INSERT ON record_operations BEGIN SELECT RAISE(ABORT,'simulated interruption before receipt'); END;").unwrap();
-    let failed = create_request("interrupted", decision());
-    assert!(storage.mutate_record(&failed).is_err());
+    let mut interrupted_body = decision();
+    interrupted_body.statement = "A separate conclusion".into();
+    let failed = create_request("interrupted", interrupted_body);
+    assert!(
+        storage
+            .mutate_record(&failed)
+            .unwrap_err()
+            .error
+            .message
+            .contains("simulated interruption before receipt")
+    );
     assert_eq!(storage.records(&List::default()).unwrap().records.len(), 1);
     storage
         .connection

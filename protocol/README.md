@@ -544,6 +544,12 @@ publication journal entries before the receipt. This adds no durable boundary
 or new interleaving to the model. The model abstracts the revision guard;
 Rust regressions separately check the answer's owner, scope, revision and evidence,
 and verify shared-link delivery and rollback for invalid imported links.
+Exact-duplicate reuse also runs inside that immediate transaction: it validates
+the request's evidence, finds the existing live interpretation, and saves only
+an operation receipt. It does not advance the record revision or publication
+journal. This read-and-receipt path adds no durable boundary to the modeled
+mutating commits; Rust regressions check repeated receipts, unchanged evidence
+and confirmations, and reuse after forgetting without restoring text.
 
 The model's `Prepare` represents a caller retaining a request, not an uncommitted
 SQL write. `Commit` is the actual SQLite transaction commit; `Crash` models failure

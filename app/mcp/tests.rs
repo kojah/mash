@@ -407,6 +407,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         names,
         [
             "export_silver",
+            "find_record_matches",
             "forget",
             "get_attachment",
             "get_record",
