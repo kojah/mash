@@ -358,11 +358,15 @@ def seed(home: Path) -> None:
 
 def release(home: Path, binary: Path) -> None:
     """A release laid out as install.sh expects, plus the script itself."""
+    server = binary.with_name("mash-server")
+    if not server.is_file():
+        raise SystemExit(f"build mash-server alongside {binary} before starting")
     mirror = home / ".release-mirror"
     mirror.mkdir()
     archive = mirror / "mash-x86_64-unknown-linux-gnu.tar.gz"
-    with tarfile.open(archive, "w:gz") as tar:
+    with tarfile.open(archive, "w:gz", compresslevel=1) as tar:
         tar.add(binary, arcname="mash")
+        tar.add(server, arcname="mash-server")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     (mirror / "SHA256SUMS").write_text(f"{digest}  {archive.name}\n")
     downloads = home / "Downloads"
@@ -471,7 +475,16 @@ def build(binary: str | None) -> tuple[Path, str]:
         return Path(binary).resolve(), revision
     target = Path("/home/james/scratch/achi-targets/integrated")
     subprocess.run(
-        ["cargo", "build", "--release", "--locked", "--bin", "mash"],
+        [
+            "cargo",
+            "build",
+            "--release",
+            "--locked",
+            "--bin",
+            "mash",
+            "--bin",
+            "mash-server",
+        ],
         cwd=REPOSITORY,
         check=True,
         env={

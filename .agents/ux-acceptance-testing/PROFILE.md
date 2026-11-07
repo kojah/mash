@@ -33,7 +33,8 @@ indexing failure as evidence and distinguish it from record-tool behavior.
 
 - Start: `python3 tools/ux-session.py start SESSION_ID [--preinstall] [--presetup]`
   from the repository root. It builds the release binary unless
-  `--binary PATH` names one already built from this revision. `--preinstall`
+  `--binary PATH` names one already built from this revision, with the matching
+  `mash-server` binary beside it. The simulated archive contains both. `--preinstall`
   runs the installer and `--presetup` also runs `mash init`, as the selector
   asks.
 - Stop: `python3 tools/ux-session.py stop SESSION_ID`
