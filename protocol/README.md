@@ -506,6 +506,11 @@ commit. Version and added tables become durable together; history and the chat
 search certificate are unchanged. `SilverMigrationNoAdmission` deliberately
 removes admission and must violate `WriterExcluded`.
 
+The schema-64 evidence columns use the same admission and transactional migration
+boundaries. They introduce no new interleaving, so the model retains its original
+version constants. The provenance migration regression checks that existing
+evidence survives with unknown attribution.
+
 Source mapping: `storage/schema.rs::initialize_silver` rejects unsupported
 versions, acquires/reuses `storage/admission.rs` ownership, rechecks the schema,
 and calls `rusqlite_migration` with an immediate transaction. The shared server

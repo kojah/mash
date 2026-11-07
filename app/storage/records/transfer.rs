@@ -49,7 +49,7 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT record_id,revision,position,chat_id,message_id,fingerprint,quote FROM record_evidence ORDER BY record_id,revision,position",
+        "SELECT record_id,revision,position,chat_id,message_id,fingerprint,quote,purpose,source_role FROM record_evidence ORDER BY record_id,revision,position",
         |row| Ok::<_, AppError>(Row::Evidence {
             id: value(row, 0)?,
             revision: value(row, 1)?,
@@ -58,7 +58,9 @@ pub(crate) fn visit(
                 chat_id: value(row, 3)?,
                 message_id: value(row, 4)?,
                 fingerprint: value(row, 5)?,
-                quote: value(row, 6)?
+                quote: value(row, 6)?,
+                purpose: value(row, 7)?,
+                source_role: value(row, 8)?
             }
         })
     );
@@ -217,6 +219,9 @@ impl Import {
                 bounded(&source.chat_id, 512, "evidence chat ID")?;
                 bounded(&source.message_id, 512, "evidence message ID")?;
                 bounded(&source.quote, 8192, "evidence quote")?;
+                if let Some(role) = &source.source_role {
+                    bounded(role.as_str(), 256, "evidence source role")?;
+                }
                 digest(&source.fingerprint)?;
                 if !(0..256).contains(&position)
                     || crate::redaction::private(&source.quote) != source.quote
@@ -225,7 +230,7 @@ impl Import {
                 }
                 connection
                     .execute(
-                        "INSERT INTO record_evidence VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                        "INSERT INTO record_evidence VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                         params![
                             self.id(&id)?,
                             revision,
@@ -233,7 +238,9 @@ impl Import {
                             source.chat_id,
                             source.message_id,
                             source.fingerprint,
-                            source.quote
+                            source.quote,
+                            source.purpose,
+                            source.source_role
                         ],
                     )
                     .map_err(AppError::database)?;

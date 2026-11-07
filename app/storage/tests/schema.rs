@@ -113,6 +113,32 @@ fn records_migration_preserves_history_identity_and_chat_search_revision() {
 }
 
 #[test]
+fn record_provenance_migration_keeps_unknown_historical_attribution() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let connection = baseline(&path);
+    connection
+        .execute_batch(include_str!("../records.sql"))
+        .unwrap();
+    connection.execute_batch("PRAGMA user_version=63;
+        INSERT INTO records VALUES('record','owner','fact','null',1,0);
+        INSERT INTO record_revisions VALUES('record',1,'{}',0);
+        INSERT INTO record_evidence VALUES('record',1,0,'kept','message','fingerprint','retain this history');").unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    let evidence: (String, Option<String>, Option<String>) = storage
+        .connection
+        .query_row(
+            "SELECT quote,purpose,source_role FROM record_evidence",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(evidence, ("retain this history".into(), None, None));
+    assert_eq!(user_version(&path), SCHEMA_VERSION);
+}
+
+#[test]
 fn records_migration_rolls_back_all_ddl_and_version_on_failure() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");

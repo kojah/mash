@@ -5,8 +5,8 @@ and full search rebuilds. Use the same migration definitions for local silver
 and each node's shared silver database. Export/import remains for portability,
 recovery and legacy transitions that do not have a tested migration.
 
-`app/storage/schema.rs` now supports the additive 62 to 63 records migration.
-This is the only supported older starting version. The same initializer creates
+`app/storage/schema.rs` supports upgrades from versions 62 and 63 to 64.
+These are the supported older starting versions. The same initializer creates
 and upgrades local and shared silver. Read-only commands do not migrate.
 
 ## Library evaluation
@@ -21,8 +21,10 @@ Its version is the count of applied migrations. Mash's value 62 is a historical
 schema number, not evidence that 62 library migrations ran. The library warns
 against independently changing `user_version`. The runner reserves the first 62
 entries with empty steps and rejects all versions 1 through 61 before running.
-Step 63 creates the record tables. Fresh creation directly creates the same
-schema and sets version 63 in its creation transaction. Do not reset a
+Step 63 creates the record tables. Step 64 adds the retained evidence purpose
+and source role; older evidence keeps these fields unknown rather than inferring
+historical intent. Fresh creation directly creates the same
+schema and sets version 64 in its creation transaction. Do not reset a
 live database to zero, silently renumber it, or let placeholder migrations make
 unsupported old schemas appear valid. Fresh creation and upgraded databases must
 produce the same schema. Preserve monotonic versions so old binaries continue

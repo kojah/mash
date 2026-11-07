@@ -216,6 +216,28 @@ pub(crate) enum EvidenceUse {
     Report,
 }
 
+impl rusqlite::types::ToSql for EvidenceUse {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(match self {
+            Self::Context => "context",
+            Self::Endorsement => "endorsement",
+            Self::Report => "report",
+        }
+        .into())
+    }
+}
+
+impl rusqlite::types::FromSql for EvidenceUse {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        match value.as_str()? {
+            "context" => Ok(Self::Context),
+            "endorsement" => Ok(Self::Endorsement),
+            "report" => Ok(Self::Report),
+            _ => Err(rusqlite::types::FromSqlError::InvalidType),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Citation {
@@ -285,6 +307,11 @@ pub(crate) struct Evidence {
     pub message_id: String,
     pub fingerprint: String,
     pub quote: String,
+    /// Unknown for records written before evidence provenance was retained.
+    #[serde(default)]
+    pub purpose: Option<EvidenceUse>,
+    #[serde(default)]
+    pub source_role: Option<crate::role::Role>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

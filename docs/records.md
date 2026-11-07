@@ -61,6 +61,10 @@ as the person's endorsement. Keep uncertain interpretations as `candidate`
 user-message endorsement citation. `recorded_by` is caller-supplied attribution,
 not authenticated human identity.
 
+Retained evidence includes its stated purpose and the source message's role at
+recording time. Older records that did not retain these fields show them as
+unknown; Mash does not guess whether an old quote was an endorsement.
+
 | Kind | States | Additional fields |
 | --- | --- | --- |
 | `decision` | `proposed`, `accepted`, `superseded`, `withdrawn` | optional alternatives and consequences |

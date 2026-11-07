@@ -90,6 +90,17 @@ fn native_records_all_four_kinds_have_typed_states_and_short_approval_evidence()
         let record = storage.record(&created.record_id, true).unwrap();
         assert_eq!(record.revisions[0].body, body);
         assert!(record.revisions[0].evidence_current);
+        for source in &record.revisions[0].evidence {
+            assert_eq!(source.purpose, Some(EvidenceUse::Endorsement));
+        }
+        assert_eq!(
+            record.revisions[0].evidence[0].source_role,
+            Some(crate::role::Role::Assistant)
+        );
+        assert_eq!(
+            record.revisions[0].evidence[1].source_role,
+            Some(crate::role::Role::User)
+        );
         assert_eq!(record.revisions[0].evidence[1].quote, "yes");
     }
     assert_eq!(storage.records(&List::default()).unwrap().records.len(), 4);
@@ -479,6 +490,10 @@ fn native_records_archive_copy_and_identity_restore_preserve_history_and_links()
         assert_eq!(record.revisions[0].body.statement, "Use another engine");
         assert_eq!(record.revisions[0].confirmations, 1);
         assert!(record.revisions[0].evidence_current);
+        for source in &record.revisions[0].evidence {
+            assert_eq!(source.purpose, Some(EvidenceUse::Endorsement));
+            assert_eq!(source.source_role, Some(crate::role::Role::User));
+        }
         assert_eq!(record.links.len(), 1);
         let predecessor = imported.record(&record.links[0].target_id, true).unwrap();
         assert_eq!(predecessor.revisions.len(), 2);

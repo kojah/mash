@@ -90,6 +90,8 @@ fn evidence(
             message_id: citation.message_id.clone(),
             fingerprint,
             quote: citation.quote.clone(),
+            purpose: Some(citation.purpose),
+            source_role: Some(role.into()),
         });
     }
     if endorsement && !human {
@@ -139,8 +141,8 @@ fn insert_revision(
     for (position, source) in sources.iter().enumerate() {
         let position =
             i64::try_from(position).map_err(|_| AppError::usage("too much record evidence"))?;
-        connection.execute("INSERT INTO record_evidence(record_id,revision,position,chat_id,message_id,fingerprint,quote) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![id,revision,position,source.chat_id,source.message_id,source.fingerprint,source.quote]).map_err(AppError::database)?;
+        connection.execute("INSERT INTO record_evidence(record_id,revision,position,chat_id,message_id,fingerprint,quote,purpose,source_role) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![id,revision,position,source.chat_id,source.message_id,source.fingerprint,source.quote,source.purpose,source.source_role]).map_err(AppError::database)?;
     }
     connection
         .execute(
@@ -383,7 +385,7 @@ fn confirm(
         if inserted > 0 {
             connection
                 .execute(
-                    "INSERT INTO record_evidence VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                    "INSERT INTO record_evidence VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                     params![
                         expected.id,
                         expected.revision,
@@ -391,7 +393,9 @@ fn confirm(
                         source.chat_id,
                         source.message_id,
                         source.fingerprint,
-                        source.quote
+                        source.quote,
+                        source.purpose,
+                        source.source_role
                     ],
                 )
                 .map_err(AppError::database)?;
@@ -509,7 +513,7 @@ fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppE
     let mut revisions = Vec::new();
     for row in rows {
         let (revision, body, recorded_at) = row.map_err(AppError::database)?;
-        let mut sources = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
+        let mut sources = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content,e.purpose,e.source_role FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
         let sources = sources
             .query_map(params![id, revision], |row| {
                 Ok((
@@ -518,6 +522,8 @@ fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppE
                         message_id: row.get(1)?,
                         fingerprint: row.get(2)?,
                         quote: row.get(3)?,
+                        purpose: row.get(5)?,
+                        source_role: row.get(6)?,
                     },
                     row.get::<_, Option<String>>(4)?,
                 ))
