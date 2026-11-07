@@ -99,7 +99,7 @@ custom index paths are needed, as in [development setup](development.md#using-ma
 `mash-dev` when available for CLI fallback, otherwise the normal Mash executable.
 
 Restart the client after installation. In Claude Code, invoke
-`/mash:history`; in Codex, select the plugin's `history` skill or let it activate
+`/mash:mash-history`; in Codex, select the plugin's `mash-history` skill or let it activate
 for requests about past chats. For developing the Claude plugin directly,
 use `claude --plugin-dir ./plugins/mash` instead of installing it. After edits,
 reload the plugin or start a new session; installed copies may require a

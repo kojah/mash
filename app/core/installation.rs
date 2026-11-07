@@ -450,7 +450,7 @@ struct Stamp {
 fn expected_stamp() -> Stamp {
     // Generated alongside the bundled skill; invalid build assets are handled without panicking.
     serde_json::from_str(include_str!(
-        "../../plugins/mash/skills/history/contract.json"
+        "../../plugins/mash/skills/mash-history/contract.json"
     ))
     .unwrap_or(Stamp {
         contract_fingerprint: String::new(),

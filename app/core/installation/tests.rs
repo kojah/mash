@@ -79,10 +79,13 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
         &plugin.join(".codex-plugin/plugin.json"),
         include_str!("../../../plugins/mash/.codex-plugin/plugin.json"),
     );
-    write(&plugin.join("skills/history/SKILL.md"), "history skill");
     write(
-        &plugin.join("skills/history/contract.json"),
-        include_str!("../../../plugins/mash/skills/history/contract.json"),
+        &plugin.join("skills/mash-history/SKILL.md"),
+        "mash-history skill",
+    );
+    write(
+        &plugin.join("skills/mash-history/contract.json"),
+        include_str!("../../../plugins/mash/skills/mash-history/contract.json"),
     );
     write(
         &plugin.join("hooks/hooks.json"),
@@ -108,7 +111,7 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
                 && finding.state == State::Present)
     );
     std::fs::remove_file(plugin.join("hooks/session_start.py")).unwrap();
-    write(&plugin.join("skills/history/contract.json"), "{}");
+    write(&plugin.join("skills/mash-history/contract.json"), "{}");
     let report = collect(Some(&environment), &[]);
     assert!(
         report.clients[0]
@@ -216,10 +219,10 @@ fn installation_complete_claude_user_setup_has_no_attention_findings() {
         include_str!("../../../plugins/mash/.claude-plugin/plugin.json"),
     );
     write(
-        &plugin.join("skills/history/contract.json"),
-        include_str!("../../../plugins/mash/skills/history/contract.json"),
+        &plugin.join("skills/mash-history/contract.json"),
+        include_str!("../../../plugins/mash/skills/mash-history/contract.json"),
     );
-    write(&plugin.join("skills/history/SKILL.md"), "history");
+    write(&plugin.join("skills/mash-history/SKILL.md"), "mash-history");
     write(
         &plugin.join("hooks/hooks.json"),
         include_str!("../../../plugins/mash/hooks/hooks.json"),

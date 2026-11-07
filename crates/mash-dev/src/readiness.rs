@@ -10,7 +10,7 @@ pub struct Stamp {
 }
 
 pub async fn expected(repository: &std::path::Path) -> Result<Stamp, String> {
-    let bytes = std::fs::read(repository.join("plugins/mash/skills/history/contract.json"))
+    let bytes = std::fs::read(repository.join("plugins/mash/skills/mash-history/contract.json"))
         .map_err(|_| "cannot read generated history contract stamp")?;
     let mut stamp: Stamp =
         serde_json::from_slice(&bytes).map_err(|_| "invalid history contract stamp")?;

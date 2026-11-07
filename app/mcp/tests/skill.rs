@@ -5,7 +5,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Parser as Markdown, Tag, TagEnd};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-const HISTORY: &str = include_str!("../../../plugins/mash/skills/history/SKILL.md");
+const HISTORY: &str = include_str!("../../../plugins/mash/skills/mash-history/SKILL.md");
 
 fn arguments<T: DeserializeOwned + schemars::JsonSchema>(text: &str) -> Result<T, String> {
     let value: Value = serde_json::from_str(text).map_err(|error| error.to_string())?;
@@ -129,7 +129,7 @@ fn history_skill_generation_is_current() {
     assert_eq!(skill, HISTORY, "regenerate with make generate-skills");
     assert_eq!(
         stamp,
-        include_str!("../../../plugins/mash/skills/history/contract.json")
+        include_str!("../../../plugins/mash/skills/mash-history/contract.json")
     );
 }
 

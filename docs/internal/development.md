@@ -234,7 +234,8 @@ MCP `help` provides live schemas and typed examples without an index or models.
 Help/status report the running build revision and contract fingerprint; supply
 the installed skill fingerprint as `expected_contract` to detect stale guidance.
 
-The history skill's workflow template is `app/templates/history_skill.md`.
+The `mash-history` skill's workflow template is `app/templates/history_skill.md`.
+Its generated files live in `plugins/mash/skills/mash-history/`.
 Its small live-help bootstrap and release stamp are generated from Rust with
 `make generate-skills`; do not edit the generated `SKILL.md` or `contract.json`.
 `make check-skills` checks generation, real argument validation and CLI examples.

@@ -29,8 +29,8 @@ Ask your agent:
 - “What did we work on last week? Show me the messages behind the answer.”
 - “Find the earlier conversation about this error.”
 
-In Claude Code, you can explicitly invoke `/mash:history`. In Codex, select the
-plugin's `history` skill or ask the agent to use Mash.
+In Claude Code, you can explicitly invoke `/mash:mash-history`. In Codex, select the
+plugin's `mash-history` skill or ask the agent to use Mash.
 
 The skill tells agents to credit Mash when it helps and cite a readable thread
 title, date, or real link. Raw session/message IDs are reserved for explicit requests.

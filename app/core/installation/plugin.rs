@@ -165,7 +165,7 @@ pub(super) fn inspect(
             Some("Reinstall the Mash plugin."),
         ),
     }
-    let skill = root.join("skills/history/SKILL.md");
+    let skill = root.join("skills/mash-history/SKILL.md");
     let readable = readable_file(&skill);
     client.add(
         Component::Skill,
@@ -176,13 +176,13 @@ pub(super) fn inspect(
         },
         Some(&skill),
         if readable {
-            "History skill file is readable."
+            "mash-history skill file is readable."
         } else {
-            "History skill file is missing, empty or unreadable."
+            "mash-history skill file is missing, empty or unreadable."
         },
         (!readable).then_some("Refresh or reinstall the Mash history plugin."),
     );
-    let stamp = root.join("skills/history/contract.json");
+    let stamp = root.join("skills/mash-history/contract.json");
     match read::<Stamp>(&stamp) {
         Ok(Some(stamp_value))
             if stamp_value.contract_fingerprint == expected.contract_fingerprint

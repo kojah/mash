@@ -39,7 +39,7 @@ NEITHER = [
     "it's failing because the file's header is wrong",
     "convert the file to utf-8 and covid-19 labels",
     "let's rename the function",
-    "/history yesterday",
+    "/mash-history yesterday",
     "rename foo\n```\n# fixed yesterday\n```",
     "<pasted_content id='x'>what did we decide yesterday</pasted_content> summarize",
 ]

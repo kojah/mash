@@ -1,5 +1,5 @@
 ---
-name: history
+name: mash-history
 description: Find past chats, requests, decisions, and supporting messages across providers and machines using Mash. Use when the user refers to previous conversations or earlier work ("yesterday", "last week", "do you remember", "what did we decide", "where did we leave off", "that diagram we made"), asks about the status or history of a PR, task or decision, or names a person, project, PR, ticket, file or term you don't recognize from the current conversation or codebase. Search Mash before asking the user or guessing.
 ---
 
@@ -13,7 +13,7 @@ installed skill may describe another release; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"df8ab56ee765f1951fe479e050198a4f8a6c2f2cb42bfbe57ce5ea227e86e056","tool":"search","topic":"discovery"}
+{"expected_contract":"382de0f34f039e0c9f7ab1e22e321e0cc0367c949db5ec2c6d94fc83c8a2e3af","tool":"search","topic":"discovery"}
 ```
 
 
