@@ -60,7 +60,6 @@ pub(crate) async fn search(
         embeddings,
         query,
         options.ranking,
-        options.experimental_gpu_reranking,
     )
     .boxed()
     .await?;
@@ -90,7 +89,6 @@ pub(super) async fn prepare_search(
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
     ranking: crate::views::config::Ranking,
-    experimental_gpu_reranking: bool,
 ) -> Result<PreparedSearch, AppError> {
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
@@ -112,9 +110,7 @@ pub(super) async fn prepare_search(
         |c| semantic::model_space(&c.model, c.dimensions),
     );
     crate::blocking(move || {
-        let models = Models::new(root)
-            .with_remote(embeddings)
-            .with_experimental_gpu_reranking(experimental_gpu_reranking);
+        let models = Models::new(root).with_remote(embeddings);
         models.require_search(ranking)?;
         let mut backend = models
             .load_search(ranking)?
@@ -151,7 +147,6 @@ pub(super) async fn search_prepared(
         ranking,
         shared_vector_search,
         output_redaction: _,
-        experimental_gpu_reranking: _,
     } = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);

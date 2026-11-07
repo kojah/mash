@@ -205,32 +205,9 @@ quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `mash models install` once to install the FP32 asset and compile its Core ML
 cache.
 
-Contextual reranking uses CPU by default on every platform. **Experimental GPU
-reranking** is opt-in through strict TOML:
-
-```toml
-[views.query]
-experimental_gpu_reranking = true
-```
-
-This enables Core ML on Apple Silicon; other platforms continue to use CPU.
-It applies to local and shared searches through both CLI and MCP. No reindex or
-MCP restart is needed after changing the setting. Warm MCP searches can benefit,
-but first-use compilation and model loading can make fresh CLI searches much
-slower than CPU, even with an existing disk cache. Leave it off for ordinary CLI
-use.
-
-The experimental path uses four-candidate batches and lazy 64-, 128-, 256-, and
-512-token sessions. It uses the already
-installed Jina ONNX model; search never downloads assets. First use of a shape
-compiles it and later processes reuse its disk cache. A compilation or inference
-failure switches that loaded backend to CPU without retrying acceleration on
-each batch. Other platforms use CPU reranking.
-
-Search diagnostics include `reranker_engine` on the rerank stage: `core-ml`,
-`cpu`, `cpu-fallback`, or `mixed` when separate passes used different engines.
-`core-ml` means the complete ONNX graph ran through Core ML; Apple chooses its
-CPU, GPU, or Neural Engine placement. It does not certify a particular device.
+Contextual reranking uses the quantized ONNX CPU model on every platform, with
+bounded four-candidate batches. Search never downloads model assets. Retrieval
+diagnostics report `reranker_engine: "cpu"` for the rerank stage.
 
 Core ML cache construction is serialized across processes for each shape.
 If an SDK compilation fails, mash tries one fresh cache directory and publishes

@@ -24,14 +24,11 @@ pub(crate) enum Stage {
 }
 const COUNT: usize = 10;
 
-/// Execution provider, not a claim about Core ML's chosen physical device.
+/// Execution provider for contextual reranking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum RerankerEngine {
     Cpu,
-    CoreMl,
-    CpuFallback,
-    Mixed,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -173,10 +170,7 @@ pub(crate) fn record_reranker(engine: RerankerEngine) {
         && let Ok(mut items) = capture.0.lock()
         && let Some(item) = &mut items[Stage::Rerank as usize]
     {
-        item.reranker_engine = Some(match item.reranker_engine {
-            Some(previous) if previous != engine => RerankerEngine::Mixed,
-            _ => engine,
-        });
+        item.reranker_engine = Some(engine);
     }
 }
 

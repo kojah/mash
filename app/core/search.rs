@@ -303,7 +303,6 @@ async fn run_inner(
     }
     options.fusion = resolve_fusion(fusion, intent, configuration.views.query.fusion)?;
     options.ranking = resolve_ranking(ranking, intent, configuration.views.query.ranking)?;
-    options.experimental_gpu_reranking = configuration.views.query.experimental_gpu_reranking;
     options.output_redaction = configuration.redaction.output();
     let filters = resolve(
         &query,
@@ -497,9 +496,8 @@ async fn local_search(
     (options, page): (crate::views::config::Options, crate::search_results::Page),
     filters: &crate::search_filter::Scope,
 ) -> Result<SearchResponse, AppError> {
-    let models = Models::new(models_dir.to_path_buf())
-        .with_remote(configuration.embeddings.clone())
-        .with_experimental_gpu_reranking(options.experimental_gpu_reranking);
+    let models =
+        Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
     // Check assets/configuration before database or backend access, but defer
     // loading models and inference until gold has passed its freshness guard.
     let models = crate::blocking(move || {

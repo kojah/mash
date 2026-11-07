@@ -71,7 +71,6 @@ fn legacy_provider_root_environment_variables_are_ignored() {
                 "intent": "related-discussion", "unit": "chats", "limit": 20,
                 "fusion": {"rank_constant": 60, "lexical_weight": 1, "recency_weight": 50, "semantic_weight": 1},
                 "ranking": "contextual-rerank",
-                "experimental_gpu_reranking": false,
                 "freshness_warnings": true
             }},
             "providers": {

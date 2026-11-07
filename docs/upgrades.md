@@ -40,6 +40,10 @@ in place, or change its version number by hand.
 Back up before replacing Mash, and keep the old executable until you have
 checked that the new version can read your history.
 
+If your configuration contains `views.query.experimental_gpu_reranking`, remove
+that setting. Experimental GPU reranking has been removed; contextual reranking
+uses CPU. This configuration change does not require reindexing or new models.
+
 If Mash reports an incompatible index, ordinary indexing cannot upgrade it.
 Export with the version that wrote the index, then test an import with the new
 version at a separate path:

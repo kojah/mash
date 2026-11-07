@@ -213,8 +213,6 @@ pub(crate) struct Query {
     pub(crate) limit: usize,
     pub(crate) fusion: Fusion,
     pub(crate) ranking: Ranking,
-    /// Experimental Apple Silicon Core ML reranking; CPU remains the default.
-    pub(crate) experimental_gpu_reranking: bool,
 }
 
 /// Query-only ranking over the active lexical and dense candidate artifacts.
@@ -321,7 +319,6 @@ pub(crate) struct Options {
     pub(crate) unit: SearchUnit,
     pub(crate) fusion: Fusion,
     pub(crate) ranking: Ranking,
-    pub(crate) experimental_gpu_reranking: bool,
     /// Results leave through CLI or MCP output under this policy.
     pub(crate) output_redaction: crate::redaction::Policy,
 }
@@ -333,7 +330,6 @@ impl Options {
             unit,
             fusion: Fusion::default(),
             ranking: Ranking::default(),
-            experimental_gpu_reranking: false,
             output_redaction: crate::redaction::Policy::ON,
         }
     }
@@ -348,7 +344,6 @@ impl Default for Query {
             limit: 20,
             fusion: Fusion::default(),
             ranking: Ranking::default(),
-            experimental_gpu_reranking: false,
         }
     }
 }
@@ -398,20 +393,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gpu_reranking_is_experimental_opt_in_and_query_only() {
-        let defaults: Configuration = toml::from_str("").unwrap();
-        assert!(!defaults.query.experimental_gpu_reranking);
-        assert!(!Options::new(SearchUnit::Chats).experimental_gpu_reranking);
-        let enabled: Configuration =
-            toml::from_str("[query]\nexperimental_gpu_reranking=true").unwrap();
-        enabled.validate().unwrap();
-        assert!(enabled.query.experimental_gpu_reranking);
-        assert_eq!(enabled.build, defaults.build);
-        let restored: Configuration = toml::from_str(&toml::to_string(&enabled).unwrap()).unwrap();
-        assert_eq!(restored, enabled);
-        assert!(
-            toml::from_str::<Configuration>("[query]\nexperimental_gpu_reranking='true'").is_err()
-        );
+    fn removed_gpu_reranking_setting_is_rejected() {
+        for value in ["true", "false"] {
+            let document = format!("[query]\nexperimental_gpu_reranking={value}");
+            let error = toml::from_str::<Configuration>(&document).unwrap_err();
+            assert!(error.to_string().contains("unknown field"));
+        }
     }
 
     #[test]

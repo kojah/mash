@@ -527,11 +527,6 @@ fn assert_views_ranking_defaults(config: &Path, database: &Path, models: &str) {
                 expected == "contextual-rerank"
             );
             if let Some(stage) = stages.iter().find(|stage| stage["stage"] == "rerank") {
-                assert!(matches!(
-                    stage["reranker_engine"].as_str(),
-                    Some("cpu" | "core-ml" | "cpu-fallback" | "mixed")
-                ));
-                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
                 assert_eq!(stage["reranker_engine"], "cpu");
             }
             assert_eq!(

@@ -27,7 +27,6 @@ pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
 pub(crate) struct Models {
     root: PathBuf,
     remote: Option<remote::Configuration>,
-    experimental_gpu_reranking: bool,
 }
 
 pub(crate) struct Backend {
@@ -41,7 +40,6 @@ pub(crate) struct Backend {
 #[derive(PartialEq, Eq)]
 struct BackendCacheKey {
     ranking: crate::views::config::Ranking,
-    experimental_gpu_reranking: bool,
     root: PathBuf,
     marker_modified: Option<SystemTime>,
     files: Vec<(String, u64, Option<SystemTime>)>,
@@ -102,16 +100,7 @@ pub(crate) struct InstallSummary {
 
 impl Models {
     pub(crate) fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            remote: None,
-            experimental_gpu_reranking: false,
-        }
-    }
-
-    pub(crate) fn with_experimental_gpu_reranking(mut self, enabled: bool) -> Self {
-        self.experimental_gpu_reranking = enabled;
-        self
+        Self { root, remote: None }
     }
 
     pub(crate) fn with_remote(mut self, config: Option<remote::Configuration>) -> Self {
@@ -185,9 +174,9 @@ impl Models {
                     embedding: None,
                     remote: Some(remote::Client::new(config.clone())?),
                     reranker: match ranking {
-                        crate::views::config::Ranking::ContextualRerank => Some(
-                            reranker::Reranker::load(&asset_root, self.experimental_gpu_reranking)?,
-                        ),
+                        crate::views::config::Ranking::ContextualRerank => {
+                            Some(reranker::Reranker::load(&asset_root)?)
+                        }
                         crate::views::config::Ranking::Fusion => None,
                     },
                     assets_lease: selected.lease,
@@ -197,7 +186,6 @@ impl Models {
         } else {
             let key = BackendCacheKey {
                 ranking,
-                experimental_gpu_reranking: self.experimental_gpu_reranking,
                 root: asset_root.clone(),
                 marker_modified: fs::metadata(self.root.join(MARKER_NAME))
                     .map_err(AppError::io)?
@@ -221,11 +209,7 @@ impl Models {
                 .take();
             let mut backend = match cached {
                 Some(cached) if cached.key == key => cached.backend,
-                _ => Backend::load_local_search(
-                    &asset_root,
-                    ranking,
-                    self.experimental_gpu_reranking,
-                )?,
+                _ => Backend::load_local_search(&asset_root, ranking)?,
             };
             backend.assets_lease = selected.lease;
             Ok(Some(LoadedBackend {
@@ -314,18 +298,17 @@ impl Backend {
     }
 
     pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
-        Self::load_local_search(root, crate::views::config::Ranking::default(), false)
+        Self::load_local_search(root, crate::views::config::Ranking::default())
     }
 
     fn load_local_search(
         root: &Path,
         ranking: crate::views::config::Ranking,
-        experimental_gpu_reranking: bool,
     ) -> Result<Self, AppError> {
         let embedding = load_local_embedding(root, None)?;
         let reranker = match ranking {
             crate::views::config::Ranking::ContextualRerank => {
-                Some(reranker::Reranker::load(root, experimental_gpu_reranking)?)
+                Some(reranker::Reranker::load(root)?)
             }
             crate::views::config::Ranking::Fusion => None,
         };
@@ -377,8 +360,10 @@ impl Backend {
             Some(documents.len()),
             || self.rerank_batched(query, documents, 4),
         );
-        if let Some(reranker) = &self.reranker {
-            crate::observability::retrieval::record_reranker(reranker.engine());
+        if self.reranker.is_some() {
+            crate::observability::retrieval::record_reranker(
+                crate::observability::retrieval::RerankerEngine::Cpu,
+            );
         }
         result
     }
