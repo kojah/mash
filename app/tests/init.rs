@@ -190,6 +190,73 @@ fn init_reports_why_a_plugin_could_not_be_installed() {
 }
 
 #[test]
+fn init_memory_backfill_is_explicit_and_agent_exit_does_not_certify_a_review() {
+    let (root, env) = fixture(false);
+    init(&env, &["--no-index", "--no-agents"]);
+    let database = root.path().join(".local/share/mash/mash.sqlite3");
+    std::fs::create_dir_all(database.parent().unwrap()).unwrap();
+    seed_readiness_database(&database, None);
+    let connection = Connection::open(&database).unwrap();
+    connection
+        .execute(
+            "UPDATE chats SET updated_at=9223372036854775807,source_fingerprint=?1",
+            ["a".repeat(64)],
+        )
+        .unwrap();
+    let normal = init(&env, &["--yes", "--no-index", "--no-agents"]);
+    assert!(normal.get("memory").is_none());
+    let calls = root.path().join("calls.log");
+    assert!(
+        !calls.exists(),
+        "ordinary init must not start a backfill agent"
+    );
+
+    for agent in ["codex", "claude-code"] {
+        let incomplete = init(
+            &env,
+            &[
+                "--yes",
+                "--no-index",
+                "--no-agents",
+                "--backfill-memory",
+                agent,
+            ],
+        );
+        assert_eq!(incomplete["memory"]["complete"], false, "{incomplete}");
+        assert_eq!(incomplete["memory"]["reviewed"], 0);
+        assert!(
+            incomplete["memory"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("without completing")
+        );
+        let checkpoints: i64 = connection
+            .query_row("SELECT count(*) FROM record_checkpoints", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(checkpoints, 0, "exit zero must not mark a review complete");
+    }
+    // Simulate the durable result of a previously completed extraction. An
+    // explicit resume skips it without assigning anything to another agent.
+    connection.execute("INSERT INTO record_checkpoints(scope,chat_id,source_fingerprint) VALUES(?1,'session',?2)", rusqlite::params![r#"{"kind":"chat","id":"session"}"#, "a".repeat(64)]).unwrap();
+    let previous = std::fs::read_to_string(&calls).unwrap();
+    let resumed = init(
+        &env,
+        &[
+            "--yes",
+            "--no-index",
+            "--no-agents",
+            "--backfill-memory",
+            "codex",
+        ],
+    );
+    assert_eq!(resumed["memory"]["complete"], true, "{resumed}");
+    assert_eq!(resumed["memory"]["reviewed"], 0);
+    assert_eq!(std::fs::read_to_string(calls).unwrap(), previous);
+}
+
+#[test]
 fn init_without_history_writes_nothing() {
     let root = tempfile::tempdir().unwrap();
     let env = [

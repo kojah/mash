@@ -1,6 +1,7 @@
 //! Transactional record state. Source refresh and privacy forgetting are distinct.
 use super::Storage;
 
+mod capture;
 mod extraction;
 mod matches;
 mod reading;

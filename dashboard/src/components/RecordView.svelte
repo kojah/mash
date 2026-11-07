@@ -34,7 +34,7 @@ function date(value: number | null): string {
 </script>
 
 <main class="mx-auto flex max-w-[900px] flex-col gap-6 px-5 py-10">
-  <nav class="flex flex-wrap gap-5 text-sm"><a href="#/">Chats</a><a href={back}>Back to records</a><button type="button" onclick={refresh} disabled={latest.isFetching}>Refresh record</button></nav>
+  <nav class="flex flex-wrap gap-5 text-sm"><a href="#/">Chats</a><a href={back}>Back to memory</a><button type="button" onclick={refresh} disabled={latest.isFetching}>Refresh record</button></nav>
   {#if latest.isPending}<p role="status">Loading record…</p>{/if}
   {#if latest.error}<p role="alert">{latest.error.message} <button type="button" onclick={refresh}>Retry</button></p>{/if}
   {#if page.error && !latest.error}<p role="alert">{page.error.message} <button type="button" onclick={() => page.refetch()}>Retry history</button></p>{/if}

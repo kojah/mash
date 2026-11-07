@@ -5,8 +5,54 @@ citations to your indexed chats. Ask your agent to inspect the source discussion
 before recording a conclusion. Records are interpretations; a matching quote
 does not prove that an interpretation is correct.
 
-The current implementation provides local recording, shared reads, portable
-backups and bounded record context in the plugin's session and file-read hooks.
+The plugin recalls existing memory at session start and before file reads.
+It also requests one automatic capture pass when the agent finishes a turn.
+The agent reviews new outcomes from that interaction, checks for duplicates and
+saves durable decisions, preferences, facts and open questions with quotes from indexed
+messages. Reading alone never creates or confirms records.
+
+Automatic capture uses the agent you are already running, including its normal
+permissions and token budget. It does not start another agent, download models or run an
+independent background model. Install the current Mash binary and plugin, then
+restart the agent. Codex also requires reviewing changed plugin hooks in
+`/hooks` before they run.
+
+Set `MASH_RECORD_CAPTURE=off` to disable automatic capture while retaining
+recall. `[records] enabled = false` in the node configuration also disables
+capture and backfill. After failures or denied permissions, source history stays
+available for an explicit retry. The hook permits at most one continuation pass
+per turn and never loops waiting
+for a record to be saved. An agent can still miss or misinterpret a conclusion;
+inspect important memory and its supporting messages.
+
+## Backfill earlier memory
+
+The `mash init` wizard offers to backfill memory from chats active in the last
+3 days. This runs during setup, after indexing, using a selected signed-in
+Codex or Claude Code CLI. It uses agent tokens and sends the selected chat text
+to that agent's service. It is optional and separate from history indexing.
+Unattended `mash init --yes` does not request historical record backfill.
+
+Normal conversations never consume historical backfill. They recall existing
+memory and capture their own new outcomes only.
+
+To explicitly backfill already indexed chats later, without reindexing or
+changing agent integrations:
+
+```sh
+mash init --yes --no-index --no-agents --backfill-memory codex
+# Or: --backfill-memory claude-code
+```
+
+Setup saves its fixed cutoff as `[records] backfill_since` (Unix milliseconds),
+so another explicit run can resume that window. Without a saved cutoff, an
+explicit run uses the last 3 days. Completed source versions are skipped using
+durable extraction checkpoints. Changed sources become eligible again. Failed
+or partially read chats remain pending; nothing is delegated to later conversations.
+Progress appears on stderr and the JSON result reports completed reviews and
+whether the scan finished. A run stops after 100 chats or an unfinished review;
+each chat has a ten-minute limit. Rerun explicitly to continue. Agents can still
+miss conclusions, so inspect important saved memory.
 
 For a small context packet, ask your agent to call `recall_records` with an exact
 `scope`, such as `{"kind":"repository","identity":"YOUR_REPOSITORY_ID"}`.
@@ -46,7 +92,7 @@ Backups contain sensitive record text and quoted evidence, as well as chats.
 
 ## Inspect existing records
 
-For a visual, read-only view, open `mash dash` and choose **Records**. The
+For a visual, read-only view, open `mash dash` and choose **Memory**. The
 [dashboard](dashboard.md#inspect-conversation-records) includes filters, revision
 history, relationships and links to supporting chat messages.
 

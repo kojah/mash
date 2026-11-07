@@ -182,6 +182,10 @@ pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
         )?,
         example("list_records", crate::records::List::default())?,
         example(
+            "get_record_capture",
+            crate::records::capture::Request::default(),
+        )?,
+        example(
             "get_record",
             crate::records::Get {
                 id: "RETURNED_RECORD_ID".into(),

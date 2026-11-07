@@ -30,6 +30,17 @@ async fn native_records_sdk_extraction_checkpoint_and_writer_admission() {
     assert_eq!(state["up_to_date"], false);
     let request = json!({"operation_id":"sdk-extraction","scope":inspect["scope"],"chat_id":inspect["chat_id"],"source_fingerprint":state["source_fingerprint"],"records":[{"body":{"statement":"Use Qdrant","review":"candidate","recorded_by":"test agent","details":{"kind":"decision","state":"proposed"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}]});
     let guard = crate::storage::admission::acquire(&database).unwrap();
+    let capture = call(
+        "get_record_capture",
+        json!({"session_id":"decision-thread"}),
+    )
+    .await
+    .unwrap();
+    assert_ne!(capture.is_error, Some(true), "{capture:?}");
+    let capture = capture.structured_content.unwrap();
+    assert_eq!(capture["enabled"], true);
+    assert_eq!(capture["current"]["chat_id"], "decision-thread");
+    assert!(capture["backfill"].is_null());
     assert_eq!(
         call("extract_records", request.clone())
             .await

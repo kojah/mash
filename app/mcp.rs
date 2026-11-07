@@ -464,6 +464,17 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
+        description = "Read automatic capture settings and locate an indexed current session. Local only, no models or writes. Supply session_id from the host hook; source_session aliases resolve to canonical chat IDs. Historical discovery is disabled by default: request backfill=true only during explicitly requested setup/maintenance, never during ordinary conversations. It offers at most one pending historical chat from the configured cutoff; follow next_offset through bounded pages. Null ends this scan, not proof of complete provider history. Backfill uses get_extraction_checkpoint/extract_records for atomic candidate writes and durable review progress; never checkpoint a partial review. Review explicit user endorsements before establishing candidates. Current-turn capture uses record after inspecting retained messages and duplicate suggestions."
+    )]
+    async fn get_record_capture(
+        &self,
+        Parameters(input): Parameters<crate::records::capture::Request>,
+    ) -> CallToolResult {
+        self.perform(Operation::RecordCapture(input)).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
         description = "List native records without models. Local by default; shared=true reads the configured group, optionally filtered by node_id. Returns established current records with matching source evidence; include_inactive exposes candidates, retired records and stale evidence. Scope identity is exact. Follow next_offset locally or pass next_cursor as cursor for shared pages, even when a page is empty. Shared records retain their node and owner; reading never confirms them."
     )]
     async fn list_records(

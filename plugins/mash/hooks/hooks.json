@@ -1,6 +1,7 @@
 {
-  "description": "Mash session recall: current project records and recent agent chats, plus a nudge to search history when a prompt looks back at earlier work or names an outside thing. Before a Read of a project file, shows matching records and earlier chats, once per session. Fails open.",
+  "description": "Mash automatic memory: recall project records and recent chats at session start and file reads; one bounded capture pass at Stop saves only the current interaction's source-backed outcomes. Historical backfill runs separately during explicit setup or maintenance. Fails open; capture opt-out is MASH_RECORD_CAPTURE=off.",
   "hooks": {
+    "Stop": [{"hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/record_capture.py\" 2>/dev/null || true", "timeout": 3}]}],
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact",

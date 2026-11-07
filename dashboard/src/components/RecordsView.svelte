@@ -70,8 +70,8 @@ function firstPage(): void {
 </script>
 
 <main class="mx-auto flex max-w-[1000px] flex-col gap-6 px-5 py-10">
-  <nav class="flex items-center gap-5 text-sm"><a href="#/">Chats</a><span aria-current="page" class="font-semibold">Records</span></nav>
-  <header><h1 class="m-0 text-3xl font-semibold">Records</h1><p class="mt-2 text-sm text-muted">Decisions, preferences, facts and open questions, with the conversations behind them.</p></header>
+  <nav class="flex items-center gap-5 text-sm"><a href="#/">Chats</a><span aria-current="page" class="font-semibold">Memory</span></nav>
+  <header><h1 class="m-0 text-3xl font-semibold">Memory</h1><p class="mt-2 text-sm text-muted">Decisions, preferences, facts and open questions, with the conversations behind them.</p></header>
   <form onsubmit={submit} class="flex flex-wrap items-end gap-3 rounded-xl bg-surface p-4">
     <label class="flex min-w-48 flex-1 flex-col gap-1 text-xs text-muted">Search statements<input type="search" bind:value={query} class="rounded-lg border border-line bg-ground p-2 text-sm text-ink" placeholder="Find a conclusion" /></label>
     <label class="flex flex-col gap-1 text-xs text-muted">Kind<select bind:value={kind} class="rounded-lg border border-line bg-ground p-2 text-sm text-ink"><option value="">All kinds</option>{#each kinds as value (value)}<option value={value}>{label(value)}</option>{/each}</select></label>
@@ -80,8 +80,8 @@ function firstPage(): void {
     <label class="flex flex-col gap-1 text-xs text-muted">Source<select bind:value={source} class="max-w-44 rounded-lg border border-line bg-ground p-2 text-sm text-ink"><option value="">Local records</option><option value="shared">All shared nodes</option>{#each nodes as node (node)}<option value={`node:${node}`}>{node} (shared)</option>{/each}</select></label>
     <button type="submit" class="rounded-lg bg-ink px-4 py-2 text-sm text-ground">Apply filters</button>
   </form>
-  {#if chat}<p class="m-0 text-sm text-muted">Records citing chat <span class="break-all font-mono">{chat}</span> in any retained revision. <a href="#/records">Show all records</a></p>{/if}
-  <div class="flex justify-between gap-4 text-xs text-muted"><span>Read-only · Includes candidates and resolved or retired records.</span><button type="button" onclick={() => page.refetch()} disabled={page.isFetching}>Refresh records</button></div>
+  {#if chat}<p class="m-0 text-sm text-muted">Memory citing chat <span class="break-all font-mono">{chat}</span> in any retained revision. <a href="#/records">Show all memory</a></p>{/if}
+  <div class="flex justify-between gap-4 text-xs text-muted"><span>Read-only · Includes candidates and resolved or retired records.</span><button type="button" onclick={() => page.refetch()} disabled={page.isFetching}>Refresh memory</button></div>
   {#if page.isPending}<p role="status">Loading records…</p>{/if}
   {#if page.error}<p role="alert">{page.error.message} <button type="button" onclick={() => page.refetch()}>Retry</button></p>{/if}
   {#if page.data && !page.error}

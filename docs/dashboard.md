@@ -36,16 +36,16 @@ documentation website.
 
 ## Inspect conversation records
 
-The front page has a **Records** section with **Decisions**, **Preferences**,
+The front page has a **Memory** section with **Decisions**, **Preferences**,
 **Facts** and **Questions**. Choose a kind to browse it directly, or use the
-**Records** navigation link to browse all kinds. Search their statements,
+**Memory** navigation link to browse all kinds. Search their statements,
 filter by kind, status or review, and choose
 local records or records published to your configured shared group. Choose
 **Apply filters** to run the search; use **Next page** to continue.
 
 Open a record to read its revision history, quoted supporting messages and
 related records. **Open source message** takes you to the cited chat message.
-From a transcript, **Chat records** finds records citing that chat in any
+From a transcript, **Chat memory** finds records citing that chat in any
 retained revision, including records whose latest revision cites another chat.
 
 Browsing includes candidates and resolved or retired records. Review the status,
@@ -53,7 +53,7 @@ expiry dates, evidence warnings and declared conflicts before relying on a
 conclusion. Reading never confirms or changes a record; ask your agent to make
 changes through Mash's [record tools](records.md).
 
-Record lists and open records stay fixed until you choose **Refresh records**
+Record lists and open records stay fixed until you choose **Refresh memory**
 or **Refresh record**. Revision history and relationships have separate page
 controls. Shared records keep their source node identity when you follow links;
 an unavailable shared source produces an error rather than opening a local copy.

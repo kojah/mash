@@ -15,6 +15,7 @@ pub(crate) struct Choices {
     pub(crate) providers: ProviderRoots,
     pub(crate) since_days: Option<u32>,
     pub(crate) shared: Option<super::SharedConfig>,
+    pub(crate) records: crate::records::capture::Policy,
 }
 
 pub(crate) fn configure(text: &str, choices: &Choices) -> Result<String, AppError> {
@@ -198,6 +199,7 @@ mod tests {
             render(&providers, false).unwrap()
         );
         let mut choices = Choices {
+            records: crate::records::capture::Policy::default(),
             providers: ProviderRoots::from([(
                 Provider::ClaudeCode,
                 vec![root.path().join("new-history")],
@@ -214,6 +216,15 @@ mod tests {
         let updated = configure(&original, &choices).unwrap();
         let parsed = parse_document(updated.as_bytes()).unwrap();
         assert_eq!(parsed.providers, choices.providers);
+        choices.records.backfill_since = Some(1234);
+        let with_memory = configure(&updated, &choices).unwrap();
+        assert_eq!(
+            parse_document(with_memory.as_bytes())
+                .unwrap()
+                .records
+                .backfill_since,
+            Some(1234)
+        );
         assert_eq!(parsed.since_days, None);
         assert_eq!(parsed.destination, super::super::IndexDestination::Both);
         assert_eq!(parsed.qdrant.url, "http://localhost:7777");
@@ -244,6 +255,7 @@ mod tests {
         let providers = ProviderRoots::from([(Provider::Codex, vec![root.path().join("history")])]);
         let original = render(&providers, false).unwrap();
         let mut choices = Choices {
+            records: crate::records::capture::Policy::default(),
             providers,
             since_days: Some(0),
             shared: None,

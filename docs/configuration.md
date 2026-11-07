@@ -40,6 +40,21 @@ To include all ages permanently, replace `since_days = 90` with
 `all_history = true`. Do not set both. One-off indexing flags such as
 `--all-history` override the configured age selection.
 
+## Memory capture
+
+Automatic capture of new outcomes is enabled by default when using the current
+agent plugin. To disable capture and explicit backfill:
+
+```toml
+[records]
+enabled = false
+```
+
+The optional `backfill_since` is a setup-time cutoff in Unix milliseconds. It
+does not schedule work. Historical chats are reviewed only during an explicitly
+requested [memory backfill](records.md#backfill-earlier-memory), never as part
+of a newer conversation. Recall of existing memory remains available.
+
 ## Local Qdrant
 
 The defaults use HTTP port 6333 and gRPC port 6334 on localhost. For an existing

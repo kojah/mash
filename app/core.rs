@@ -44,6 +44,7 @@ async fn execute_admitted(
         Operation::Records(_)
         | Operation::Record(_)
         | Operation::RecallRecords(_)
+        | Operation::RecordCapture(_)
         | Operation::RecordMatches(_)
         | Operation::ExtractionCheckpoint(_) => "records",
         Operation::Init(_) => "init",
@@ -122,12 +123,17 @@ async fn execute_inner(
     let mut initialized = None;
     if let Operation::Init(init) = &request.operation {
         let index = init.index;
-        let response = setup::init(request.paths.clone(), init.clone()).await?;
+        let agent = init.backfill_memory;
+        let paths = request.paths.clone();
+        let mut response = setup::init(paths.clone(), init.clone()).await?;
         if !index {
+            if let Some(agent) = agent {
+                response.memory = Some(setup::backfill::run(paths, agent).await?);
+            }
             return Ok(Response::Init(response));
         }
         // Continue as the first index, without re-entering this function.
-        initialized = Some(response);
+        initialized = Some((response, paths, agent));
         request.operation = setup::first_index();
     }
     if let Operation::Installation { agents, probe } = &request.operation {
@@ -159,7 +165,7 @@ async fn execute_inner(
         Operation::ModelsInstall => true,
         _ => false,
     };
-    let _permit = if uses_models {
+    let model_permit = if uses_models {
         match capacity {
             Some(capacity) => Some(
                 capacity
@@ -191,12 +197,16 @@ async fn execute_inner(
         dispatch(request.operation, &configuration, &database, &models).boxed(),
     )
     .await?;
+    drop(model_permit);
     if let Response::Search(search) = &mut response {
         search.notice = search::empty_notice(search, &configuration);
         search.query = configuration.redaction.output().text(&search.query);
     }
-    if let Some(mut initialized) = initialized {
+    if let Some((mut initialized, paths, agent)) = initialized {
         initialized.index = Some(Box::new(response));
+        if let Some(agent) = agent {
+            initialized.memory = Some(setup::backfill::run(paths, agent).await?);
+        }
         return Ok(Response::Init(initialized));
     }
     Ok(response)
@@ -276,6 +286,15 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::RecordCapture(request) => {
+            let database = database.to_path_buf();
+            let policy = configuration.records.clone();
+            crate::blocking(move || {
+                crate::storage::Storage::open_silver(&database)?.record_capture(&policy, &request)
+            })
+            .await
+            .map(Response::RecordCapture)
+        }
         Operation::ExtractionCheckpoint(request) => {
             let database = database.to_path_buf();
             crate::blocking(move || {

@@ -13,6 +13,7 @@ pub(super) struct ParsedDocument {
     pub(super) qdrant: super::QdrantConfig,
     pub(super) attachments: crate::attachments::Configuration,
     pub(super) redaction: crate::redaction::Settings,
+    pub(super) records: crate::records::capture::Policy,
     pub(super) providers: ProviderRoots,
     pub(super) since_days: Option<u32>,
     pub(super) shared: Option<SharedConfig>,
@@ -23,6 +24,8 @@ pub(super) struct ParsedDocument {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawDocument {
+    #[serde(default)]
+    records: crate::records::capture::Policy,
     #[serde(default)]
     qdrant: super::QdrantConfig,
     #[serde(default)]
@@ -80,6 +83,7 @@ pub(super) fn configure(text: &str, choices: &super::init::Choices) -> Result<St
         IndexDestination::Local
     });
     document.shared.clone_from(&choices.shared);
+    document.records.clone_from(&choices.records);
     let text = toml::to_string_pretty(&document)
         .map_err(|error| AppError::configuration(format!("serialize configuration: {error}")))?;
     parse_document(text.as_bytes())?;
@@ -92,6 +96,11 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     let raw: RawDocument = toml::from_str(contents).map_err(|error: toml::de::Error| {
         AppError::configuration(format!("invalid configuration TOML: {}", error.message()))
     })?;
+    if raw.records.backfill_since.is_some_and(|time| time < 0) {
+        return Err(AppError::configuration(
+            "records backfill_since must be a nonnegative Unix timestamp in milliseconds",
+        ));
+    }
     if raw.version != 1 {
         return Err(AppError::configuration(format!(
             "unsupported configuration version: {}",
@@ -154,6 +163,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         qdrant: raw.qdrant,
         attachments: raw.attachments,
         redaction: raw.redaction,
+        records: raw.records,
         providers: raw
             .providers
             .into_iter()

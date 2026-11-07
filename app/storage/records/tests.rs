@@ -1,5 +1,6 @@
 use super::*;
 use crate::records::{DecisionState, FactState, PreferenceState};
+mod capture;
 mod dashboard;
 mod extraction;
 mod matches;

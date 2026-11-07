@@ -98,6 +98,23 @@ fn built_in_views_configuration_rejects_retired_gold_keys() {
 }
 
 #[test]
+fn record_capture_policy_is_strict_and_does_not_change_views_settings() {
+    let defaults = parse_document(VALID.as_bytes()).unwrap();
+    assert!(defaults.records.enabled);
+    assert!(defaults.records.backfill_since.is_none());
+    let configured = parse_document(
+        format!("{VALID}\n[records]\nenabled=false\nbackfill_since=1000\n").as_bytes(),
+    )
+    .unwrap();
+    assert!(!configured.records.enabled);
+    assert_eq!(configured.records.backfill_since, Some(1000));
+    assert_eq!(configured.views, defaults.views);
+    for invalid in ["backfill_since=-1", "days=30", "enabled='true'"] {
+        assert!(parse_document(format!("{VALID}\n[records]\n{invalid}\n").as_bytes()).is_err());
+    }
+}
+
+#[test]
 fn views_fusion_policy_is_query_only_and_strictly_bounded() {
     let defaults = parse_document(VALID.as_bytes()).unwrap().views;
     let changed = parse_document(

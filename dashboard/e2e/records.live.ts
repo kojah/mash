@@ -17,7 +17,7 @@ test("live records browse, filter, expose revisions and open the real source cha
     if (request.resourceType() === "document") documents++;
   });
   await page.goto("/");
-  await page.getByRole("link", { name: "Records", exact: true }).click();
+  await page.getByRole("link", { name: "Memory", exact: true }).click();
   await expect(page.locator("li h2")).toHaveCount(4);
   await page.screenshot({
     path: "../../mash-artifacts/dashboard-records-live/list.png",
@@ -42,11 +42,11 @@ test("live records browse, filter, expose revisions and open the real source cha
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Chat records" }).click();
+  await page.getByRole("link", { name: "Chat memory" }).click();
   await expect(page.locator("li h2")).toHaveCount(4);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "Records", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({
     path: "../../mash-artifacts/dashboard-records-live/mobile-list.png",

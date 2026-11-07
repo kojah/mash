@@ -194,7 +194,11 @@ When stdin and stderr are terminals, `mash init` opens a setup wizard:
 2. Select detected histories, or add or replace a provider's history path.
 3. Choose the last 90 days, all history, or a custom number of days.
 4. Select Claude Code and Codex integrations found on `PATH`.
-5. Review the summary and confirm. You can save configuration only or cancel.
+5. Optionally backfill memory from chats active in the last 3 days using a
+   selected signed-in agent. It runs here after indexing, uses agent tokens,
+   and sends selected chat text to that agent's service. Older chats are never
+   assigned to future conversations. See [memory backfill](records.md#backfill-earlier-memory).
+6. Review the summary and confirm. You can save configuration only or cancel.
 
 Mash checks local Qdrant connectivity and, when selected, shared-server
 authentication before confirmation. If a connection fails, save configuration
@@ -208,7 +212,7 @@ downloaded during setup.
 For scripts or to accept the detected defaults, use `mash init --yes`. Runs
 without terminal input or terminal stderr are non-interactive too. Defaults
 include sources modified within the last 90 days and available agent
-integrations. This includes current sessions of all detected supported agents,
+integrations, without historical memory backfill. This includes current sessions of all detected supported agents,
 including Copilot. The JSON result lists the selected provider folders.
 To choose them yourself before indexing, use `mash init --no-index`, edit the
 [configuration](configuration.md), then run `mash index`. Restart your agents

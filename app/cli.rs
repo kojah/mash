@@ -48,6 +48,9 @@ enum Command {
         /// Skip the first index.
         #[arg(long)]
         no_index: bool,
+        /// Explicitly backfill memory with this signed-in agent (last 3 days by default).
+        #[arg(long, value_enum)]
+        backfill_memory: Option<crate::core::installation::Agent>,
         /// Plugin marketplace to add: a GitHub owner/repo, URL or local path.
         #[arg(long, default_value = crate::core::MARKETPLACE)]
         marketplace: String,
@@ -358,6 +361,7 @@ impl Cli {
                 force,
                 no_agents,
                 no_index,
+                backfill_memory,
                 marketplace,
                 yes: _,
             } => Operation::Init(crate::core::InitRequest {
@@ -367,6 +371,7 @@ impl Cli {
                 marketplace,
                 plan: None,
                 selected_agents: None,
+                backfill_memory,
             }),
             Command::ListChats {
                 input,

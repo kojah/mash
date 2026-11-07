@@ -80,7 +80,9 @@ async def reply(process: asyncio.subprocess.Process, expected: int) -> dict[str,
     raise ValueError("too many MCP notifications")
 
 
-async def exchange(process: asyncio.subprocess.Process, arguments: dict[str, Any]):
+async def exchange(
+    process: asyncio.subprocess.Process, name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
     writer = process.stdin
     assert writer is not None
 
@@ -108,17 +110,24 @@ async def exchange(process: asyncio.subprocess.Process, arguments: dict[str, Any
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "recall_records",
+                "name": name,
                 "arguments": arguments,
             },
         }
     )
     result = await reply(process, 2)
     if result.get("isError"):
-        raise ValueError("record recall failed")
+        raise ValueError("record hook request failed")
     packet = result.get("structuredContent")
-    if not isinstance(packet, dict) or not isinstance(packet.get("records"), list):
-        raise ValueError("missing structured recall response")
+    if not isinstance(packet, dict):
+        raise ValueError("missing structured hook response")
+    return packet
+
+
+async def fetch(binary: str, arguments: dict[str, Any], timeout: float) -> list[str]:
+    packet = await fetch_result(binary, "recall_records", arguments, timeout)
+    if not isinstance(packet.get("records"), list):
+        raise ValueError("missing recall records")
     if len(packet["records"]) > 3 or len(json.dumps(packet).encode()) > 16384:
         raise ValueError("oversized recall packet")
     hints = [Hint.parse(item).line() for item in packet["records"]]
@@ -127,7 +136,9 @@ async def exchange(process: asyncio.subprocess.Process, arguments: dict[str, Any
     return hints
 
 
-async def fetch(binary: str, arguments: dict[str, Any], timeout: float) -> list[str]:
+async def fetch_result(
+    binary: str, name: str, arguments: dict[str, Any], timeout: float
+) -> dict[str, Any]:
     process = await asyncio.create_subprocess_exec(
         binary,
         "mcp",
@@ -137,7 +148,7 @@ async def fetch(binary: str, arguments: dict[str, Any], timeout: float) -> list[
         limit=MAX_LINE,
     )
     try:
-        return await asyncio.wait_for(exchange(process, arguments), timeout)
+        return await asyncio.wait_for(exchange(process, name, arguments), timeout)
     finally:
         if process.returncode is None:
             try:

@@ -161,8 +161,8 @@ function page(next: number): void {
 <div class="flex h-dvh flex-col overflow-hidden px-5 pt-6 pb-6">
   <header class="mx-auto mb-7 flex w-full max-w-[1120px] shrink-0 items-center gap-5">
     <a href="#/" aria-label="Mash home"><img src="/mash-logo.png" alt="" width="34" height="31" /></a>
-    <a href="#/records" class="text-sm">Records</a>
-    {#if catalogue.data}<a class="text-sm" href={recordsHref(new URLSearchParams({ chat: id, ...((shared || machine && machine !== catalogue.data.localNode) ? { shared: "true", node: machine } : {}) }))}>Chat records</a>{/if}
+    <a href="#/records" class="text-sm">Memory</a>
+    {#if catalogue.data}<a class="text-sm" href={recordsHref(new URLSearchParams({ chat: id, ...((shared || machine && machine !== catalogue.data.localNode) ? { shared: "true", node: machine } : {}) }))}>Chat memory</a>{/if}
     <button type="button" onclick={() => searchOpen = true} class="flex min-h-10 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 text-left text-sm text-muted"><Search size={15} />Search chats</button>
   </header>
   <div class="mx-auto grid min-h-0 w-full max-w-[1120px] flex-1 items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">

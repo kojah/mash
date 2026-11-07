@@ -341,6 +341,7 @@ pub(crate) fn render(
         Response::Records(value) => json(&mut out, "Records", value)?,
         Response::Record(value) => json(&mut out, "Record", value)?,
         Response::RecallRecords(value) => json(&mut out, "Record recall", value)?,
+        Response::RecordCapture(value) => json(&mut out, "Memory capture", value)?,
         Response::RecordMatches(value) => json(&mut out, "Record suggestions", value)?,
         Response::ExtractionCheckpoint(value) => json(&mut out, "Extraction checkpoint", value)?,
         Response::ExtractRecords(value) => json(&mut out, "Extracted records", value)?,

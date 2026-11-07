@@ -9,6 +9,8 @@ use serde::Serialize;
 use super::models::{IndexMode, IndexRequest, Operation, Paths, Response};
 use crate::AppError;
 
+pub(super) mod backfill;
+
 /// The plugin marketplace that `init` adds to agents unless told otherwise.
 pub(crate) const MARKETPLACE: &str = "kojah/mash";
 const AGENT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -23,6 +25,7 @@ pub(crate) struct InitRequest {
     /// Explicit wizard selections; absent for unattended setup.
     pub(crate) plan: Option<InitPlan>,
     pub(crate) selected_agents: Option<Vec<super::installation::Agent>>,
+    pub(crate) backfill_memory: Option<super::installation::Agent>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +41,8 @@ pub(crate) struct InitResponse {
     agents: Vec<AgentOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(in crate::core) index: Option<Box<Response>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::core) memory: Option<backfill::Outcome>,
     next: Vec<String>,
 }
 
@@ -147,6 +152,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         config,
         agents,
         index: None,
+        memory: None,
         next,
     })
 }
@@ -350,6 +356,7 @@ mod tests {
         std::fs::write(&path, &original).unwrap();
         let plan = InitPlan {
             choices: crate::config::init::Choices {
+                records: crate::records::capture::Policy::default(),
                 providers,
                 since_days: Some(14),
                 shared: None,
