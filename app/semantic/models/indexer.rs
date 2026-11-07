@@ -124,13 +124,16 @@ pub(crate) struct LoadedIndexer {
 }
 
 impl LoadedIndexer {
-    pub(super) fn uncached(pool: EmbeddingPool) -> Self {
+    #[cfg(test)]
+    pub(crate) fn fixture(state: std::sync::Arc<crate::semantic::test_embeddings::State>) -> Self {
         Self {
-            pool: Some(pool),
+            pool: Some(EmbeddingPool {
+                backend: crate::semantic::embeddings::EmbeddingPoolBackend::Fixture(state),
+                assets_lease: None,
+            }),
             cache: None,
         }
     }
-
     pub(super) fn new(pool: EmbeddingPool, key: AssetsKey, cache: Option<Cache>) -> Self {
         Self {
             pool: Some(pool),
@@ -173,7 +176,7 @@ impl Drop for LoadedIndexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic::{Models, embeddings::EmbeddingPoolBackend, remote};
+    use crate::semantic::{Models, embeddings::EmbeddingPoolBackend};
 
     fn key() -> AssetsKey {
         AssetsKey {
@@ -183,22 +186,11 @@ mod tests {
         }
     }
 
-    fn remote_config() -> remote::Configuration {
-        remote::Configuration {
-            url: "http://127.0.0.1:1/embeddings".to_owned(),
-            model: "test".to_owned(),
-            dimensions: 384,
-            api: remote::Api::OpenaiCompatible,
-            token_env: None,
-            request_dimensions: false,
-            redaction: crate::redaction::Policy::ON,
-        }
-    }
-
-    // A client without requests exercises ownership on either inference platform.
+    // A deterministic pool exercises ownership without loading model assets.
     fn pool() -> EmbeddingPool {
+        let fixture = crate::semantic::test_embeddings::Fixture::new(384);
         EmbeddingPool {
-            backend: EmbeddingPoolBackend::Remote(remote::Client::new(remote_config()).unwrap()),
+            backend: EmbeddingPoolBackend::Fixture(std::sync::Arc::clone(&fixture.state)),
             assets_lease: None,
         }
     }
@@ -345,7 +337,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_local_assets_and_remote_configuration_clear_retained_local_resources() {
+    async fn missing_local_assets_clear_retained_local_resources() {
         let directory = tempfile::tempdir().unwrap();
         scope(async {
             crate::blocking(move || {
@@ -355,13 +347,6 @@ mod tests {
                 assert!(models.load_indexer()?.is_none());
                 assert!(cache.take(&key()).is_none());
                 drop(LoadedIndexer::new(pool(), key(), Some(cache.clone())));
-                drop(
-                    models
-                        .with_remote(Some(remote_config()))
-                        .load_indexer()?
-                        .unwrap(),
-                );
-                assert!(cache.take(&key()).is_none());
                 Ok(())
             })
             .await
@@ -385,7 +370,7 @@ mod tests {
                     EmbeddingPoolBackend::CoreMl(pool) => {
                         std::ptr::from_ref(pool.as_ref()).cast::<()>()
                     }
-                    EmbeddingPoolBackend::Remote(_) => panic!("requires local inference"),
+                    EmbeddingPoolBackend::Fixture(_) => panic!("requires local inference"),
                 };
                 let models = Models::new(root);
                 let longer =

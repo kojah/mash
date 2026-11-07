@@ -1,6 +1,5 @@
-//! Disposable local gold with a deterministic two-dimensional embedding endpoint.
+//! Disposable local gold with deterministic local inference.
 use super::*;
-use axum::{Json, Router, routing::post};
 
 pub(crate) fn qdrant_configuration() -> crate::config::QdrantConfig {
     crate::config::QdrantConfig {
@@ -63,20 +62,7 @@ pub(crate) async fn lexical(database: &Path, config: &Path) -> (Local, String) {
 pub(crate) struct Fixture {
     pub(crate) configuration: ResolvedConfig,
     pub(crate) local: Local,
-    embedding_server: tokio::task::JoinHandle<()>,
-}
-
-#[derive(serde::Deserialize)]
-struct EmbeddingRequest {
-    input: Vec<String>,
-}
-
-async fn embeddings(Json(request): Json<EmbeddingRequest>) -> Json<serde_json::Value> {
-    Json(
-        serde_json::json!({"data": request.input.iter().enumerate().map(|(index, _)| {
-        serde_json::json!({"index": index, "embedding": [1.0, 0.0]})
-    }).collect::<Vec<_>>()}),
-    )
+    pub(crate) model: crate::semantic::test_embeddings::Fixture,
 }
 
 impl Fixture {
@@ -93,25 +79,7 @@ impl Fixture {
             token_env: "HOME".into(),
             publication_redaction: crate::redaction::Policy::ON,
         });
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let embedding_server = tokio::spawn(async move {
-            axum::serve(
-                listener,
-                Router::new().route("/embeddings", post(embeddings)),
-            )
-            .await
-            .unwrap();
-        });
-        configuration.embeddings = Some(semantic::remote::Configuration {
-            url: format!("http://{address}/embeddings"),
-            model: "fixture".into(),
-            dimensions: 2,
-            api: semantic::remote::Api::OpenaiCompatible,
-            token_env: None,
-            request_dimensions: true,
-            redaction: crate::redaction::Policy::ON,
-        });
+        let model = crate::semantic::test_embeddings::Fixture::at(&root.join("no-models"), 384);
         let mut writer = Storage::open_writer(database).unwrap();
         for provider in crate::provider::Provider::ALL {
             writer.begin_silver_scan(*provider).unwrap();
@@ -131,16 +99,19 @@ impl Fixture {
         Self {
             configuration,
             local,
-            embedding_server,
+            model,
         }
     }
 
     pub(crate) async fn candidates(
         &self,
         query: &str,
-        vector: Vec<f64>,
+        mut vector: Vec<f64>,
         filter: Option<crate::search_filter::Filter>,
     ) -> crate::views::retrieval::Candidates {
+        if !vector.is_empty() {
+            vector.resize(384, 0.0);
+        }
         self.local
             .candidates(crate::views::retrieval::Search {
                 match_mode: crate::views::matching::Mode::Strict,
@@ -174,11 +145,5 @@ impl Fixture {
                 .error_for_status()
                 .unwrap();
         }
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        self.embedding_server.abort();
     }
 }

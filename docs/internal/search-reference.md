@@ -138,9 +138,8 @@ contextual reranking and its context fetches. The default is
 `"contextual-rerank"`. This query-only policy applies across local, shared and
 combined searches through the same CLI/MCP core, using the same typed requests.
 It changes no stored vectors or silver. Dense query embeddings still require
-the local embedding model or configured remote service. Fusion skips loading
-the reranker. Local installation inventory validation remains required; remote
-fusion needs no local model installation. Status reports `query_models` as
+the installed local embedding model. Fusion skips loading the reranker;
+local installation inventory validation remains required. Status reports `query_models` as
 `"available"` or `"unavailable"` for current TOML query defaults,
 separately from physical `models_installed`. Switching ranking reloads the
 matching cached backend.

@@ -29,7 +29,8 @@ async fn workload(watching: bool) {
         let models = Models::new(root);
         let started = Instant::now();
         let mut loaded = models.load_indexer()?.unwrap();
-        let super::super::EmbeddingPoolBackend::Cpu(workers) = &loaded.backend else {
+        let crate::semantic::embeddings::EmbeddingPoolBackend::Cpu(workers) = &loaded.backend
+        else {
             panic!("CPU model pool required");
         };
         assert_eq!(workers.len(), if watching { 1 } else { 8 });

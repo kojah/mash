@@ -15,11 +15,11 @@ pub(super) struct SelectedAssets {
     pub(super) lease: Option<fs::File>,
 }
 
-pub(super) fn select(root: &Path, remote: bool) -> Result<SelectedAssets, AppError> {
+pub(super) fn select(root: &Path) -> Result<SelectedAssets, AppError> {
     // A collector can retire the generation between reading the marker and
     // opening its lease. Retry selection, never load from an unleased directory.
     for _ in 0..3 {
-        let marker = assets::read_marker(root, remote)?;
+        let marker = assets::read_marker(root)?;
         let asset_root = marker
             .asset_directory
             .as_ref()
@@ -45,7 +45,7 @@ pub(super) fn select(root: &Path, remote: bool) -> Result<SelectedAssets, AppErr
             // The original root is never changed by staged installers or GC.
             None
         };
-        assets::validate_files(&asset_root, &marker, remote)?;
+        assets::validate_files(&asset_root, &marker)?;
         return Ok(SelectedAssets {
             marker,
             root: asset_root,
@@ -70,16 +70,11 @@ impl StagedAssets {
             .map_err(AppError::io)?;
         fs::File::create(directory.path().join(LEASE_NAME)).map_err(AppError::io)?;
         let stage = Self { directory };
-        if let Ok(selected) = select(root, true) {
+        if let Ok(selected) = select(root) {
             // Copy inventory entries, including snapshot symlink targets. Never
             // hard-link mutable SDK files or follow arbitrary directory trees.
             for file in &selected.marker.files {
                 let source = selected.root.join(&file.path);
-                if !source.is_file()
-                    && !Path::new(&file.path).starts_with(super::RERANKER_REPOSITORY)
-                {
-                    continue;
-                }
                 let target = stage.root().join(&file.path);
                 fs::create_dir_all(
                     target
@@ -169,7 +164,7 @@ fn cleanup(root: &Path) -> Result<(), AppError> {
     sync_directory(root)?;
     // Do not retire anything if an existing marker cannot be interpreted.
     let active = if root.join(super::MARKER_NAME).exists() {
-        match assets::read_marker(root, true) {
+        match assets::read_marker(root) {
             Ok(marker) => marker.asset_directory,
             Err(_) => return Ok(()),
         }

@@ -16,7 +16,6 @@ pub(super) struct ParsedDocument {
     pub(super) providers: ProviderRoots,
     pub(super) since_days: Option<u32>,
     pub(super) shared: Option<SharedConfig>,
-    pub(super) embeddings: Option<crate::semantic::remote::Configuration>,
     pub(super) views: crate::views::config::Configuration,
     pub(super) destination: IndexDestination,
 }
@@ -33,7 +32,6 @@ struct RawDocument {
     #[serde(default)]
     index: RawIndex,
     shared: Option<SharedConfig>,
-    embeddings: Option<crate::semantic::remote::Configuration>,
     #[serde(default)]
     views: crate::views::config::Configuration,
     #[serde(default)]
@@ -100,9 +98,6 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             raw.version
         )));
     }
-    if let Some(embeddings) = &raw.embeddings {
-        embeddings.validate()?;
-    }
     raw.qdrant.validate()?;
     raw.views.validate()?;
     raw.attachments.validate()?;
@@ -166,7 +161,6 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             .collect::<Result<_, _>>()?,
         since_days,
         shared: raw.shared,
-        embeddings: raw.embeddings,
         views: raw.views,
         destination,
     })

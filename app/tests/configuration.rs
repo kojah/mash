@@ -59,7 +59,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "path": config_home.join("mash/config.toml"),
             "loaded": false,
             "attachments": {"allowed_roots": [], "share_files": false},
-            "redaction": {"output": true, "publication": true, "remote_embeddings": true},
+            "redaction": {"output": true, "publication": true},
             "shared": null,
             "qdrant": {
                 "url": "http://127.0.0.1:6333", "api_key_env": null,

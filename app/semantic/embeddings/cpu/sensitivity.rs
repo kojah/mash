@@ -117,7 +117,7 @@ fn benchmark_label_embedding_sensitivity() {
         .unwrap();
     let selected = crate::semantic::Models::new(root);
     selected.require_indexer().unwrap();
-    let generation = crate::semantic::configured_generation(None);
+    let generation = crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned();
     let started = Instant::now();
     let mut pool = selected.load_indexer().unwrap().unwrap();
     let model_load_ms = started.elapsed().as_secs_f64() * 1000.0;

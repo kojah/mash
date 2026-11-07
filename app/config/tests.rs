@@ -201,7 +201,7 @@ fn views_query_defaults_are_typed_bounded_and_reported_in_status() {
 }
 
 #[test]
-fn toml_tables_comments_and_remote_models_are_supported_without_json_fallback() {
+fn toml_tables_and_comments_are_supported_without_json_fallback() {
     let document = r"
 version = 1 # node configuration
 [providers.codex]
@@ -209,16 +209,9 @@ roots = ['/missing/codex']
 [index]
 all_history = true
 destination = 'local'
-[embeddings]
-api = 'voyage'
-url = 'https://api.voyageai.com/v1/embeddings'
-model = 'voyage-code-4'
-dimensions = 1024
-token_env = 'VOYAGE_API_KEY'
 ";
     let parsed = parse_document(document.as_bytes()).expect("TOML tables");
     assert_eq!(parsed.since_days, None);
-    assert_eq!(parsed.embeddings.unwrap().model, "voyage-code-4");
     for invalid in [
         r#"{"version":1,"providers":{}}"#,
         "version = 1\nversion = 1\n[providers]\n",
@@ -556,6 +549,19 @@ fn default_path_failure_is_typed() {
 }
 
 #[test]
+fn removed_remote_embeddings_settings_are_rejected() {
+    for setting in [
+        "[embeddings]\nurl='https://embed.example/v1/embeddings'\nmodel='test'\ndimensions=384",
+        "[embeddings]\napi='voyage'\nmodel='voyage-4'",
+        "[redaction]\nremote_embeddings=false",
+    ] {
+        let error = parse_document(format!("{VALID}\n{setting}\n").as_bytes()).unwrap_err();
+        assert_configuration_error(&error);
+        assert!(error.error.message.contains("unknown field"));
+    }
+}
+
+#[test]
 fn redaction_switches_default_on_and_reach_each_destination() {
     let directory = TempDir::new().unwrap();
     let defaults = load(Some(&write_config(&directory, VALID))).unwrap();
@@ -565,21 +571,19 @@ fn redaction_switches_default_on_and_reach_each_destination() {
         &directory,
         &format!(
             "{VALID}\n[shared]\ngroup_id='g'\nnode_id='n'\napi_url='https://mash.example'\ntoken_env='T'\n\
-             [embeddings]\nurl='https://embed.example/v1/embeddings'\nmodel='voyage-4'\n\
-             [redaction]\noutput=false\npublication=false\nremote_embeddings=false\n"
+             [redaction]\noutput=false\npublication=false\n"
         ),
     );
     let resolved = load(Some(&path)).unwrap();
     assert!(!resolved.redaction.output().enabled());
     assert!(!resolved.shared.unwrap().publication_redaction.enabled());
-    assert!(!resolved.embeddings.unwrap().redaction.enabled());
     let status = serde_json::to_value(load(Some(&path)).unwrap().status()).unwrap();
     assert_eq!(status["redaction"]["output"], false);
     // Each switch is independent, and unknown keys are rejected.
     let partial = parse_document(format!("{VALID}\n[redaction]\noutput=false\n").as_bytes())
         .unwrap()
         .redaction;
-    assert!(!partial.output && partial.publication && partial.remote_embeddings);
+    assert!(!partial.output && partial.publication);
     assert_configuration_error(
         &parse_document(format!("{VALID}\n[redaction]\nlogs=false\n").as_bytes()).unwrap_err(),
     );

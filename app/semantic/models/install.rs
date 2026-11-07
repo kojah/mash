@@ -2,11 +2,10 @@
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use super::EmbeddingPool;
 use super::assets::{self, InstallMarker, inventory};
-use super::downloads;
 use super::generations::StagedAssets;
 use super::{
     AppError, Backend, EMBEDDING_MODEL, InstallSummary, Models, RERANKER_MODEL,
-    coreml_embedding_enabled, embedding_model_description, load_reranker,
+    coreml_embedding_enabled, embedding_model_description,
 };
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::semantic::embeddings::EmbeddingGroup;
@@ -30,32 +29,11 @@ fn installation_lock(root: &Path) -> Result<fs::File, AppError> {
 
 impl Models {
     pub(crate) fn install(&self) -> Result<InstallSummary, AppError> {
-        if let Some(config) = &self.remote {
-            config.validate()?;
-        }
         // Keep the lock through downloads, smoke checks, inventory and marker
         // publication. Never unlink it: another process may hold the same inode.
         let _lock = installation_lock(&self.root)?;
         let staged = StagedAssets::new(&self.root)?;
         let asset_root = staged.root();
-        if let Some(config) = &self.remote {
-            downloads::reranker(asset_root)?;
-            let mut reranker = load_reranker(asset_root)?;
-            reranker
-                .rerank("installation check", ["installation check"], false, None)
-                .map_err(|_| AppError::model("reranking model installation check failed"))?;
-            let files = inventory(asset_root)?;
-            let summary = InstallSummary {
-                embedding_model: "remote",
-                reranker_model: "jinaai/jina-reranker-v1-turbo-en",
-                embedding_dimensions: config.dimensions,
-                files: files.len(),
-            };
-            let marker = assets::remote_install_marker(&self.root, config.dimensions, files)?;
-            drop(reranker);
-            staged.publish(&self.root, marker)?;
-            return Ok(summary);
-        }
         let mut backend = Backend::download_and_load(asset_root)?;
         let embeddings = backend.embed(&["semantic model installation check"])?;
         let embedding_dimensions = embeddings

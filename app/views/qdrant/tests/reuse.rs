@@ -1,19 +1,8 @@
 use super::*;
 use crate::views::{documents::EmbeddingInput, materialize::Writer};
-use axum::{Json, Router, extract::State, routing::post};
-use std::path::Path;
-use std::sync::{Arc, Mutex};
 
-fn model() -> crate::semantic::remote::Configuration {
-    crate::semantic::remote::Configuration {
-        url: recovery::embeddings::serve(),
-        model: "test".into(),
-        dimensions: 4,
-        api: crate::semantic::remote::Api::OpenaiCompatible,
-        token_env: None,
-        request_dimensions: true,
-        redaction: crate::redaction::Policy::ON,
-    }
+fn model() -> crate::semantic::test_embeddings::Fixture {
+    crate::semantic::test_embeddings::Fixture::new(4)
 }
 
 fn search_messages(fixture: &Fixture) -> Vec<crate::views::documents::SearchMessage> {
@@ -27,39 +16,8 @@ fn search_messages(fixture: &Fixture) -> Vec<crate::views::documents::SearchMess
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_materializer_prefetch_preserves_inference_batches_and_retry() {
-    #[derive(serde::Deserialize)]
-    struct Request {
-        input: Vec<String>,
-    }
-    async fn embed(
-        State(calls): State<Arc<Mutex<Vec<usize>>>>,
-        Json(request): Json<Request>,
-    ) -> Json<serde_json::Value> {
-        calls.lock().unwrap().push(request.input.len());
-        Json(
-            serde_json::json!({"data": request.input.iter().enumerate().map(|(index, _)| {
-            serde_json::json!({"index": index, "embedding": [1.0, 0.0, 0.0, 0.0]})
-        }).collect::<Vec<_>>()}),
-        )
-    }
-
-    let calls = Arc::new(Mutex::new(Vec::new()));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let model = crate::semantic::remote::Configuration {
-        url: format!("http://{}/embeddings", listener.local_addr().unwrap()),
-        model: "test".into(),
-        dimensions: 4,
-        api: crate::semantic::remote::Api::OpenaiCompatible,
-        token_env: None,
-        request_dimensions: true,
-        redaction: crate::redaction::Policy::ON,
-    };
-    let app = Router::new()
-        .route("/embeddings", post(embed))
-        .with_state(Arc::clone(&calls));
-    let server = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
+    let model = model();
+    let calls = &model.state.calls;
     let fixture = Fixture::new(VectorIndex::default()).await;
     let template = search_messages(&fixture).remove(0);
     let mut messages = (0..601)
@@ -94,11 +52,7 @@ async fn qdrant_materializer_prefetch_preserves_inference_batches_and_retry() {
             assert!(calls.lock().unwrap().is_empty());
             continue;
         }
-        let mut writer = Writer::new(
-            &fixture.store,
-            &fixture.identity,
-            Some((Path::new(""), Some(&model))),
-        );
+        let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
         let built = writer
             .write_chat(&Fixture::chat(), &messages)
             .await
@@ -126,7 +80,6 @@ async fn qdrant_materializer_prefetch_preserves_inference_batches_and_retry() {
         );
     }
     fixture.cleanup().await;
-    server.abort();
 }
 
 #[tokio::test]
@@ -178,11 +131,7 @@ async fn qdrant_materializer_reuses_chat_vectors_after_metadata_edits_without_a_
     let model = model();
     let mut chat = Fixture::chat();
     let mut messages = search_messages(&fixture);
-    let mut writer = Writer::new(
-        &fixture.store,
-        &fixture.identity,
-        Some((Path::new(""), Some(&model))),
-    );
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
     writer.write_chat(&chat, &messages).await.unwrap();
     assert_eq!(
         writer.finish().await.unwrap().embeddings.model_inferences,
@@ -242,11 +191,7 @@ async fn qdrant_materializer_reuse_tracks_prepared_title_and_parent_context() {
         if step == 2 {
             messages[0].projection = "new parent text".into();
         }
-        let mut writer = Writer::new(
-            &store,
-            &fixture.identity,
-            Some((Path::new(""), Some(&model))),
-        );
+        let mut writer = Writer::new(&store, &fixture.identity, Some(model.path()));
         writer.write_chat(&chat, &messages).await.unwrap();
         let result = writer.finish().await.unwrap();
         assert_eq!(
@@ -268,11 +213,7 @@ async fn qdrant_materializer_reuse_tracks_prepared_title_and_parent_context() {
 async fn qdrant_materializer_reuse_requires_matching_source_model_and_input() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let model = model();
-    let mut writer = Writer::new(
-        &fixture.store,
-        &fixture.identity,
-        Some((Path::new(""), Some(&model))),
-    );
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
     writer
         .write_chat(&Fixture::chat(), &search_messages(&fixture))
         .await
@@ -321,11 +262,7 @@ async fn qdrant_materializer_reuse_requires_matching_source_model_and_input() {
 async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let model = model();
-    let mut writer = Writer::new(
-        &fixture.store,
-        &fixture.identity,
-        Some((Path::new(""), Some(&model))),
-    );
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
     writer
         .write_chat(&Fixture::chat(), &search_messages(&fixture))
         .await
@@ -400,11 +337,7 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
                 .is_none(),
             "{field}"
         );
-        let mut writer = Writer::new(
-            &fixture.store,
-            &fixture.identity,
-            Some((Path::new(""), Some(&model))),
-        );
+        let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
         writer
             .write_chat(&Fixture::chat(), &search_messages(&fixture))
             .await

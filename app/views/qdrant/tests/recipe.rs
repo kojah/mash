@@ -224,7 +224,7 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
         .unwrap();
         let mut next = fixture.identity.clone();
         next.dimensions = 8;
-        next.generation = crate::semantic::model_space("alternate-test", 8);
+        next.generation = "fixture:alternate-test:8".to_owned();
         assert!(wide.select_views(&next, false).await.is_err());
         fixture.search().await;
         wide.select_views(&next, true).await.unwrap();

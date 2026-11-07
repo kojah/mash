@@ -1,6 +1,6 @@
 //! Shared-recipe embedding for publication and replay.
 use crate::AppError;
-use crate::semantic::{self, EmbeddingSummary, LoadedIndexer, Models};
+use crate::semantic::{EmbeddingSummary, LoadedIndexer, Models};
 use std::path::Path;
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ pub(crate) struct Build {
 pub(crate) async fn embed_units(
     inputs: &[super::documents::EmbeddingInput<'_>],
     space: (&str, usize),
-    model: Option<(&Path, Option<&semantic::remote::Configuration>)>,
+    model: Option<&Path>,
     pool: &mut Option<LoadedIndexer>,
     result: &mut Build,
     cached: Vec<Option<Vec<f64>>>,
@@ -40,8 +40,8 @@ pub(crate) async fn embed_units(
     let vectors = if texts.is_empty() {
         Vec::new()
     } else {
-        let (models, configuration) = model.ok_or_else(AppError::models_missing)?;
-        embed_texts(models, configuration, pool, &texts, result).await?
+        let models = model.ok_or_else(AppError::models_missing)?;
+        embed_texts(models, pool, &texts, result).await?
     };
     if vectors.len() != texts.len()
         || vectors
@@ -72,7 +72,6 @@ fn elapsed(started: Instant) -> u64 {
 
 pub(crate) async fn embed_texts(
     models_dir: &Path,
-    embeddings: Option<&semantic::remote::Configuration>,
     pool: &mut Option<LoadedIndexer>,
     texts: &[&str],
     result: &mut Build,
@@ -81,7 +80,6 @@ pub(crate) async fn embed_texts(
         return Ok(Vec::new());
     }
     let existing = pool.take();
-    let remote = embeddings.cloned();
     let root = models_dir.to_path_buf();
     let input = texts
         .iter()
@@ -93,7 +91,7 @@ pub(crate) async fn embed_texts(
         let mut loaded = match existing {
             Some(pool) => pool,
             None => crate::progress::during(crate::progress::Phase::ModelLoading, || {
-                Models::new(root).with_remote(remote).load_indexer()
+                Models::new(root).load_indexer()
             })?
             .ok_or_else(AppError::models_missing)?,
         };

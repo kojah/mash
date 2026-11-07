@@ -319,15 +319,15 @@ fn server_rejects_invalid_configuration_before_connecting() {
         ("version = 1\nmax_upload_mib = 4097", "max_upload_mib"),
         (
             "version = 1\n[embeddings]\nmodel = 'test'\ndimensions = 0",
-            "invalid server embedding",
+            "invalid server configuration",
         ),
         (
             "version = 1\n[embeddings]\nmodel = 'test'\ndimensions = 2049",
-            "invalid server embedding",
+            "invalid server configuration",
         ),
         (
             "version = 1\n[embeddings]\nmodel = ' '\ndimensions = 384",
-            "invalid server embedding",
+            "invalid server configuration",
         ),
     ] {
         assert_startup_rejected(format!("{setting}{STARTUP_NODE}").as_bytes(), &[], message);

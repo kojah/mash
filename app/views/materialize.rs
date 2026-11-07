@@ -5,13 +5,13 @@ use super::qdrant::{Documents, Store};
 use super::scope::Scope;
 use super::shared::{self as embedding, Build};
 use crate::AppError;
-use crate::semantic::{LoadedIndexer, remote};
+use crate::semantic::LoadedIndexer;
 use std::path::Path;
 
 pub(crate) struct Writer<'a> {
     store: &'a Store,
     scope: &'a Scope,
-    model: Option<(&'a Path, Option<&'a remote::Configuration>)>,
+    model: Option<&'a Path>,
     pool: Option<LoadedIndexer>,
     build: Build,
     documents: Documents,
@@ -90,11 +90,7 @@ fn inputs<'a>(
 }
 
 impl<'a> Writer<'a> {
-    pub(crate) fn new(
-        store: &'a Store,
-        scope: &'a Scope,
-        model: Option<(&'a Path, Option<&'a remote::Configuration>)>,
-    ) -> Self {
+    pub(crate) fn new(store: &'a Store, scope: &'a Scope, model: Option<&'a Path>) -> Self {
         Self {
             store,
             scope,

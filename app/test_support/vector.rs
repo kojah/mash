@@ -1,4 +1,4 @@
-//! HTTP transport fixture; no models or external services. Backend semantics
+//! HTTP transport fixture for shared requests. Backend semantics
 //! are verified separately against disposable Qdrant.
 use axum::{
     Json, Router,
@@ -13,8 +13,8 @@ pub(crate) fn freshness(build: &Value) -> Value {
         "group_views": {
             "version": "group",
             "build": build,
-            "generation": "test",
-            "dimensions": 4,
+            "generation": "all-MiniLM-L6-v2:384:i8-cosine:v1",
+            "dimensions": 384,
         },
         "nodes": [],
     })
@@ -42,12 +42,6 @@ impl Service {
                 }),
             )
             .route(
-                "/embeddings",
-                post(|| async {
-                    Json(json!({"data":[{"index":0,"embedding":[1.0,0.0,0.0,0.0]}]}))
-                }),
-            )
-            .route(
                 "/v1/search",
                 post(move |Json(body): Json<Value>| {
                     let sender = sender.clone();
@@ -70,8 +64,8 @@ impl Service {
     }
     pub(crate) fn configuration(&self) -> String {
         format!(
-            "version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n[shared]\ngroup_id='transport'\nnode_id='node'\napi_url='{}'\ntoken_env='PATH'\n[embeddings]\nurl='{}/embeddings'\nmodel='test'\ndimensions=4\n",
-            self.url, self.url
+            "version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n[shared]\ngroup_id='transport'\nnode_id='node'\napi_url='{}'\ntoken_env='PATH'\n",
+            self.url
         )
     }
     pub(crate) async fn received(&mut self) -> Value {

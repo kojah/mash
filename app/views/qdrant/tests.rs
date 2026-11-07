@@ -36,7 +36,7 @@ impl Fixture {
         let identity = Scope {
             group_id: group.clone(),
             node_id: "node".into(),
-            generation: crate::semantic::model_space("test", 4),
+            generation: "fixture:test:4".to_owned(),
             dimensions: 4,
         };
         let store = Store::connect(

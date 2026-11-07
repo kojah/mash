@@ -76,55 +76,11 @@ publishes exactly that local index; there is no shared-only ingestion mode.
 Use a different node ID and token on each machine, with the same group ID and
 API URL. Normal search then combines local results with the other nodes.
 
-## Remote embeddings
+## Local embeddings
 
-Local FastEmbed inference remains the default. Add `embeddings` to the node
-configuration to use Voyage-4 for both document and query embeddings:
+Semantic search uses the installed all-MiniLM-L6-v2 model (384 dimensions).
+Run `mash models install` explicitly to install embedding and reranking models;
+indexing and search never download models. See [model setup](../indexing.md#enable-semantic-search).
 
-```toml
-[embeddings]
-api = "voyage"
-url = "https://api.voyageai.com/v1/embeddings"
-model = "voyage-4"
-dimensions = 1024
-token_env = "VOYAGE_API_KEY"
-```
-
-Set `VOYAGE_API_KEY` in the node's environment. It is separate from the shared
-index token; the index service never receives it. History search projections
-and search queries are sent to the configured inference endpoint. There is no
-automatic fallback to another model. `model` is configurable, including
-`voyage-code-4`; Voyage dimensions can be 256, 512, 1024, or 2048. Requests use
-`input_type: document` for indexing and `input_type: query` for searching.
-Overlong inputs fail explicitly rather than being silently truncated.
-
-For an OpenAI-compatible endpoint, set `api` to `openai-compatible` and provide
-its complete embeddings URL, model, dimensions, and optional `token_env`.
-Set `request_dimensions = true` if the endpoint should receive the `dimensions`
-parameter. Fixed-dimension self-hosted endpoints can omit it. Mash supports
-1–2048 dimensions and validates vector count, ordering, dimensions, and values.
-HTTP requests are asynchronous, bounded, and time out after 60 seconds. Local
-SQLite pipelines remain on blocking workers while remote requests run on Tokio.
-
-Remote indexing needs no local model assets. Reranking remains local; run
-`mash models install` with remote embeddings configured to install only the
-reranker before searching. No models are downloaded by indexing or searching.
-If a valid local embedding installation already exists, installing for remote
-embeddings preserves it. Switching back to local inference does not require
-reinstalling those assets; the changed embedding space still requires indexing.
-
-For shared indexing, configure the service's embedding space as well:
-
-```toml
-[embeddings]
-model = "voyage-4"
-dimensions = 1024
-```
-
-The service configuration applies to every group it serves. Publishers and
-searchers must use the matching model and dimensions. Changing them rebuilds
-local embeddings on the next index pass; reindex all shared publishers before
-searching. For a shared model or dimension change, explicitly activate the server
-settings and rebuild each member's shared views; a new group ID is unnecessary.
-Model identifiers and dimensions prevent mismatched
-queries from being compared with the stored embedding space.
+The same embedding space is used for local and shared search. A server needs
+local model assets when rebuilding shared views from saved history.

@@ -118,82 +118,13 @@ async fn qdrant_publication_commits_silver_before_views_and_stale_views_is_never
     fixture.cleanup().await;
 }
 
-pub(super) mod embeddings {
-    use axum::{Json, Router, routing::post};
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Deserialize)]
-    struct Request {
-        input: Vec<String>,
-        dimensions: Option<usize>,
-    }
-    #[derive(Serialize)]
-    struct Output {
-        data: Vec<Item>,
-    }
-    #[derive(Serialize)]
-    struct Item {
-        index: usize,
-        embedding: Vec<f32>,
-    }
-
-    async fn embed(Json(input): Json<Request>) -> Json<Output> {
-        let dimensions = input.dimensions.unwrap_or(4);
-        Json(Output {
-            data: input
-                .input
-                .iter()
-                .enumerate()
-                .map(|(index, _)| {
-                    let mut embedding = vec![0.0; dimensions];
-                    embedding[0] = 1.0;
-                    Item { index, embedding }
-                })
-                .collect(),
-        })
-    }
-
-    /// A controlled OpenAI-compatible endpoint on its own runtime thread.
-    pub(in crate::views::qdrant::tests) fn serve() -> String {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(async move {
-                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                    sender
-                        .send(format!(
-                            "http://{}/embeddings",
-                            listener.local_addr().unwrap()
-                        ))
-                        .unwrap();
-                    axum::serve(listener, Router::new().route("/embeddings", post(embed)))
-                        .await
-                        .unwrap();
-                });
-        });
-        receiver
-            .recv_timeout(crate::test_support::HANG_GUARD)
-            .unwrap()
-    }
-}
-
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_replay_interruption_never_leaves_current_metadata_and_retry_repairs() {
     use crate::shared::server::store::ReplayFault;
 
     let fixture = Fixture::new(VectorIndex::default()).await;
-    let remote = crate::semantic::remote::Configuration {
-        url: embeddings::serve(),
-        model: "test".into(),
-        dimensions: 4,
-        api: crate::semantic::remote::Api::OpenaiCompatible,
-        token_env: None,
-        request_dimensions: true,
-        redaction: crate::redaction::Policy::ON,
-    };
-    let models = tempfile::tempdir().unwrap();
+    let models = crate::semantic::test_embeddings::Fixture::new(4);
     for fault in [ReplayFault::AfterDeletion, ReplayFault::AfterInvalidation] {
         fixture
             .server
@@ -215,7 +146,7 @@ async fn qdrant_replay_interruption_never_leaves_current_metadata_and_retry_repa
             .serve(fixture.store.clone())
             .with_replay_fault(fault);
         let error = interrupted
-            .replay(&fixture.identity, models.path(), Some(&remote))
+            .replay(&fixture.identity, models.path())
             .await
             .unwrap_err();
         assert_eq!(error.error.message, "injected replay interruption");
@@ -237,7 +168,7 @@ async fn qdrant_replay_interruption_never_leaves_current_metadata_and_retry_repa
         );
 
         reopened
-            .replay(&fixture.identity, models.path(), Some(&remote))
+            .replay(&fixture.identity, models.path())
             .await
             .unwrap();
         assert!(reopened.freshness(&fixture.identity).await.unwrap().nodes[0].views_current);
@@ -264,18 +195,9 @@ async fn qdrant_replay_reconstructs_all_views_from_shared_silver() {
     let silver = fixture.retained();
     lose_views(&fixture).await;
     let server = reconnect(&fixture).await;
-    let remote = crate::semantic::remote::Configuration {
-        url: embeddings::serve(),
-        model: "test".into(),
-        dimensions: 4,
-        api: crate::semantic::remote::Api::OpenaiCompatible,
-        token_env: None,
-        request_dimensions: true,
-        redaction: crate::redaction::Policy::ON,
-    };
-    let models = tempfile::tempdir().unwrap();
+    let models = crate::semantic::test_embeddings::Fixture::new(4);
     let replayed = server
-        .replay(&fixture.identity, models.path(), Some(&remote))
+        .replay(&fixture.identity, models.path())
         .await
         .unwrap();
     assert_eq!(replayed.chats, 1);

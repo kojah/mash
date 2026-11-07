@@ -3,7 +3,6 @@
 use super::coreml::CoreMlEmbeddingPool;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use super::models::load_local_embedding;
-use super::remote;
 use super::retrieval::quantize_vector;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use super::{EMBEDDING_BATCH_SIZE, EMBEDDING_THREADS_PER_WORKER, EMBEDDING_WORKERS};
@@ -21,7 +20,8 @@ pub(crate) struct EmbeddingPool {
 }
 
 pub(super) enum EmbeddingPoolBackend {
-    Remote(remote::Client),
+    #[cfg(test)]
+    Fixture(std::sync::Arc<super::test_embeddings::State>),
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     Cpu(Vec<TextEmbedding>),
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -70,7 +70,10 @@ impl EmbeddingPool {
             return Err(AppError::usage("singleton label batch cap exceeded"));
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-        if let EmbeddingPoolBackend::Cpu(workers) = &mut self.backend {
+        {
+            let EmbeddingPoolBackend::Cpu(workers) = &mut self.backend else {
+                return Err(AppError::usage("singleton labels require CPU inference"));
+            };
             let groups = texts
                 .iter()
                 .map(|text| EmbeddingGroup {
@@ -78,7 +81,7 @@ impl EmbeddingPool {
                     message_ids: Vec::new(),
                 })
                 .collect::<Vec<_>>();
-            return Ok(cpu::embed_singletons(workers, &groups)?
+            Ok(cpu::embed_singletons(workers, &groups)?
                 .iter()
                 .map(|vector| {
                     quantize_vector(vector)
@@ -87,8 +90,9 @@ impl EmbeddingPool {
                         .map(|value| f64::from(value.cast_signed()))
                         .collect()
                 })
-                .collect());
+                .collect())
         }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         Err(AppError::usage(
             "singleton label experiment requires the local CPU backend",
         ))
@@ -148,10 +152,8 @@ impl EmbeddingPool {
         groups: &[EmbeddingGroup],
     ) -> Result<Vec<Vec<f32>>, AppError> {
         match &mut self.backend {
-            EmbeddingPoolBackend::Remote(client) => client.embed_on_worker(
-                &groups.iter().map(|g| g.content.clone()).collect::<Vec<_>>(),
-                false,
-            ),
+            #[cfg(test)]
+            EmbeddingPoolBackend::Fixture(state) => Ok(state.embed(groups.len())),
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             EmbeddingPoolBackend::Cpu(workers) => cpu::embed_wave(workers, groups),
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]

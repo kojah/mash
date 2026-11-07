@@ -16,13 +16,13 @@ async fn prepared_snapshot(
     database: &Path,
     target: &Target,
     configuration: &crate::config::ResolvedConfig,
+    models_dir: &Path,
 ) -> (tempfile::NamedTempFile, SnapshotWork) {
     let (file, _, work) = prepare(
         database,
         target,
         Some(Inference {
-            models_dir: Path::new("/nonexistent/mash-test-models"),
-            embeddings: configuration.embeddings.as_ref(),
+            models_dir,
             local: Some(configuration),
         }),
         Instant::now(),
@@ -40,15 +40,25 @@ async fn qdrant_publication_reuses_local_vectors_and_survives_missing_local_view
     let database = seed(directory.path());
     let fixture = crate::views::local::test_support::Fixture::new(&database, "publisher").await;
     let target = publication_target(&fixture);
-    // A dead embedding endpoint proves that matching cached vectors need no inference.
-    let mut offline = fixture.configuration.clone();
-    offline.embeddings.as_mut().unwrap().url = "http://127.0.0.1:9/embeddings".into();
-    let (cached, work) = prepared_snapshot(&database, &target, &offline).await;
+    // Missing model assets prove matching cached vectors need no inference.
+    let (cached, work) = prepared_snapshot(
+        &database,
+        &target,
+        &fixture.configuration,
+        Path::new("/nonexistent/mash-test-models"),
+    )
+    .await;
     assert_eq!(work.forwarded_embeddings, 29);
     assert_eq!(work.model_inferences, 0);
     let cached = std::fs::read_to_string(cached.path()).unwrap();
     fixture.cleanup().await;
-    let (fresh, work) = prepared_snapshot(&database, &target, &fixture.configuration).await;
+    let (fresh, work) = prepared_snapshot(
+        &database,
+        &target,
+        &fixture.configuration,
+        fixture.model.path(),
+    )
+    .await;
     assert_eq!(work.forwarded_embeddings, 0);
     assert_eq!(work.model_inferences, 29);
     assert_eq!(std::fs::read_to_string(fresh.path()).unwrap(), cached);
@@ -63,17 +73,19 @@ async fn qdrant_publication_reuse_obeys_target_recipe_and_model() {
     let original = publication_target(&fixture);
     let mut target = original.clone();
     target.build.embedding_text = crate::views::config::EmbeddingText::TitleAndDialogue;
-    let (_, work) = prepared_snapshot(&database, &target, &fixture.configuration).await;
+    let (_, work) = prepared_snapshot(
+        &database,
+        &target,
+        &fixture.configuration,
+        fixture.model.path(),
+    )
+    .await;
     assert_eq!(work.forwarded_embeddings, 0);
     assert_eq!(work.model_inferences, 29);
 
-    let mut other_model = fixture.configuration.clone();
-    other_model.embeddings.as_mut().unwrap().model = "different-model".into();
     target = original;
-    target.generation = crate::semantic::configured_generation(other_model.embeddings.as_ref());
-    let (_, work) = prepared_snapshot(&database, &target, &other_model).await;
-    assert_eq!(work.forwarded_embeddings, 0);
-    assert_eq!(work.model_inferences, 29);
+    target.generation = "different-model".into();
+    assert!(validate_model(&target).is_err());
     fixture.cleanup().await;
 }
 
@@ -91,6 +103,7 @@ async fn qdrant_publication_reuse_obeys_redacted_snapshot_input() {
         &database,
         &publication_target(&fixture),
         &fixture.configuration,
+        fixture.model.path(),
     )
     .await;
     assert_eq!(work.forwarded_embeddings, 28);

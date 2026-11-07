@@ -181,7 +181,6 @@ async fn contract(service: Service) {
             Some(crate::shared::Inference {
                 local: None,
                 models_dir: paths.models_dir.as_deref().unwrap(),
-                embeddings: None
             })
         )
         .await

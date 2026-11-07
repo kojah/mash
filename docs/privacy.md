@@ -7,8 +7,7 @@ original history files. The public documentation website receives none of
 your indexed chats.
 
 Sharing across machines uploads history to your configured Mash server.
-Remote embedding services, if you choose to use one, receive text from your
-history and your search queries.
+Embedding inference runs locally.
 
 The local dashboard has no login. Keep its default address or restrict access
 to a trusted private network.

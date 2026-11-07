@@ -3,33 +3,18 @@ use super::*;
 use crate::semantic::shared_query_vector;
 
 #[test]
-fn remote_fusion_requires_no_local_model_assets_and_cannot_rerank() {
+fn both_rankings_require_local_model_assets_without_creating_them() {
     let root = tempfile::tempdir().unwrap();
-    let models =
-        Models::new(root.path().join("absent-models")).with_remote(Some(remote::Configuration {
-            url: "http://127.0.0.1:1/v1/embeddings".into(),
-            model: "test".into(),
-            dimensions: 384,
-            api: remote::Api::OpenaiCompatible,
-            token_env: None,
-            request_dimensions: false,
-            redaction: crate::redaction::Policy::ON,
-        }));
-    models
-        .require_search(crate::views::config::Ranking::Fusion)
-        .unwrap();
-    let mut backend = models
-        .load_search(crate::views::config::Ranking::Fusion)
-        .unwrap()
-        .unwrap();
-    assert!(backend.embedding.is_none() && backend.reranker.is_none());
-    assert!(backend.rerank("query", &["document"]).is_err());
-    assert!(
-        models
-            .require_search(crate::views::config::Ranking::ContextualRerank)
-            .is_err()
-    );
-    assert!(!root.path().join("absent-models").exists());
+    let path = root.path().join("absent-models");
+    let models = Models::new(path.clone());
+    assert!(models.require_installed().is_err());
+    for ranking in [
+        crate::views::config::Ranking::Fusion,
+        crate::views::config::Ranking::ContextualRerank,
+    ] {
+        assert!(models.load_search(ranking).unwrap().is_none());
+    }
+    assert!(!path.exists());
 }
 
 #[test]
@@ -158,7 +143,7 @@ fn cached_local_models_preserve_results_and_validate_changed_assets() {
         .expect("explicit model directory");
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    let selected = generations::select(&source, false).unwrap();
+    let selected = generations::select(&source).unwrap();
     let mut marker = selected.marker;
     for file in &marker.files {
         let from = selected.root.join(&file.path);

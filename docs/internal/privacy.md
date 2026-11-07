@@ -5,8 +5,8 @@
 ## What stays on your machine
 
 A local-only setup reads your agent history without modifying the original files.
-Optional shared indexing publishes history to your configured server; optional
-remote embeddings send search projections and queries to the configured provider.
+Optional shared indexing publishes history to your configured server.
+Embedding inference runs locally.
 The public Mash documentation website receives none of your indexed chats.
 
 The dashboard serves readable history to anyone who can reach its listening
@@ -30,8 +30,7 @@ There is no CLI undo command. If you may need the chat later, export a backup fi
 ## Credential masking
 
 Mash masks recognizable credentials in CLI/MCP search results, chat metadata,
-and `view` output, shared HTTP read responses and outgoing publications, and text
-sent to remote embedding APIs. Full values use `[REDACTED_SECRET]`; excerpts use
+and `view` output, shared HTTP read responses and outgoing publications. Full values use `[REDACTED_SECRET]`; excerpts use
 masking characters to retain their source offsets. Original provider histories
 and local canonical SQLite data remain intact. Detection is best effort, not a
 guarantee that arbitrary or obfuscated secrets are absent.
@@ -51,14 +50,12 @@ configuration:
 [redaction]
 output = true             # CLI/MCP search, view and chat listing
 publication = true        # history uploaded to the shared server
-remote_embeddings = true  # text sent to a remote embedding API
 ```
 
 Turning `output` off shows canonical text, and lets search match inside
 credentials. Changing `publication` republishes this node's whole history on
 its next index, because masked and unmasked uploads must not mix. The shared
-server has its own `[redaction]` table with `responses` for HTTP read responses
-and `remote_embeddings` for text sent to remote embedding APIs during replay.
+server has its own `[redaction]` table with `responses` for HTTP read responses.
 Text attachments are masked when they are retained, so they stay masked regardless of these
 settings. Existing deployments
 and stored shared history require an upgrade and explicit re-indexing; rebuilding

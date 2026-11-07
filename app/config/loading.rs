@@ -56,7 +56,6 @@ pub(super) fn load_from_paths(
                 path,
                 loaded: false,
                 shared: None,
-                embeddings: None,
                 views: crate::views::config::Configuration::default(),
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
@@ -96,9 +95,6 @@ pub(super) fn load_from_paths(
     }
 
     let mut parsed = parse_document(&bytes)?;
-    if let Some(embeddings) = &mut parsed.embeddings {
-        embeddings.redaction = parsed.redaction.remote_embeddings();
-    }
     if let Some(shared) = &mut parsed.shared {
         shared.publication_redaction = parsed.redaction.publication();
     }
@@ -111,7 +107,6 @@ pub(super) fn load_from_paths(
         providers: parsed.providers,
         since_days: parsed.since_days,
         shared: parsed.shared,
-        embeddings: parsed.embeddings,
         views: parsed.views,
         destination: parsed.destination,
     })

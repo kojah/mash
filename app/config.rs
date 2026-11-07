@@ -27,7 +27,6 @@ pub(crate) struct ResolvedConfig {
     pub(crate) path: PathBuf,
     pub(crate) loaded: bool,
     pub(crate) shared: Option<SharedConfig>,
-    pub(crate) embeddings: Option<crate::semantic::remote::Configuration>,
     pub(crate) views: crate::views::config::Configuration,
     pub(crate) providers: ProviderRoots,
     pub(crate) since_days: Option<u32>,
@@ -62,8 +61,6 @@ pub(crate) struct ConfigurationStatus {
     loaded: bool,
     views: crate::views::config::Configuration,
     shared: Option<SharedConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    embeddings: Option<Box<crate::semantic::remote::Configuration>>,
     providers: BTreeMap<Provider, ProviderStatus>,
     index: IndexStatus,
 }
@@ -89,7 +86,6 @@ impl ResolvedConfig {
             loaded: self.loaded,
             views: self.views.clone(),
             shared: self.shared.clone(),
-            embeddings: self.embeddings.clone().map(Box::new),
             providers: self
                 .providers
                 .iter()

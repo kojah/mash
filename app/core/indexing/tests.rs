@@ -60,7 +60,7 @@ fn test_configuration(
         qdrant: config::QdrantConfig::default(),
         attachments: crate::attachments::Configuration::default(),
         redaction: crate::redaction::Settings::default(),
-        embeddings: None,
+
         views: crate::views::config::Configuration::default(),
         path: root.join("config.toml"),
         loaded: true,

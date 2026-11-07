@@ -51,7 +51,7 @@ fn directory_flush_failures_preserve_assets_on_both_sides_of_activation() {
                     FailurePoint::Assets => path == next_path,
                     FailurePoint::Activation => {
                         path == root.path()
-                            && assets::read_marker(root.path(), true)
+                            && assets::read_marker(root.path())
                                 .unwrap()
                                 .asset_directory
                                 .as_deref()
@@ -74,7 +74,7 @@ fn directory_flush_failures_preserve_assets_on_both_sides_of_activation() {
             FailurePoint::Assets => {
                 assert_eq!(fs::read(root.path().join(MARKER_NAME)).unwrap(), before);
                 assert!(!next_path.exists());
-                assert_eq!(select(root.path(), false).unwrap().root, first_path);
+                assert_eq!(select(root.path()).unwrap().root, first_path);
             }
             FailurePoint::Activation => {
                 assert!(error.error.message.contains("installation is active"));
@@ -83,7 +83,7 @@ fn directory_flush_failures_preserve_assets_on_both_sides_of_activation() {
                     Some(crate::Action::ModelsInstall)
                 );
                 assert!(next_path.is_dir());
-                assert_eq!(select(root.path(), false).unwrap().root, next_path);
+                assert_eq!(select(root.path()).unwrap().root, next_path);
                 cleanup(root.path()).unwrap();
                 assert!(!first_path.exists());
                 assert!(next_path.is_dir());
@@ -104,7 +104,7 @@ fn asset_directories_are_flushed_before_activation_and_marker_directory_afterwar
     let mut value = marker(next.root());
     let mut events = Vec::new();
     next.publish_with_directory_sync(root.path(), &mut value, |directory| {
-        let active = assets::read_marker(root.path(), true)
+        let active = assets::read_marker(root.path())
             .unwrap()
             .asset_directory
             .as_deref()
@@ -150,5 +150,5 @@ fn incomplete_staged_asset_tree_cannot_replace_a_working_marker() {
     );
     assert!(!path.exists());
     assert_eq!(fs::read(root.path().join(MARKER_NAME)).unwrap(), before);
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
 }

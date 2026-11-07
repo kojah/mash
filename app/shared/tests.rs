@@ -445,15 +445,7 @@ async fn deferred_publication_queues_without_blocking_the_indexing_task() {
 
     // Watch mode hands the snapshot to the publisher task and returns at once.
     let started = std::time::Instant::now();
-    super::publication::enqueue(
-        &path,
-        &config,
-        &dir.path().join("models"),
-        None,
-        false,
-        None,
-    )
-    .unwrap();
+    super::publication::enqueue(&path, &config, &dir.path().join("models"), false, None).unwrap();
     assert!(
         started.elapsed() < Duration::from_millis(200),
         "enqueue must not wait for the network"
@@ -599,7 +591,6 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     let prepared = prepare_search(
         Some((&path, &gold.configuration)),
         &models_dir,
-        gold.configuration.embeddings.as_ref(),
         "hello",
         crate::views::config::Ranking::default(),
     )
@@ -664,7 +655,6 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         &config,
         Some((&path, &gold.configuration)),
         &models_dir,
-        gold.configuration.embeddings.as_ref(),
         "hello",
         options,
         &filters,
@@ -677,7 +667,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         serde_json::to_value(hits).unwrap()
     );
     assert!(
-        search(&config, None, &models_dir, None, "hello", options, &filters,)
+        search(&config, None, &models_dir, "hello", options, &filters,)
             .await
             .is_err()
     );

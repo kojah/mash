@@ -13,7 +13,6 @@ mod snapshot;
 #[derive(Clone, Copy)]
 pub(crate) struct Inference<'a> {
     pub(crate) models_dir: &'a Path,
-    pub(crate) embeddings: Option<&'a crate::semantic::remote::Configuration>,
     pub(crate) local: Option<&'a crate::config::ResolvedConfig>,
 }
 
@@ -78,7 +77,6 @@ struct Job {
     database: std::path::PathBuf,
     config: SharedConfig,
     models: std::path::PathBuf,
-    embeddings: Option<crate::semantic::remote::Configuration>,
     attachments: bool,
     local: Option<crate::config::ResolvedConfig>,
 }
@@ -104,13 +102,11 @@ fn publisher() -> &'static tokio::sync::mpsc::UnboundedSender<Job> {
                         database,
                         config,
                         models,
-                        embeddings,
                         attachments,
                         local,
                     } = job;
                     let inference = Inference {
                         models_dir: &models,
-                        embeddings: embeddings.as_ref(),
                         local: local.as_ref(),
                     };
                     let published = publish(&database, &config, Some(inference)).await;
@@ -142,7 +138,6 @@ pub(crate) fn enqueue(
     database: &Path,
     config: &SharedConfig,
     models: &Path,
-    embeddings: Option<&crate::semantic::remote::Configuration>,
     attachments: bool,
     local: Option<&crate::config::ResolvedConfig>,
 ) -> Result<(), AppError> {
@@ -151,7 +146,6 @@ pub(crate) fn enqueue(
             database: database.to_path_buf(),
             config: config.clone(),
             models: models.to_path_buf(),
-            embeddings: embeddings.cloned(),
             attachments,
             local: local.cloned(),
         })

@@ -25,8 +25,6 @@ pub(super) struct Configuration {
     version: u32,
     #[serde(default)]
     pub(super) views: View,
-    #[serde(default)]
-    pub(super) embeddings: EmbeddingSpace,
     #[serde(default = "default_listen")]
     pub(super) listen: SocketAddr,
     pub(super) qdrant_url_env: Option<String>,
@@ -48,15 +46,10 @@ pub(super) struct Configuration {
 pub(super) struct Redaction {
     /// HTTP read responses: search candidates, chats, view and attachments.
     pub(super) responses: bool,
-    /// History text sent to a remote embedding endpoint during views replay.
-    pub(super) remote_embeddings: bool,
 }
 impl Default for Redaction {
     fn default() -> Self {
-        Self {
-            responses: true,
-            remote_embeddings: true,
-        }
+        Self { responses: true }
     }
 }
 #[derive(Default, Deserialize)]
@@ -73,64 +66,6 @@ pub(super) struct Query {
     /// Complete query defaults for named groups; other groups inherit `vector_search`.
     pub(super) groups: HashMap<String, qdrant_index::VectorIndex>,
 }
-/// The group's embedding space. Nodes embed for publication; the server embeds
-/// only to replay views from silver, locally or through the configured endpoint.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct EmbeddingSpace {
-    model: String,
-    pub(super) dimensions: usize,
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default)]
-    api: crate::semantic::remote::Api,
-    #[serde(default)]
-    token_env: Option<String>,
-    #[serde(default)]
-    request_dimensions: bool,
-}
-impl Default for EmbeddingSpace {
-    fn default() -> Self {
-        Self {
-            model: "sentence-transformers/all-MiniLM-L6-v2".into(),
-            dimensions: 384,
-            url: None,
-            api: crate::semantic::remote::Api::default(),
-            token_env: None,
-            request_dimensions: false,
-        }
-    }
-}
-impl EmbeddingSpace {
-    /// The HTTP embedding endpoint for replay; `None` selects installed local models.
-    pub(super) fn remote(
-        &self,
-        redaction: crate::redaction::Policy,
-    ) -> Result<Option<crate::semantic::remote::Configuration>, AppError> {
-        let Some(url) = &self.url else {
-            if crate::semantic::model_space(&self.model, self.dimensions)
-                != crate::semantic::SHARED_EMBEDDING_GENERATION
-            {
-                return Err(AppError::configuration(
-                    "replaying a remote embedding space requires embeddings.url",
-                ));
-            }
-            return Ok(None);
-        };
-        let config = crate::semantic::remote::Configuration {
-            url: url.clone(),
-            model: self.model.clone(),
-            dimensions: self.dimensions,
-            api: self.api,
-            token_env: self.token_env.clone(),
-            request_dimensions: self.request_dimensions,
-            redaction,
-        };
-        config.validate()?;
-        Ok(Some(config))
-    }
-}
-
 fn default_upload_mib() -> u64 {
     64
 }
@@ -212,15 +147,6 @@ pub(super) fn identities(
             "server requires version 1 and configured nodes",
         ));
     }
-    if !(1..=2048).contains(&config.embeddings.dimensions)
-        || config.embeddings.model.trim().is_empty()
-        || config.embeddings.model.len() > 255
-        || config.embeddings.model.chars().any(char::is_control)
-    {
-        return Err(AppError::configuration(
-            "invalid server embedding model or dimensions",
-        ));
-    }
     let mut result = HashMap::new();
     let mut unique = HashSet::new();
     for node in &config.nodes {
@@ -242,11 +168,8 @@ pub(super) fn identities(
                     Identity {
                         group_id: node.group_id.clone(),
                         node_id: node.node_id.clone(),
-                        generation: crate::semantic::model_space(
-                            &config.embeddings.model,
-                            config.embeddings.dimensions,
-                        ),
-                        dimensions: config.embeddings.dimensions,
+                        generation: crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
+                        dimensions: 384,
                     },
                 )
                 .is_some()
@@ -310,12 +233,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn removed_remote_embeddings_settings_are_rejected() {
+        for setting in [
+            "[embeddings]\nmodel='test'\ndimensions=384",
+            "[redaction]\nremote_embeddings=false",
+        ] {
+            let error = toml::from_str::<Configuration>(&format!("version=1\nnodes=[]\n{setting}"))
+                .err()
+                .expect("removed setting");
+            assert!(error.message().contains("unknown field"));
+        }
+    }
+
+    #[test]
     fn redaction_switches_default_on_and_reject_unknown_keys() {
         let default: Configuration = toml::from_str("version=1\nnodes=[]").unwrap();
-        assert!(default.redaction.responses && default.redaction.remote_embeddings);
+        assert!(default.redaction.responses);
         let off: Configuration =
             toml::from_str("version=1\nnodes=[]\n[redaction]\nresponses=false").unwrap();
-        assert!(!off.redaction.responses && off.redaction.remote_embeddings);
+        assert!(!off.redaction.responses);
         assert!(
             toml::from_str::<Configuration>("version=1\nnodes=[]\n[redaction]\noutput=false")
                 .is_err()

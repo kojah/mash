@@ -79,7 +79,7 @@ pub(super) async fn initialize(
         (&url, &grpc_url),
         key.as_deref(),
         &groups,
-        config.embeddings.dimensions,
+        384,
         RESPONSE_BYTES,
         config.views.query.vector_search,
         qdrant_index::MemoryPolicy {

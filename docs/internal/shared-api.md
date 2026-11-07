@@ -135,9 +135,8 @@ Chat lists, `view` and context reads come from shared silver.
 
 If Qdrant data is lost or damaged, start the service with `--replay-views` to
 rebuild every configured node's documents and vectors from shared silver before
-serving. Replay embeds with the server's configured `[embeddings]` model space:
-a remote endpoint when `url` is set, otherwise local model assets from
-`--models-dir`. Replay is the only shared views rebuild; nodes never re-embed
+serving. Replay uses local embedding model assets from `--models-dir`, in the
+same 384-dimensional space as publishers and search clients. Replay is the only shared views rebuild; nodes never re-embed
 shared history.
 Benchmark actual search latency, update cost, memory use, and retrieval
 quality for a group. See [the measured comparison](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-shared-index.md).

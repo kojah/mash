@@ -237,8 +237,7 @@ fn local_status(
     models_dir: &Path,
     configuration: &ResolvedConfig,
 ) -> Result<StatusResponse, AppError> {
-    let models =
-        Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
+    let models = Models::new(models_dir.to_path_buf());
     let models_installed = models.is_installed();
     let dense_enabled = configuration.views.build.dense_enabled();
     let query_models = query_model_availability(&models, &configuration.views.query)?;
@@ -333,7 +332,7 @@ fn query_model_availability(
     if query.intent == crate::views::exact::Intent::ExactMention {
         return Ok(ModelAvailability::NotRequired);
     }
-    match models.require_search(query.ranking) {
+    match models.require_installed() {
         Ok(()) => Ok(ModelAvailability::Available),
         Err(error) if matches!(error.error.kind, crate::ErrorKind::Configuration) => Err(error),
         Err(_) => Ok(ModelAvailability::Unavailable),
@@ -373,13 +372,17 @@ mod tests {
     }
 
     #[test]
-    fn status_distinguishes_remote_fusion_requirements_from_installed_assets() {
+    fn status_requires_installed_models_for_both_rankings() {
         let root = tempfile::tempdir().unwrap();
         let config = root.path().join("node.toml");
         let models = root.path().join("missing-models");
         let database = root.path().join("missing.sqlite3");
-        for (ranking, available) in [("fusion", true), ("contextual-rerank", false)] {
-            std::fs::write(&config, format!("version=1\nproviders={{}}\n[embeddings]\nurl='http://127.0.0.1:1/v1/embeddings'\nmodel='test'\ndimensions=384\n[views.query]\nranking='{ranking}'\n")).unwrap();
+        for (ranking, available) in [("fusion", false), ("contextual-rerank", false)] {
+            std::fs::write(
+                &config,
+                format!("version=1\nproviders={{}}\n[views.query]\nranking='{ranking}'\n"),
+            )
+            .unwrap();
             let configuration = crate::config::load(Some(&config)).unwrap();
             let status = local_status(&database, &models, &configuration).unwrap();
             assert!(!status.models_installed);

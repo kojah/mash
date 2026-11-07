@@ -380,7 +380,6 @@ async fn shared_hybrid(
         required_shared(configuration)?,
         database.map(|database| (database, configuration)),
         models,
-        configuration.embeddings.as_ref(),
         &query,
         options,
         filters,
@@ -496,12 +495,11 @@ async fn local_search(
     (options, page): (crate::views::config::Options, crate::search_results::Page),
     filters: &crate::search_filter::Scope,
 ) -> Result<SearchResponse, AppError> {
-    let models =
-        Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
+    let models = Models::new(models_dir.to_path_buf());
     // Check assets/configuration before database or backend access, but defer
     // loading models and inference until gold has passed its freshness guard.
     let models = crate::blocking(move || {
-        models.require_search(options.ranking)?;
+        models.require_installed()?;
         Ok(models)
     })
     .await?;

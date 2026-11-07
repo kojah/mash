@@ -79,26 +79,11 @@ A local-only setup needs no `[shared]` table. To publish as well, follow
 Each machine publishes its own indexed history. Use a different node ID and
 token on each machine, with the same group ID and server URL.
 
-## Remote embeddings
+## Local embeddings
 
-Search runs locally by default. Remote embeddings send history text and queries
-to your chosen provider. Add `embeddings` to the node
-configuration to use Voyage-4 for both document and query embeddings:
+Semantic search uses the installed all-MiniLM-L6-v2 model (384 dimensions).
+Run `mash models install` explicitly to install embedding and reranking models;
+indexing and search never download models. See [model setup](indexing.md#enable-semantic-search).
 
-```toml
-[embeddings]
-api = "voyage"
-url = "https://api.voyageai.com/v1/embeddings"
-model = "voyage-4"
-dimensions = 1024
-token_env = "VOYAGE_API_KEY"
-```
-
-Set `VOYAGE_API_KEY` in the environment where you run Mash. Use a model and
-size supported by your provider. For an OpenAI-compatible service, use
-`api = "openai-compatible"` and its complete embeddings URL.
-
-After changing embedding settings, run `mash models install` to install the
-local reranker, then `mash index` to prepare your history. Enable semantic
-search as described in [model setup](indexing.md#enable-semantic-search).
-For a shared setup, coordinate model changes with the server administrator.
+The same embedding space is used for local and shared search. A server needs
+local model assets when rebuilding shared views from saved history.

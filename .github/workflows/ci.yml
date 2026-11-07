@@ -156,12 +156,12 @@ jobs:
       - name: Verify real embedding, reranking, hybrid search and parallel retrieval
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
-          -E 'test(real_models_index_and_run_hybrid_search) or test(real_models_mcp_) or test(real_models_shared_context_failure) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
+          -E 'test(cli_forwards_shared_vector_overrides) or test(mcp_protocol_forwards_vector_overrides) or test(real_models_index_and_run_hybrid_search) or test(real_models_mcp_) or test(real_models_shared_context_failure) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
       - run: cargo test --doc
       - name: Verify local Qdrant public interfaces and inference recovery
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
-          -E 'test(exact_mcp_search_bypasses_model_permits) or test(sdk_search_pages_continue) or test(sdk_compact_and_extended_output) or test(sdk_decision_workflow) or test(exact_core_shared_and_fallback) or test(local_candidates_use_the_shared_query_vector) or test(local_rich_filters_apply_before) or test(local_message_candidates_intersect) or test(remote_core_index_needs_no_local_models) or test(failed_remote_bodies_never_publish_readiness) or test(lexical_views_rebuild_streams_mcp_progress)'
+          -E 'test(exact_mcp_search_bypasses_model_permits) or test(sdk_search_pages_continue) or test(sdk_compact_and_extended_output) or test(sdk_decision_workflow) or test(exact_core_shared_and_fallback) or test(local_candidates_use_the_shared_query_vector) or test(local_rich_filters_apply_before) or test(local_message_candidates_intersect) or test(lexical_views_rebuild_streams_mcp_progress)'
       - name: Verify local and shared Qdrant publication and retrieval
         run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
         env:

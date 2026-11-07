@@ -1,6 +1,5 @@
 //! Explicit model installation, asset validation, and cached search backends.
-use super::embeddings::{EmbeddingPool, EmbeddingPoolBackend};
-use super::remote;
+use super::embeddings::EmbeddingPool;
 use super::{
     EMBEDDING_MODEL, EMBEDDING_REPOSITORY, MARKER_NAME, RERANKER_MODEL, RERANKER_REPOSITORY,
 };
@@ -26,12 +25,10 @@ pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
 
 pub(crate) struct Models {
     root: PathBuf,
-    remote: Option<remote::Configuration>,
 }
 
 pub(crate) struct Backend {
-    embedding: Option<TextEmbedding>,
-    remote: Option<remote::Client>,
+    embedding: TextEmbedding,
     reranker: Option<reranker::Reranker>,
     // Retained with cached models and lazy Core ML sessions until their drop.
     assets_lease: Option<fs::File>,
@@ -100,20 +97,11 @@ pub(crate) struct InstallSummary {
 
 impl Models {
     pub(crate) fn new(root: PathBuf) -> Self {
-        Self { root, remote: None }
-    }
-
-    pub(crate) fn with_remote(mut self, config: Option<remote::Configuration>) -> Self {
-        self.remote = config;
-        self
+        Self { root }
     }
 
     pub(crate) fn require_indexer(&self) -> Result<(), AppError> {
-        if let Some(config) = &self.remote {
-            remote::Client::new(config.clone()).map(|_| ())
-        } else {
-            self.require_installed()
-        }
+        self.require_installed()
     }
 
     pub(crate) fn is_installed(&self) -> bool {
@@ -127,18 +115,6 @@ impl Models {
         self.read_valid_marker().map(|_| ())
     }
 
-    pub(crate) fn require_search(
-        &self,
-        ranking: crate::views::config::Ranking,
-    ) -> Result<(), AppError> {
-        if ranking == crate::views::config::Ranking::Fusion
-            && let Some(config) = &self.remote
-        {
-            return remote::Client::new(config.clone()).map(|_| ());
-        }
-        self.require_installed()
-    }
-
     #[cfg(test)]
     pub(crate) fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
         self.load_search(crate::views::config::Ranking::default())
@@ -149,86 +125,51 @@ impl Models {
         &self,
         ranking: crate::views::config::Ranking,
     ) -> Result<Option<LoadedBackend>, AppError> {
-        if ranking == crate::views::config::Ranking::Fusion
-            && let Some(config) = &self.remote
-        {
-            return Ok(Some(LoadedBackend {
-                backend: Some(Backend {
-                    embedding: None,
-                    remote: Some(remote::Client::new(config.clone())?),
-                    reranker: None,
-                    assets_lease: None,
-                }),
-                cache_key: None,
-            }));
-        }
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
         }
-        let selected = generations::select(&self.root, self.remote.is_some())?;
+        let selected = generations::select(&self.root)?;
         let marker = selected.marker;
         let asset_root = selected.root;
-        if let Some(config) = &self.remote {
-            Ok(Some(LoadedBackend {
-                backend: Some(Backend {
-                    embedding: None,
-                    remote: Some(remote::Client::new(config.clone())?),
-                    reranker: match ranking {
-                        crate::views::config::Ranking::ContextualRerank => {
-                            Some(reranker::Reranker::load(&asset_root)?)
-                        }
-                        crate::views::config::Ranking::Fusion => None,
-                    },
-                    assets_lease: selected.lease,
-                }),
-                cache_key: None,
-            }))
-        } else {
-            let key = BackendCacheKey {
-                ranking,
-                root: asset_root.clone(),
-                marker_modified: fs::metadata(self.root.join(MARKER_NAME))
-                    .map_err(AppError::io)?
-                    .modified()
-                    .ok(),
-                files: marker
-                    .files
-                    .into_iter()
-                    .map(|file| {
-                        let modified = fs::metadata(asset_root.join(&file.path))
-                            .map_err(AppError::io)?
-                            .modified()
-                            .ok();
-                        Ok((file.path, file.size, modified))
-                    })
-                    .collect::<Result<_, AppError>>()?,
-            };
-            let cached = LOCAL_BACKEND
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take();
-            let mut backend = match cached {
-                Some(cached) if cached.key == key => cached.backend,
-                _ => Backend::load_local_search(&asset_root, ranking)?,
-            };
-            backend.assets_lease = selected.lease;
-            Ok(Some(LoadedBackend {
-                backend: Some(backend),
-                cache_key: Some(key),
-            }))
-        }
+        let key = BackendCacheKey {
+            ranking,
+            root: asset_root.clone(),
+            marker_modified: fs::metadata(self.root.join(MARKER_NAME))
+                .map_err(AppError::io)?
+                .modified()
+                .ok(),
+            files: marker
+                .files
+                .into_iter()
+                .map(|file| {
+                    let modified = fs::metadata(asset_root.join(&file.path))
+                        .map_err(AppError::io)?
+                        .modified()
+                        .ok();
+                    Ok((file.path, file.size, modified))
+                })
+                .collect::<Result<_, AppError>>()?,
+        };
+        let cached = LOCAL_BACKEND
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        let mut backend = match cached {
+            Some(cached) if cached.key == key => cached.backend,
+            _ => Backend::load_local_search(&asset_root, ranking)?,
+        };
+        backend.assets_lease = selected.lease;
+        Ok(Some(LoadedBackend {
+            backend: Some(backend),
+            cache_key: Some(key),
+        }))
     }
 
     #[tracing::instrument(name = "load_embedding_models", skip_all)]
     pub(crate) fn load_indexer(&self) -> Result<Option<indexer::LoadedIndexer>, AppError> {
-        if let Some(config) = &self.remote {
-            if let Some(cache) = indexer::current() {
-                cache.clear();
-            }
-            return Ok(Some(indexer::LoadedIndexer::uncached(EmbeddingPool {
-                backend: EmbeddingPoolBackend::Remote(remote::Client::new(config.clone())?),
-                assets_lease: None,
-            })));
+        #[cfg(test)]
+        if let Some(pool) = super::test_embeddings::load(&self.root) {
+            return Ok(Some(pool));
         }
         if !self.root.join(MARKER_NAME).is_file() {
             if let Some(cache) = indexer::current() {
@@ -236,7 +177,7 @@ impl Models {
             }
             return Ok(None);
         }
-        let selected = generations::select(&self.root, false)?;
+        let selected = generations::select(&self.root)?;
         let key = indexer::AssetsKey {
             root: selected.root.clone(),
             marker_modified: fs::metadata(self.root.join(MARKER_NAME))
@@ -266,7 +207,7 @@ impl Models {
     }
 
     fn read_valid_marker(&self) -> Result<InstallMarker, AppError> {
-        assets::read_valid_marker(&self.root, self.remote.is_some())
+        assets::read_valid_marker(&self.root)
     }
 }
 
@@ -313,8 +254,7 @@ impl Backend {
             crate::views::config::Ranking::Fusion => None,
         };
         Ok(Self {
-            embedding: Some(embedding),
-            remote: None,
+            embedding,
             reranker,
             assets_lease: None,
         })
@@ -329,22 +269,9 @@ impl Backend {
             crate::observability::retrieval::Stage::Embed,
             Some(texts.len()),
             || {
-                if let Some(client) = &self.remote {
-                    return client.embed_on_worker(
-                        &texts
-                            .iter()
-                            .map(|t| t.as_ref().to_owned())
-                            .collect::<Vec<_>>(),
-                        true,
-                    );
-                }
-                self.embedding
-                    .as_mut()
-                    .ok_or_else(|| AppError::internal("missing local embedding model"))?
-                    .embed(texts, None)
-                    .map_err(|error| {
-                        AppError::model(format!("embedding inference failed: {error}"))
-                    })
+                self.embedding.embed(texts, None).map_err(|error| {
+                    AppError::model(format!("embedding inference failed: {error}"))
+                })
             },
         )
     }

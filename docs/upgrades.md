@@ -44,6 +44,21 @@ If your configuration contains `views.query.experimental_gpu_reranking`, remove
 that setting. Experimental GPU reranking has been removed; contextual reranking
 uses CPU. This configuration change does not require reindexing or new models.
 
+Remote embedding APIs have also been removed. Remove the `[embeddings]` table
+and `redaction.remote_embeddings` from node and server configurations. Mash
+rejects these settings rather than silently changing your embedding model.
+If you previously used remote embeddings, run `mash models install` to install
+the local embedding model and rebuild local views with
+`mash index --rebuild-local-views --full`. Existing local-model installations
+and their vectors remain valid.
+
+For a shared index that used a different embedding space, coordinate the upgrade
+across its server and nodes. Install models on the server, then explicitly
+activate and replay its views with `mash-server --server-config PATH
+--models-dir PATH --activate-views --replay-views`. This rebuilds search data
+from retained shared history; it does not replace silver. Keep a backup and
+allow for search downtime during replay.
+
 If Mash reports an incompatible index, ordinary indexing cannot upgrade it.
 Export with the version that wrote the index, then test an import with the new
 version at a separate path:

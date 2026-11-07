@@ -103,8 +103,8 @@ async fn fixture() -> Fixture {
                     "group_views": {
                         "version": "group",
                         "build": crate::views::config::Build::default(),
-                        "generation": crate::semantic::model_space("fixture", 2),
-                        "dimensions": 2,
+                        "generation": crate::semantic::SHARED_EMBEDDING_GENERATION,
+                        "dimensions": 384,
                     },
                     "nodes": [],
                 }))
@@ -132,10 +132,8 @@ async fn fixture() -> Fixture {
         .unwrap();
     writeln!(
         file,
-        "\n[qdrant]\nurl={:?}\ngrpc_url={:?}\n[embeddings]\n{}",
-        gold.configuration.qdrant.url,
-        gold.configuration.qdrant.grpc_url,
-        toml::to_string(gold.configuration.embeddings.as_ref().unwrap()).unwrap()
+        "\n[qdrant]\nurl={:?}\ngrpc_url={:?}",
+        gold.configuration.qdrant.url, gold.configuration.qdrant.grpc_url,
     )
     .unwrap();
     let request = Request {

@@ -6,7 +6,7 @@ pub(super) fn copied_models() -> tempfile::TempDir {
     let source = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(PathBuf::from)
         .expect("explicitly installed test models");
-    let selected = generations::select(&source, false).unwrap();
+    let selected = generations::select(&source).unwrap();
     let directory = tempfile::tempdir().unwrap();
     for file in &selected.marker.files {
         let target = directory.path().join(&file.path);

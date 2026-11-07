@@ -47,22 +47,15 @@ pub(crate) async fn search(
     config: &SharedConfig,
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     models_dir: &Path,
-    embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
     options: Options,
     filters: &crate::search_filter::Scope,
 ) -> Result<SearchOutcome, AppError> {
     filters.filter.validate()?;
     crate::search_query::validate(query)?;
-    let prepared = prepare_search(
-        local_database,
-        models_dir,
-        embeddings,
-        query,
-        options.ranking,
-    )
-    .boxed()
-    .await?;
+    let prepared = prepare_search(local_database, models_dir, query, options.ranking)
+        .boxed()
+        .await?;
     search_prepared(
         config,
         local_database.map(|(path, _)| path),
@@ -86,13 +79,11 @@ pub(super) struct PreparedSearch {
 pub(super) async fn prepare_search(
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     models_dir: &Path,
-    embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
     ranking: crate::views::config::Ranking,
 ) -> Result<PreparedSearch, AppError> {
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
-    let embeddings = embeddings.cloned();
     let local = match local_database {
         Some((path, configuration)) => {
             let local = crate::views::local::Local::open(path, configuration).await?;
@@ -105,13 +96,10 @@ pub(super) async fn prepare_search(
         }
         None => None,
     };
-    let generation = embeddings.as_ref().map_or_else(
-        || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
-        |c| semantic::model_space(&c.model, c.dimensions),
-    );
+    let generation = semantic::SHARED_EMBEDDING_GENERATION.to_owned();
     crate::blocking(move || {
-        let models = Models::new(root).with_remote(embeddings);
-        models.require_search(ranking)?;
+        let models = Models::new(root);
+        models.require_installed()?;
         let mut backend = models
             .load_search(ranking)?
             .ok_or_else(|| AppError::model("run `mash models install`"))?;

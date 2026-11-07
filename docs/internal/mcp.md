@@ -111,5 +111,4 @@ is the only operation that downloads models. Shared node I/O uses async HTTP;
 local and service-side Qdrant I/O uses async gRPC for publication and HTTP for reads/setup. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status
 and view may run concurrently, while model-heavy operations use a single permit
-to bound memory and CPU use. Remote embeddings use the same node configuration
-for CLI and MCP operations.
+to bound memory and CPU use. CLI and MCP use the same installed local models.

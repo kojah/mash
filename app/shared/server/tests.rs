@@ -146,8 +146,8 @@ async fn provider_contract(service: Service) {
     service.cleanup().await;
 }
 
-async fn remote_space_contract(service: Service) {
-    let generation = crate::semantic::model_space("voyage-4", 1024);
+async fn alternate_space_contract(service: Service) {
+    let generation = "fixture:alternate:1024".to_owned();
     let mut events = snapshot(1);
     for (i, record) in events[2]["records"]
         .as_array_mut()
@@ -435,8 +435,8 @@ async fn qdrant_round_trips_every_supported_provider_with_filters() {
 }
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
-async fn qdrant_publication_remote_model_space_supports_1024_dimensions() {
-    remote_space_contract(Service::qdrant(1024).await).await;
+async fn qdrant_publication_rejects_queries_from_another_vector_space() {
+    alternate_space_contract(Service::qdrant(1024).await).await;
 }
 impl Service {
     async fn new(available: bool) -> Self {
@@ -518,7 +518,7 @@ impl Service {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
         } else {
-            crate::semantic::model_space("voyage-4", dimensions)
+            format!("fixture:alternate:{dimensions}")
         };
         let directory = tempfile::tempdir().unwrap();
         let group = format!(

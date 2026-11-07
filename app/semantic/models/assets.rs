@@ -1,7 +1,5 @@
 //! Bounded installation metadata, offline asset discovery and atomic markers.
-use super::{
-    EMBEDDING_MODEL, MARKER_NAME, RERANKER_MODEL, RERANKER_REPOSITORY, coreml_embedding_enabled,
-};
+use super::{EMBEDDING_MODEL, MARKER_NAME, RERANKER_MODEL, coreml_embedding_enabled};
 use crate::AppError;
 use crate::semantic::COREML_CACHE_DIRECTORY;
 use fastembed::TokenizerFiles;
@@ -68,7 +66,7 @@ fn read_metadata(path: &Path, limit: usize) -> Result<Vec<u8>, AppError> {
     Ok(bytes)
 }
 
-fn validate_marker(marker: &InstallMarker, remote: bool) -> Result<(), AppError> {
+fn validate_marker(marker: &InstallMarker) -> Result<(), AppError> {
     if marker.asset_directory.as_ref().is_some_and(|name| {
         !name.starts_with(super::generations::PREFIX)
             || name.len() > 128
@@ -80,20 +78,14 @@ fn validate_marker(marker: &InstallMarker, remote: bool) -> Result<(), AppError>
             "model marker contains an invalid asset directory",
         ));
     }
-    if (!remote && !marker.embedding_available)
+    if !marker.embedding_available
         || marker.schema != 1
         || marker.embedding_model != EMBEDDING_MODEL.to_string()
         || marker.reranker_model != RERANKER_MODEL.to_string()
         || marker.coreml_embedding != coreml_embedding_enabled()
-        || !(1..=2048).contains(&marker.embedding_dimensions)
-        || (marker.embedding_available && marker.embedding_dimensions != 384)
+        || marker.embedding_dimensions != 384
         || marker.files.is_empty()
         || marker.files.len() > MAX_MARKER_FILES
-        || (remote
-            && !marker
-                .files
-                .iter()
-                .any(|file| Path::new(&file.path).starts_with(RERANKER_REPOSITORY)))
     {
         return Err(AppError::model(
             "model marker does not match this mash build; run `mash models install`",
@@ -122,51 +114,20 @@ fn default_embedding_available() -> bool {
     true
 }
 
-pub(super) fn remote_install_marker(
-    root: &Path,
-    dimensions: usize,
-    files: Vec<InstalledFile>,
-) -> Result<InstallMarker, AppError> {
-    let local = read_valid_marker(root, false).ok();
-    let marker = InstallMarker {
-        schema: 1,
-        asset_directory: None,
-        embedding_model: EMBEDDING_MODEL.to_string(),
-        reranker_model: RERANKER_MODEL.to_string(),
-        // A complete local installation also supports remote inference. Keep
-        // its local metadata so returning to local does not require a reinstall.
-        embedding_dimensions: local
-            .as_ref()
-            .map_or(dimensions, |m| m.embedding_dimensions),
-        coreml_embedding: coreml_embedding_enabled(),
-        embedding_available: local.is_some(),
-        files,
-    };
-    validate_marker(&marker, true)?;
-    Ok(marker)
+pub(super) fn read_valid_marker(root: &Path) -> Result<InstallMarker, AppError> {
+    super::generations::select(root).map(|selected| selected.marker)
 }
 
-pub(super) fn read_valid_marker(root: &Path, remote: bool) -> Result<InstallMarker, AppError> {
-    super::generations::select(root, remote).map(|selected| selected.marker)
-}
-
-pub(super) fn read_marker(root: &Path, remote: bool) -> Result<InstallMarker, AppError> {
+pub(super) fn read_marker(root: &Path) -> Result<InstallMarker, AppError> {
     let bytes = read_metadata(&root.join(MARKER_NAME), MAX_MARKER_BYTES)?;
     let marker: InstallMarker = serde_json::from_slice(&bytes)
         .map_err(|error| AppError::model(format!("invalid model marker: {error}")))?;
-    validate_marker(&marker, remote)?;
+    validate_marker(&marker)?;
     Ok(marker)
 }
 
-pub(super) fn validate_files(
-    root: &Path,
-    marker: &InstallMarker,
-    remote: bool,
-) -> Result<(), AppError> {
+pub(super) fn validate_files(root: &Path, marker: &InstallMarker) -> Result<(), AppError> {
     for file in &marker.files {
-        if remote && !Path::new(&file.path).starts_with(RERANKER_REPOSITORY) {
-            continue;
-        }
         let path = root.join(&file.path);
         let metadata = fs::metadata(path).map_err(|error| {
             AppError::model(format!("installed model asset is unavailable: {error}"))
@@ -255,7 +216,7 @@ pub(super) fn prepare_marker(
     root: &Path,
     marker: &InstallMarker,
 ) -> Result<tempfile::NamedTempFile, AppError> {
-    validate_marker(marker, !marker.embedding_available)?;
+    validate_marker(marker)?;
     let bytes = serde_json::to_vec_pretty(marker).map_err(|error| {
         AppError::internal(format!("failed to serialize model marker: {error}"))
     })?;

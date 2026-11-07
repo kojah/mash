@@ -226,7 +226,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
             "path": std::fs::canonicalize(&config).expect("canonical config"),
             "loaded": true,
             "attachments": {"allowed_roots": [], "share_files": false},
-            "redaction": {"output": true, "publication": true, "remote_embeddings": true},
+            "redaction": {"output": true, "publication": true},
             "shared": null,
             "qdrant": {
                 "url": "http://127.0.0.1:6333", "grpc_url": "http://127.0.0.1:6334",

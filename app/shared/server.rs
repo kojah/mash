@@ -411,7 +411,6 @@ pub(crate) async fn run(
 ) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
-    let remote_redaction = crate::redaction::Policy::new(config.redaction.remote_embeddings);
     let store = store::initialize(
         &config,
         &identities,
@@ -422,11 +421,10 @@ pub(crate) async fn run(
     .await?
     .with_response_redaction(crate::redaction::Policy::new(config.redaction.responses));
     if replay {
-        let remote = config.embeddings.remote(remote_redaction)?;
         let mut nodes = identities.values().collect::<Vec<_>>();
         nodes.sort_by(|a, b| (&a.group_id, &a.node_id).cmp(&(&b.group_id, &b.node_id)));
         for identity in nodes {
-            let replayed = store.replay(identity, models, remote.as_ref()).await?;
+            let replayed = store.replay(identity, models).await?;
             crate::write_json(&mut std::io::stderr(), &replayed)?;
         }
     }

@@ -45,7 +45,6 @@ impl Store {
         &self,
         identity: &Identity,
         models: &Path,
-        embeddings: Option<&crate::semantic::remote::Configuration>,
     ) -> Result<Replayed, AppError> {
         let _node = self.lock(identity).await?;
         let fingerprints = self
@@ -69,7 +68,7 @@ impl Store {
             messages: 0,
             embeddings: 0,
         };
-        let mut writer = Writer::new(&self.views, identity, Some((models, embeddings)));
+        let mut writer = Writer::new(&self.views, identity, Some(models));
         for (id, fingerprint) in &fingerprints {
             let chat = id.clone();
             let (chat, messages) = self

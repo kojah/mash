@@ -427,11 +427,9 @@ async fn dispatch(
         Operation::Forget { id } => maintenance::forget(database, models, configuration, id)
             .await
             .map(Response::Forget),
-        Operation::ModelsInstall => {
-            maintenance::install_models(models, configuration.embeddings.clone())
-                .await
-                .map(Response::ModelsInstall)
-        }
+        Operation::ModelsInstall => maintenance::install_models(models)
+            .await
+            .map(Response::ModelsInstall),
         Operation::Init(_) => Err(AppError::internal("init runs before configuration loads")),
     }
 }

@@ -5,8 +5,9 @@ mod embeddings;
 #[cfg(test)]
 pub(crate) mod evaluation;
 mod models;
-pub(crate) mod remote;
 mod retrieval;
+#[cfg(test)]
+pub(crate) mod test_embeddings;
 #[cfg(test)]
 mod tests;
 
@@ -19,10 +20,7 @@ pub(crate) use embeddings::{EmbeddingProgress, EmbeddingSummary};
 pub(crate) use models::indexer;
 pub(crate) use models::indexer::LoadedIndexer;
 pub(crate) use models::{Backend, InstallSummary, LoadedBackend, Models};
-pub(crate) use retrieval::{
-    SHARED_EMBEDDING_GENERATION, configured_generation, finish_hybrid, fuse, model_space,
-    shared_query_vector,
-};
+pub(crate) use retrieval::{SHARED_EMBEDDING_GENERATION, finish_hybrid, fuse, shared_query_vector};
 
 const EMBEDDING_MODEL: EmbeddingModel = EmbeddingModel::AllMiniLML6V2Q;
 const RERANKER_MODEL: RerankerModel = RerankerModel::JINARerankerV1TurboEn;

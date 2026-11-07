@@ -12,8 +12,6 @@ pub(crate) struct Settings {
     pub(crate) output: bool,
     /// History uploaded to the shared server. Changing it republishes everything.
     pub(crate) publication: bool,
-    /// Text sent to remote embedding APIs.
-    pub(crate) remote_embeddings: bool,
 }
 
 impl Default for Settings {
@@ -21,7 +19,6 @@ impl Default for Settings {
         Self {
             output: true,
             publication: true,
-            remote_embeddings: true,
         }
     }
 }
@@ -98,10 +95,6 @@ impl Settings {
 
     pub(crate) const fn publication(self) -> Policy {
         Policy::new(self.publication)
-    }
-
-    pub(crate) const fn remote_embeddings(self) -> Policy {
-        Policy::new(self.remote_embeddings)
     }
 }
 

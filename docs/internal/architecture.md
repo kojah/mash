@@ -60,7 +60,7 @@ modules are grouped by responsibility:
   from interpreted silver chats; source scanning stays in the shared
   publication coordinator.
 - `app/semantic/` and `app/search_*`: views model execution, embedding batches,
-  Core ML, remote embeddings, hybrid retrieval and query/ranking policies.
+  Core ML embeddings, hybrid retrieval and query/ranking policies.
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and views embeddings within one atomic revision.
 - `app/views/qdrant/`: common typed REST reads/setup, gRPC document writes, collection schema,

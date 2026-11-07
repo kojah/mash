@@ -59,11 +59,8 @@ fn scope(instance: &str, configuration: &ResolvedConfig) -> Scope {
     Scope {
         group_id: format!("local-{instance}-{}", &node_key[..16]),
         node_id: node.into(),
-        generation: semantic::configured_generation(configuration.embeddings.as_ref()),
-        dimensions: configuration
-            .embeddings
-            .as_ref()
-            .map_or(384, |value| value.dimensions),
+        generation: semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
+        dimensions: 384,
     }
 }
 
@@ -229,11 +226,7 @@ pub(crate) async fn build(
     store
         .retain_node_chats(&scope, input.chats.keys().cloned().collect())
         .await?;
-    let mut writer = super::materialize::Writer::new(
-        &store,
-        &scope,
-        Some((models, configuration.embeddings.as_ref())),
-    );
+    let mut writer = super::materialize::Writer::new(&store, &scope, Some(models));
     Box::pin(projection::native(
         &store,
         &scope,

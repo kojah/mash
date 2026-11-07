@@ -69,7 +69,6 @@ pub(super) async fn run(
         let inference = shared::publication::Inference {
             local: Some(configuration),
             models_dir: models,
-            embeddings: configuration.embeddings.as_ref(),
         };
         match shared::publication::publish_backfill(database, config, &backfill_id, Some(inference))
             .await
@@ -96,7 +95,6 @@ pub(super) async fn run(
                 database,
                 config,
                 models,
-                configuration.embeddings.as_ref(),
                 configuration.attachments.share_files,
                 Some(configuration),
             ) {
@@ -114,7 +112,6 @@ pub(super) async fn run(
                 Some(shared::Inference {
                     local: Some(configuration),
                     models_dir: models,
-                    embeddings: configuration.embeddings.as_ref(),
                 }),
             )
             .await
@@ -196,7 +193,6 @@ async fn index(
     let rebuild_local_views = matches!(input, LocalInput::StoredSilver);
     let database = database_path.to_path_buf();
     let root = models_dir.to_path_buf();
-    let embeddings_config = configuration.embeddings.clone();
     let build = configuration.views.build.clone();
     let (summary, certificate, storage_setup_milliseconds, ingestion_milliseconds) =
         crate::blocking(move || {
@@ -206,7 +202,7 @@ async fn index(
                 // creation from becoming an implicit bronze-to-silver operation.
                 require_certified_silver(&Storage::open_silver(database_path)?)?;
             }
-            let models = Models::new(root).with_remote(embeddings_config);
+            let models = Models::new(root);
             if build.dense_enabled() && !build.users_only() {
                 models.require_indexer()?;
             }

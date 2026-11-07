@@ -138,7 +138,7 @@ terminal. [Synchronization details →](docs/synchronization.md)
 ## Privacy
 
 With the default local setup, indexing and search stay on your machine.
-Sharing history and using remote embedding APIs are optional.
+Sharing history across your machines is optional.
 
 Mash masks recognizable credentials in results by default, but detection is
 best effort. Local history and exports can contain sensitive text;
@@ -148,7 +148,7 @@ history. [Privacy and redaction →](docs/privacy.md)
 ## Configuration
 
 `mash init` writes a TOML configuration. Use [the configuration guide](docs/configuration.md)
-to choose history locations, search defaults, or remote embeddings.
+to choose history locations and search defaults.
 To search across machines, set up an optional [shared index](docs/shared-index.md).
 
 Upgrading an existing installation? Read [the upgrade guide](docs/upgrades.md)

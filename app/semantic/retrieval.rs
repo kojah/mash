@@ -1,6 +1,5 @@
 //! Hybrid candidates, reciprocal rank fusion, reranking, and exact vector scoring.
 use super::models::Backend;
-use super::remote;
 use crate::AppError;
 use crate::observability::retrieval::{Guard, Stage};
 use crate::search_results::{HitKey, hit_key};
@@ -53,23 +52,6 @@ pub(crate) fn finish_hybrid(
                 .collect::<Result<Vec<_>, AppError>>()
         })?;
     crate::search_ranking::score(backend, query, selection, &documents, unit, fusion)
-}
-
-/// Model-space identity shared by the CPU ONNX and Apple Core ML executions.
-/// Batching and storage layout do not affect model-space identity.
-pub(crate) fn model_space(model: &str, dimensions: usize) -> String {
-    if model == "sentence-transformers/all-MiniLM-L6-v2" && dimensions == 384 {
-        SHARED_EMBEDDING_GENERATION.to_owned()
-    } else {
-        format!("remote:{model}:{dimensions}:i8-cosine:v1")
-    }
-}
-
-pub(crate) fn configured_generation(config: Option<&remote::Configuration>) -> String {
-    config.map_or_else(
-        || SHARED_EMBEDDING_GENERATION.to_owned(),
-        |c| model_space(&c.model, c.dimensions),
-    )
 }
 
 pub(crate) const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";

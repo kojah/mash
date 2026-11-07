@@ -3,7 +3,7 @@ use super::models::{ForgetResponse, ModelsInstallResponse};
 use super::publication_config;
 use crate::AppError;
 use crate::config::ResolvedConfig;
-use crate::semantic::{self, Models};
+use crate::semantic::Models;
 use crate::shared;
 use crate::storage::Storage;
 use std::path::Path;
@@ -33,7 +33,6 @@ pub(super) async fn forget(
                 Some(shared::publication::Inference {
                     local: Some(configuration),
                     models_dir: models,
-                    embeddings: configuration.embeddings.as_ref(),
                 }),
             )
             .await,
@@ -42,21 +41,13 @@ pub(super) async fn forget(
     Ok(result)
 }
 
-pub(super) async fn install_models(
-    models: &Path,
-    embeddings: Option<semantic::remote::Configuration>,
-) -> Result<ModelsInstallResponse, AppError> {
+pub(super) async fn install_models(models: &Path) -> Result<ModelsInstallResponse, AppError> {
     let models = models.to_path_buf();
-    crate::blocking(move || local_install_models(&models, embeddings)).await
+    crate::blocking(move || local_install_models(&models)).await
 }
 
-fn local_install_models(
-    models_dir: &Path,
-    embeddings: Option<semantic::remote::Configuration>,
-) -> Result<ModelsInstallResponse, AppError> {
-    let summary = Models::new(models_dir.to_path_buf())
-        .with_remote(embeddings)
-        .install()?;
+fn local_install_models(models_dir: &Path) -> Result<ModelsInstallResponse, AppError> {
+    let summary = Models::new(models_dir.to_path_buf()).install()?;
     Ok(ModelsInstallResponse {
         installed: true,
         model_directory: models_dir.to_path_buf(),

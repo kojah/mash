@@ -1,11 +1,12 @@
 use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
 async fn cli_forwards_shared_vector_overrides_without_persisting_them() {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("node.toml");
     let database = root.path().join("index.sqlite3");
-    let models = root.path().join("uninstalled-models");
+    let models = std::path::PathBuf::from(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap());
     std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let base = [
         "--config",
@@ -68,5 +69,4 @@ async fn cli_forwards_shared_vector_overrides_without_persisting_them() {
         );
         assert_eq!(std::fs::read(&database).unwrap(), before);
     }
-    assert!(!models.exists());
 }

@@ -45,7 +45,7 @@ fn failed_stage_preserves_active_assets_and_marker() {
         fs::read(root.path().join(super::super::MARKER_NAME)).unwrap(),
         original
     );
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
 }
 
 #[test]
@@ -54,20 +54,20 @@ fn publication_pins_readers_and_collects_unleased_generations() {
     let first = StagedAssets::new(root.path()).unwrap();
     let first_marker = marker(first.root());
     first.publish(root.path(), first_marker).unwrap();
-    let reader = select(root.path(), false).unwrap();
+    let reader = select(root.path()).unwrap();
     let first_path = reader.root.clone();
     let second = StagedAssets::new(root.path()).unwrap();
     let second_marker = marker(second.root());
     let second_path = second.root().to_path_buf();
     second.publish(root.path(), second_marker).unwrap();
     assert!(first_path.is_dir());
-    assert_eq!(select(root.path(), false).unwrap().root, second_path);
+    assert_eq!(select(root.path()).unwrap().root, second_path);
     assert_eq!(reader.marker.files.len(), 1); // leases are not assets
     drop(reader);
     cleanup(root.path()).unwrap();
     assert!(!first_path.exists());
     assert!(second_path.is_dir());
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn rejected_publication_preserves_previous_generation() {
         fs::read(root.path().join(super::super::MARKER_NAME)).unwrap(),
         before
     );
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
 }
 
 #[cfg(unix)]
@@ -116,7 +116,7 @@ fn publication_io_failure_preserves_the_previous_marker_and_assets() {
         fs::read(root.path().join(super::super::MARKER_NAME)).unwrap(),
         previous
     );
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
     cleanup(root.path()).unwrap();
     assert!(!path.exists());
 }
@@ -166,7 +166,7 @@ fn staging_copies_symlink_targets_without_mutating_the_original_cache() {
     let repository = root.path().join(RERANKER_REPOSITORY);
     fs::write(repository.join("blob"), b"model").unwrap();
     std::os::unix::fs::symlink("blob", repository.join("snapshot")).unwrap();
-    let mut value = assets::read_marker(root.path(), false).unwrap();
+    let mut value = assets::read_marker(root.path()).unwrap();
     value.files = assets::inventory(root.path()).unwrap();
     assets::write_marker(root.path(), &value).unwrap();
     let stage = StagedAssets::new(root.path()).unwrap();
@@ -190,7 +190,7 @@ fn real_sdk_install_and_failed_model_load_preserve_working_generations() {
     // isolated, fully populated cache. The supplied model directory is read-only.
     models.install().unwrap();
     let before = fs::read(root.path().join(super::super::MARKER_NAME)).unwrap();
-    let active = select(root.path(), false).unwrap();
+    let active = select(root.path()).unwrap();
     let mut working = models.load().unwrap().unwrap();
     let expected = working.embed(&["working installation"]).unwrap();
     let failed = StagedAssets::new(root.path()).unwrap();
@@ -206,22 +206,8 @@ fn real_sdk_install_and_failed_model_load_preserve_working_generations() {
     assert_eq!(working.embed(&["working installation"]).unwrap(), expected);
     let mut reopened = models.load().unwrap().unwrap();
     assert_eq!(reopened.embed(&["working installation"]).unwrap(), expected);
-    assert_eq!(select(root.path(), false).unwrap().root, active.root);
-    // Switching to remote installation preserves complete local assets, even
-    // when the configured remote embedding dimensions are different.
-    let remote = super::super::remote::Configuration {
-        url: "http://127.0.0.1:1/embeddings".to_owned(),
-        model: "test-remote".to_owned(),
-        dimensions: 1024,
-        api: super::super::remote::Api::OpenaiCompatible,
-        token_env: None,
-        request_dimensions: false,
-        redaction: crate::redaction::Policy::ON,
-    };
-    super::super::Models::new(root.path().to_path_buf())
-        .with_remote(Some(remote))
-        .install()
-        .unwrap();
+    assert_eq!(select(root.path()).unwrap().root, active.root);
+    models.install().unwrap();
     assert!(models.is_installed());
     assert!(active.root.is_dir()); // still leased by an in-flight search
     assert_eq!(working.embed(&["working installation"]).unwrap(), expected);
@@ -240,7 +226,7 @@ fn lazy_coreml_reader_loads_new_shapes_from_a_retired_generation() {
     eprintln!("Installed first generation: {:?}", started.elapsed());
     let mut pool = models.load_indexer().unwrap().unwrap();
     eprintln!("Loaded reader: {:?}", started.elapsed());
-    let retired = select(root.path(), false).unwrap().root;
+    let retired = select(root.path()).unwrap().root;
     models.install().unwrap();
     eprintln!("Installed replacement: {:?}", started.elapsed());
     assert!(retired.is_dir());
@@ -261,7 +247,7 @@ fn lazy_coreml_reader_loads_new_shapes_from_a_retired_generation() {
     drop(pool);
     cleanup(root.path()).unwrap();
     assert!(!retired.exists());
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
 }
 
 // The child is a real process so kill/release behavior is covered without
@@ -274,7 +260,7 @@ fn interruption_child() {
     let root = PathBuf::from(root);
     let phase = std::env::var("MASH_ASSET_TRANSACTION_TEST_PHASE").unwrap_or_default();
     if phase == "reader" {
-        let reader = select(&root, false).unwrap();
+        let reader = select(&root).unwrap();
         signal_and_wait(&root, &reader.root);
     }
     let stage = StagedAssets::new(&root).unwrap();
@@ -346,9 +332,9 @@ fn killed_installers_preserve_the_active_marker_at_each_publication_boundary() {
         let (child, path) = start_child(root.path(), phase);
         drop(child);
         assert!(path.is_dir());
-        assert!(select(root.path(), false).is_ok());
+        assert!(select(root.path()).is_ok());
         if phase == "published" {
-            assert_eq!(select(root.path(), false).unwrap().root, path);
+            assert_eq!(select(root.path()).unwrap().root, path);
         } else {
             assert_eq!(
                 fs::read(root.path().join(super::super::MARKER_NAME)).unwrap(),
@@ -357,7 +343,7 @@ fn killed_installers_preserve_the_active_marker_at_each_publication_boundary() {
         }
         let _next = StagedAssets::new(root.path()).unwrap();
         assert_eq!(path.exists(), phase == "published");
-        assert!(select(root.path(), false).is_ok());
+        assert!(select(root.path()).is_ok());
     }
 }
 
@@ -372,9 +358,9 @@ fn cleanup_respects_other_processes_reading_retired_generations() {
     let value = marker(second.root());
     second.publish(root.path(), value).unwrap();
     assert!(first_path.is_dir());
-    assert_ne!(select(root.path(), false).unwrap().root, first_path);
+    assert_ne!(select(root.path()).unwrap().root, first_path);
     drop(child);
     cleanup(root.path()).unwrap();
     assert!(!first_path.exists());
-    assert!(select(root.path(), false).is_ok());
+    assert!(select(root.path()).is_ok());
 }

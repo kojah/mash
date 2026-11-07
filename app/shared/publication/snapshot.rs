@@ -211,16 +211,8 @@ async fn prepare_units(
     .await
 }
 
-fn validate_model(target: &Target, inference: &Inference<'_>) -> Result<(), AppError> {
-    let (generation, dimensions) = inference.embeddings.map_or_else(
-        || (crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned(), 384),
-        |config| {
-            (
-                crate::semantic::model_space(&config.model, config.dimensions),
-                config.dimensions,
-            )
-        },
-    );
+fn validate_model(target: &Target) -> Result<(), AppError> {
+    let (generation, dimensions) = (crate::semantic::SHARED_EMBEDDING_GENERATION, 384);
     if generation != target.generation || dimensions != target.dimensions {
         return Err(AppError::configuration(
             "node embedding model/dimensions do not match the shared index",
@@ -245,7 +237,7 @@ async fn embed_batch(
 ) -> Result<(), AppError> {
     let inference = inference
         .ok_or_else(|| AppError::shared("shared views needs preparation; run mash index"))?;
-    validate_model(target, inference)?;
+    validate_model(target)?;
     let eligible = batch
         .iter()
         .filter(|m| target.build.includes_dense(&m.role, &m.projection))
@@ -281,7 +273,7 @@ async fn embed_batch(
     let vectors = views::embed_units(
         &inputs,
         (&target.generation, target.dimensions),
-        Some((inference.models_dir, inference.embeddings)),
+        Some(inference.models_dir),
         pool,
         build,
         cached,

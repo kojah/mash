@@ -156,7 +156,8 @@ async fn vector_override_checks_shared_capabilities_before_busy_model_admission(
 }
 
 #[tokio::test]
-async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_models() {
+#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+async fn mcp_protocol_forwards_vector_overrides_and_restores_omission() {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("node.toml");
     let mut transport = crate::test_support::vector::Service::new().await;
@@ -166,13 +167,12 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_mo
         paths: Arc::new(Paths {
             config: Some(config.clone()),
             db: Some(root.path().join("unused.sqlite3")),
-            models_dir: Some(root.path().join("uninstalled-models")),
+            models_dir: Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into()),
         }),
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
     };
-    // This shared-search transport test needs only an untouched local database,
-    // not a local search backend or a model installation.
+    // Query inference uses installed models; no local Qdrant is required.
     let mut storage =
         crate::storage::Storage::open_writer(&root.path().join("unused.sqlite3")).unwrap();
     storage.commit_writer().unwrap();
