@@ -2,6 +2,7 @@ use super::*;
 use crate::records::{DecisionState, FactState, PreferenceState};
 mod extraction;
 mod matches;
+mod reading;
 mod recall;
 
 fn database() -> (tempfile::TempDir, Storage) {

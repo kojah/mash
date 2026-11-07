@@ -570,6 +570,13 @@ read responses. Streaming source freshness checks retains the same quote, hash
 and role predicates and performs no writes. Neither changes transaction or
 publication ordering, so no model transition changes are needed. Rust tests
 cover confirmation retries, revision-local history, archives and shared reads.
+Bounded history/link/list reads likewise retain a single read transaction per
+page and make no canonical writes. History uses an exclusive revision cursor;
+newer appended revisions cannot shift the remaining older pages. This is not
+a multi-request snapshot: freshness and confirmations may change between reads,
+and offset-based lists/links may change when their membership changes. Rust
+regressions cover revision insertion between pages, size-based continuations,
+link pagination and the public MCP path; no write-protocol transition changes.
 
 ### Extraction checkpoints
 

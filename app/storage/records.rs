@@ -3,6 +3,7 @@ use super::Storage;
 
 mod extraction;
 mod matches;
+mod reading;
 mod recall;
 #[cfg(test)]
 mod tests;
@@ -11,8 +12,7 @@ use crate::{
     AppError,
     records::{
         self, Body, Change, Citation, Details, Evidence, EvidenceUse, Expected, List, Mutation,
-        Page, QuestionState, Receipt, Record, RecordRevision, Review, Scope, bounded, conflict,
-        decode, encode,
+        Page, QuestionState, Receipt, Record, Review, Scope, bounded, conflict, decode, encode,
     },
 };
 use rusqlite::{Connection, OptionalExtension, params};
@@ -573,106 +573,7 @@ fn confirmation_history(
         .map_err(AppError::database)
 }
 
-pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
-    bounded(id, 512, "record ID")?;
-    let row = connection
-        .query_row(
-            "SELECT owner,scope,revision FROM records WHERE id=?1 AND forgotten=0",
-            [id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(AppError::database)?
-        .ok_or_else(|| AppError::usage("record does not exist or was forgotten"))?;
-    let (owner, scope, current_revision) = row;
-    let mut statement = connection.prepare("SELECT revision,body,recorded_at FROM record_revisions WHERE record_id=?1 AND (?2 OR revision=?3) ORDER BY revision DESC LIMIT 1000").map_err(AppError::database)?;
-    let rows = statement
-        .query_map(params![id, history, current_revision], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        })
-        .map_err(AppError::database)?;
-    let mut revisions = Vec::new();
-    for row in rows {
-        let (revision, body, recorded_at) = row.map_err(AppError::database)?;
-        let mut sources = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content,e.purpose,e.source_role,m.role FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
-        let sources = sources
-            .query_map(params![id, revision], |row| {
-                Ok((
-                    Evidence {
-                        chat_id: row.get(0)?,
-                        message_id: row.get(1)?,
-                        fingerprint: row.get(2)?,
-                        quote: row.get(3)?,
-                        purpose: row.get(5)?,
-                        source_role: row.get(6)?,
-                    },
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<crate::role::Role>>(7)?,
-                ))
-            })
-            .map_err(AppError::database)?;
-        let mut evidence = Vec::new();
-        let mut evidence_current = true;
-        for source in sources {
-            let (source, content, role) = source.map_err(AppError::database)?;
-            evidence_current &= source_current(&source, content.as_deref(), role.as_ref());
-            evidence.push(source);
-            // Drop the full source content before reading the next citation.
-        }
-        evidence_current &= !evidence.is_empty();
-        let confirmation_history = confirmation_history(connection, id, revision)?;
-        let confirmations = u32::try_from(confirmation_history.len())
-            .map_err(|_| AppError::internal("confirmation count out of range"))?;
-        revisions.push(RecordRevision {
-            revision,
-            body: decode(&body)?,
-            recorded_at,
-            evidence,
-            evidence_current,
-            confirmations,
-            confirmation_history,
-        });
-    }
-    let mut links = connection.prepare("SELECT source_id,target_id,relation FROM record_links WHERE source_id=?1 OR target_id=?1 ORDER BY source_id,target_id").map_err(AppError::database)?;
-    let links = links
-        .query_map([id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })
-        .map_err(AppError::database)?
-        .map(|row| {
-            let (source_id, target_id, relation) = row.map_err(AppError::database)?;
-            Ok(records::Link {
-                source_id,
-                target_id,
-                relation: decode(&encode(&relation)?)?,
-            })
-        })
-        .collect::<Result<_, AppError>>()?;
-    Ok(Record {
-        node_id: None,
-        id: id.into(),
-        owner,
-        scope: decode(&scope)?,
-        current_revision,
-        revisions,
-        links,
-    })
-}
-
+pub(crate) use reading::{read, read_page};
 impl Storage {
     pub(crate) fn mutate_record(&mut self, request: &Mutation) -> Result<Receipt, AppError> {
         bounded(&request.operation_id, 256, "operation ID")?;
@@ -712,6 +613,7 @@ impl Storage {
         Ok(result)
     }
 
+    #[cfg(test)]
     pub(crate) fn record(&self, id: &str, history: bool) -> Result<Record, AppError> {
         bounded(id, 512, "record ID")?;
         let transaction = self
@@ -723,6 +625,14 @@ impl Storage {
 
     pub(crate) fn records(&self, request: &List) -> Result<Page, AppError> {
         list(&self.connection, request)
+    }
+
+    pub(crate) fn record_page(&self, request: &records::Get) -> Result<Record, AppError> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        read_page(&transaction, request)
     }
 }
 
@@ -758,21 +668,29 @@ pub(crate) fn list(connection: &Connection, request: &List) -> Result<Page, AppE
         .map_err(AppError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(AppError::database)?;
-    let next_offset = (ids.len() > limit).then_some(request.offset + limit);
+    let mut next_offset = (ids.len() > limit).then_some(request.offset + limit);
     ids.truncate(limit);
-    let mut records = ids
-        .into_iter()
-        .map(|id| read(&transaction, &id, false))
-        .collect::<Result<Vec<_>, _>>()?;
-    if !request.include_inactive {
-        let timestamp = now()?;
-        records.retain(|record| {
-            record.revisions.first().is_some_and(|revision| {
+    let timestamp = now()?;
+    let mut records = Vec::new();
+    let mut bytes = 0;
+    for (position, id) in ids.into_iter().enumerate() {
+        let record = read(&transaction, &id, false)?;
+        if !request.include_inactive
+            && !record.revisions.first().is_some_and(|revision| {
                 revision.body.review == Review::Established
                     && revision.body.applies_at(timestamp)
                     && revision.evidence_current
             })
-        });
+        {
+            continue;
+        }
+        let size = encode(&record)?.len();
+        if bytes + size > reading::LIST_RECORD_BYTES && !records.is_empty() {
+            next_offset = Some(request.offset + position);
+            break;
+        }
+        bytes += size;
+        records.push(record);
     }
     Ok(Page {
         records,

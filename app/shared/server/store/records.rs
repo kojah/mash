@@ -101,7 +101,10 @@ impl Store {
         identity: &Identity,
         input: Get,
     ) -> Result<Record, AppError> {
-        let node = input.node_id.unwrap_or_else(|| identity.node_id.clone());
+        let node = input
+            .node_id
+            .clone()
+            .unwrap_or_else(|| identity.node_id.clone());
         records::bounded(&node, 4096, "node ID")?;
         if !self.heads(&identity.group_id).await?.contains_key(&node) {
             return Err(AppError::usage(
@@ -114,7 +117,7 @@ impl Store {
                 let transaction = connection
                     .unchecked_transaction()
                     .map_err(AppError::database)?;
-                crate::storage::records::read(&transaction, &input.id, input.history)
+                crate::storage::records::read_page(&transaction, &input)
             })
             .await?;
         record.node_id = Some(node);

@@ -30,6 +30,47 @@ fn seed(service: &Service, token: &str) -> String {
 }
 
 #[tokio::test]
+async fn native_records_shared_history_cursor_returns_older_revision() {
+    let service = Service::canonical().await;
+    let id = seed(&service, FIRST);
+    let identity = &service.identities[&blake3::hash(FIRST.as_bytes())];
+    let path = service
+        .silver_dir
+        .path()
+        .join("silver")
+        .join(&identity.group_id)
+        .join(format!("{}.sqlite3", identity.node_id));
+    let mut storage = crate::storage::Storage::open(&path).unwrap();
+    let body = storage.record(&id, false).unwrap().revisions[0]
+        .body
+        .clone();
+    let mutation = serde_json::from_value(json!({"operation_id":"correct", "change":{"action":"revise","expected":{"id":id,"revision":1},"body":body,"evidence":[{"message_id":"message","quote":"yes","purpose":"report"}]}})).unwrap();
+    storage.mutate_record(&mutation).unwrap();
+    drop(storage);
+    let first: Value = service
+        .request("record", FIRST)
+        .json(&json!({"id":id,"node_id":"first","history":true,"limit":1}))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(first["revisions"][0]["revision"], 2);
+    assert_eq!(first["next_before_revision"], 2);
+    let next: Value = service.request("record", FIRST).json(&json!({"id":id,"node_id":"first","history":true,"limit":1,"before_revision":first["next_before_revision"]})).send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+    assert_eq!(next["revisions"][0]["revision"], 1);
+    assert_eq!(
+        next["revisions"][0]["confirmation_history"][0]["message_id"],
+        "confirmation"
+    );
+    assert!(next["next_before_revision"].is_null());
+    assert_eq!(next["node_id"], "first");
+}
+
+#[tokio::test]
 async fn native_records_shared_http_pages_preserve_owners_and_group_boundaries_without_views() {
     let service = Service::canonical().await;
     let first = seed(&service, FIRST);

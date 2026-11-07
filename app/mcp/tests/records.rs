@@ -153,16 +153,6 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
             .len(),
         1
     );
-    let history = call(
-        "get_record",
-        json!({"id":receipt["record_id"],"history":true}),
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        history.structured_content.unwrap()["revisions"][0]["evidence_current"],
-        true
-    );
     let recalled = call(
         "recall_records",
         json!({"scope":{"kind":"chat","id":"decision-thread"},"query":"Qdrant","byte_budget":1024}),
@@ -186,6 +176,20 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
         .unwrap();
     assert_eq!(linked["links"][0]["relation"], "resolves");
     assert_eq!(linked["links"][0]["source_id"], receipt["record_id"]);
+    let page = call(
+        "get_record",
+        json!({"id":question["record_id"],"history":true,"limit":1}),
+    )
+    .await
+    .unwrap()
+    .structured_content
+    .unwrap();
+    assert_eq!(page["revisions"][0]["revision"], 2);
+    assert_eq!(page["next_before_revision"], 2);
+    let page = call("get_record", json!({"id":question["record_id"],"history":true,"limit":1,"before_revision":page["next_before_revision"]})).await.unwrap().structured_content.unwrap();
+    assert_eq!(page["revisions"][0]["revision"], 1);
+    assert_eq!(page["revisions"][0]["evidence_current"], true);
+    assert!(page["next_before_revision"].is_null());
     let forgotten = call("record",json!({"operation_id":"sdk-forget","change":{"action":"forget","expected":{"id":receipt["record_id"],"revision":receipt["revision"]}}})).await.unwrap();
     assert_ne!(forgotten.is_error, Some(true), "{forgotten:?}");
     assert_eq!(

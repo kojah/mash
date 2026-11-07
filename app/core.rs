@@ -353,8 +353,8 @@ async fn dispatch(
             let database = database.to_path_buf();
             let policy = configuration.redaction.output();
             crate::blocking(move || {
-                let mut record = crate::storage::Storage::open_silver(&database)?
-                    .record(&request.id, request.history)?;
+                let mut record =
+                    crate::storage::Storage::open_silver(&database)?.record_page(&request)?;
                 record.redact(policy);
                 Ok(record)
             })

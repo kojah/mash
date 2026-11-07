@@ -475,7 +475,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read a native record and its evidence, source freshness, confirmations and supersession links. Each revision includes confirmation_history with distinct supporting message IDs and confirmed_at dates in Unix milliseconds. Local by default; supply node_id from a shared list result to read that owner's published copy. Set history=true for retained revisions. Reading never confirms a record. Fact records represent reported claims, not independent verification."
+        description = "Read a native record with evidence, freshness, confirmation_history (message IDs and Unix-millisecond confirmed_at dates) and links. Local by default; supply node_id from a shared list result for its published copy. Set history=true for newest-first revision pages (default 8, limit 1..20); pass next_before_revision as before_revision to continue. Links have 128-item pages; pass next_link_offset as link_offset. Size limits may shorten pages: follow cursors until null. Reading never confirms a record. Facts are reported claims, not independent verification."
     )]
     async fn get_record(
         &self,

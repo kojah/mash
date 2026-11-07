@@ -364,6 +364,8 @@ pub(crate) struct Record {
     pub current_revision: i64,
     pub revisions: Vec<RecordRevision>,
     pub links: Vec<Link>,
+    pub next_before_revision: Option<i64>,
+    pub next_link_offset: Option<usize>,
 }
 
 impl Record {
@@ -461,13 +463,19 @@ pub(crate) struct Cursor {
     pub offset: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Get {
     pub id: String,
     #[serde(default)]
     pub history: bool,
     pub node_id: Option<String>,
+    /// Continue history strictly before the returned revision cursor.
+    pub before_revision: Option<i64>,
+    /// History page size, default 8, maximum 20.
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub link_offset: usize,
 }
 
 pub(crate) fn bounded(value: &str, max: usize, field: &str) -> Result<(), AppError> {

@@ -57,6 +57,19 @@ distinct supporting message IDs and the dates those confirmations were recorded
 messages. A correction starts a new revision with its own confirmations; earlier
 confirmation history remains attached to the earlier interpretation.
 
+History returns up to eight revisions per page by default, newest first. Set
+`limit` from 1 to 20 with `history: true` to change that count. Pass the returned
+`next_before_revision` as `before_revision` to continue until it is null. New
+revisions do not shift that cursor. Links are returned separately in pages of
+128: pass `next_link_offset` as `link_offset` to continue. Link and list offsets
+describe the current data; restart their traversal if concurrent edits change
+the relationships or list order.
+
+Pages also have size limits, so a page may contain fewer items than requested.
+Follow the returned cursor rather than assuming a short page is the last one.
+These limits apply to local and shared reads; records and their complete history
+remain in the database and in exports.
+
 To read published records, call `list_records` with `shared: true`. Results
 include `node_id` and `owner`; identical statements from different owners remain
 separate records. You can select one node with `node_id`. Shared pages visit
