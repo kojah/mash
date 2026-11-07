@@ -46,10 +46,12 @@ match. Search availability must not imply that an unfinished backfill is complet
 
 Exports preserve sensitive canonical agent history and retained attachments,
 without credentials, provider files, models, or retrieval indexes. Archive
-envelope `format_version = 2` and history `record_schema_version = 2` are separate
-contracts. Chat records describe history; archived parent positions are resolved
-to stable message IDs within the import transaction before commit. Earlier
-record schemas are rejected rather than translated.
+envelope `format_version = 2` and history `record_schema_version = 3` are separate
+contracts. Record schema 3 adds native recall history; chat-only schema 2 archives
+remain importable. Chat records describe history; archived parent positions are
+resolved to stable message IDs within the import transaction before commit.
+Record ownership and links are remapped for copies and retained for
+identity-preserving restores. Earlier record schemas are rejected.
 
 The [migration policy](database-migrations.md) calls for shared local/server
 SQLite migrations and independent preservation of valid Qdrant data. Schema-62

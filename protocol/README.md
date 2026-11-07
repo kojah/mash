@@ -525,6 +525,29 @@ killing the upgrader process. No liveness guarantee is claimed under repeated
 crashes. Record mutation/publication semantics require a separate model when
 those paths are implemented.
 
+### Records: atomic receipts, supersession and forgetting
+
+`Records.tla` bounds two competing successors prepared against one revision.
+`storage/records.rs::mutate_record` opens an immediate SQLite transaction, checks
+the operation digest/receipt, calls `current` to compare the expected revision,
+then commits the mutation and receipt together. `supersede` updates both records
+and their link in that transaction. `purge` erases all revision text and retains
+a forgotten identity; replaying an old receipt does not recreate its text.
+
+The model's `Prepare` represents a caller retaining a request, not an uncommitted
+SQL write. `Commit` is the actual SQLite transaction commit; `Crash` models failure
+before it, and repeating a prepared operation models a lost response after it.
+Deliberate split-receipt and missing-revision-guard configurations must fail the
+corresponding invariants. The Rust receipt-trigger regression interrupts after
+the record writes but before receipt insertion and checks rollback and retry.
+
+Assumptions and limits: SQLite serializes the modeled commits, input digests are
+validated by Rust, and successful commits survive process termination. This does
+not model source-quote meaning, permission identity, power loss or shared record
+publication. Shared deletion publication needs additional model coverage when
+that transport is implemented. Ordinary source changes retain stale evidence;
+only explicit forgetting corresponds to `Forget`.
+
 ### Shared vocabulary
 
 `docs/internal/agent-history.md` defines the agent-history domain and the relationship

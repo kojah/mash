@@ -2,7 +2,7 @@
 use crate::{attachments::Metadata, provider::Provider, role::Role};
 use serde::{Deserialize, Serialize};
 
-pub(crate) const VERSION: u32 = 2;
+pub(crate) const VERSION: u32 = 3;
 
 /// Archive record schema 2 uses chat terminology. Ancestry is expressed in
 /// positions within the frozen chat, independently of live message IDs.
@@ -51,6 +51,9 @@ mod tests;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Record {
+    Native {
+        item: crate::records::transfer::Row,
+    },
     /// The node's shared-publication identity, restored only by an upgrade
     /// import that retires the exporting database.
     Publication {

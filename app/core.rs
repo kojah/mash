@@ -40,6 +40,8 @@ async fn execute_admitted(
 ) -> Result<Response, AppError> {
     use tracing::Instrument;
     let operation = match &request.operation {
+        Operation::RecordMutation(_) => "record_mutation",
+        Operation::Records(_) | Operation::Record { .. } => "records",
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
         Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
@@ -167,7 +169,9 @@ async fn execute_inner(
         None
     };
     let writer_database = match &request.operation {
-        Operation::Index(_) | Operation::Forget { .. } => Some(database.clone()),
+        Operation::Index(_) | Operation::Forget { .. } | Operation::RecordMutation(_) => {
+            Some(database.clone())
+        }
         Operation::ImportSilver { database, .. } => Some(database.clone()),
         _ => None,
     };
@@ -267,6 +271,40 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::RecordMutation(request) => {
+            let database = database.to_path_buf();
+            crate::blocking(move || {
+                crate::storage::Storage::open_existing(&database)?.mutate_record(&request)
+            })
+            .await
+            .map(Response::RecordMutation)
+        }
+        Operation::Records(request) => {
+            let database = database.to_path_buf();
+            let policy = configuration.redaction.output();
+            crate::blocking(move || {
+                let mut page =
+                    crate::storage::Storage::open_silver(&database)?.records(&request)?;
+                for record in &mut page.records {
+                    record.redact(policy);
+                }
+                Ok(page)
+            })
+            .await
+            .map(Response::Records)
+        }
+        Operation::Record { id, history } => {
+            let database = database.to_path_buf();
+            let policy = configuration.redaction.output();
+            crate::blocking(move || {
+                let mut record =
+                    crate::storage::Storage::open_silver(&database)?.record(&id, history)?;
+                record.redact(policy);
+                Ok(record)
+            })
+            .await
+            .map(Response::Record)
+        }
         Operation::QuerySilver {
             sql,
             limit,

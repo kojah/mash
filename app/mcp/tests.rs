@@ -13,6 +13,7 @@ mod incomplete;
 mod output;
 mod paging;
 mod rebuild;
+mod records;
 mod redaction;
 mod runtime;
 mod selections;
@@ -408,13 +409,16 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "export_silver",
             "forget",
             "get_attachment",
+            "get_record",
             "help",
             "import_silver",
             "index",
             "list_attachments",
             "list_chats",
+            "list_records",
             "models_install",
             "query_silver",
+            "record",
             "search",
             "status",
             "view"

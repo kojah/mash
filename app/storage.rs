@@ -22,6 +22,7 @@ pub(crate) mod gold_input;
 mod indexing;
 pub(crate) mod packed;
 pub(crate) mod publication;
+pub(crate) mod records;
 pub(crate) mod search_input;
 mod silver_state;
 pub(crate) mod turns;

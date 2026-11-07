@@ -412,6 +412,7 @@ impl Storage {
             .connection
             .unchecked_transaction()
             .map_err(AppError::database)?;
+        let records_removed = super::records::forget_chat(&transaction, id)?;
         let provider = sql::ChatProvider::builder()
             .id(id)
             .build()
@@ -421,7 +422,7 @@ impl Storage {
             .transpose()?;
         let Some(provider) = provider else {
             transaction.commit().map_err(AppError::database)?;
-            return Ok(false);
+            return Ok(records_removed > 0);
         };
         transaction
             .execute(

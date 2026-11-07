@@ -125,7 +125,7 @@ pub(crate) fn load(
         serde_json::from_slice(&read_limited(&directory.join(MANIFEST), 64 * 1024)?)
             .map_err(|_| AppError::usage("invalid or incomplete export manifest"))?;
     if manifest.format_version != FORMAT_VERSION
-        || manifest.record_schema_version != crate::silver::archive::VERSION
+        || ![2, crate::silver::archive::VERSION].contains(&manifest.record_schema_version)
     {
         return Err(AppError::schema(
             "unsupported export format/schema; use a compatible Mash build",

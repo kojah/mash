@@ -35,6 +35,7 @@ pub use storage::packed::register as register_silver_codec;
 mod observability;
 mod platform;
 mod progress;
+mod records;
 mod redaction;
 mod runtime;
 mod scratch;

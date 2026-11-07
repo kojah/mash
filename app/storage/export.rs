@@ -77,6 +77,7 @@ pub(crate) fn restore(
     let mut line = Vec::new();
     let mut state_seen = false;
     let mut identity_seen = false;
+    let mut native = crate::storage::records::transfer::Import::new(&transaction, keep_identity)?;
     transaction.execute_batch(
         "CREATE TEMP TABLE archive_context(id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, parent_ordinal INTEGER NOT NULL);"
     ).map_err(AppError::database)?;
@@ -98,11 +99,15 @@ pub(crate) fn restore(
             .map_err(|_| AppError::usage("invalid canonical archive record"))?;
         state_seen = matches!(record, Record::State { .. });
         identity_seen |= matches!(record, Record::Publication { .. });
-        records::insert(&target, record)?;
+        match record {
+            Record::Native { item } => native.insert(&transaction, item)?,
+            other => records::insert(&target, other)?,
+        }
     }
     if !state_seen {
         return Err(AppError::usage("incomplete canonical archive"));
     }
+    crate::storage::records::transfer::Import::finish(&transaction)?;
     if keep_identity && !identity_seen {
         return Err(AppError::usage(
             "export carries no publication identity to keep",

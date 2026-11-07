@@ -183,6 +183,9 @@ pub(crate) fn visit(
             revision: get(row, "revision")?,
         })
     );
+    crate::storage::records::transfer::visit(&storage.connection, |item| {
+        emit(Record::Native { item })
+    })?;
     table!(
         "SELECT revision,interpretation_version FROM silver_state WHERE singleton=1",
         |row| Ok::<_, AppError>(Record::State {
@@ -220,6 +223,11 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
         };
     }
     match record {
+        Record::Native { .. } => {
+            return Err(AppError::internal(
+                "native archive rows require an import context",
+            ));
+        }
         Record::Publication { instance, revision } => {
             if instance.len() != 32
                 || !instance.bytes().all(|b| b.is_ascii_hexdigit())

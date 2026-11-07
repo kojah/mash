@@ -204,6 +204,14 @@ struct Forget {
     chat_id: String,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct GetRecord {
+    id: String,
+    #[serde(default)]
+    history: bool,
+}
+
 impl Mash {
     async fn execute_detailed(&self, operation: Operation, detail: Detail) -> CallToolResult {
         let server = self.clone();
@@ -305,6 +313,7 @@ impl Mash {
         let guard = if matches!(
             operation,
             Operation::Index(_)
+                | Operation::RecordMutation(_)
                 | Operation::Forget { .. }
                 | Operation::ModelsInstall
                 | Operation::ExportSilver { .. }
@@ -405,6 +414,39 @@ fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
 
 #[tool_router]
 impl Mash {
+    #[tool(
+        annotations(read_only_hint = false, destructive_hint = true),
+        description = "Create, correct, supersede, confirm, resolve or forget a native conversation record. Four kinds: decision, preference, fact, open_question. Writes only the local owner's records. Supply a stable operation_id for retries and expected revision for edits. Evidence quotes must match retained source messages in scope. Established decisions/preferences require a user endorsement citation; this is your interpretation, not automatic proof of approval. Keep ambiguous interpretations as candidates. Supersede for changed choices, revise for corrections. Forget removes all record revisions. Does not install models or run inference."
+    )]
+    async fn record(
+        &self,
+        Parameters(input): Parameters<crate::records::Mutation>,
+    ) -> CallToolResult {
+        self.perform(Operation::RecordMutation(input)).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "List local native records without models. By default returns established current records with matching source evidence. include_inactive also exposes candidates, retired records and stale evidence. Scope identity is exact; repository basenames are not identities. Follow next_offset even when a page is empty after current-evidence filtering."
+    )]
+    async fn list_records(
+        &self,
+        Parameters(input): Parameters<crate::records::List>,
+    ) -> CallToolResult {
+        self.perform(Operation::Records(input)).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Read a local native record and its evidence, source freshness, confirmations and supersession links. Set history=true for all retained revisions. Reading never confirms a record. Fact records represent reported claims, not independent verification."
+    )]
+    async fn get_record(&self, Parameters(input): Parameters<GetRecord>) -> CallToolResult {
+        self.perform(Operation::Record {
+            id: input.id,
+            history: input.history,
+        })
+        .await
+    }
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
         description = "List attachment metadata without loading contents or models. Copy lookup.list_attachments from a search result. Omit shared for local evidence, or supply the publishing node ID for shared evidence. Returns stable attachment IDs, names, MIME types, sizes, redaction status and explicit availability, including not_uploaded for shared metadata without bytes. Only captured provider attachments are discoverable; reindex older histories to capture them."

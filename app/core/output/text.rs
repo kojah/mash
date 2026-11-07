@@ -337,6 +337,9 @@ pub(crate) fn render(
 ) -> Result<String, serde_json::Error> {
     let mut out = String::new();
     match response {
+        Response::RecordMutation(value) => json(&mut out, "Record operation", value)?,
+        Response::Records(value) => json(&mut out, "Records", value)?,
+        Response::Record(value) => json(&mut out, "Record", value)?,
         Response::Search(value) => search(&mut out, &Search::from(value))?,
         Response::Query(value) => json(&mut out, "Query", value)?,
         Response::ListChats(value) => list(&mut out, value)?,
