@@ -1,6 +1,7 @@
 //! Transactional record state. Source refresh and privacy forgetting are distinct.
 use super::Storage;
 
+mod extraction;
 mod matches;
 mod recall;
 #[cfg(test)]
@@ -522,6 +523,9 @@ pub(crate) fn purge(connection: &Connection, id: &str) -> Result<(), AppError> {
 
 /// Privacy deletion follows every historical citation, not only current text.
 pub(crate) fn forget_chat(connection: &Connection, chat: &str) -> Result<usize, AppError> {
+    connection
+        .execute("DELETE FROM record_checkpoints WHERE chat_id=?1", [chat])
+        .map_err(AppError::database)?;
     let mut statement = connection
         .prepare("SELECT DISTINCT record_id FROM record_evidence WHERE chat_id=?1")
         .map_err(AppError::database)?;

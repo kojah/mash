@@ -306,6 +306,7 @@ impl Mash {
             operation,
             Operation::Index(_)
                 | Operation::RecordMutation(_)
+                | Operation::ExtractRecords(_)
                 | Operation::Forget { .. }
                 | Operation::ModelsInstall
                 | Operation::ExportSilver { .. }
@@ -406,6 +407,28 @@ fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
 
 #[tool_router]
 impl Mash {
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Inspect local extraction coverage for an exact scope/chat. Returns the canonical source fingerprint and the last processed fingerprint. Read the chat with view before extracting; a matching checkpoint records the caller's claimed coverage, not proof of semantic completeness. Reinspect when the source changes. No models or writes."
+    )]
+    async fn get_extraction_checkpoint(
+        &self,
+        Parameters(input): Parameters<crate::records::extraction::Inspect>,
+    ) -> CallToolResult {
+        self.perform(Operation::ExtractionCheckpoint(input)).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = false, destructive_hint = false),
+        description = "Explicitly save up to 64 candidate records extracted from a reviewed local chat, with its checkpoint and durable operation receipt in one transaction. Supply the source_fingerprint from get_extraction_checkpoint; a changed chat rejects the whole batch. Every citation must belong to that chat. Empty batches record a completed review with no conclusions. Candidates only: no automatic establishment, supersession or confirmation. Reuse operation_id for identical retries; on_duplicate=reuse must be explicit in each draft. No inference or model downloads."
+    )]
+    async fn extract_records(
+        &self,
+        Parameters(input): Parameters<crate::records::extraction::Request>,
+    ) -> CallToolResult {
+        self.perform(Operation::ExtractRecords(input)).await
+    }
+
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
         description = "Suggest existing local records before creating one. Exact scope and same record kind only. Returns at most eight exact or lexical-overlap suggestions from 256 recent candidates; scan_limited/truncated disclose limits. Similar wording is not proof of agreement: review evidence before revising or superseding. This tool never merges, confirms or writes. Create reports exact live duplicates by default; explicitly set on_duplicate=reuse to reuse without adding confirmations."

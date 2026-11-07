@@ -29,7 +29,9 @@ pub(crate) fn visit_shared(
             | Row::Evidence { id, .. }
             | Row::Confirmation { id, .. } => selected.contains(id),
             Row::Link { link } => selected.contains(&link.source_id),
-            Row::Operation { .. } | Row::Checkpoint { .. } => false,
+            Row::Operation { .. } | Row::ExtractionOperation { .. } | Row::Checkpoint { .. } => {
+                false
+            }
         };
         if !include {
             return Ok(());
@@ -62,7 +64,10 @@ pub(crate) fn visit_shared(
 pub(crate) fn fingerprint(connection: &Connection) -> Result<String, AppError> {
     let mut hash = blake3::Hasher::new();
     visit(connection, |row| {
-        if !matches!(row, Row::Operation { .. } | Row::Checkpoint { .. }) {
+        if !matches!(
+            row,
+            Row::Operation { .. } | Row::ExtractionOperation { .. } | Row::Checkpoint { .. }
+        ) {
             let bytes = serde_json::to_vec(&row)
                 .map_err(|_| AppError::internal("serialize record fingerprint"))?;
             hash.update(&(bytes.len() as u64).to_le_bytes());
@@ -160,6 +165,14 @@ pub(crate) fn visit(
         })
     );
     table!(
+        "SELECT operation_id,request_digest,result FROM record_extractions ORDER BY operation_id",
+        |row| Ok::<_, AppError>(Row::ExtractionOperation {
+            id: value(row, 0)?,
+            digest: value(row, 1)?,
+            result: decode(&value::<String>(row, 2)?)?
+        })
+    );
+    table!(
         "SELECT scope,chat_id,source_fingerprint FROM record_checkpoints ORDER BY scope,chat_id",
         |row| Ok::<_, AppError>(Row::Checkpoint {
             scope: decode(&value::<String>(row, 0)?)?,
@@ -228,7 +241,7 @@ impl Import {
                     return Err(AppError::usage("shared record owner changed"));
                 }
                 if snapshot {
-                    connection.execute_batch("DELETE FROM records WHERE forgotten=0; DELETE FROM record_operations; DELETE FROM record_checkpoints; DELETE FROM record_changes;").map_err(AppError::database)?;
+                    connection.execute_batch("DELETE FROM records WHERE forgotten=0; DELETE FROM record_operations; DELETE FROM record_extractions; DELETE FROM record_checkpoints; DELETE FROM record_changes;").map_err(AppError::database)?;
                 }
             }
             if self.keep_identity {
@@ -436,6 +449,35 @@ impl Import {
                     connection
                         .execute(
                             "INSERT INTO record_operations VALUES(?1,?2,?3)",
+                            params![id, hash, encode(&result)?],
+                        )
+                        .map_err(AppError::database)?;
+                }
+            }
+            Row::ExtractionOperation {
+                id,
+                digest: hash,
+                result,
+            } => {
+                if self.shared_snapshot.is_some() {
+                    return Err(AppError::usage("extraction receipts are owner-local"));
+                }
+                bounded(&id, 256, "extraction operation ID")?;
+                digest(&hash)?;
+                digest(&result.source_fingerprint)?;
+                if result.records.len() > 64 {
+                    return Err(AppError::usage("too many extracted record receipts"));
+                }
+                for receipt in &result.records {
+                    self.validate_receipt(connection, &receipt.record_id, receipt.revision)?;
+                    if let Some(related) = &receipt.related {
+                        self.validate_receipt(connection, &related.id, related.revision)?;
+                    }
+                }
+                if self.keep_identity {
+                    connection
+                        .execute(
+                            "INSERT INTO record_extractions VALUES(?1,?2,?3)",
                             params![id, hash, encode(&result)?],
                         )
                         .map_err(AppError::database)?;

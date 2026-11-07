@@ -46,10 +46,11 @@ match. Search availability must not imply that an unfinished backfill is complet
 
 Exports preserve sensitive canonical agent history and retained attachments,
 without credentials, provider files, models, or retrieval indexes. Archive
-envelope `format_version = 2` and history `record_schema_version = 3` are separate
-contracts. Record schema 3 adds native recall history; chat-only schema 2 archives
-remain importable. Chat records describe history; archived parent positions are
-resolved to stable message IDs within the import transaction before commit.
+envelope `format_version = 2` and history `record_schema_version = 4` are separate
+contracts. Record schema 3 adds native recall history; schema 4 adds extraction
+batch receipts. Schema 2 and 3 archives remain importable. Chat records describe
+history; archived parent positions are resolved to stable message IDs within the
+import transaction before commit.
 Record ownership and links are remapped for copies and retained for
 identity-preserving restores. Earlier record schemas are rejected.
 

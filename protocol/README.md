@@ -565,6 +565,27 @@ publication; the shared models below cover that transport separately.
 Ordinary source changes retain stale evidence;
 only explicit forgetting corresponds to `Forget`.
 
+### Extraction checkpoints
+
+`RecordExtraction.tla` bounds two explicit reviews and two source versions.
+`Read` represents `get_extraction_checkpoint` followed by the caller's review;
+`Refresh` is an indexed chat change. `Commit` maps to the single immediate SQLite
+transaction in `storage/records/extraction.rs::extract_records`: compare the
+source fingerprint, write all candidates, upsert the checkpoint and insert the
+receipt. A failed transaction leaves durable state unchanged; a retry returns
+the saved receipt before checking the now-current source. Both are stuttering
+steps in this model. The record set represents a successfully applied batch,
+including an empty batch, rather than a count of extracted conclusions.
+
+The model checks that coverage cannot precede its batch, every batch has a
+receipt, and a batch reviewed the source version current at commit. A subsequent
+source refresh is permitted and makes coverage stale. Deliberate early-checkpoint
+and missing-source-guard configurations must violate their respective checks.
+The model assumes SQLite transaction isolation and atomicity; Rust tests inject
+a receipt-insertion failure after candidate/checkpoint writes and reopen the
+database to check rollback. It does not establish semantic review quality,
+fingerprint collision resistance or power-loss durability.
+
 ### Shared vocabulary
 
 `SharedRecords.tla` bounds replacement snapshots and record deltas across four

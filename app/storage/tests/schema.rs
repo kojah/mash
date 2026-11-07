@@ -8,6 +8,53 @@ fn user_version(path: &Path) -> i64 {
 }
 
 #[test]
+fn extraction_migration_preserves_existing_checkpoint_and_history() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let connection = baseline(&path);
+    connection
+        .execute_batch(include_str!("../records.sql"))
+        .unwrap();
+    connection
+        .execute_batch(include_str!("../record_provenance.sql"))
+        .unwrap();
+    connection.execute_batch("PRAGMA user_version=64; INSERT INTO record_checkpoints VALUES('{\"kind\":\"personal\"}','kept','old-fingerprint');").unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(user_version(&path), SCHEMA_VERSION);
+    assert_eq!(
+        storage
+            .connection
+            .query_row(
+                "SELECT source_fingerprint FROM record_checkpoints",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+        "old-fingerprint"
+    );
+    assert_eq!(
+        storage
+            .connection
+            .query_row(
+                "SELECT content FROM messages WHERE id='message'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+        "retain this history"
+    );
+    assert_eq!(
+        storage
+            .connection
+            .query_row("SELECT count(*) FROM record_extractions", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
 fn newer_schema_is_rejected_without_rewriting_version() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");

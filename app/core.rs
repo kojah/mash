@@ -40,11 +40,12 @@ async fn execute_admitted(
 ) -> Result<Response, AppError> {
     use tracing::Instrument;
     let operation = match &request.operation {
-        Operation::RecordMutation(_) => "record_mutation",
+        Operation::RecordMutation(_) | Operation::ExtractRecords(_) => "record_mutation",
         Operation::Records(_)
         | Operation::Record(_)
         | Operation::RecallRecords(_)
-        | Operation::RecordMatches(_) => "records",
+        | Operation::RecordMatches(_)
+        | Operation::ExtractionCheckpoint(_) => "records",
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
         Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
@@ -172,9 +173,10 @@ async fn execute_inner(
         None
     };
     let writer_database = match &request.operation {
-        Operation::Index(_) | Operation::Forget { .. } | Operation::RecordMutation(_) => {
-            Some(database.clone())
-        }
+        Operation::Index(_)
+        | Operation::Forget { .. }
+        | Operation::RecordMutation(_)
+        | Operation::ExtractRecords(_) => Some(database.clone()),
         Operation::ImportSilver { database, .. } => Some(database.clone()),
         _ => None,
     };
@@ -274,6 +276,22 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::ExtractionCheckpoint(request) => {
+            let database = database.to_path_buf();
+            crate::blocking(move || {
+                crate::storage::Storage::open_silver(&database)?.extraction_checkpoint(&request)
+            })
+            .await
+            .map(Response::ExtractionCheckpoint)
+        }
+        Operation::ExtractRecords(request) => {
+            let database = database.to_path_buf();
+            crate::blocking(move || {
+                crate::storage::Storage::open_existing(&database)?.extract_records(&request)
+            })
+            .await
+            .map(Response::ExtractRecords)
+        }
         Operation::RecordMatches(request) => {
             let database = database.to_path_buf();
             let policy = configuration.redaction.output();

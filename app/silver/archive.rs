@@ -2,7 +2,7 @@
 use crate::{attachments::Metadata, provider::Provider, role::Role};
 use serde::{Deserialize, Serialize};
 
-pub(crate) const VERSION: u32 = 3;
+pub(crate) const VERSION: u32 = 4;
 
 /// Archive record schema 2 uses chat terminology. Ancestry is expressed in
 /// positions within the frozen chat, independently of live message IDs.

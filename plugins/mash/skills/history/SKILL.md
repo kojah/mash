@@ -13,7 +13,7 @@ installed skill may describe another release; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"60e4489dd40e5c383b4904cd1fcbed41ddc9580b24347363726f104021bdaab6","tool":"search","topic":"discovery"}
+{"expected_contract":"1169498c800f5e6116b727cffcd2918c0752557641df1632c9c3bea9ec232c83","tool":"search","topic":"discovery"}
 ```
 
 

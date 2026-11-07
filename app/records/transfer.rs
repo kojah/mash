@@ -42,6 +42,11 @@ pub(crate) enum Row {
         digest: String,
         result: Receipt,
     },
+    ExtractionOperation {
+        id: String,
+        digest: String,
+        result: super::extraction::Result,
+    },
     Checkpoint {
         scope: Scope,
         chat_id: String,

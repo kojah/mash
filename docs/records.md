@@ -65,6 +65,26 @@ They do not silently fall back to local records when the server is unavailable.
 Edits still happen on the owning node and reach the shared copy through normal
 publication. Records scoped to a local project path stay local.
 
+## Review an older chat
+
+For an explicit review, call `get_extraction_checkpoint` with the chat ID and
+the scope in which you intend to save conclusions. It returns the current
+`source_fingerprint`, the last processed fingerprint (if any), and `up_to_date`.
+Read the chat after obtaining that fingerprint.
+
+Submit the reviewed fingerprint to `extract_records`, together with a stable
+`operation_id`, the same scope and chat ID, and up to 64 record drafts. Each
+draft contains `body` and `evidence`, as in the create example below, and must
+have `review: "candidate"`. All cited messages must belong to the reviewed chat.
+An empty `records` list records that the review found no conclusions to save.
+
+Mash saves the drafts and checkpoint together. If the chat changed during the
+review, it rejects the request: reread the chat before submitting a new operation.
+If only the response was lost, retry the identical request with its original
+operation ID. Review candidate conclusions separately before establishing them.
+The checkpoint records your agent's claim to have reviewed that version; it
+does not prove that the agent read every message or interpreted it correctly.
+
 ## Save a conclusion
 
 Before creating a record, call `find_record_matches` with its proposed `scope`

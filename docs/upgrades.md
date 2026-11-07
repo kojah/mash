@@ -31,9 +31,9 @@ or model directory, also pass `--config PATH` or `--models-dir PATH`.
 
 ## Upgrade an existing installation
 
-Mash upgrades schema-62 and schema-63 databases in place to schema 64 when opening them for
-writing. Run `mash index` with the new release after stopping old watchers and
-agent connections. The shared server uses the same migration when opening each
+Mash upgrades schema-62 through schema-64 databases in place to schema 65 when
+opening them for writing. Run `mash index` with the new release after stopping
+old watchers and agent connections. The shared server uses the same migration when opening each
 node's database. This additive upgrade preserves history, identities and existing
 chat search data; it does not require a Qdrant rebuild. Read-only commands never
 migrate a database. Restart agent connections and watchers after the upgrade.

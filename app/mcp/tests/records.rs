@@ -1,6 +1,64 @@
 use super::*;
 
 #[tokio::test]
+async fn native_records_sdk_extraction_checkpoint_and_writer_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = super::workflows::decision_history(root.path());
+    let database = paths.db.clone().unwrap();
+    let server = Mash {
+        paths: Arc::new(paths),
+        gate: Arc::default(),
+        runtime: None,
+        model_work: Arc::new(tokio::sync::Semaphore::new(0)),
+    };
+    let (server_io, client_io) = tokio::io::duplex(128 * 1024);
+    let serving = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+    let client = ().serve(client_io).await.unwrap();
+    let service = serving.await.unwrap();
+    let call = |name: &'static str, args: serde_json::Value| {
+        client.call_tool(
+            CallToolRequestParams::new(name).with_arguments(args.as_object().unwrap().clone()),
+        )
+    };
+    let inspect =
+        json!({"scope":{"kind":"chat","id":"decision-thread"},"chat_id":"decision-thread"});
+    let state = call("get_extraction_checkpoint", inspect.clone())
+        .await
+        .unwrap();
+    assert_ne!(state.is_error, Some(true), "{state:?}");
+    let state = state.structured_content.unwrap();
+    assert_eq!(state["up_to_date"], false);
+    let request = json!({"operation_id":"sdk-extraction","scope":inspect["scope"],"chat_id":inspect["chat_id"],"source_fingerprint":state["source_fingerprint"],"records":[{"body":{"statement":"Use Qdrant","review":"candidate","recorded_by":"test agent","details":{"kind":"decision","state":"proposed"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}]});
+    let guard = crate::storage::admission::acquire(&database).unwrap();
+    assert_eq!(
+        call("extract_records", request.clone())
+            .await
+            .unwrap()
+            .is_error,
+        Some(true)
+    );
+    drop(guard);
+    let extracted = call("extract_records", request.clone()).await.unwrap();
+    assert_ne!(extracted.is_error, Some(true), "{extracted:?}");
+    assert_eq!(
+        call("extract_records", request)
+            .await
+            .unwrap()
+            .structured_content,
+        extracted.structured_content
+    );
+    let state = call("get_extraction_checkpoint", inspect)
+        .await
+        .unwrap()
+        .structured_content
+        .unwrap();
+    assert_eq!(state["up_to_date"], true);
+    assert_eq!(state["source_fingerprint"], state["processed_fingerprint"]);
+    client.cancel().await.unwrap();
+    service.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn native_records_sdk_duplicate_suggestions_and_explicit_reuse() {
     let root = tempfile::tempdir().unwrap();
     let server = Mash {
