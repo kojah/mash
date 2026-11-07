@@ -16,6 +16,7 @@ mod freshness;
 mod native;
 mod query;
 mod records;
+mod records_backend;
 mod redaction;
 mod relevance;
 mod restart;

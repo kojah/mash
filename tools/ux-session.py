@@ -41,6 +41,16 @@ LIMITS = {"timeout_seconds": 600, "virtual_memory_kib": 8 * 1024 * 1024}
 
 # Outcomes a user wants, never commands. Variations change the situation.
 FAMILIES = {
+    "record-and-recall": (
+        "Mash is installed. Using its MCP interface, save an evidence-backed preference from one of your chats and retrieve it as context for later work. Inspect its source evidence, and make sure repeating the same write does not create another record.",
+        "You can recall the preference, inspect its evidence and verify retry behavior, or reach a bounded impasse after 20 minutes.",
+        ["You have not used Mash's record tools before."],
+    ),
+    "record-correction": (
+        "Mash is installed. Using its MCP interface and your available chat history, save a fact and an open question, correct the fact, resolve the question, and inspect what changed. Finally remove the fact and check it no longer appears in recall.",
+        "You can inspect the history and resolution and verify removal, or reach a bounded impasse after 20 minutes.",
+        ["You want changes to remain understandable to a future agent."],
+    ),
     "install-and-connect": (
         "You downloaded Mash's installer to ~/Downloads/install.sh. Install Mash and set it up so Claude Code and Codex on this machine can search your past chats.",
         "Mash is installed, and you believe your agents will be able to use it.",
@@ -263,6 +273,7 @@ def iso(days: float) -> str:
 
 
 def seed(home: Path) -> None:
+    records: list[dict[str, object]]
     opencode = home / ".local/share/opencode/opencode.db"
     opencode.parent.mkdir(parents=True)
     database = sqlite3.connect(opencode)

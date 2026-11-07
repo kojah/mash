@@ -9,6 +9,15 @@
 - Repository revision command: `git rev-parse HEAD` (the adapter appends
   `-dirty` for uncommitted tracked changes)
 
+Record-tool journeys may use a freshly built development binary supplied with
+`--binary`; record the build type and do not use its timings as release performance
+measurements. These journeys exercise the stdio MCP interface. Python 3 is
+available inside the sandbox for an MCP client; the fixture agent CLIs cannot
+execute tool calls. Select `record-and-recall` or `record-correction` explicitly
+with `select --family NAME`. Both start installed, before setup. No Qdrant or
+model service is available in these offline sessions; preserve any setup or
+indexing failure as evidence and distinguish it from record-tool behavior.
+
 ## Journey selection
 
 - Selector: `python3 tools/ux-session.py select [--seed N]`. It returns `seed`,
