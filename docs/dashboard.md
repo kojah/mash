@@ -1,4 +1,4 @@
-# Browse chats in the dashboard
+# Browse chats and records in the dashboard
 
 After [setup](installation.md), run the command below. For a Cargo source
 installation, build the web interface using the instructions below first.
@@ -33,6 +33,28 @@ more context.
 
 The dashboard is read-only. Your chats stay separate from the public Mash
 documentation website.
+
+## Inspect conversation records
+
+Choose **Records** to browse saved decisions, preferences, facts and open
+questions. Search their statements, filter by kind, status or review, and choose
+local records or records published to your configured shared group. Choose
+**Apply filters** to run the search; use **Next page** to continue.
+
+Open a record to read its revision history, quoted supporting messages and
+related records. **Open source message** takes you to the cited chat message.
+From a transcript, **Chat records** finds records citing that chat in any
+retained revision, including records whose latest revision cites another chat.
+
+Browsing includes candidates and resolved or retired records. Review the status,
+expiry dates, evidence warnings and declared conflicts before relying on a
+conclusion. Reading never confirms or changes a record; ask your agent to make
+changes through Mash's [record tools](records.md).
+
+Record lists and open records stay fixed until you choose **Refresh records**
+or **Refresh record**. Revision history and relationships have separate page
+controls. Shared records keep their source node identity when you follow links;
+an unavailable shared source produces an error rather than opening a local copy.
 
 ## Keep your place
 

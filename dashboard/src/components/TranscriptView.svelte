@@ -13,13 +13,18 @@ import {
   messageText,
 } from "../lib/export";
 import { catalogOptions } from "../lib/queries";
-import { chatHref } from "../lib/route.svelte";
+import { chatHref, recordsHref } from "../lib/route.svelte";
 import type { Message } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import MessageBody from "./MessageBody.svelte";
 import SearchPanel from "./SearchPanel.svelte";
 
-let { id, node, messageId }: { id: string; node: string; messageId: string } = $props();
+let {
+  id,
+  node,
+  messageId,
+  shared = false,
+}: { id: string; node: string; messageId: string; shared?: boolean } = $props();
 const catalogue = createQuery(() => catalogOptions);
 const machine = $derived(node || "");
 const displayMachine = $derived(machine || catalogue.data?.localNode || "Local");
@@ -36,19 +41,21 @@ let snapshot = $state<{ key: string; page: MessagePage } | null>(null);
 // Keep the sidebar mounted across chat navigation. Only explicit navigation
 // resets the reading page; catalogue polling never touches it.
 $effect(() => {
-  const route = [id, node, messageId];
-  anchor = route[2] ?? "";
+  const route = [id, node, messageId, shared] as const;
+  anchor = route[2];
   offset = 0;
   notice = "";
   searchOpen = false;
   transcriptPane?.scrollTo({ top: 0, behavior: "instant" });
   return () => exportController?.abort();
 });
-const key = $derived(JSON.stringify([id, machine, offset, anchor]));
+const key = $derived(JSON.stringify([id, machine, offset, anchor, shared]));
 const live = createQuery(() => ({
-  queryKey: ["transcript", id, machine, offset, anchor],
+  queryKey: ["transcript", id, machine, offset, anchor, shared],
   queryFn: ({ signal }) =>
-    anchor ? context(anchor, machine, signal) : transcript(id, machine, offset, signal),
+    anchor
+      ? context(anchor, machine, signal, shared)
+      : transcript(id, machine, offset, signal, shared),
   staleTime: 15_000,
   refetchInterval: 30_000,
   refetchIntervalInBackground: false,
@@ -105,9 +112,15 @@ async function exportChat(format: ExportFormat): Promise<void> {
   exporting = true;
   notice = "Preparing export…";
   try {
-    const messages = await collectChat(id, machine, controller.signal, (count) => {
-      notice = `Preparing export: ${count.toLocaleString()} messages…`;
-    });
+    const messages = await collectChat(
+      id,
+      machine,
+      controller.signal,
+      (count) => {
+        notice = `Preparing export: ${count.toLocaleString()} messages…`;
+      },
+      (id, node, offset, signal) => transcript(id, node, offset, signal, shared),
+    );
     controller.signal.throwIfAborted();
     if (format === "pdf" && popup) {
       if (popup.closed) throw new Error("The PDF preview tab was closed.");
@@ -148,6 +161,8 @@ function page(next: number): void {
 <div class="flex h-dvh flex-col overflow-hidden px-5 pt-6 pb-6">
   <header class="mx-auto mb-7 flex w-full max-w-[1120px] shrink-0 items-center gap-5">
     <a href="#/" aria-label="Mash home"><img src="/mash-logo.png" alt="" width="34" height="31" /></a>
+    <a href="#/records" class="text-sm">Records</a>
+    {#if catalogue.data}<a class="text-sm" href={recordsHref(new URLSearchParams({ chat: id, ...((shared || machine && machine !== catalogue.data.localNode) ? { shared: "true", node: machine } : {}) }))}>Chat records</a>{/if}
     <button type="button" onclick={() => searchOpen = true} class="flex min-h-10 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 text-left text-sm text-muted"><Search size={15} />Search chats</button>
   </header>
   <div class="mx-auto grid min-h-0 w-full max-w-[1120px] flex-1 items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">

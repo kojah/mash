@@ -163,16 +163,22 @@ pub(super) async fn chat_messages(
     offset: u32,
     limit: u32,
     node: Option<String>,
+    shared: bool,
 ) -> Result<ViewResponse, AppError> {
     if limit == 0 || limit > 500 {
         return Err(AppError::usage("chat page limit must be between 1 and 500"));
     }
     let output = configuration.redaction.output();
+    if shared && node.as_ref().is_none_or(String::is_empty) {
+        return Err(AppError::usage("shared chat reads require a source node"));
+    }
     if let Some(node) = node.filter(|node| {
-        node != configuration
-            .shared
-            .as_ref()
-            .map_or("local", |shared| shared.node_id.as_str())
+        shared
+            || node
+                != configuration
+                    .shared
+                    .as_ref()
+                    .map_or("local", |shared| shared.node_id.as_str())
     }) {
         let mut messages = shared::chat_page(
             required_shared(configuration)?,

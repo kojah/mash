@@ -59,7 +59,11 @@ function chat(value: unknown, localNode: string): ChatSummary {
     ...(updatedMs === undefined ? {} : { updatedMs }),
   };
 }
-async function read(path: string, params: URLSearchParams, signal: AbortSignal): Promise<unknown> {
+export async function read(
+  path: string,
+  params: URLSearchParams,
+  signal: AbortSignal,
+): Promise<unknown> {
   const response = await fetch(`${path}?${params}`, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
     cache: "no-store",
@@ -196,6 +200,7 @@ export async function transcript(
   node: string,
   offset: number,
   signal: AbortSignal,
+  shared = false,
 ): Promise<MessagePage> {
   return parseMessages(
     await read(
@@ -203,6 +208,7 @@ export async function transcript(
       new URLSearchParams({
         id,
         ...(node ? { node } : {}),
+        ...(shared ? { shared: "true" } : {}),
         offset: String(offset),
         limit: String(PAGE_SIZE),
       }),
@@ -210,8 +216,14 @@ export async function transcript(
     ),
   );
 }
-export async function context(id: string, node: string, signal: AbortSignal): Promise<MessagePage> {
+export async function context(
+  id: string,
+  node: string,
+  signal: AbortSignal,
+  shared = false,
+): Promise<MessagePage> {
   const params = new URLSearchParams({ id, context: "25" });
   if (node) params.set("node", node);
+  if (shared) params.set("shared", "true");
   return parseMessages(await read("/api/view", params, signal));
 }

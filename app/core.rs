@@ -499,9 +499,18 @@ async fn dispatch(
             offset,
             limit,
             node,
-        } => inspection::chat_messages(configuration, database, chat_id, offset, limit, node)
-            .await
-            .map(Response::View),
+            shared,
+        } => inspection::chat_messages(
+            configuration,
+            database,
+            chat_id,
+            offset,
+            limit,
+            node,
+            shared,
+        )
+        .await
+        .map(Response::View),
         Operation::Status { shared, coverage } => {
             inspection::status(configuration, database, models, shared, coverage)
                 .await

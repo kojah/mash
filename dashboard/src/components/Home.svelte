@@ -27,6 +27,7 @@ function onKey(event: KeyboardEvent): void {
 <svelte:window onkeydown={onKey} />
 
 <main class="mx-auto flex max-w-[600px] flex-col gap-9 px-5 py-16">
+  <nav class="flex gap-5 text-sm"><span aria-current="page" class="font-semibold">Chats</span><a href="#/records">Records</a></nav>
   <div class="relative flex items-center">
     <Search size={20} strokeWidth={1.75} class="pointer-events-none absolute left-4 text-faint" />
     <label for="home-search" class="sr-only">Search your agent chats</label>

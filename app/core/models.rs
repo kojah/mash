@@ -100,6 +100,7 @@ pub(crate) enum Operation {
         offset: u32,
         limit: u32,
         node: Option<String>,
+        shared: bool,
     },
     Status {
         shared: bool,

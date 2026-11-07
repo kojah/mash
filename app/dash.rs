@@ -53,6 +53,8 @@ fn router(state: Arc<Dash>) -> Router {
         .route("/api/search", axum::routing::get(search))
         .route("/api/view", axum::routing::get(view))
         .route("/api/chat", axum::routing::get(chat))
+        .route("/api/records", axum::routing::get(list_records))
+        .route("/api/record", axum::routing::get(record))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
@@ -125,6 +127,82 @@ async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
         operation: Operation::DashboardCatalog,
     };
     json_result(core::execute(request).await)
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct RecordParams {
+    q: Option<String>,
+    kind: Option<crate::records::Kind>,
+    state: Option<crate::records::Lifecycle>,
+    review: Option<crate::records::Review>,
+    chat: Option<String>,
+    shared: bool,
+    node: Option<String>,
+    offset: usize,
+    cursor_node: Option<String>,
+    cursor_offset: usize,
+}
+
+async fn list_records(
+    State(state): State<Arc<Dash>>,
+    axum::extract::Query(params): axum::extract::Query<RecordParams>,
+) -> Response {
+    let operation = Operation::Records(crate::records::List {
+        query: params.q.filter(|query| !query.trim().is_empty()),
+        kind: params.kind,
+        state: params.state,
+        review: params.review,
+        chat: params.chat,
+        shared: params.shared,
+        node_id: params.node,
+        cursor: params.cursor_node.map(|node_id| crate::records::Cursor {
+            node_id,
+            offset: params.cursor_offset,
+        }),
+        offset: params.offset,
+        include_inactive: true,
+        limit: Some(20),
+        ..Default::default()
+    });
+    json_result(
+        core::execute(Request {
+            paths: state.paths.clone(),
+            operation,
+        })
+        .await,
+    )
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordDetailParams {
+    id: String,
+    node: Option<String>,
+    before_revision: Option<i64>,
+    #[serde(default)]
+    link_offset: usize,
+}
+
+async fn record(
+    State(state): State<Arc<Dash>>,
+    axum::extract::Query(params): axum::extract::Query<RecordDetailParams>,
+) -> Response {
+    let operation = Operation::Record(crate::records::Get {
+        id: params.id,
+        node_id: params.node,
+        history: true,
+        before_revision: params.before_revision,
+        link_offset: params.link_offset,
+        ..Default::default()
+    });
+    json_result(
+        core::execute(Request {
+            paths: state.paths.clone(),
+            operation,
+        })
+        .await,
+    )
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -224,6 +302,8 @@ struct ViewParams {
     #[serde(default)]
     context: Option<u32>,
     node: Option<String>,
+    #[serde(default)]
+    shared: bool,
 }
 
 /// Messages on each side of the anchor; chunked chat reads are tracked in mash-twg6.
@@ -233,10 +313,23 @@ async fn view(
     State(state): State<Arc<Dash>>,
     axum::extract::Query(params): axum::extract::Query<ViewParams>,
 ) -> Response {
-    let operation = Operation::ChatContext {
-        id: params.id,
-        context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
-        node: params.node,
+    let operation = if params.shared {
+        if params.node.as_ref().is_none_or(String::is_empty) {
+            return json_result(Err(AppError::usage(
+                "shared chat reads require a source node",
+            )));
+        }
+        Operation::View {
+            id: params.id,
+            context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
+            shared: params.node,
+        }
+    } else {
+        Operation::ChatContext {
+            id: params.id,
+            context: params.context.unwrap_or(50).min(MAX_VIEW_CONTEXT),
+            node: params.node,
+        }
     };
     json_result(
         core::execute(Request {
@@ -255,6 +348,8 @@ struct ChatParams {
     #[serde(default)]
     limit: Option<u32>,
     node: Option<String>,
+    #[serde(default)]
+    shared: bool,
 }
 
 /// Messages per page of a chat; whole small chats fit in one.
@@ -268,6 +363,7 @@ async fn chat(
         chat_id: params.id,
         offset: params.offset,
         node: params.node,
+        shared: params.shared,
         limit: params
             .limit
             .unwrap_or(MAX_CHAT_PAGE)
@@ -333,6 +429,182 @@ fn content_type(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{Operation, SearchParams, allowed_hosts, content_type, search_operation};
+
+    fn record_fixture() -> (tempfile::TempDir, crate::core::Paths, String) {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.toml");
+        std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+        let database = directory.path().join("index.sqlite3");
+        drop(crate::storage::Storage::open(&database).unwrap());
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        crate::storage::packed::register(&connection).unwrap();
+        connection.execute_batch("INSERT INTO chats(id,provider) VALUES('fixture','codex'); INSERT INTO messages(id,chat_id,ordinal,role,content_packed) VALUES('source','fixture',0,'user','The fixture uses port 8080.');").unwrap();
+        drop(connection);
+        let body = crate::records::Body {
+            statement: "Fixture uses port 8080".into(),
+            rationale: "Reported in chat".into(),
+            review: crate::records::Review::Established,
+            details: crate::records::Details::Fact {
+                state: crate::records::FactState::Current,
+                reported_by: "fixture user".into(),
+                valid_until: None,
+            },
+            effective_at: None,
+            recorded_by: "HTTP test".into(),
+        };
+        let mut storage = crate::storage::Storage::open_existing(&database).unwrap();
+        let receipt = storage
+            .mutate_record(&crate::records::Mutation {
+                operation_id: "fixture-create".into(),
+                change: crate::records::Change::Create {
+                    scope: crate::records::Scope::Personal,
+                    body,
+                    evidence: vec![crate::records::Citation {
+                        message_id: "source".into(),
+                        quote: "port 8080".into(),
+                        purpose: crate::records::EvidenceUse::Report,
+                        expected_fingerprint: None,
+                    }],
+                    on_duplicate: crate::records::DuplicatePolicy::Report,
+                },
+            })
+            .unwrap();
+        (
+            directory,
+            crate::core::Paths {
+                config: Some(config),
+                db: Some(database),
+                models_dir: None,
+            },
+            receipt.record_id,
+        )
+    }
+
+    #[tokio::test]
+    async fn dashboard_shared_chat_source_never_falls_back_to_local_node() {
+        let (_directory, paths, _) = record_fixture();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = super::router(std::sync::Arc::new(super::Dash {
+            paths,
+            hosts: allowed_hosts(address),
+            model_work: tokio::sync::Semaphore::new(0),
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        for path in ["/api/view?id=source", "/api/chat?id=fixture"] {
+            let url = format!("http://{address}{path}&node=local");
+            let local = client.get(&url).send().await.unwrap();
+            assert_eq!(local.status(), reqwest::StatusCode::OK);
+            let shared = client
+                .get(format!("{url}&shared=true"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(shared.status(), reqwest::StatusCode::BAD_REQUEST);
+            assert!(
+                shared
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("shared index is not configured")
+            );
+            let no_node = client
+                .get(format!("http://{address}{path}&shared=true"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(no_node.status(), reqwest::StatusCode::BAD_REQUEST);
+            assert!(
+                no_node
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("require a source node")
+            );
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn dashboard_records_expose_real_filtered_history_without_mutation() {
+        let (_directory, paths, id) = record_fixture();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = super::router(std::sync::Arc::new(super::Dash {
+            paths,
+            hosts: allowed_hosts(address),
+            model_work: tokio::sync::Semaphore::new(0),
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        let list = format!(
+            "http://{address}/api/records?kind=fact&state=current&review=established&chat=fixture&q=8080"
+        );
+        let response = client.get(&list).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let page: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(page["records"].as_array().unwrap().len(), 1);
+        assert_eq!(page["records"][0]["id"], id);
+        let detail = format!("http://{address}/api/record?id={id}");
+        let record: serde_json::Value = client
+            .get(&detail)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(record["current_revision"], 1);
+        assert_eq!(
+            record["revisions"][0]["evidence"][0]["message_id"],
+            "source"
+        );
+        assert_eq!(record["revisions"][0]["evidence_current"], true);
+        assert_eq!(
+            client.post(&detail).send().await.unwrap().status(),
+            reqwest::StatusCode::METHOD_NOT_ALLOWED
+        );
+        assert_eq!(
+            client
+                .get(&detail)
+                .header("Host", "evil.invalid")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            reqwest::StatusCode::MISDIRECTED_REQUEST
+        );
+        for path in [
+            "/api/records?kind=unknown",
+            "/api/records?state=unknown",
+            "/api/records?node=remote&shared=true",
+            "/api/record?id=missing&node=remote",
+            "/api/record?id=missing&unknown=true",
+        ] {
+            assert_eq!(
+                client
+                    .get(format!("http://{address}{path}"))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                reqwest::StatusCode::BAD_REQUEST,
+                "{path}"
+            );
+        }
+        let after: serde_json::Value = client
+            .get(&detail)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(after, record);
+        server.abort();
+    }
 
     #[tokio::test]
     async fn dashboard_http_guards_host_methods_and_serves_real_catalogue() {

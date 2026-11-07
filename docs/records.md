@@ -46,10 +46,19 @@ Backups contain sensitive record text and quoted evidence, as well as chats.
 
 ## Inspect existing records
 
+For a visual, read-only view, open `mash dash` and choose **Records**. The
+[dashboard](dashboard.md#inspect-conversation-records) includes filters, revision
+history, relationships and links to supporting chat messages.
+
 Ask your agent to call `list_records`. By default it returns established current
 records whose evidence still matches the saved messages. Use `include_inactive`
 to inspect candidates, older choices and records with changed or missing sources.
 Follow `next_offset` to continue, even if a page contains no current records.
+
+Optional `kind`, `state` and `review` filters select the latest revision before
+pagination. `chat` selects records citing that chat in any retained revision.
+These filters also work on shared lists; keep them unchanged when following a
+page cursor.
 
 Use `get_record` with the returned ID. Set `history` to `true` to inspect prior
 revisions, evidence, confirmations and links to replacement records. Reading does

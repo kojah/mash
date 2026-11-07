@@ -25,6 +25,30 @@ pub(crate) enum Review {
     Established,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Kind {
+    Decision,
+    Preference,
+    Fact,
+    OpenQuestion,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Lifecycle {
+    Proposed,
+    Accepted,
+    Active,
+    Current,
+    Open,
+    Resolved,
+    Dropped,
+    Superseded,
+    Withdrawn,
+    Retracted,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum DecisionState {
@@ -453,6 +477,11 @@ pub(crate) struct List {
     pub cursor: Option<Cursor>,
     pub scope: Option<Scope>,
     pub query: Option<String>,
+    pub kind: Option<Kind>,
+    pub state: Option<Lifecycle>,
+    pub review: Option<Review>,
+    /// Records citing this chat in any retained revision, regardless of scope.
+    pub chat: Option<String>,
     #[serde(default)]
     pub include_inactive: bool,
     #[serde(default)]

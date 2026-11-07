@@ -655,10 +655,13 @@ pub(crate) fn list(connection: &Connection, request: &List) -> Result<Page, AppE
     if let Some(query) = &request.query {
         bounded(query, 1024, "record query")?;
     }
+    if let Some(chat) = &request.chat {
+        bounded(chat, 512, "record chat ID")?;
+    }
     let transaction = connection
         .unchecked_transaction()
         .map_err(AppError::database)?;
-    let mut statement = transaction.prepare("SELECT r.id FROM records r JOIN record_revisions v ON v.record_id=r.id AND v.revision=r.revision WHERE r.forgotten=0 AND (?1 IS NULL OR r.scope=?1) AND (?2 IS NULL OR instr(lower(json_extract(v.body,'$.statement')),lower(?2))>0) ORDER BY v.recorded_at DESC,r.id LIMIT ?3 OFFSET ?4").map_err(AppError::database)?;
+    let mut statement = transaction.prepare("SELECT r.id FROM records r JOIN record_revisions v ON v.record_id=r.id AND v.revision=r.revision WHERE r.forgotten=0 AND (?1 IS NULL OR r.scope=?1) AND (?2 IS NULL OR instr(lower(json_extract(v.body,'$.statement')),lower(?2))>0) AND (?5 IS NULL OR r.kind=json_extract(?5,'$')) AND (?6 IS NULL OR json_extract(v.body,'$.details.state')=json_extract(?6,'$')) AND (?7 IS NULL OR json_extract(v.body,'$.review')=json_extract(?7,'$')) AND (?8 IS NULL OR EXISTS(SELECT 1 FROM record_evidence e WHERE e.record_id=r.id AND e.chat_id=?8)) ORDER BY v.recorded_at DESC,r.id LIMIT ?3 OFFSET ?4").map_err(AppError::database)?;
     let mut ids = statement
         .query_map(
             params![
@@ -667,7 +670,11 @@ pub(crate) fn list(connection: &Connection, request: &List) -> Result<Page, AppE
                 i64::try_from(limit + 1)
                     .map_err(|_| AppError::usage("record limit out of range"))?,
                 i64::try_from(request.offset)
-                    .map_err(|_| AppError::usage("record offset out of range"))?
+                    .map_err(|_| AppError::usage("record offset out of range"))?,
+                request.kind.as_ref().map(encode).transpose()?,
+                request.state.as_ref().map(encode).transpose()?,
+                request.review.as_ref().map(encode).transpose()?,
+                request.chat,
             ],
             |row| row.get::<_, String>(0),
         )

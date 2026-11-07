@@ -78,7 +78,7 @@ async fn native_records_shared_http_pages_preserve_owners_and_group_boundaries_w
     assert_ne!(first, second);
     let page: Value = service
         .request("records", FIRST)
-        .json(&json!({"shared":true}))
+        .json(&json!({"shared":true,"include_inactive":true,"kind":"fact","state":"current","review":"established","chat":"chat","query":"claim"}))
         .send()
         .await
         .unwrap()
@@ -91,7 +91,7 @@ async fn native_records_shared_http_pages_preserve_owners_and_group_boundaries_w
     assert_eq!(page["records"][0]["node_id"], "first");
     let next: Value = service
         .request("records", FIRST)
-        .json(&json!({"shared":true,"cursor":page["next_cursor"]}))
+        .json(&json!({"shared":true,"include_inactive":true,"kind":"fact","state":"current","review":"established","chat":"chat","query":"claim","cursor":page["next_cursor"]}))
         .send()
         .await
         .unwrap()
@@ -169,4 +169,31 @@ async fn native_records_shared_http_pages_preserve_owners_and_group_boundaries_w
             .status()
             .is_success()
     );
+}
+
+#[tokio::test]
+async fn native_records_shared_http_applies_dashboard_filters() {
+    let service = Service::canonical().await;
+    seed(&service, FIRST);
+    for (selector, value) in [
+        ("kind", "decision"),
+        ("state", "resolved"),
+        ("review", "candidate"),
+        ("chat", "other-chat"),
+    ] {
+        let mut filters = json!({"shared":true,"include_inactive":true,"node_id":"first"});
+        filters[selector] = json!(value);
+        let excluded: Value = service
+            .request("records", FIRST)
+            .json(&filters)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(excluded["records"], json!([]), "{selector} filter");
+    }
 }
