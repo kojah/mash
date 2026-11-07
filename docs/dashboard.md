@@ -36,7 +36,7 @@ documentation website.
 
 ## Inspect conversation records
 
-The front page has a **Memory** section with **Decisions**, **Preferences**,
+Below the chat sections, the front page has a **Memory** section with icons for **Decisions**, **Preferences**,
 **Facts** and **Questions**. Choose a kind to browse it directly, or use the
 **Memory** navigation link to browse all kinds. Search their statements,
 filter by kind, status or review, and choose

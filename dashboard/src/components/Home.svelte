@@ -1,10 +1,14 @@
 <script lang="ts">
+import BadgeCheck from "@lucide/svelte/icons/badge-check";
 import Bot from "@lucide/svelte/icons/bot";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import CircleHelp from "@lucide/svelte/icons/circle-help";
 import Clock from "@lucide/svelte/icons/clock";
+import Gavel from "@lucide/svelte/icons/gavel";
 import Laptop from "@lucide/svelte/icons/laptop";
 import NotebookText from "@lucide/svelte/icons/notebook-text";
 import Search from "@lucide/svelte/icons/search";
+import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import { catalogOptions } from "../lib/queries";
@@ -20,11 +24,11 @@ const machines = $derived([...new Set(data?.chats.map((chat) => chat.machine) ??
 const agents = $derived([...new Set(data?.chats.map((chat) => chat.agent) ?? [])]);
 let initial = $state<SearchFilters>({ agents: [], machines: [], projects: [], days: null });
 let searching = $state(false);
-const recordCategories: readonly { kind: Kind; label: string }[] = [
-  { kind: "decision", label: "Decisions" },
-  { kind: "preference", label: "Preferences" },
-  { kind: "fact", label: "Facts" },
-  { kind: "open_question", label: "Questions" },
+const recordCategories: readonly { kind: Kind; label: string; icon: typeof Gavel }[] = [
+  { kind: "decision", label: "Decisions", icon: Gavel },
+  { kind: "preference", label: "Preferences", icon: SlidersHorizontal },
+  { kind: "fact", label: "Facts", icon: BadgeCheck },
+  { kind: "open_question", label: "Questions", icon: CircleHelp },
 ];
 
 function onKey(event: KeyboardEvent): void {
@@ -34,7 +38,7 @@ function onKey(event: KeyboardEvent): void {
 
 <svelte:window onkeydown={onKey} />
 
-<main class="mx-auto flex max-w-[600px] flex-col gap-9 px-5 py-16">
+<main class="mx-auto flex max-w-[520px] flex-col gap-9 px-5 py-16">
   <nav class="flex gap-5 text-sm"><span aria-current="page" class="font-semibold">Chats</span><a href="#/records">Memory</a></nav>
   <div class="relative flex items-center">
     <Search size={20} strokeWidth={1.75} class="pointer-events-none absolute left-4 text-faint" />
@@ -49,15 +53,6 @@ function onKey(event: KeyboardEvent): void {
       class="min-h-[52px] w-full cursor-text rounded-xl border border-line bg-surface py-0 pr-[18px] pl-[46px] text-[17px] text-ink"
     />
   </div>
-
-  <section aria-labelledby="home-records" class="flex flex-col gap-2">
-    <h2 id="home-records" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><NotebookText size={15} strokeWidth={1.75} />Memory</h2>
-    <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
-      {#each recordCategories as category (category.kind)}
-        <li><a class="row text-[15px]" href={recordsHref(new URLSearchParams({ kind: category.kind }))}><span class="flex-1">{category.label}</span><ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" /></a></li>
-      {/each}
-    </ul>
-  </section>
 
   <p class="m-0 text-xs text-muted">Indexed history · refreshes every 30 seconds while visible. Indexing runs separately.</p>
   {#if catalogue.isPending}
@@ -119,6 +114,14 @@ function onKey(event: KeyboardEvent): void {
       </section>
     </div>
   {/if}
+  <section aria-labelledby="home-records" class="flex flex-col gap-2">
+    <h2 id="home-records" class="m-0 flex items-center gap-2 text-[13px] font-normal text-muted"><NotebookText size={15} strokeWidth={1.75} />Memory</h2>
+    <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
+      {#each recordCategories as category (category.kind)}
+        <li><a class="row text-[15px]" href={recordsHref(new URLSearchParams({ kind: category.kind }))}><category.icon size={18} strokeWidth={1.75} class="shrink-0 text-ink-2" aria-hidden="true" /><span class="flex-1">{category.label}</span><ChevronRight size={14} strokeWidth={2.25} class="shrink-0 text-chevron" /></a></li>
+      {/each}
+    </ul>
+  </section>
 </main>
 
 {#if searching}
