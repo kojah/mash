@@ -379,7 +379,7 @@ fn confirm(
     let (scope, body, _) = current(connection, expected)?;
     if body.review != Review::Established || !body.details.current() {
         return Err(AppError::usage(
-            "only established current records can be confirmed",
+            "only established current records can be confirmed; to establish a reviewed candidate, use revise with body.review=established and verified evidence",
         ));
     }
     let sources = evidence(connection, &scope, citations, requires_endorsement(&body))?;

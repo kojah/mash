@@ -57,6 +57,8 @@ fn mcp(tool: &str, text: &str) -> Result<(), String> {
         }
         "view" => arguments::<View>(text).map(|_| ()),
         "list_records" => arguments::<crate::records::List>(text).map(|_| ()),
+        "get_record" => arguments::<crate::records::Get>(text).map(|_| ()),
+        "recall_records" => arguments::<crate::records::recall::Request>(text).map(|_| ()),
         "record" => arguments::<crate::records::Mutation>(text).map(|_| ()),
         "status" => {
             let input = arguments::<Status>(text)?;

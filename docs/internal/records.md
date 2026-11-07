@@ -1,9 +1,9 @@
 # Native conversation records
 
-Implementation contract for restoring the improved November 2 mash-recall
-behavior (`a4fa36279`). This document describes the intended complete feature;
-the feature is not available until its storage, public tools, publication,
-archive, privacy and plugin paths have been implemented and validated.
+Implementation contract for the native records restored from the improved
+November 2 mash-recall behavior (`a4fa36279`). It defines the record model and
+the requirements for storage, public tools, publication, archives, privacy and
+plugin recall.
 
 ## Purpose and ownership
 

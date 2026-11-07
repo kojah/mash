@@ -15,7 +15,7 @@ verified against SHA-256
 
 ```bash
 make protocol-tools       # Explicit download; no Cargo or model assets involved.
-make protocol-check       # Eleven models plus twenty-two expected counterexamples.
+make protocol-check       # All configured models and expected counterexamples.
 ```
 
 `make protocol-check` uses the repository's `DEV_RUN` launcher (`agent-test` on

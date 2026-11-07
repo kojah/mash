@@ -192,7 +192,7 @@ enum Command {
         #[arg(long, required_unless_present = "request", conflicts_with = "request")]
         sql: Option<String>,
         /// Typed request as JSON, e.g.
-        /// '{"target":"messages","filter":{"source":"codex"},"limit":20}'.
+        /// '{"target":"messages","filter":{"provider":"codex"},"limit":20}'.
         #[arg(long, conflicts_with = "sql")]
         request: Option<String>,
         /// Maximum rows returned in --sql mode; --request carries its own.

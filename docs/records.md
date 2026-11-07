@@ -169,6 +169,10 @@ as the person's endorsement. Keep uncertain interpretations as `candidate`
 user-message endorsement citation. `recorded_by` is caller-supplied attribution,
 not authenticated human identity.
 
+Evidence `purpose` accepts `context`, `endorsement`, and `report`. Use `report`
+for a source's attributed factual claim; it does not assert the person's approval
+of a decision or preference. An omitted purpose defaults to `context`.
+
 Retained evidence includes its stated purpose and the source message's role at
 recording time. Older records that did not retain these fields show them as
 unknown; Mash does not guess whether an old quote was an endorsement.
@@ -198,6 +202,11 @@ matching project basenames are not enough.
 Edits provide `expected: {"id": "RECORD_ID", "revision": 1}`. If another edit
 has changed that revision, reread the record before trying again.
 
+To establish a candidate after reviewing its sources, use `revise` with its
+expected ID/revision, a complete updated `body` with `review: "established"`,
+and verified evidence. Decisions and preferences need a user endorsement.
+Reading or confirming a candidate does not establish it.
+
 - `revise` corrects a summary or changes its lifecycle state, with supporting
   evidence. New revisions do not inherit confirmations of the old interpretation.
 - `supersede` records a changed choice and retires its predecessor atomically.
@@ -213,6 +222,13 @@ has changed that revision, reread the record before trying again.
   history if the question reopens or the answer later changes; inspect their
   current states before treating the question as settled.
 - `forget` removes the entire record, including its prior revisions and quotes.
+
+Resolved and dropped questions are inactive, so default recall and lists omit
+them. Their answers and history remain available through `get_record`; use
+`recall_records` with `include_review: true` or `list_records` with
+`include_inactive: true` to find them. If an answer should remain in current
+recall, save the resulting fact or decision separately and link it with
+`resolved_by` when resolving the question.
 
 Ordinary source updates retain records but mark changed evidence stale.
 **Forgetting a cited chat also removes every dependent record**, including records
