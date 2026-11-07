@@ -40,6 +40,10 @@ receipt before committing without building a release. Commit identity and the
 release-stamp override do not invalidate validation; always stamp the current release. Build
 once per platform. API installation uses authenticated readiness, rollout locking,
 atomic release pointers and rollback; identical healthy releases stay running.
+API artifacts and service commands use `mash-server --server-config PATH`;
+history nodes use `mash`. Keep separate install paths. Update old service units
+using `mash serve` only as part of a planned deployment, and verify the service's
+executable identity afterwards. Both binaries ship at the same release version.
 
 Ordinary deployment never ingests history or downloads models. Prefer tested
 in-place SQLite migrations for explicitly supported starting versions, shared

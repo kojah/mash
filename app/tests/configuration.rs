@@ -158,9 +158,9 @@ fn server_rejects_json_duplicate_keys_and_unknown_fields_before_connecting() {
         "version = 1\nnodes = []\nunknown = true\n",
     ] {
         std::fs::write(&config, contents).unwrap();
-        let output = Command::cargo_bin("mash")
+        let output = Command::cargo_bin("mash-server")
             .unwrap()
-            .args(["serve", "--server-config", config.to_str().unwrap()])
+            .args(["--server-config", config.to_str().unwrap()])
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(9));

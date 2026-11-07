@@ -40,13 +40,16 @@ try {
     $destination = Join-Path $root 'install with spaces'
     $installed = Join-Path $destination 'mash.exe'
     Set-Content -LiteralPath $fixture -Value 'new binary' -NoNewline
-    Compress-Archive -LiteralPath $fixture -DestinationPath $archive
+    $serverFixture = Join-Path $root 'mash-server.exe'
+    Set-Content -LiteralPath $serverFixture -Value 'new server' -NoNewline
+    Compress-Archive -LiteralPath @($fixture, $serverFixture) -DestinationPath $archive
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     $validChecksum = "$hash  mash-x86_64-pc-windows-msvc.zip"
     Set-Content -LiteralPath $checksums -Value $validChecksum
 
     Install-Mash -Directory $destination -Version 'v0.8.0'
     Assert-Equal (Get-Content -LiteralPath $installed -Raw) 'new binary' 'fresh install'
+    Assert-Equal (Get-Content -LiteralPath (Join-Path $destination 'mash-server.exe') -Raw) 'new server' 'server install'
     Assert-Equal $script:requests[0] 'https://github.com/kojah/mash/releases/download/v0.8.0/mash-x86_64-pc-windows-msvc.zip' 'pinned release URL'
 
     Set-Content -LiteralPath $installed -Value 'previous binary' -NoNewline

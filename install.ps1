@@ -37,20 +37,25 @@ function Install-Mash {
         }
 
         Expand-Archive -LiteralPath $download -DestinationPath (Join-Path $scratch 'unpacked')
-        $binary = Join-Path $scratch 'unpacked\mash.exe'
-        if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'The release archive contains no mash.exe.' }
+        foreach ($name in @('mash.exe', 'mash-server.exe')) {
+            $binary = Join-Path $scratch "unpacked\$name"
+            if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "The release archive contains no $name." }
+        }
         $Directory = [IO.Path]::GetFullPath($Directory)
         New-Item -ItemType Directory -Path $Directory -Force | Out-Null
-        $destination = Join-Path $Directory 'mash.exe'
-        $incoming = Join-Path $Directory ('.mash-incoming-' + [Guid]::NewGuid().ToString('N') + '.exe')
-        Copy-Item -LiteralPath $binary -Destination $incoming
-        # Stage beside the destination so replacement stays on one filesystem.
-        if (Test-Path -LiteralPath $destination) {
-            [IO.File]::Replace($incoming, $destination, [NullString]::Value)
-        } else {
-            [IO.File]::Move($incoming, $destination)
+        foreach ($name in @('mash.exe', 'mash-server.exe')) {
+            $binary = Join-Path $scratch "unpacked\$name"
+            $destination = Join-Path $Directory $name
+            $incoming = Join-Path $Directory ('.mash-incoming-' + [Guid]::NewGuid().ToString('N') + '.exe')
+            Copy-Item -LiteralPath $binary -Destination $incoming
+            # Stage beside the destination so replacement stays on one filesystem.
+            if (Test-Path -LiteralPath $destination) {
+                [IO.File]::Replace($incoming, $destination, [NullString]::Value)
+            } else {
+                [IO.File]::Move($incoming, $destination)
+            }
+            Write-Host "Installed $destination"
         }
-        Write-Host "Installed $destination"
         if ($Directory -notin ($env:PATH -split ';')) { Write-Host "Add $Directory to your user PATH, then open a new terminal." }
         Write-Host 'Next: start local Qdrant, then run mash init. Reconnect existing Mash MCP sessions after an upgrade.'
     } finally {

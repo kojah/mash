@@ -20,7 +20,7 @@ all:
             # This installer owns a PID, so a supervised API must use a different rollout.
             - [sh, -c, 'test "$(systemctl --user show mash-shared.service --property ActiveState --value)" = inactive']
           mash_install:
-            - [bash, tools/restart-dev-api.sh, /absolute/artifacts/mash, /private/server.toml, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
+            - [bash, tools/restart-dev-api.sh, /absolute/artifacts/mash-server, /private/server.toml, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
           mash_verify:
             - [bash, tools/check-dev-api.sh, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
     mash_history:

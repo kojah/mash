@@ -72,19 +72,23 @@ jobs:
       - name: Build
         env:
           MASH_BUILD_REVISION: ${{ github.sha }}
-        run: cargo +stable build --release --locked --bin mash
+        run: cargo +stable build --release --locked --bin mash --bin mash-server
       - name: Smoke
         run: |
           binary=target/release/mash
           [ -f "$binary.exe" ] && binary="$binary.exe"
           .github/scripts/deploy-smoke "$binary" "$GITHUB_SHA"
+          server=target/release/mash-server
+          [ -f "$server.exe" ] && server="$server.exe"
+          "$server" --version
+          "$server" --help
       - name: Package
         run: |
           archive="mash-${{ matrix.target }}.${{ matrix.archive }}"
           if [ "${{ matrix.archive }}" = zip ]; then
-            (cd target/release && 7z a -tzip "$GITHUB_WORKSPACE/$archive" mash.exe)
+            (cd target/release && 7z a -tzip "$GITHUB_WORKSPACE/$archive" mash.exe mash-server.exe)
           else
-            tar -C target/release -czf "$archive" mash
+            tar -C target/release -czf "$archive" mash mash-server
           fi
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

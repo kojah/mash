@@ -10,7 +10,7 @@ trap cleanup EXIT
 mkdir -p "$scratch/repository/tools" "$scratch/repository/app" "$scratch/repository/dashboard" "$scratch/bin" "$scratch/target"
 cp "$repository/tools/build-dev-linux.sh" "$scratch/repository/tools/"
 cp "$repository/Makefile" "$scratch/repository/"
-for helper in generate-history-skill test-dev-api test-systemd-api test-dev-build test-run-ansible test-controller-environment test-ansible test-upgrade-local-index; do
+for helper in generate-history-skill test-dev-api test-systemd-api test-dev-build test-install-shell test-run-ansible test-controller-environment test-ansible test-upgrade-local-index; do
     printf '#!/usr/bin/env bash\nexit 0\n' > "$scratch/repository/tools/$helper.sh"
 done
 printf 'printf "controller\\n" >> "$TEST_BUILD_CALLS"\n' > "$scratch/repository/tools/controller-environment.sh"

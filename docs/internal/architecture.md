@@ -7,6 +7,13 @@ The core owns indexing, search, chat listing, view, status, forgetting, silver e
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
 The watcher also uses typed core requests.
 
+The shared HTTP service starts through `mash-server` and `app/server_cli.rs`.
+The `mash` executable owns local commands, stdio MCP and `mash dash`; it has no
+`serve` subcommand. Both executables use the same library and release version,
+including the shared storage and search implementation. This separates process
+installation and arguments; it does not split the dependency graph into separately
+compiled server and client libraries.
+
 `app/core/models.rs` defines the in-memory requests and serialized responses.
 Operation handlers live in `app/core/indexing.rs`, `search.rs`, `chats.rs`, `inspection.rs`
 and `maintenance.rs`; each returns its concrete result type. The façade resolves

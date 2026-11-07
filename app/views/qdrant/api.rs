@@ -463,7 +463,7 @@ fn schema_fields_mode(
     }
     if check_memory && !memory_matches(info, dimensions, memory) {
         return Err(AppError::configuration(
-            "existing Qdrant collection has a different memory policy; use mash serve --activate-memory to change placement without reindexing",
+            "existing Qdrant collection has a different memory policy; use mash-server --activate-memory to change placement without reindexing",
         ));
     }
     Ok(fields)

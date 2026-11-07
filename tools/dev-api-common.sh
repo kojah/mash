@@ -37,8 +37,8 @@ verify_api_process() {
     actual=$(sha256sum "/proc/$pid/exe")
     [[ "${actual%% *}" == "$expected" ]] || { echo 'Running API binary does not match the release record.' >&2; return 1; }
     kill -0 "$pid" 2>/dev/null || { echo 'Deployment cannot access the recorded API process.' >&2; return 1; }
-    tr '\0' '\n' < "/proc/$pid/cmdline" | grep -Fxq serve || {
-        echo 'Recorded API process is not a serve invocation.' >&2
+    tr '\0' '\n' < "/proc/$pid/cmdline" | grep -Fxq -- --server-config || {
+        echo 'Recorded API process is not a server invocation.' >&2
         return 1
     }
 }

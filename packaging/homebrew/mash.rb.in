@@ -23,7 +23,7 @@ class Mash < Formula
   end
 
   def install
-    bin.install "mash"
+    bin.install "mash", "mash-server"
   end
 
   def caveats

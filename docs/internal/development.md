@@ -123,10 +123,11 @@ For an instrumented coverage report, install
 and the toolchain's `llvm-tools-preview` component. Set the model directory and
 the Qdrant test URL above to installed models and disposable services.
 
-Also set `MASH_TEST_SERVER_BINARY` to the instrumented `mash` binary produced
+Also set `MASH_TEST_SERVER_BINARY` to the instrumented `mash-server` binary produced
 in the coverage target's `debug` directory. With an explicit `CARGO_TARGET_DIR`,
-use `$CARGO_TARGET_DIR/llvm-cov-target/debug/mash`; without it, the default is
-`target/llvm-cov-target/debug/mash`. An explicit `CARGO_LLVM_COV_TARGET_DIR` instead
+use `$CARGO_TARGET_DIR/llvm-cov-target/debug/mash-server`; without it, the default is
+`target/llvm-cov-target/debug/mash-server`. Set `MASH_TEST_CLI_BINARY` to the `mash`
+executable beside it for the MCP deployment probe. An explicit `CARGO_LLVM_COV_TARGET_DIR` instead
 uses that directory directly, as defined by [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/src/cargo.rs#L63).
 The suite builds the binary before running tests, so it need not exist before
 the coverage command starts. Restart and snapshot-restore contracts

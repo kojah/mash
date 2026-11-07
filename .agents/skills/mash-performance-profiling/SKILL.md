@@ -92,7 +92,7 @@ MASH_CONSOLE=1 /home/james/scratch/achi-targets/console/debug/mash mcp
 tokio-console http://127.0.0.1:6669
 ```
 
-Use the relevant existing Mash command (`mcp`, `serve`, or `index --watch`)
+Use the relevant executable (`mash mcp`, `mash-server`, or `mash index --watch`)
 and its usual configuration. The listener is fixed to loopback port 6669;
 profile one process at a time, or use an SSH tunnel to inspect a remote host.
 Ordinary builds omit the console dependency and listener. Instrumented builds

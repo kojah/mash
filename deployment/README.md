@@ -4,6 +4,17 @@ Ansible owns fleet selection, platform builds, API-first installation, required
 schema migrations and readiness checks. The standalone Rust RMCP probe checks
 the installed history MCP and performs explicitly requested refreshes.
 
+Builds produce separate `mash` and `mash-server` executables at the same version.
+Install `mash-server` on API hosts and use
+`mash-server --server-config /absolute/path/to/server.toml` in the service unit.
+History nodes and MCP launchers continue to use `mash`; `mash dash` is unchanged.
+Do not point both roles at the same installed executable. Existing units using
+`mash serve` must be updated during their next planned deployment. Merely
+installing the new CLI does not replace or restart a running server.
+The macOS builder copies its CLI to `OUTPUT` and its server to `OUTPUT-server`,
+each with its own checksum and revision file; Linux keeps both in the release
+target directory. Release archives and public installers include both binaries.
+
 Canonical runners select and synchronize the locked controller runtime in
 `/home/james/scratch/mash-artifacts/ansible-venv`. Set `UV_PROJECT_ENVIRONMENT`
 to override that private location; no manual setup is required. Copy
@@ -23,7 +34,7 @@ bash tools/fleet.sh replay-views shared-api
 
 `replay-views` invokes the API target's explicit `mash_replay_views` commands,
 between its existing authenticated `mash_verify` checks. Configure that hook to
-restart the owning service with the installed binary's `serve --replay-views`,
+restart the owning service with the installed `mash-server --replay-views`,
 wait for replay and certification, and restore normal startup settings. This
 operation builds and installs nothing, does not upgrade silver, and accepts only
 API targets. Replay re-embeds from shared silver and may keep the API unavailable

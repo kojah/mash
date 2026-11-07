@@ -5,8 +5,10 @@
 mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`, `view`,
-`status`, `forget`, `export`, `import`, `models install`, `mcp`, `serve`, and `dash`
+`status`, `forget`, `export`, `import`, `models install`, `mcp`, and `dash`
 (the local read-only web dashboard).
+The shared HTTP service has its own `mash-server` executable; keep its process
+arguments separate from the local CLI and share the typed server implementation.
 `init` is first-run setup: it writes configuration for detected histories, registers
 Mash with agent CLIs through their own commands, and indexes; it never downloads models.
 
@@ -16,7 +18,7 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   each node's shared silver database on the server. Local views live in Qdrant;
   neither views store may be certified against history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-views --full`,
-  `serve --replay-views`).
+  `mash-server --replay-views`).
 - Model agent history directly as chats, messages, turns, and branch ancestry.
   Turns are derived from silver after every write, never archived or published.
   Keep message identity independent of display order and use stable message IDs
@@ -253,7 +255,7 @@ fail. Give benchmarks their own backend instance and clean up only their owned
 groups/collections after their process handles have completed.
 The ignored `shared_backend_persisted_restart_contract` owns and restarts fresh
 Qdrant containers, plus real API processes. Preload the
-same image used by CI and set `MASH_TEST_SERVER_BINARY` to the built mash binary;
+same image used by CI and set `MASH_TEST_SERVER_BINARY` to the built mash-server binary;
 set `MASH_TEST_DOCKER_SG=1` on Xenia for Docker group access. It rediscovers host
 ports after database restarts and never restarts the externally supplied test
 services. CI also removes fixtures with its exact run-owner label if the test

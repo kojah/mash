@@ -29,9 +29,13 @@ curl -fsSL "$base/SHA256SUMS" -o "$scratch/SHA256SUMS"
   if command -v sha256sum > /dev/null; then sha256sum -c expected; else shasum -a 256 -c expected; fi
 ) > /dev/null
 tar -xzf "$scratch/$archive" -C "$scratch"
+[ -f "$scratch/mash" ] && [ -f "$scratch/mash-server" ] || {
+  echo 'Release archive must contain mash and mash-server.' >&2; exit 1;
+}
 mkdir -p "$directory"
 install -m 0755 "$scratch/mash" "$directory/mash"
-echo "Installed $directory/mash"
+install -m 0755 "$scratch/mash-server" "$directory/mash-server"
+echo "Installed $directory/mash and $directory/mash-server"
 case ":$PATH:" in
   *":$directory:"*) ;;
   *) echo "Add $directory to your PATH." ;;

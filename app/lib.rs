@@ -38,6 +38,7 @@ mod progress;
 mod redaction;
 mod runtime;
 mod scratch;
+mod server_cli;
 mod shared;
 mod storage;
 #[cfg(test)]
@@ -80,6 +81,29 @@ async fn blocking<T: Send + 'static>(
 pub fn main_entry() -> i32 {
     observability::initialize();
     execute(std::env::args_os(), &mut io::stdout(), &mut io::stderr())
+}
+
+/// Runs the standalone shared-index HTTP server with process arguments.
+#[must_use]
+pub fn server_main_entry() -> i32 {
+    observability::initialize();
+    match server_cli::run(std::env::args_os()) {
+        Ok(Some(response)) => write_json(&mut io::stdout(), &response).map_or_else(
+            |error| {
+                if error.code == BROKEN_PIPE {
+                    0
+                } else {
+                    error.code
+                }
+            },
+            |()| 0,
+        ),
+        Ok(None) => 0,
+        Err(error) => {
+            let _ = write_json(&mut io::stderr(), &error);
+            error.code
+        }
+    }
 }
 
 fn execute<I, T>(args: I, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32

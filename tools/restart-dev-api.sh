@@ -73,7 +73,7 @@ start_api() {
     [[ ${3:-} == --activate-query ]] && flags+=(--activate-query)
     [[ ${4:-} == --replay-views ]] && flags+=(--replay-views)
     # The long-lived server must not inherit the short-lived rollout lock.
-    nohup setsid "$1" serve --server-config "${5:-$config}" "${flags[@]}" {deploy_lock}>&- </dev/null >"$2" 2>&1 &
+    nohup setsid "$1" --server-config "${5:-$config}" "${flags[@]}" {deploy_lock}>&- </dev/null >"$2" 2>&1 &
     new_pid=$!
 }
 

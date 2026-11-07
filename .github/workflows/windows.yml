@@ -54,7 +54,7 @@ jobs:
       # nearly halves a cold run; release.yml builds the release binary on
       # Windows before publishing.
       - name: Build
-        run: cargo +stable build --locked --bin mash
+        run: cargo +stable build --locked --bin mash --bin mash-server
       - name: Start disposable native Qdrant
         shell: pwsh
         run: |
@@ -153,7 +153,7 @@ jobs:
       - name: Build
         env:
           CARGO_PROFILE_DEV_DEBUG: "0"
-        run: cargo +stable build --locked --bin mash
+        run: cargo +stable build --locked --bin mash --bin mash-server
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: windows-export

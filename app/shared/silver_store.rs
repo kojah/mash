@@ -85,7 +85,7 @@ fn own(root: &Path) -> Result<std::fs::File, AppError> {
     match lock.try_lock() {
         Ok(()) => Ok(lock),
         Err(std::fs::TryLockError::WouldBlock) => Err(AppError::configuration(
-            "another mash serve is already using this silver_dir",
+            "another mash-server is already using this silver_dir",
         )),
         Err(std::fs::TryLockError::Error(error)) => Err(AppError::io(error)),
     }

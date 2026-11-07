@@ -357,7 +357,7 @@ inference threads through the same propagation helper.
 For example, `MASH_TRACE=1 mash search cbioportal --local 2>trace.jsonl`
 exposes model loading, embedding, lexical retrieval, vector loading/scoring and
 reranking. Use `MASH_TRACE=1 mash mcp` for repeated requests or
-`MASH_TRACE=1 mash serve --server-config server.toml` on the shared server.
+`MASH_TRACE=1 mash-server --server-config server.toml` on the shared server.
 Spans describe inclusive lifetimes, not CPU time; nested and concurrent timings
 must not be added together. Request IDs are
 local to a process, paired with process IDs. With tracing enabled, each shared

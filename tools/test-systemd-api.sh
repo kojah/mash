@@ -34,7 +34,7 @@ case $2 in
         python3 - "$root" <<'PY'
 import pathlib, subprocess, sys
 root = pathlib.Path(sys.argv[1])
-p = subprocess.Popen([str(root / 'mash'), 'serve'], stdin=subprocess.DEVNULL,
+p = subprocess.Popen([str(root / 'mash'), '--server-config', 'fixture.toml'], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      close_fds=True, start_new_session=True)
 (root / 'pid').write_text(str(p.pid))

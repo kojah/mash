@@ -318,7 +318,7 @@ silver lives on the API host under `silver_dir` (absolute path; default
 `shared-silver` in the platform data directory), one SQLite database per
 configured node at `<silver_dir>/<group_id>/<node_id>.sqlite3`, using the same
 silver schema as local indexes. Back it up: Qdrant can be rebuilt from it, but
-not the reverse. One `mash serve` process owns a `silver_dir`; a second one using
+not the reverse. One `mash-server` process owns a `silver_dir`; a second one using
 the same directory fails at startup. Filtered HNSW vector retrieval is the default, with
 `ef_runtime = 200`; exact vector retrieval remains an explicit option.
 
@@ -351,7 +351,7 @@ ef_runtime = 200
 ```
 
 The server's `views.query.vector_search` controls retrieval from the existing
-dense index. Defaults are persisted per group. Use `mash serve --server-config
+dense index. Defaults are persisted per group. Use `mash-server --server-config
 server.toml --activate-query` to intentionally change existing defaults; conflicting
 startup settings otherwise fail. Running API processes read the selected policy
 on subsequent hybrid searches. This does not rebuild vectors, change views build
@@ -375,7 +375,7 @@ docker run --name mash-qdrant --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:63
 export MASH_QDRANT_URL='http://127.0.0.1:6333/'
 export MASH_QDRANT_GRPC_URL='http://127.0.0.1:6334/'
 # Set MASH_XENIA_TOKEN to the node's existing API token.
-mash serve --server-config /absolute/path/to/qdrant-server.toml
+mash-server --server-config /absolute/path/to/qdrant-server.toml
 ```
 
 Shared views settings are persisted per group. Startup with conflicting build/model
@@ -415,7 +415,7 @@ resource use.
 Changing a profile on an existing group requires explicit activation:
 
 ```bash
-mash serve --server-config /absolute/path/to/qdrant-server.toml --activate-memory
+mash-server --server-config /absolute/path/to/qdrant-server.toml --activate-memory
 ```
 
 Mash validates the existing vector geometry, graph settings and payload schema

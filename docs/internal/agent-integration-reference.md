@@ -158,7 +158,7 @@ The manifests/catalogues follow the official
 ## Windows executable replacement
 
 On Windows, long-lived
-commands (`mash mcp`, `index --watch`, `serve`) move their running executable
+commands (`mash mcp`, `mash index --watch`, `mash-server`) move their running executable
 aside (`.mash-running-<pid>.exe`) and leave a copy at the installed path, so
 installers can replace `mash.exe` while an agent is connected; reconnect
 afterwards. Between those two renames the installed path is briefly absent;

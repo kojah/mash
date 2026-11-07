@@ -177,7 +177,7 @@ fn percent_decode(text: &str) -> Option<String> {
 }
 
 /// Windows cannot replace a running `.exe`, so a long-lived command (MCP,
-/// `index --watch`, `serve`) would make every upgrade of the installed file
+/// `index --watch`, `mash-server`) would make every upgrade of the installed file
 /// fail. It may rename itself, though: the process moves its executable aside
 /// (`.mash-running-<pid>.exe`, removed by a later start once no longer
 /// running) and restores an ordinary copy at the installed path for installers

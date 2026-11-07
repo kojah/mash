@@ -8,7 +8,6 @@ use clap::{Parser, Subcommand};
 use serde::Serialize;
 
 use crate::AppError;
-use crate::core::default_models_path;
 use crate::core::{self, IndexRequest, Operation, Paths, Request};
 
 mod wizard;
@@ -235,23 +234,6 @@ enum Command {
         /// Address to listen on; loopback by default.
         #[arg(long, value_name = "ADDRESS", default_value = "127.0.0.1:8790")]
         listen: std::net::SocketAddr,
-    },
-    /// Serve the shared-index HTTP API using a server configuration file.
-    Serve {
-        #[arg(long, value_name = "PATH")]
-        server_config: PathBuf,
-        /// Explicitly replace persisted shared group views settings from this TOML.
-        #[arg(long)]
-        activate_views: bool,
-        /// Explicitly replace persisted shared group query defaults without indexing.
-        #[arg(long)]
-        activate_query: bool,
-        /// Explicitly apply the configured durable/cached/cold Qdrant placement.
-        #[arg(long)]
-        activate_memory: bool,
-        /// Rebuild all shared views from shared silver before serving.
-        #[arg(long)]
-        replay_views: bool,
     },
 }
 
@@ -528,7 +510,7 @@ impl Cli {
             Command::Models {
                 command: ModelsCommand::Install,
             } => Operation::ModelsInstall,
-            Command::Mcp | Command::Serve { .. } | Command::Dash { .. } => {
+            Command::Mcp | Command::Dash { .. } => {
                 return Err(AppError::usage(
                     "server commands must run as process commands",
                 ));
@@ -569,44 +551,16 @@ where
     };
     let long_lived = matches!(
         cli.command,
-        Command::Mcp
-            | Command::Serve { .. }
-            | Command::Dash { .. }
-            | Command::Index { watch: true, .. }
+        Command::Mcp | Command::Dash { .. } | Command::Index { watch: true, .. }
     );
     if long_lived {
         crate::platform::release_installed_executable();
     }
-    let mut builder = if matches!(cli.command, Command::Serve { .. }) {
-        tokio::runtime::Builder::new_multi_thread()
-    } else {
-        tokio::runtime::Builder::new_current_thread()
-    };
-    let runtime = builder
+    let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|_| AppError::internal("failed to start async runtime"))?;
-    if let Command::Serve {
-        server_config,
-        activate_views,
-        activate_query,
-        activate_memory,
-        replay_views,
-    } = cli.command
-    {
-        let models = cli.models_dir.unwrap_or_else(default_models_path);
-        runtime.block_on(crate::shared::server::run(
-            &server_config,
-            crate::shared::server::Activation {
-                views: activate_views,
-                query: activate_query,
-                memory: activate_memory,
-            },
-            &models,
-            replay_views,
-        ))?;
-        Ok(Response::McpStopped)
-    } else if let Command::Dash { listen } = cli.command {
+    if let Command::Dash { listen } = cli.command {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
@@ -1002,8 +956,7 @@ mod tests {
                 "import",
                 "models",
                 "mcp",
-                "dash",
-                "serve"
+                "dash"
             ]
         );
     }

@@ -9,7 +9,7 @@
             "hash": "@SHA256:mash-x86_64-pc-windows-msvc.zip@"
         }
     },
-    "bin": "mash.exe",
+    "bin": ["mash.exe", "mash-server.exe"],
     "notes": "Set Mash up for the agent histories on this machine: mash init",
     "checkver": "github",
     "autoupdate": {

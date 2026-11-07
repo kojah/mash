@@ -53,6 +53,7 @@ else
     run bash tools/test-dev-api.sh
     run bash tools/test-systemd-api.sh
     run bash tools/test-dev-build.sh
+    run bash tools/test-install-shell.sh
     run bash tools/test-run-ansible.sh
     run bash tools/test-controller-environment.sh
     run bash tools/test-ansible.sh
@@ -72,5 +73,5 @@ fi
 # embeds the current revision; gate reuse never means reusing a differently stamped binary.
 # The release embeds the dashboard front end (see build.rs), so build it first.
 run bash -c 'cd dashboard && pnpm install --frozen-lockfile && pnpm run build'
-run cargo build --release --locked --bin mash --bin mash-dev-probe
+run cargo build --release --locked --bin mash --bin mash-server --bin mash-dev-probe
 [[ $(validation_key) == "$key" ]] || { echo 'Source changed during build; do not install this artifact.' >&2; exit 1; }

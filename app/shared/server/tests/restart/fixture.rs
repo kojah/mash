@@ -297,12 +297,12 @@ impl Api {
         std::fs::write(&path, config).unwrap();
         let mut command = std::process::Command::new(
             std::env::var_os("MASH_TEST_SERVER_BINARY")
-                .expect("set MASH_TEST_SERVER_BINARY to the built mash binary"),
+                .expect("set MASH_TEST_SERVER_BINARY to the built mash-server binary"),
         );
         if let Some(models) = replay_models {
             command.arg("--models-dir").arg(models);
         }
-        command.arg("serve").arg("--server-config").arg(path);
+        command.arg("--server-config").arg(path);
         if replay_models.is_some() {
             command.arg("--replay-views");
         }

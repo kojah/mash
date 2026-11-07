@@ -63,7 +63,8 @@ coverage:
 	@test -n "$${MASH_TEST_MODELS_DIR}" || (echo 'Set MASH_TEST_MODELS_DIR to explicitly installed test models'; exit 1)
 	@test -n "$${MASH_TEST_QDRANT_URL}" || (echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+'; exit 1)
 	@test -n "$${MASH_TEST_QDRANT_GRPC_URL}" || (echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance'; exit 1)
-	@test -n "$${MASH_TEST_SERVER_BINARY}" || (echo 'Set MASH_TEST_SERVER_BINARY to the coverage-target mash binary for database restart contracts'; exit 1)
+	@test -n "$${MASH_TEST_SERVER_BINARY}" || (echo 'Set MASH_TEST_SERVER_BINARY to the coverage-target mash-server binary for database restart contracts'; exit 1)
+	@test -n "$${MASH_TEST_CLI_BINARY}" || (echo 'Set MASH_TEST_CLI_BINARY to the coverage-target mash binary for MCP probe contracts'; exit 1)
 	cargo llvm-cov clean --workspace
 	cargo llvm-cov nextest --no-report --run-ignored all -j 2 -E 'not test(benchmark)' $(CARGO_ARGS)
 	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/(tests|benchmarks)(/|\.rs$$)|/test_support\.rs$$|/semantic/evaluation(/|\.rs$$)|/semantic/embeddings/cpu/sensitivity\.rs$$|/storage/indexing/memory\.rs$$' --output-path "$(COVERAGE_OUTPUT)"

@@ -58,9 +58,9 @@ impl Server {
             );
         }
         std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
-        let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
+        let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash-server"));
         command
-            .args(["serve", "--server-config", path.to_str().unwrap()])
+            .args(["--server-config", path.to_str().unwrap()])
             .stdin(Stdio::piped())
             .env("MASH_TEST_EXIT_WITH_STDIN", "1")
             .stdout(Stdio::null())
@@ -80,10 +80,12 @@ impl Server {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut line = String::new();
-            std::io::BufReader::new(stderr)
-                .read_line(&mut line)
-                .unwrap();
+            let mut stderr = std::io::BufReader::new(stderr);
+            stderr.read_line(&mut line).unwrap();
             let _ = sender.send(line);
+            // Keep diagnostics open for the process lifetime, including startup
+            // errors after the listener address and recovery progress messages.
+            std::io::copy(&mut stderr, &mut std::io::stderr()).unwrap();
         });
         let line = receiver
             .recv_timeout(std::time::Duration::from_secs(45))
@@ -95,6 +97,29 @@ impl Server {
                 .as_str()
                 .unwrap_or_else(|| panic!("server startup failed: {line}"))
         );
+        // A bound socket is announced before durable startup finishes. Wait for
+        // an authenticated response before a restart test can kill this process.
+        let url = server.url.clone();
+        let credential = token(nodes[0]);
+        std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    reqwest::Client::new()
+                        .get(format!("{url}/v1/freshness"))
+                        .bearer_auth(credential)
+                        .timeout(std::time::Duration::from_secs(10))
+                        .send()
+                        .await
+                        .unwrap()
+                        .error_for_status()
+                        .unwrap();
+                });
+        })
+        .join()
+        .unwrap();
         server
     }
 }
@@ -109,9 +134,9 @@ fn assert_startup_rejected(config: &[u8], tokens: &[(&str, &str)], message: &str
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("server.toml");
     std::fs::write(&path, config).unwrap();
-    let mut command = assert_cmd::Command::cargo_bin("mash").unwrap();
+    let mut command = assert_cmd::Command::cargo_bin("mash-server").unwrap();
     command
-        .args(["serve", "--server-config", path.to_str().unwrap()])
+        .args(["--server-config", path.to_str().unwrap()])
         .env_remove("MASH_STARTUP_TOKEN_A")
         .env_remove("MASH_STARTUP_TOKEN_B")
         .timeout(super::HANG_GUARD);
@@ -197,9 +222,9 @@ async fn qdrant_server_views_activation_rejects_conflicting_startup_and_survives
     );
     let path = root.path().join("server.toml");
     let serve = || {
-        assert_cmd::Command::cargo_bin("mash")
+        assert_cmd::Command::cargo_bin("mash-server")
             .unwrap()
-            .args(["serve", "--server-config", path.to_str().unwrap()])
+            .args(["--server-config", path.to_str().unwrap()])
             .env("MASH_TEST_TOKEN_0", token("node"))
             .timeout(super::HANG_GUARD)
             .output()

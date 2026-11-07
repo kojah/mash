@@ -14,10 +14,18 @@ cleanup() {
     if [[ -n "$old_pid" ]]; then kill -TERM "$old_pid" 2>/dev/null || true; wait "$old_pid" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
-cat > "$scratch/serve" <<'SERVER'
-printf '%s\n' "$@" > "$TEST_API_ARGUMENTS"
-while :; do sleep 0.1; done
+cat > "$scratch/server.rs" <<'SERVER'
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--version") {
+        println!("{{\"version\":\"test\",\"silver_schema\":51}}");
+        return;
+    }
+    std::fs::write(std::env::var("TEST_API_ARGUMENTS").unwrap(), args.join("\n") + "\n").unwrap();
+    loop { std::thread::sleep(std::time::Duration::from_millis(100)); }
+}
 SERVER
+rustc "$scratch/server.rs" -o "$scratch/server"
 cat > "$scratch/bin/curl" <<'CURL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -44,7 +52,7 @@ export TEST_API_ARGUMENTS="$scratch/arguments"
 export PATH="$scratch/bin:$PATH"
 cd "$scratch"
 printf '# test-only server configuration\n' > fixture.toml
-bash serve --server-config fixture.toml &
+"$scratch/server" --server-config fixture.toml &
 old_pid=$!
 for ((attempt=0; attempt<50; attempt++)); do
     if [[ -e "/proc/$old_pid/exe" ]]; then break; fi
@@ -72,7 +80,7 @@ bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POIN
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 export TEST_API_ALWAYS_READY=1
 previous_pid=$new_pid
-bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml "$scratch/environment" \
+bash "$repository/tools/restart-dev-api.sh" "$scratch/server" fixture.toml "$scratch/environment" \
     "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --activate-query --replay-views >/dev/null
 grep -qxF -- --activate-query "$TEST_API_ARGUMENTS"
 grep -qxF -- --replay-views "$TEST_API_ARGUMENTS"
@@ -86,12 +94,12 @@ bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POIN
 # silver aside so its node republishes, and keeps compatible silver in place.
 # An identical healthy rollout keeps the process; configuration changes restart it.
 previous_pid=$(jq -r .pid "$TEST_API_POINTER")
-report=$(bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml \
+report=$(bash "$repository/tools/restart-dev-api.sh" "$scratch/server" fixture.toml \
     "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs")
 [[ $(jq -r .unchanged <<<"$report") == true ]]
 [[ $(jq -r .pid "$TEST_API_POINTER") == "$previous_pid" ]]
 printf '# changed configuration\n' >> fixture.toml
-bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml \
+bash "$repository/tools/restart-dev-api.sh" "$scratch/server" fixture.toml \
     "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 [[ $(jq -r .pid "$TEST_API_POINTER") != "$previous_pid" ]]
 silver="$scratch/silver"

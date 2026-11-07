@@ -285,7 +285,7 @@ fn released_server_no_longer_exposes_legacy_mutation_routes() {
     shared_server::cleanup_group(&group);
 }
 
-/// Start `mash serve` for one node, optionally aborting at a crash point.
+/// Start `mash-server` for one node, optionally aborting at a crash point.
 fn spawn_crash_server(
     root: &Path,
     group: &str,
@@ -305,9 +305,9 @@ fn spawn_crash_server(
         };
         std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
     }
-    let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
+    let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash-server"));
     command
-        .args(["serve", "--server-config", path.to_str().unwrap()])
+        .args(["--server-config", path.to_str().unwrap()])
         .stdin(std::process::Stdio::piped())
         .env("MASH_TEST_EXIT_WITH_STDIN", "1")
         .stdout(std::process::Stdio::null())

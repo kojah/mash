@@ -309,9 +309,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires MASH_TEST_SERVER_BINARY with the current build and contract"]
+    #[ignore = "requires MASH_TEST_CLI_BINARY with the current build and contract"]
     async fn probe_checks_without_ingestion_and_refreshes_only_when_requested() {
-        let binary = std::env::var_os("MASH_TEST_SERVER_BINARY").expect("built Mash binary");
+        let binary = std::env::var_os("MASH_TEST_CLI_BINARY").expect("built Mash CLI binary");
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         let sources = root.join("history");

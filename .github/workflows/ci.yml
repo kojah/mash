@@ -83,7 +83,7 @@ jobs:
           fallback: none
       - run: cargo fmt --check
       - name: Build CLI for acceptance tests
-        run: cargo build --locked --bin mash
+        run: cargo build --locked --bin mash --bin mash-server
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |
@@ -179,13 +179,13 @@ jobs:
         env:
           MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart
         run: |
-          cargo build --locked --bin mash
-          MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
+          cargo build --locked --bin mash --bin mash-server
+          MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash-server" \
             cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
               -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_views_and_revision_guards) or test(shared_views_lost_without_backup_is_replayed_from_shared_silver)'
       - name: Verify direct deployment probe and explicit refresh
         run: |
-          MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
+          MASH_TEST_CLI_BINARY="$PWD/target/debug/mash" \
             cargo nextest run -p mash-dev --profile ci --run-ignored only --no-tests fail \
               -E 'test(probe_checks_without_ingestion_and_refreshes_only_when_requested)'
       - name: Clean owned restart fixtures after test failure or timeout

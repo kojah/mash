@@ -1,6 +1,56 @@
 use super::*;
 
 #[test]
+fn standalone_server_has_separate_arguments_and_side_effect_free_information() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing.toml");
+    for flag in ["--help", "-h", "--version", "-V"] {
+        let output = Command::cargo_bin("mash-server")
+            .unwrap()
+            .args(["--server-config", missing.to_str().unwrap(), flag])
+            .env_remove("MASH_TRACE")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(output.stderr, [] as [u8; 0]);
+        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+        if flag == "--help" || flag == "-h" {
+            let help = response["help"].as_str().unwrap();
+            assert!(help.contains("mash-server"));
+            assert!(help.contains("--server-config"));
+            assert!(!help.contains("--db"));
+            assert!(!help.contains("--config "));
+        } else {
+            assert_eq!(response["version"], env!("CARGO_PKG_VERSION"));
+            assert!(response["silver_schema"].as_i64().unwrap() > 0);
+        }
+    }
+    for args in [
+        vec![],
+        vec!["serve"],
+        vec!["mcp"],
+        vec!["dash"],
+        vec!["--db", "somewhere"],
+    ] {
+        let output = Command::cargo_bin("mash-server")
+            .unwrap()
+            .args(args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(super::error_kind(&output), "usage");
+    }
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args(["serve", "--help"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(super::error_kind(&output), "usage");
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn retired_worker_entry_points_are_usage_errors() {
     for args in [
         vec!["search", "needle", "--no-worker"],
@@ -21,14 +71,20 @@ fn retired_worker_entry_points_are_usage_errors() {
 
 #[test]
 fn built_in_views_flags_replace_gold_flags_without_aliases() {
-    for (command, current, retired) in [
-        ("index", "--rebuild-local-views", "--rebuild-local-gold"),
-        ("serve", "--replay-views", "--replay-gold"),
-        ("serve", "--activate-views", "--activate-gold"),
+    for (binary, prefix, current, retired) in [
+        (
+            "mash",
+            vec!["index"],
+            "--rebuild-local-views",
+            "--rebuild-local-gold",
+        ),
+        ("mash-server", vec![], "--replay-views", "--replay-gold"),
+        ("mash-server", vec![], "--activate-views", "--activate-gold"),
     ] {
-        let output = Command::cargo_bin("mash")
+        let output = Command::cargo_bin(binary)
             .unwrap()
-            .args([command, "--help"])
+            .args(&prefix)
+            .arg("--help")
             .output()
             .unwrap();
         assert!(output.status.success());
@@ -36,9 +92,10 @@ fn built_in_views_flags_replace_gold_flags_without_aliases() {
         let help = help["help"].as_str().unwrap();
         assert!(help.contains(current), "{help}");
         assert!(!help.contains(retired), "{help}");
-        let output = Command::cargo_bin("mash")
+        let output = Command::cargo_bin(binary)
             .unwrap()
-            .args([command, retired])
+            .args(&prefix)
+            .arg(retired)
             .output()
             .unwrap();
         assert!(!output.status.success());
@@ -103,7 +160,6 @@ fn informational_flags_succeed_without_initializing_application_resources() {
         vec!["search", "--help"],
         vec!["index", "--help"],
         vec!["mcp", "--help"],
-        vec!["serve", "--help"],
         vec!["models", "install", "--help"],
         vec!["--version"],
         vec!["-V"],
@@ -171,16 +227,11 @@ fn removed_commands_are_rejected() {
             .failure();
     }
     for option in ["--stage-views", "--discard-staged-views"] {
-        let output = Command::cargo_bin("mash")
-            .expect("mash binary")
-            .args([
-                "serve",
-                "--server-config",
-                "nonexistent-server.toml",
-                option,
-            ])
+        let output = Command::cargo_bin("mash-server")
+            .expect("mash-server binary")
+            .args(["--server-config", "nonexistent-server.toml", option])
             .output()
-            .expect("mash serve");
+            .expect("mash-server");
         assert!(!output.status.success());
         assert_eq!(super::error_kind(&output), "usage");
     }

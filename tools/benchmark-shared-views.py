@@ -4,6 +4,7 @@
 Requires an otherwise empty disposable loopback Qdrant. Uses installed local
 models, never provider files. Private captures must remain outside Git.
 Timings include the HTTP API; this is not a fleet or semantic-quality evaluation.
+The --binary CLI must have a matching mash-server executable beside it.
 """
 
 import argparse
@@ -73,7 +74,7 @@ def backend_storage(url, root):
 class Server:
     def __init__(self, binary, config, output, number, activate):
         self.process = subprocess.Popen(
-            [str(binary), "serve", "--server-config", str(config)]
+            [str(binary.with_name("mash-server")), "--server-config", str(config)]
             + (["--activate-views"] if activate else []),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,

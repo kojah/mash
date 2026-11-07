@@ -35,6 +35,11 @@ name = "mash"
 path = "app/main.rs"
 test = false
 
+[[bin]]
+name = "mash-server"
+path = "app/server_main.rs"
+test = false
+
 [[test]]
 name = "cli_contract"
 path = "app/tests/cli_contract.rs"
