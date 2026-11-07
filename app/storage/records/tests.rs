@@ -17,6 +17,13 @@ fn database() -> (tempfile::TempDir, Storage) {
         ('yes','chat',1,'user','yes'),
         ('again','chat',2,'user','Still choose Qdrant.'),
         ('other-message','other',0,'user','another project');").unwrap();
+    storage
+        .connection
+        .execute(
+            "UPDATE chats SET project=?1 WHERE id='chat'",
+            [directory.path().join("project").to_str().unwrap()],
+        )
+        .unwrap();
     (directory, storage)
 }
 
@@ -1013,11 +1020,11 @@ fn native_records_shared_forget_cannot_be_reversed_by_an_older_snapshot() {
 #[test]
 fn native_records_shared_projection_excludes_local_scopes_and_owner_receipts() {
     use crate::records::transfer::Row;
-    let (_directory, mut source) = database();
+    let (directory, mut source) = database();
     let mut request = create_request("local", decision());
     if let Change::Create { scope, .. } = &mut request.change {
         *scope = Scope::LocalProject {
-            path: "/project".into(),
+            path: directory.path().join("project").to_str().unwrap().into(),
         };
     }
     source.mutate_record(&request).unwrap();

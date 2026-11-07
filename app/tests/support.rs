@@ -36,6 +36,13 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
     connection
         .execute_batch(include_str!("../storage/silver_indexes.sql"))
         .unwrap();
+    for schema in [
+        include_str!("../storage/records.sql"),
+        include_str!("../storage/record_provenance.sql"),
+        include_str!("../storage/record_extractions.sql"),
+    ] {
+        connection.execute_batch(schema).unwrap();
+    }
     let version = run_json(&["--version"])["silver_schema"].as_i64().unwrap();
     connection
         .pragma_update(None, "user_version", version)

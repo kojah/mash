@@ -17,7 +17,7 @@ fn shared_rows(storage: &Storage, after: Option<i64>) -> Result<Vec<Row>, AppErr
 
 #[test]
 fn native_records_delta_does_not_decode_unselected_or_local_only_history() {
-    let (_directory, mut storage) = database();
+    let (directory, mut storage) = database();
     let old = storage
         .mutate_record(&create_request("old", decision()))
         .unwrap();
@@ -30,7 +30,7 @@ fn native_records_delta_does_not_decode_unselected_or_local_only_history() {
     let mut local = create_request("local", decision());
     if let Change::Create { scope, .. } = &mut local.change {
         *scope = Scope::LocalProject {
-            path: "/project".into(),
+            path: directory.path().join("project").to_str().unwrap().into(),
         };
     }
     let local = storage.mutate_record(&local).unwrap();
