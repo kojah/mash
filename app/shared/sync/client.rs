@@ -188,6 +188,15 @@ pub(crate) async fn upload(
     upload_with_token(config, file, token(config)?).await
 }
 
+/// Send a prepared batch without rereading or re-encoding its canonical spool.
+pub(crate) async fn upload_encoded(
+    config: &SharedConfig,
+    start: &protocol::Start,
+    encoded: &wire::EncodedBatch,
+) -> Result<protocol::Indexed, AppError> {
+    upload_encoded_with_token(config, token(config)?, start, encoded).await
+}
+
 /// Same publisher with an explicit credential, so tests do not mutate process env.
 /// Publisher sessions are reused across publications from the same process and
 /// destination. Watch and MCP publish many small batches; the handshake would
@@ -871,7 +880,7 @@ pub(crate) struct BackfillPlan {
     pub(crate) manifest_digest: String,
     pub(crate) manifest_bytes: u64,
     pub(crate) batches: Vec<PlannedBatch>,
-    pub(crate) record_events: Vec<Event>,
+    pub(crate) record_batch: Option<wire::EncodedBatch>,
 }
 
 /// What a previous attempt already completed for this baseline.
@@ -913,14 +922,23 @@ fn entry<'a>(groups: &'a mut std::collections::BTreeMap<String, Group>, id: &str
 /// Split a frozen batch into independently publishable commits: whole
 /// chats, most-recently-updated first, packed to the byte and
 /// chat targets. A chat is never split across batches.
-#[allow(
-    clippy::too_many_lines,
-    reason = "grouping, ordering, packing and manifest assembly in one pure planner"
-)]
 pub(crate) fn plan_backfill(
     start: protocol::Start,
     events: Vec<Event>,
     limits: BackfillLimits,
+) -> Result<BackfillPlan, AppError> {
+    plan_backfill_bounded(start, events, limits, wire::DEFAULT_MAX_DECODED_BYTES)
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "grouping, ordering, packing and manifest assembly in one pure planner"
+)]
+fn plan_backfill_bounded(
+    start: protocol::Start,
+    events: Vec<Event>,
+    limits: BackfillLimits,
+    record_bytes: usize,
 ) -> Result<BackfillPlan, AppError> {
     let baseline_revision = start
         .revision
@@ -970,6 +988,13 @@ pub(crate) fn plan_backfill(
             Event::Start(_) | Event::Finish => {}
         }
     }
+    // Preparation has already applied publication redaction to every event.
+    // Validate the final record transfer before admitting any chat uploads;
+    // retain compressed pieces rather than a second copy of its typed rows.
+    let record_batch = (!record_events.is_empty())
+        .then(|| wire::encode_publication(&record_events, record_bytes))
+        .transpose()?;
+    drop(record_events);
     if groups.is_empty() {
         return Err(AppError::usage(
             "a backfill batch must carry at least one chat",
@@ -1030,7 +1055,7 @@ pub(crate) fn plan_backfill(
         manifest_digest,
         manifest_bytes,
         batches,
-        record_events,
+        record_batch,
     })
 }
 
@@ -1410,7 +1435,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plan.members.len(), 1);
-        assert_eq!(plan.record_events.len(), 1);
+        let record_batch = plan.record_batch.as_ref().unwrap();
         let rows = wire::decode_publication(
             &plan.batches[0].encoded.pieces,
             wire::DEFAULT_MAX_DECODED_BYTES,
@@ -1420,8 +1445,46 @@ mod tests {
             rows.iter()
                 .all(|event| !matches!(event, Event::Batch(protocol::Batch::Records { .. })))
         );
+        let records =
+            wire::decode_publication(&record_batch.pieces, wire::DEFAULT_MAX_DECODED_BYTES)
+                .unwrap();
         assert!(
-            matches!(&plan.record_events[0], Event::Batch(protocol::Batch::Records { records }) if records.len()==1)
+            matches!(&records[0], Event::Batch(protocol::Batch::Records { records }) if records.len()==1)
+        );
+        let expected = wire::encode_publication(&records, wire::DEFAULT_MAX_DECODED_BYTES).unwrap();
+        assert_eq!(record_batch.manifest_digest, expected.manifest_digest);
+        assert_eq!(record_batch.decoded_bytes, expected.decoded_bytes);
+    }
+
+    #[test]
+    fn backfill_rejects_an_oversized_final_record_batch_during_planning() {
+        let events = || {
+            vec![
+                chat("chat", 1),
+                Event::Batch(protocol::Batch::Records {
+                    records: vec![crate::records::transfer::Row::Owner {
+                        id: "o".repeat(128),
+                    }],
+                }),
+            ]
+        };
+        let failure = plan_backfill_bounded(start(), events(), BackfillLimits::default(), 32)
+            .err()
+            .unwrap();
+        assert!(failure.error.message.contains(wire::BATCH_TOO_LARGE));
+        let first =
+            plan_backfill_bounded(start(), events(), BackfillLimits::default(), 1024).unwrap();
+        let retry =
+            plan_backfill_bounded(start(), events(), BackfillLimits::default(), 1024).unwrap();
+        assert_eq!(
+            first.record_batch.unwrap().manifest_digest,
+            retry.record_batch.unwrap().manifest_digest
+        );
+        assert!(
+            plan_backfill(start(), vec![chat("chat", 1)], BackfillLimits::default())
+                .unwrap()
+                .record_batch
+                .is_none()
         );
     }
 

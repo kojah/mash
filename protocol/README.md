@@ -641,6 +641,13 @@ contract verified by `SyncTransfer`; it does not model source changes, network
 progress, or the amount of data in the final upload. The planner regression
 verifies that recall rows remain separate from chat batches. Disposable-backend
 acceptance for the final record step remains required before feature completion.
+The planner encodes and size-checks the final record batch before sending chat
+batches, then retains its compressed pieces for the final upload. Preparation
+has already applied publication redaction to those rows. This removes a redundant
+JSON spool/reparse without adding a durable boundary or changing the record
+commit/receipt/acknowledgement order. Planner regressions check oversize rejection
+before a plan is returned, deterministic retry payloads and separation from chat
+batches. The model begins after successful preparation, so needs no new action.
 
 `docs/internal/agent-history.md` defines the agent-history domain and the relationship
 between canonical chats, messages, derived turns, publication, and replay.

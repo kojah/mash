@@ -600,32 +600,24 @@ async fn finish_record_backfill(
     plan: &super::sync::client::BackfillPlan,
     server_revision: i64,
 ) -> Result<i64, AppError> {
-    if plan.record_events.is_empty() {
+    let Some(encoded) = &plan.record_batch else {
         return Ok(server_revision);
-    }
+    };
     let revision = server_revision
         .checked_add(1)
         .ok_or_else(|| AppError::usage("publication revision exhausted"))?;
-    let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
-    write_event(
-        &mut file,
-        &Event::Start(protocol::Start {
-            views_build: plan.start.views_build.clone(),
-            source_silver: plan.start.source_silver.clone(),
-            instance: plan.start.instance.clone(),
-            revision: Some(revision),
-            base_revision: Some(server_revision),
-            snapshot: false,
-            forgets: Vec::new(),
-        }),
-        config.publication_redaction,
-    )?;
-    for event in &plan.record_events {
-        write_event(&mut file, event, config.publication_redaction)?;
-    }
-    write_event(&mut file, &Event::Finish, config.publication_redaction)?;
-    file.flush().map_err(AppError::io)?;
-    Ok(upload(config, &file).await?.revision)
+    let start = protocol::Start {
+        views_build: plan.start.views_build.clone(),
+        source_silver: plan.start.source_silver.clone(),
+        instance: plan.start.instance.clone(),
+        revision: Some(revision),
+        base_revision: Some(server_revision),
+        snapshot: false,
+        forgets: Vec::new(),
+    };
+    Ok(super::sync::client::upload_encoded(config, &start, encoded)
+        .await?
+        .revision)
 }
 
 /// Backfill identity qualified by the destination it belongs to.
