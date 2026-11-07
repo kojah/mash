@@ -1,4 +1,5 @@
 use super::*;
+mod interruption;
 
 fn user_version(path: &Path) -> i64 {
     Connection::open(path)

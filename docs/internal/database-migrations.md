@@ -100,6 +100,11 @@ necessary for every SQLite change.
 
 Before changing an active rollout, inspect installed binaries, retained backups,
 service state and recovery markers. Do not replace a partially executed recovery
-plan with an untested migration. The existing schema-62 export/import and shared
-retirement tools remain fallback procedures until supported migrations are
-implemented and validated. Track that work separately from this policy change.
+plan with an untested migration. Versions 62 through 64 upgrade in place to 65;
+the deployment checks accept this interval without retiring shared history.
+Both binaries report `silver_schema_min` and `silver_schema` for installers.
+Unsupported older schemas still require a separately verified export/import or
+retirement procedure. Process interruption tests cover both an uncommitted
+migration and termination immediately after commit; they do not establish
+power-loss durability. After candidate activation, deployment failures require
+forward recovery because the candidate may already have migrated SQLite.

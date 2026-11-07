@@ -531,6 +531,14 @@ boundaries. They introduce no new interleaving, so the model retains its origina
 version constants. The provenance migration regression checks that existing
 evidence survives with unknown attribution.
 
+`storage::tests::schema::interruption` pauses the real initializer with a SQLite
+authorization callback after earlier migration DDL has executed, then kills its
+child process. Reopening checks rollback of the schema/version, retained history
+and identities, release of writer admission, and successful upgrade retry. A
+second case kills the child after commit and checks that the upgraded schema is
+retained. These tests cover process termination, not power loss. They exercise
+the existing `Crash`/`Commit` boundaries without changing the model's semantics.
+
 Source mapping: `storage/schema.rs::initialize_silver` rejects unsupported
 versions, acquires/reuses `storage/admission.rs` ownership, rechecks the schema,
 and calls `rusqlite_migration` with an immediate transaction. The shared server
