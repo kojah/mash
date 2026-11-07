@@ -364,6 +364,7 @@ impl Storage {
         ).map_err(AppError::database)?;
         if let Some(prune) = coverage.prunable(revision) {
             transaction.execute("DELETE FROM shared_changes WHERE revision<=?2 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,prune)).map_err(AppError::database)?;
+            transaction.execute("DELETE FROM record_changes WHERE revision<=?2 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,prune)).map_err(AppError::database)?;
             transaction.execute("UPDATE shared_change_state SET floor=MAX(floor,?2) WHERE singleton=1 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,prune)).map_err(AppError::database)?;
         }
         transaction.commit().map_err(AppError::database)

@@ -619,7 +619,19 @@ the retained-header guard and checks persisted deletion after rollback.
 record upload's commit/receipt, then local acknowledgement. Losing the response
 can require replay of the same deterministic upload; it cannot permit early
 acknowledgement. The early-ack variant must violate
-`AcknowledgedIncludesRecords`. This model assumes the ordinary sync receipt
+`AcknowledgedIncludesRecords`. Local acknowledgement and record-journal pruning
+share the SQLite transaction in `Storage::acknowledge_publication`; the model's
+`LocalAck` removes its journal entry atomically. `PrunedIncludesRecords` and its
+early-prune counterexample check that chat completion alone cannot discard
+pending record changes. The Rust regressions cover wrong destinations, pending
+baselines, partial coverage, a later edit to an already captured record, and
+failure after deletion but before the transaction's final metadata update.
+Both journals use the same covered-revision bound and floor; requests older
+than that floor require a replacement snapshot. The model bounds one baseline;
+the coverage tests and `ProgressiveBackfill` cover revision holes separately.
+Protocol 4 rejects older peers before transfer admission because their protocol
+does not promise native record batches or the final backfill record step.
+This model assumes the ordinary sync receipt
 contract verified by `SyncTransfer`; it does not model source changes, network
 progress, or the amount of data in the final upload. The planner regression
 verifies that recall rows remain separate from chat batches. Disposable-backend

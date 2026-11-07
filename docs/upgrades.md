@@ -38,6 +38,11 @@ node's database. This additive upgrade preserves history, identities and existin
 chat search data; it does not require a Qdrant rebuild. Read-only commands never
 migrate a database. Restart agent connections and watchers after the upgrade.
 
+For shared indexing, upgrade the server and publishing nodes to a matching
+release. The synchronization handshake rejects older peers that cannot publish
+native records. A protocol mismatch does not require deleting or rebuilding
+valid chat search data.
+
 Earlier schemas, including schema 54, are not supported by this migration. Use
 the export/import fallback below for those versions. Do not change database
 version numbers by hand.

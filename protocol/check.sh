@@ -115,6 +115,7 @@ if $self_test; then
     check Records RecordsNoRevisionGuard SingleSuccessor
     check SharedRecords SharedRecordsLostPrior ForgottenStaysErased
     check RecallBackfill RecallBackfillEarlyAck AcknowledgedIncludesRecords
+    check RecallBackfill RecallBackfillEarlyPrune PrunedIncludesRecords
     check SilverMigration SilverMigrationNoAdmission WriterExcluded
     check SystemdCutover SystemdCutoverRollback NoLostAcknowledgements
     check SystemdCutover SystemdCutoverReceipts ReceiptsMatchHistory

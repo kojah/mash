@@ -117,7 +117,10 @@ and verify that all configured nodes have republished before declaring recovery
 complete. Do not retire only the node databases while retaining receipts that
 could acknowledge history no longer present.
 
-Current synchronization uses protocol 3 and catalog schema 1. Older unversioned
+Current synchronization uses protocol 4 and catalog schema 1. Protocol 4 requires
+native record publication, including the final record phase of backfill; older
+peers are rejected during the handshake before accepting transfers. Upgrade both
+server and publishing nodes to a matching release. Older unversioned
 catalogs are rejected untouched. Local export/import does not preserve the
 server’s transfer catalog or shared publication head and is not a complete
 shared-server backup.

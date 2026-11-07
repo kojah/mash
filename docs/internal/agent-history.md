@@ -58,5 +58,5 @@ The [migration policy](database-migrations.md) calls for shared local/server
 SQLite migrations and independent preservation of valid Qdrant data. Schema-62
 binaries do not implement migrations yet: incompatible local history still needs
 compatible export/import, and retired shared history needs republishing and a
-views rebuild. Shared synchronization requires protocol 3 and sync catalog schema
+views rebuild. Shared synchronization requires protocol 4 and sync catalog schema
 1; existing unversioned catalogs are rejected untouched.

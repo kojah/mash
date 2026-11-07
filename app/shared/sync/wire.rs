@@ -12,7 +12,9 @@ use crate::shared::protocol::{self, Event};
 use prost::Message;
 use std::io::Read;
 
-pub(crate) const PROTOCOL_VERSION: u32 = 3;
+// Version 4 requires native record batches, including the final record phase
+// of progressive backfill. Older peers must reject before accepting a transfer.
+pub(crate) const PROTOCOL_VERSION: u32 = 4;
 pub(crate) const MAX_CONTROL_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_ENVELOPE_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;

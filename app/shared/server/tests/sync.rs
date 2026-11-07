@@ -144,6 +144,47 @@ fn begin(start: &Start, encoded: &wire::EncodedBatch) -> wire::BeginPublication 
 }
 
 #[tokio::test]
+async fn websocket_rejects_pre_record_and_newer_protocols_before_transfers() {
+    let service = Service::new(false).await;
+    for version in [3, wire::PROTOCOL_VERSION + 1] {
+        let url = format!("{}/v1/sync", service.url.replacen("http://", "ws://", 1));
+        let mut request = url.into_client_request().unwrap();
+        request
+            .headers_mut()
+            .insert("authorization", format!("Bearer {FIRST}").parse().unwrap());
+        request
+            .headers_mut()
+            .insert("x-mash-group", service.first.group_id.parse().unwrap());
+        request
+            .headers_mut()
+            .insert("x-mash-node", service.first.node_id.parse().unwrap());
+        let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        let (mut sink, mut stream) = socket.split();
+        let hello = wire::ClientFrame {
+            operation_id: String::new(),
+            body: Some(wire::client_frame::Body::Hello(wire::Hello {
+                protocol_version: version,
+                database_instance: "old-node".into(),
+                zstd_publication_data: true,
+                max_decoded_bytes: wire::DEFAULT_MAX_DECODED_BYTES as u64,
+            })),
+        };
+        sink.send(Message::Binary(wire::encode_client(&hello).unwrap().into()))
+            .await
+            .unwrap();
+        let response = SocketReader::receive(&mut stream).await;
+        let Some(wire::server_frame::Body::Rejected(failure)) = response.body else {
+            panic!("incompatible peer accepted");
+        };
+        assert_eq!(failure.code, "unsupported_protocol");
+        assert_eq!(failure.commit_state, wire::CommitState::NotCommitted as i32);
+        assert!(!failure.retryable);
+        assert!(failure.recovery_action.contains("matching mash release"));
+        sink.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn websocket_requires_authentication_before_upgrade() {
     let service = Service::new(false).await;
     let url = format!("{}/v1/sync", service.url.replacen("http://", "ws://", 1));
