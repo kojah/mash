@@ -14,7 +14,7 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
 
 - Use Rusqlite as the sole SQLite library.
 - Use the common Qdrant engine and collection schema for local and shared lexical/vector search.
-- Keep one silver schema (`app/storage/silver.sql`) for local indexes and for
+- Keep one silver schema (`app/storage/silver.sql` with `app/storage/records.sql`) for local indexes and for
   each node's shared silver database on the server. Local views live in Qdrant;
   neither views store may be certified against history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-views --full`,
@@ -27,9 +27,10 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   non-agent content are outside the product boundary.
 - Prefer in-place SQLite migrations for supported older schemas, using the same
   migration definitions for local silver and each node's shared silver database.
-  Reject newer and unsupported schemas untouched. Evaluate `rusqlite_migration`
-  first, including its ownership of `user_version`; consider `refinery` only if
-  migration history and edited-migration checks justify it. Explicitly define
+  Reject newer and unsupported schemas untouched. Use `rusqlite_migration`
+  with the existing monotonic `user_version` numbering. Schema 62 is the first
+  supported upgrade baseline; reserved earlier entries do not authorize legacy
+  upgrades. Keep released migration definitions immutable. Explicitly define
   supported starting versions; do not assume schema 54 to 62 is safe.
   Coordinate with all writers and stale long-running processes; test interrupted
   upgrades, history/identity preservation and newer-schema rejection. Keep

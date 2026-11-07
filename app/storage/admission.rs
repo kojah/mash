@@ -1,19 +1,55 @@
 //! Cross-process admission for a complete local silver-to-views mutation.
 //! SQLite transactions alone do not cover awaited inference and gold writes.
 use crate::AppError;
-use std::{fs::File, path::Path, sync::Arc};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+#[derive(Debug)]
+pub(crate) struct Owner {
+    _file: File,
+    database: PathBuf,
+}
+
+impl Owner {
+    pub(crate) fn covers(&self, database: &Path) -> Result<bool, AppError> {
+        Ok(self.database == canonical(database)?)
+    }
+}
 
 tokio::task_local! {
-    static OWNER: Option<Arc<File>>;
+    static OWNER: Option<Arc<Owner>>;
+}
+
+thread_local! {
+    static BLOCKING_OWNER: std::cell::RefCell<Option<Arc<Owner>>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Blocking workers retain ownership even if their awaiting future is dropped.
-pub(crate) fn current() -> Option<Arc<File>> {
-    OWNER.try_with(Clone::clone).ok().flatten()
+pub(crate) fn current() -> Option<Arc<Owner>> {
+    OWNER
+        .try_with(Clone::clone)
+        .ok()
+        .flatten()
+        .or_else(|| BLOCKING_OWNER.with_borrow(Clone::clone))
+}
+
+/// Carry admission into synchronous SQLite work, including schema upgrades.
+pub(crate) fn on_blocking_thread<T>(owner: Option<Arc<Owner>>, work: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Arc<Owner>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            BLOCKING_OWNER.set(self.0.take());
+        }
+    }
+    let _restore = Restore(BLOCKING_OWNER.replace(owner));
+    work()
 }
 
 pub(crate) async fn scope<T>(
-    owner: Option<Arc<File>>,
+    owner: Option<Arc<Owner>>,
     work: impl std::future::Future<Output = T>,
 ) -> T {
     OWNER.scope(owner, work).await
@@ -21,7 +57,7 @@ pub(crate) async fn scope<T>(
 
 /// Fail promptly like BEGIN IMMEDIATE. Never unlink this file: a replacement
 /// inode would let two processes each own a different lock for one database.
-pub(crate) fn acquire(database: &Path) -> Result<Arc<File>, AppError> {
+fn canonical(database: &Path) -> Result<PathBuf, AppError> {
     let absolute = if database.is_absolute() {
         database.to_path_buf()
     } else {
@@ -44,7 +80,13 @@ pub(crate) fn acquire(database: &Path) -> Result<Arc<File>, AppError> {
                 .ok_or_else(|| AppError::usage("invalid database path"))?,
         )
     };
-    let mut path = database.into_os_string();
+    Ok(database)
+}
+
+/// Fail promptly if another process owns the exact database's writer lock.
+pub(crate) fn acquire(database: &Path) -> Result<Arc<Owner>, AppError> {
+    let database = canonical(database)?;
+    let mut path = database.clone().into_os_string();
     path.push(".writer.lock");
     let file = File::options()
         .create(true)
@@ -53,7 +95,10 @@ pub(crate) fn acquire(database: &Path) -> Result<Arc<File>, AppError> {
         .open(Path::new(&path))
         .map_err(AppError::io)?;
     match file.try_lock() {
-        Ok(()) => Ok(Arc::new(file)),
+        Ok(()) => Ok(Arc::new(Owner {
+            _file: file,
+            database,
+        })),
         Err(std::fs::TryLockError::WouldBlock) => Err(AppError::new(
             6,
             crate::ErrorKind::IndexBusy,

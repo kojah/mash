@@ -5,22 +5,24 @@ and full search rebuilds. Use the same migration definitions for local silver
 and each node's shared silver database. Export/import remains for portability,
 recovery and legacy transitions that do not have a tested migration.
 
-This is the accepted direction, not implemented migration support. Schema 62
-still rejects other nonzero `user_version` values in
-`app/storage/schema.rs`. No older starting version is currently supported.
+`app/storage/schema.rs` now supports the additive 62 to 63 records migration.
+This is the only supported older starting version. The same initializer creates
+and upgrades local and shared silver. Read-only commands do not migrate.
 
 ## Library evaluation
 
-Evaluate [rusqlite_migration](https://docs.rs/rusqlite_migration/2.6.0/rusqlite_migration/)
-first. It runs SQL migrations atomically and uses SQLite `user_version` rather
+The selected [rusqlite_migration](https://docs.rs/rusqlite_migration/2.6.0/rusqlite_migration/)
+runner executes SQL migrations atomically and uses SQLite `user_version` rather
 than a migration-history table. Its 2.6.0 manifest depends on Rusqlite 0.40.0,
-compatible with Mash's 0.40.2 requirement; verify Cargo resolution and the build
-before adding the dependency. No library has been added yet.
+compatible with Mash's 0.40.2 requirement. Cargo resolves 2.6.0 without changing
+Rusqlite. No migration-history database is needed for this additive baseline.
 
 Its version is the count of applied migrations. Mash's value 62 is a historical
 schema number, not evidence that 62 library migrations ran. The library warns
-against independently changing `user_version`. Before adoption, define and test
-how a verified existing baseline enters the migration sequence. Do not reset a
+against independently changing `user_version`. The runner reserves the first 62
+entries with empty steps and rejects all versions 1 through 61 before running.
+Step 63 creates the record tables. Fresh creation directly creates the same
+schema and sets version 63 in its creation transaction. Do not reset a
 live database to zero, silently renumber it, or let placeholder migrations make
 unsupported old schemas appear valid. Fresh creation and upgraded databases must
 produce the same schema. Preserve monotonic versions so old binaries continue

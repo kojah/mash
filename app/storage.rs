@@ -142,8 +142,8 @@ impl Storage {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(AppError::io)?;
         }
-        let connection = Connection::open(path).map_err(AppError::database)?;
-        schema::initialize_silver(&connection)?;
+        let mut connection = Connection::open(path).map_err(AppError::database)?;
+        schema::initialize_silver(&mut connection)?;
         schema::install_publication_triggers(&connection)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),

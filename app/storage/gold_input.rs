@@ -176,8 +176,8 @@ mod tests {
     use super::*;
 
     fn create(path: &Path) -> Storage {
-        let connection = rusqlite::Connection::open(path).unwrap();
-        crate::storage::schema::initialize_silver(&connection).unwrap();
+        let mut connection = rusqlite::Connection::open(path).unwrap();
+        crate::storage::schema::initialize_silver(&mut connection).unwrap();
         Storage::from_silver(connection)
     }
 

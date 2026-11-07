@@ -64,8 +64,8 @@ mod tests {
     };
 
     fn database() -> Connection {
-        let connection = Connection::open_in_memory().unwrap();
-        crate::storage::schema::initialize_silver(&connection).unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        crate::storage::schema::initialize_silver(&mut connection).unwrap();
         connection
             .execute("INSERT INTO chats(id,provider) VALUES ('chat','codex')", [])
             .unwrap();

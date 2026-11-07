@@ -66,8 +66,8 @@ pub(crate) fn restore(
 ) -> Result<(), AppError> {
     use crate::silver::archive::Record;
     const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
-    let connection = rusqlite::Connection::open(destination).map_err(AppError::database)?;
-    super::schema::initialize_silver(&connection)?;
+    let mut connection = rusqlite::Connection::open(destination).map_err(AppError::database)?;
+    super::schema::initialize_silver(&mut connection)?;
     let target = Storage::from_silver(connection);
     let transaction = target
         .connection

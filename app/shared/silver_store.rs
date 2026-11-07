@@ -189,11 +189,11 @@ impl SilverStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(AppError::io)?;
         }
-        let connection = Connection::open(&path).map_err(database)?;
+        let mut connection = Connection::open(&path).map_err(database)?;
         connection
             .busy_timeout(std::time::Duration::from_secs(30))
             .map_err(database)?;
-        crate::storage::schema::initialize_silver(&connection)?;
+        crate::storage::schema::initialize_silver(&mut connection)?;
         Ok(connection)
     }
 

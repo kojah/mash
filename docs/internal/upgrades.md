@@ -4,10 +4,10 @@
 
 The [migration policy and design](database-migrations.md) prefers upgrading
 existing SQLite databases and preserving valid Qdrant search data independently.
-The current schema-62 implementation still rejects incompatible databases without
-modification. `mash index` does not yet migrate them. The procedures below describe
-that implementation's export/import fallback, not a requirement for every future
-schema change.
+Schema 62 upgrades in place to 63 on a writable open under writer admission.
+Read-only opens never migrate. Earlier and newer unsupported versions are
+rejected untouched. The procedures below describe the export/import fallback for
+unsupported older schemas, not a requirement for every schema change.
 
 ## Make a portable backup
 

@@ -58,10 +58,11 @@ async fn blocking<T: Send + 'static>(
     let context = observability::ThreadContext::capture();
     let admission = storage::admission::current();
     tokio::task::spawn_blocking(move || {
-        let _admission = admission;
-        context.run(|| {
-            semantic::indexer::on_blocking_thread(indexer_cache, || {
-                progress::on_blocking_thread(sink, work)
+        storage::admission::on_blocking_thread(admission, || {
+            context.run(|| {
+                semantic::indexer::on_blocking_thread(indexer_cache, || {
+                    progress::on_blocking_thread(sink, work)
+                })
             })
         })
     })

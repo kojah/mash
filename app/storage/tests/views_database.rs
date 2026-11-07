@@ -52,8 +52,8 @@ fn local_and_shared_silver_have_one_schema_without_gold_tables() {
     let path = directory.path().join("index.sqlite3");
     seed(&path);
     let local = Storage::open_silver(&path).unwrap();
-    let server = Connection::open_in_memory().unwrap();
-    crate::storage::schema::initialize_silver(&server).unwrap();
+    let mut server = Connection::open_in_memory().unwrap();
+    crate::storage::schema::initialize_silver(&mut server).unwrap();
     let local_tables = tables(&local.connection);
     assert_eq!(local_tables, tables(&server));
     for table in [

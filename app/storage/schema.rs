@@ -4,13 +4,15 @@ use std::fmt::Write;
 use crate::AppError;
 use crate::database_error::Operation;
 
-/// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 62;
+/// First supported migration baseline. Earlier releases require export/import.
+const BASELINE: i64 = 62;
+pub(crate) const SCHEMA_VERSION: i64 = 63;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
 /// Silver indexes and triggers; they require every silver column to exist.
 pub(crate) const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
+const RECORDS: &str = include_str!("records.sql");
 /// Writers run in WAL mode with NORMAL sync: commits are atomic and survive a
 /// process crash without an fsync each; only an OS crash or power loss can
 /// drop the latest commits, and the database stays consistent. Per connection.
@@ -18,12 +20,38 @@ const WRITER_PRAGMAS: &str =
     "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;";
 
 /// Create or validate a silver database without any local views.
-pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError> {
+pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppError> {
     super::packed::register(connection).map_err(AppError::database)?;
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;
-    if version != 0 && version != SCHEMA_VERSION {
+    if version != 0 && !(BASELINE..=SCHEMA_VERSION).contains(&version) {
+        return Err(unsupported(version));
+    }
+    // A current database never takes an extra lock. Upgrades retain the same
+    // admission as indexing, including the awaited silver-to-views interval.
+    let _owner = if version == SCHEMA_VERSION {
+        None
+    } else {
+        connection
+            .path()
+            .filter(|path| !path.is_empty())
+            .map(|path| {
+                let path = std::path::Path::new(path);
+                if let Some(owner) = super::admission::current()
+                    && owner.covers(path)?
+                {
+                    return Ok(owner);
+                }
+                super::admission::acquire(path)
+            })
+            .transpose()?
+    };
+    // Another upgrader could have finished between the initial read and lock.
+    let version: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(AppError::database)?;
+    if version != 0 && !(BASELINE..=SCHEMA_VERSION).contains(&version) {
         return Err(unsupported(version));
     }
     connection
@@ -40,9 +68,23 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
             .execute_batch(SILVER_INDEXES)
             .map_err(AppError::database)?;
         transaction
+            .execute_batch(RECORDS)
+            .map_err(AppError::database)?;
+        transaction
             .pragma_update(None, "user_version", SCHEMA_VERSION)
             .map_err(AppError::database)?;
         transaction.commit().map_err(AppError::database)?;
+    } else if version < SCHEMA_VERSION {
+        // Preserve the published user_version numbering. Entries before the
+        // baseline are placeholders, NEVER a supported legacy upgrade path.
+        let count = usize::try_from(BASELINE)
+            .map_err(|_| AppError::internal("invalid migration baseline"))?;
+        let mut steps = vec![rusqlite_migration::M::up(""); count];
+        steps.push(rusqlite_migration::M::up(RECORDS));
+        connection.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
+        let result = rusqlite_migration::Migrations::new(steps).to_latest(connection);
+        connection.set_transaction_behavior(rusqlite::TransactionBehavior::Deferred);
+        result.map_err(|error| AppError::schema(format!("silver migration failed: {error}")))?;
     }
     Ok(())
 }
@@ -54,6 +96,11 @@ pub(crate) fn unsupported(version: i64) -> AppError {
     if version > SCHEMA_VERSION {
         return AppError::schema(format!(
             "local index schema {version} is newer than this mash's schema {SCHEMA_VERSION}; a newer mash release wrote it. Reconnect Mash MCP or restart `mash index --watch` if mash was already upgraded; otherwise upgrade mash"
+        ));
+    }
+    if (BASELINE..SCHEMA_VERSION).contains(&version) {
+        return AppError::schema(format!(
+            "local index schema {version} requires an in-place upgrade to {SCHEMA_VERSION}; run `mash index` with this release, then reconnect Mash MCP"
         ));
     }
     AppError::schema(format!(

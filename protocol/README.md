@@ -498,6 +498,33 @@ recovery. Recovery is manual and retries fail closed. Individual failure during
 marker creation/removal may conservatively leave a marker; it must never authorize
 retirement without a validated import. No progress/liveness property is claimed.
 
+### SilverMigration: additive schema upgrades
+
+`SilverMigration.tla` models schema 62 to 63, an old admitted writer retaining
+ownership across its operation, an upgrader, and interruption before SQLite
+commit. Version and added tables become durable together; history and the chat
+search certificate are unchanged. `SilverMigrationNoAdmission` deliberately
+removes admission and must violate `WriterExcluded`.
+
+Source mapping: `storage/schema.rs::initialize_silver` rejects unsupported
+versions, acquires/reuses `storage/admission.rs` ownership, rechecks the schema,
+and calls `rusqlite_migration` with an immediate transaction. The shared server
+also owns its silver directory exclusively. `lib.rs::blocking` carries the lock
+into synchronous work. Read-only opens reject incompatible versions. Existing
+old binaries recheck their expected version on opening a new writer; already
+admitted operations keep admission until their views work completes.
+
+Assumptions: callers do not bypass Mash admission, and SQLite transactional
+DDL/version updates commit atomically. The initializer checks that a retained
+admission covers this canonical database path before reusing it.
+This is a bounded model of process interruption, not power-loss durability or
+arbitrary external SQLite clients. The Rust `records_migration_*` regressions
+exercise rollback after partial DDL, retry, history/identity/certificate
+preservation and actual lock exclusion. They simulate a SQL failure rather than
+killing the upgrader process. No liveness guarantee is claimed under repeated
+crashes. Record mutation/publication semantics require a separate model when
+those paths are implemented.
+
 ### Shared vocabulary
 
 `docs/internal/agent-history.md` defines the agent-history domain and the relationship
