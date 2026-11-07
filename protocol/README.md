@@ -565,6 +565,12 @@ publication; the shared models below cover that transport separately.
 Ordinary source changes retain stale evidence;
 only explicit forgetting corresponds to `Forget`.
 
+Exposing the existing confirmation rows as `confirmation_history` changes only
+read responses. Streaming source freshness checks retains the same quote, hash
+and role predicates and performs no writes. Neither changes transaction or
+publication ordering, so no model transition changes are needed. Rust tests
+cover confirmation retries, revision-local history, archives and shared reads.
+
 ### Extraction checkpoints
 
 `RecordExtraction.tla` bounds two explicit reviews and two source versions.

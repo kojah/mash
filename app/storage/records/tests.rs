@@ -239,6 +239,15 @@ fn native_records_confirmation_requires_new_evidence_and_correction_resets_it() 
     assert_eq!(history.revisions.len(), 2);
     assert_eq!(history.revisions[0].confirmations, 0);
     assert_eq!(history.revisions[1].confirmations, 1);
+    assert_eq!(history.revisions[0].confirmation_history, []);
+    let confirmations = &history.revisions[1].confirmation_history;
+    assert_eq!(confirmations.len(), 1);
+    assert_eq!(confirmations[0].message_id, "again");
+    assert!(confirmations[0].confirmed_at > 0);
+    assert_eq!(
+        storage.record(&created.record_id, true).unwrap().revisions[1].confirmation_history,
+        *confirmations
+    );
 }
 
 #[test]
@@ -720,6 +729,11 @@ fn native_records_archive_copy_and_identity_restore_preserve_history_and_links()
         let record = &active.records[0];
         assert_eq!(record.revisions[0].body.statement, "Use another engine");
         assert_eq!(record.revisions[0].confirmations, 1);
+        assert_eq!(record.revisions[0].confirmation_history.len(), 1);
+        assert_eq!(
+            record.revisions[0].confirmation_history[0].message_id,
+            "again"
+        );
         assert!(record.revisions[0].evidence_current);
         for source in &record.revisions[0].evidence {
             assert_eq!(source.purpose, Some(EvidenceUse::Endorsement));

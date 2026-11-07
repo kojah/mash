@@ -143,6 +143,10 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
     let listed = call("list_records", json!({})).await.unwrap();
     assert_ne!(listed.is_error, Some(true), "{listed:?}");
     assert_eq!(
+        listed.structured_content.as_ref().unwrap()["records"][0]["revisions"][0]["confirmation_history"],
+        json!([])
+    );
+    assert_eq!(
         listed.structured_content.unwrap()["records"]
             .as_array()
             .unwrap()

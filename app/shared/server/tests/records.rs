@@ -11,7 +11,7 @@ fn seed(service: &Service, token: &str) -> String {
     let mut storage = crate::storage::Storage::open(&path).unwrap();
     let connection = crate::storage::test_support::connect(&path);
     connection.execute_batch("INSERT INTO chats(id,provider) VALUES('chat','codex');
-        INSERT INTO messages(id,chat_id,ordinal,role,content_packed) VALUES('message','chat',0,'user','yes');").unwrap();
+        INSERT INTO messages(id,chat_id,ordinal,role,content_packed) VALUES('message','chat',0,'user','yes'),('confirmation','chat',1,'user','still true');").unwrap();
     let head =
         serde_json::from_value(json!({"instance":"test", "revision":1, "version":"one"})).unwrap();
     crate::shared::silver_store::put_head(&connection, &head).unwrap();
@@ -23,7 +23,10 @@ fn seed(service: &Service, token: &str) -> String {
         "evidence":[{"message_id":"message", "quote":"yes", "purpose":"report"}]}
     }))
     .unwrap();
-    storage.mutate_record(&request).unwrap().record_id
+    let receipt = storage.mutate_record(&request).unwrap();
+    let confirm = serde_json::from_value(json!({"operation_id":"confirm", "change":{"action":"confirm", "expected":{"id":receipt.record_id,"revision":receipt.revision},"evidence":[{"message_id":"confirmation","quote":"still true","purpose":"report"}]}})).unwrap();
+    storage.mutate_record(&confirm).unwrap();
+    receipt.record_id
 }
 
 #[tokio::test]
@@ -72,7 +75,17 @@ async fn native_records_shared_http_pages_preserve_owners_and_group_boundaries_w
         .unwrap();
     assert_eq!(record["id"], second);
     assert_ne!(page["records"][0]["owner"], record["owner"]);
-    assert_eq!(record["revisions"][0]["confirmations"], 0);
+    assert_eq!(record["revisions"][0]["confirmations"], 1);
+    assert_eq!(
+        record["revisions"][0]["confirmation_history"][0]["message_id"],
+        "confirmation"
+    );
+    assert!(
+        record["revisions"][0]["confirmation_history"][0]["confirmed_at"]
+            .as_i64()
+            .unwrap()
+            > 0
+    );
     let other: Value = service
         .request("records", OTHER)
         .json(&json!({"shared":true}))

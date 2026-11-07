@@ -337,6 +337,12 @@ pub(crate) struct Evidence {
     pub source_role: Option<crate::role::Role>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Confirmation {
+    pub message_id: String,
+    pub confirmed_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RecordRevision {
     pub revision: i64,
@@ -345,6 +351,7 @@ pub(crate) struct RecordRevision {
     pub evidence: Vec<Evidence>,
     pub evidence_current: bool,
     pub confirmations: u32,
+    pub confirmation_history: Vec<Confirmation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -555,6 +555,24 @@ fn source_current(
     })
 }
 
+fn confirmation_history(
+    connection: &Connection,
+    id: &str,
+    revision: i64,
+) -> Result<Vec<records::Confirmation>, AppError> {
+    let mut statement = connection.prepare("SELECT message_id,confirmed_at FROM record_confirmations WHERE record_id=?1 AND revision=?2 ORDER BY confirmed_at,message_id").map_err(AppError::database)?;
+    statement
+        .query_map(params![id, revision], |row| {
+            Ok(records::Confirmation {
+                message_id: row.get(0)?,
+                confirmed_at: row.get(1)?,
+            })
+        })
+        .map_err(AppError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(AppError::database)
+}
+
 pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
     bounded(id, 512, "record ID")?;
     let row = connection
@@ -602,27 +620,27 @@ pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<R
                     row.get::<_, Option<crate::role::Role>>(7)?,
                 ))
             })
-            .map_err(AppError::database)?
-            .collect::<Result<Vec<_>, _>>()
             .map_err(AppError::database)?;
-        let evidence_current = !sources.is_empty()
-            && sources.iter().all(|(source, content, role)| {
-                source_current(source, content.as_deref(), role.as_ref())
-            });
-        let confirmations = connection
-            .query_row(
-                "SELECT count(*) FROM record_confirmations WHERE record_id=?1 AND revision=?2",
-                params![id, revision],
-                |row| row.get(0),
-            )
-            .map_err(AppError::database)?;
+        let mut evidence = Vec::new();
+        let mut evidence_current = true;
+        for source in sources {
+            let (source, content, role) = source.map_err(AppError::database)?;
+            evidence_current &= source_current(&source, content.as_deref(), role.as_ref());
+            evidence.push(source);
+            // Drop the full source content before reading the next citation.
+        }
+        evidence_current &= !evidence.is_empty();
+        let confirmation_history = confirmation_history(connection, id, revision)?;
+        let confirmations = u32::try_from(confirmation_history.len())
+            .map_err(|_| AppError::internal("confirmation count out of range"))?;
         revisions.push(RecordRevision {
             revision,
             body: decode(&body)?,
             recorded_at,
-            evidence: sources.into_iter().map(|(source, _, _)| source).collect(),
+            evidence,
             evidence_current,
             confirmations,
+            confirmation_history,
         });
     }
     let mut links = connection.prepare("SELECT source_id,target_id,relation FROM record_links WHERE source_id=?1 OR target_id=?1 ORDER BY source_id,target_id").map_err(AppError::database)?;

@@ -51,7 +51,11 @@ Follow `next_offset` to continue, even if a page contains no current records.
 
 Use `get_record` with the returned ID. Set `history` to `true` to inspect prior
 revisions, evidence, confirmations and links to replacement records. Reading does
-not confirm or change anything.
+not confirm or change anything. Each revision's `confirmation_history` lists the
+distinct supporting message IDs and the dates those confirmations were recorded
+(Unix milliseconds). These are confirmation dates, not the dates of the original
+messages. A correction starts a new revision with its own confirmations; earlier
+confirmation history remains attached to the earlier interpretation.
 
 To read published records, call `list_records` with `shared: true`. Results
 include `node_id` and `owner`; identical statements from different owners remain
