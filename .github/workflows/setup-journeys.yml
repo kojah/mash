@@ -2,6 +2,12 @@ name: New user setup journeys
 
 on:
   workflow_dispatch:
+    inputs:
+      journey:
+        description: Released setup or candidate record lifecycle
+        type: choice
+        options: [setup, records]
+        default: setup
 
 permissions:
   contents: read
@@ -11,20 +17,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  candidate:
+    if: github.ref == 'refs/heads/main' && inputs.journey == 'records'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: mash-record-journeys-v1
+          cache-on-failure: true
+      - name: Build candidate binaries
+        run: cargo +stable build --locked --bin mash --bin mash-server
+      - name: Package only binaries and revision
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory candidate | Out-Null
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          Copy-Item "target/debug/mash$suffix" candidate
+          Copy-Item "target/debug/mash-server$suffix" candidate
+          Set-Content candidate/revision.txt $env:GITHUB_SHA
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+        with:
+          name: candidate-${{ matrix.os }}
+          path: candidate/*
+          if-no-files-found: error
+          retention-days: 7
   journey:
-    if: github.ref == 'refs/heads/main'
+    needs: candidate
+    if: always() && !cancelled() && github.ref == 'refs/heads/main'
     name: ${{ matrix.os }} tester ${{ matrix.tester }}
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
         os: [ubuntu-latest, macos-26, windows-latest]
-        tester: [a]
+        tester: ${{ fromJSON(inputs.journey == 'records' && '["a","b"]' || '["a"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
       UX_PLATFORM: ${{ matrix.os }}
       UX_TESTER: ${{ matrix.tester }}
+      UX_JOURNEY: ${{ inputs.journey || 'setup' }}
       MASH_AUTO_INDEX: 'off'
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -38,9 +85,25 @@ jobs:
             !/docs/internal/
             /.github/scripts/setup-journey.mjs
             /.github/ux/setup-tester.md
+            /.github/ux/records-tester.md
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
         with:
           node-version: '24'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        if: inputs.journey == 'records'
+        with:
+          name: candidate-${{ matrix.os }}
+          path: ${{ runner.temp }}/candidate
+      - name: Expose candidate binaries
+        if: inputs.journey == 'records'
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:RUNNER_TEMP 'candidate'
+          if ((Get-Content (Join-Path $candidate 'revision.txt')).Trim() -ne $env:GITHUB_SHA) {
+            throw 'Candidate revision differs from the requested commit'
+          }
+          if (-not $IsWindows) { chmod +x "$candidate/mash" "$candidate/mash-server" }
+          Add-Content $env:GITHUB_PATH $candidate
       - name: Prepare synthetic history and user documentation
         run: node .github/scripts/setup-journey.mjs
       - name: Check Copilot authentication is configured
