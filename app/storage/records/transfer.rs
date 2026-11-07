@@ -514,6 +514,12 @@ impl Import {
                 "invalid supersession state in record archive",
             ));
         }
+        // Resolution links describe a historical event: reopening a question or
+        // retiring its answer must not erase that event.
+        let invalid_resolution: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM record_links l JOIN records a ON a.id=l.source_id JOIN records b ON b.id=l.target_id WHERE l.relation='resolves' AND (a.kind='open_question' OR b.kind<>'open_question'))", [], |row| row.get(0)).map_err(AppError::database)?;
+        if invalid_resolution {
+            return Err(AppError::usage("invalid resolution link in record archive"));
+        }
         // A forgotten source may not return indirectly through retained summaries.
         let mut statement=connection.prepare("SELECT DISTINCT chat_id FROM tombstones WHERE chat_id IN (SELECT chat_id FROM record_evidence)").map_err(AppError::database)?;
         let chats = statement

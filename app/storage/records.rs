@@ -237,8 +237,16 @@ fn change(
         Change::Resolve {
             expected,
             answer,
+            resolved_by,
             evidence: citations,
-        } => resolve(connection, expected, answer, citations, timestamp),
+        } => resolve(
+            connection,
+            expected,
+            answer,
+            resolved_by.as_ref(),
+            citations,
+            timestamp,
+        ),
         Change::Forget { expected } => {
             current(connection, expected)?;
             purge(connection, &expected.id)?;
@@ -414,10 +422,29 @@ fn resolve(
     connection: &Connection,
     expected: &Expected,
     answer: &str,
+    resolved_by: Option<&Expected>,
     citations: &[Citation],
     timestamp: i64,
 ) -> Result<Receipt, AppError> {
     let (scope, mut body, _) = current(connection, expected)?;
+    if let Some(resolver) = resolved_by {
+        let (resolver_scope, resolver_body, _) = current(connection, resolver)?;
+        let record = read(connection, &resolver.id, false)?;
+        if resolver_scope != scope
+            || resolver.id == expected.id
+            || resolver_body.review != Review::Established
+            || !resolver_body.applies_at(timestamp)
+            || matches!(resolver_body.details, Details::OpenQuestion { .. })
+            || record
+                .revisions
+                .first()
+                .is_none_or(|revision| !revision.evidence_current)
+        {
+            return Err(AppError::usage(
+                "resolution requires an established current decision, preference or fact with current evidence in the same scope",
+            ));
+        }
+    }
     bounded(answer, 8192, "answer")?;
     let Details::OpenQuestion {
         state,
@@ -441,10 +468,15 @@ fn resolve(
         &sources,
         timestamp,
     )?;
+    if let Some(resolver) = resolved_by {
+        connection.execute("INSERT OR IGNORE INTO record_links(source_id,target_id,relation) VALUES(?1,?2,'resolves')", params![resolver.id, expected.id]).map_err(AppError::database)?;
+        // Links are published with their source record; both ends must travel.
+        journal(connection, &resolver.id)?;
+    }
     Ok(Receipt {
         record_id: expected.id.clone(),
         revision: expected.revision + 1,
-        related: None,
+        related: resolved_by.cloned(),
     })
 }
 

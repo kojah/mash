@@ -110,6 +110,12 @@ has changed that revision, reread the record before trying again.
   Reusing the same evidence or retrying a request does not increase confirmations.
 - `resolve` supplies an answer and evidence for an open question. A later revision
   can reopen it by setting its state to `open` and removing the answer.
+  Optionally provide `resolved_by: {"id": "ANSWER_RECORD_ID", "revision": 1}`
+  to link the decision, preference or fact that answered it. That record must
+  belong to the same owner and scope, be established and current, and have
+  matching evidence. Both revisions are checked together. The link remains as
+  history if the question reopens or the answer later changes; inspect their
+  current states before treating the question as settled.
 - `forget` removes the entire record, including its prior revisions and quotes.
 
 Ordinary source updates retain records but mark changed evidence stale.

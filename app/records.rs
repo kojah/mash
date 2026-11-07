@@ -280,6 +280,8 @@ pub(crate) enum Change {
     Resolve {
         expected: Expected,
         answer: String,
+        /// Optional current record that answers the question, checked atomically.
+        resolved_by: Option<Expected>,
         evidence: Vec<Citation>,
     },
     Forget {
