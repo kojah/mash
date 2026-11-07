@@ -17,6 +17,8 @@ ORIGIN = "https://example.test/repo.git"
 # A stand-in `mash search` returning $FAKE_MASH's chats and logging arguments.
 FAKE = """
 import json, os, sys, time
+if sys.argv[1] == "mcp":
+    sys.exit(1)
 path = os.environ["FAKE_MASH"]
 data = json.load(open(path))
 time.sleep(data.get("sleep", 0))

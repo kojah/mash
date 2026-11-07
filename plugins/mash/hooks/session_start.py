@@ -1,8 +1,9 @@
 """SessionStart hook: inject project-scoped Mash recall as additional context,
 and keep the index current without a daemon.
 
-Reads recent agent chats from Mash. At most once per CATCH_UP seconds it starts
-a detached, low-priority incremental `mash index` and returns without waiting;
+Reads current project records and recent agent chats from Mash. At most once per
+CATCH_UP seconds it starts a detached, low-priority incremental `mash index`
+and returns without waiting;
 `MASH_AUTO_INDEX=off` disables that. Fails open: any error, a missing
 executable or index, or the deadline produces no output and exit status 0.
 """
@@ -18,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, NamedTuple
 
 import recall_common as common
+import record_recall
 
 DEADLINE, BUDGET = 3.0, 2000
 RECENT, PAGE, PAGES = 4, 100, 3
@@ -164,8 +166,12 @@ def context(payload: Any, end: float) -> str:
         pass  # Recall still works from the existing index.
     git_timeout = min(1.0, end - time.monotonic())
     toplevel, repository = common.resolve_project(payload["cwd"], git_timeout)
-    recent = scan(binary, toplevel, repository, payload["session_id"], end)
-    if not recent:
+    records = record_recall.hints(binary, toplevel, repository, end - time.monotonic())
+    try:
+        recent = scan(binary, toplevel, repository, payload["session_id"], end)
+    except (common.MashError, subprocess.TimeoutExpired, TimeoutError, ValueError):
+        recent = []
+    if not recent and not records:
         return ""
     place = f"{repository} ({toplevel})" if repository else toplevel
     header = [f"Mash recall for {place}, from local history; " + EVIDENCE]
@@ -177,7 +183,10 @@ def context(payload: Any, end: float) -> str:
         )
     return fit(
         header,
-        [chats_shown],
+        [
+            ["Current records (inspect evidence with get_record):", *records],
+            chats_shown,
+        ],
         ["Use Mash view to read relevant chats before relying on their contents."],
     )
 

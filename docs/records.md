@@ -5,8 +5,8 @@ citations to your indexed chats. Ask your agent to inspect the source discussion
 before recording a conclusion. Records are interpretations; a matching quote
 does not prove that an interpretation is correct.
 
-The current implementation provides local recording, shared reads and portable
-backups. Automatic recall integration is still being added.
+The current implementation provides local recording, shared reads, portable
+backups and bounded record context in the plugin's session and file-read hooks.
 
 For a small context packet, ask your agent to call `recall_records` with an exact
 `scope`, such as `{"kind":"repository","identity":"YOUR_REPOSITORY_ID"}`.
@@ -27,7 +27,14 @@ included alongside another scope when explicitly requested with `include_persona
 For file context, supply `file: "src/main.rs"` with a repository or local-project
 scope. It matches that exact relative path in the record text or retained quotes,
 not `other/src/main.rs` or `src/main.rs.bak`; personal scope expansion is disabled
-for file requests. Hook integration is still pending.
+for file requests.
+
+The plugin's session-start hook shows up to three current project records before
+recent chats. Its file-read hook can show matching records once per file/session,
+alongside earlier chats. Both call the same local recall API with a short deadline
+and continue without record context if it fails. `MASH_RECORD_RECALL=off` disables
+record context while retaining chat hints; `MASH_FILE_RECALL=off` disables the
+entire file-read hook. These hooks never create or confirm records.
 
 Ordinary `mash export` backups include records, their revisions, evidence and
 confirmations. A normal import creates a new owner and remaps record IDs and

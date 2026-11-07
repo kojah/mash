@@ -112,7 +112,7 @@ are separate operations.
 (`startup|resume|clear|compact`). It resolves the session's project (the Git
 toplevel of `cwd` and its `origin` URL, matched against each chat's recorded
 project and repository) and adds at most 2,000 characters of context: this
-project's most recent agent chats with copyable `view` lookups, excluding the current session. It reads only `list-chats --local`, so it needs no models or current lexical views, and it fails open: any
+project's most recent agent chats with copyable `view` lookups, excluding the current session. It also calls local MCP `recall_records` for up to three established current project records, with a 750 ms sub-deadline and 4,096-byte response budget. It needs no models or current lexical views, and it fails open: any
 error, missing executable or index, or its 3-second deadline yields no output and
 exit status 0. The executable is `$MASH_BIN`, else `mash-dev`, else `mash`.
 
@@ -132,12 +132,18 @@ scoped to the project's repository (else its path), and adds up to four earlier
 chats that mention it, with a dated excerpt and `view` lookup, within 1,200
 characters. Each file is shown once per session; the shown paths live in
 `<recall state>/sessions/`, and session files older than a week are removed. It
-needs current lexical views, has a 2-second deadline, fails open, and
+can also show current records mentioning that exact relative path. Record hints
+remain available when lexical views are unavailable. Atomic per-file claim markers
+prevent duplicate hints from concurrent reads and distinguish files in different
+projects. The hook has a 2-second deadline, fails open, and
 `MASH_FILE_RECALL=off` disables it.
+
+`MASH_RECORD_RECALL=off` disables record context in both hooks, retaining chat hints.
 
 Hook throttling and per-session file hints live in
 `<Mash data directory>/recall/` (`~/.local/share/mash/recall` on Linux;
-override with `MASH_RECALL_STATE_DIR`). State files are replaced atomically.
+override with `MASH_RECALL_STATE_DIR`). Throttling state is replaced atomically;
+file hints use exclusive marker creation and skip repeat lookups once shown.
 The scripts use only the Python 3.9+
 standard library. Codex runs the same `hooks/hooks.json` once you trust the
 plugin's hooks (`/hooks`); it sets `CLAUDE_PLUGIN_ROOT` for compatibility.
