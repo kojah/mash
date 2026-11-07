@@ -22,6 +22,10 @@ fn main() {
         return;
     }
     std::fs::write(std::env::var("TEST_API_ARGUMENTS").unwrap(), args.join("\n") + "\n").unwrap();
+    if let Ok(path) = std::env::var("TEST_API_FAILED_START_WRITE") {
+        std::fs::write(path, "candidate changed durable state").unwrap();
+        std::process::exit(1);
+    }
     loop { std::thread::sleep(std::time::Duration::from_millis(100)); }
 }
 SERVER
@@ -66,8 +70,10 @@ bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POIN
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 bash "$repository/tools/check-dev-api.sh" --deployment "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
+mkdir "$scratch/empty-silver"
 if bash "$repository/tools/restart-dev-api.sh" /usr/bin/false fixture.toml "$scratch/environment" \
-    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --rollback-config "$scratch/environment"; then
+    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --rollback-config "$scratch/environment" \
+    --retire-incompatible-silver "$scratch/empty-silver"; then
     echo 'Expected failed candidate to roll back.' >&2
     exit 1
 fi
@@ -90,6 +96,35 @@ grep -qxF -- --replay-views "$TEST_API_ARGUMENTS"
 [[ "$(ps -p "$(jq -r .pid "$TEST_API_POINTER")" -o sid=)" != "$(ps -p $$ -o sid=)" ]]
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
+# A failed start may already have changed durable state. Keep the recovery
+# marker and never restart the previous process or discard the candidate write.
+previous_pid=$(jq -r .pid "$TEST_API_POINTER")
+export TEST_API_FAILED_START_WRITE="$scratch/candidate-write"
+export TEST_API_ALWAYS_READY=0
+if bash "$repository/tools/restart-dev-api.sh" "$scratch/server" fixture.toml \
+    "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" \
+    --activate-query 2> "$scratch/activation-error"; then
+    echo 'Failed candidate activation reported success.' >&2; exit 1
+fi
+grep -Fq 'Recover forward; no automatic rollback' "$scratch/activation-error"
+[[ $(jq -r .pid "$TEST_API_POINTER") == "$previous_pid" ]]
+[[ ! -e /proc/$previous_pid || $(ps -p "$previous_pid" -o stat=) == Z* ]]
+[[ -f "$TEST_API_POINTER.deploy-pending" ]]
+grep -Fxq 'candidate changed durable state' "$scratch/candidate-write"
+if bash "$repository/tools/restart-dev-api.sh" "$scratch/server" fixture.toml \
+    "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" \
+    2> "$scratch/pending-error"; then
+    echo 'Pending activation was ignored.' >&2; exit 1
+fi
+grep -Fq 'Unfinished API rollout' "$scratch/pending-error"
+# Explicit fixture recovery: no actual database was migrated by the stand-in.
+unset TEST_API_FAILED_START_WRITE
+"$scratch/server" --server-config fixture.toml &
+recovery_pid=$!
+jq --argjson pid "$recovery_pid" '.pid=$pid' "$TEST_API_POINTER" > "$scratch/recovered.json"
+mv "$scratch/recovered.json" "$TEST_API_POINTER"
+rm "$TEST_API_POINTER.deploy-pending"
+export TEST_API_ALWAYS_READY=1
 # Across a silver schema change, opt-in retirement moves incompatible shared
 # silver aside so its node republishes, and keeps compatible silver in place.
 # An identical healthy rollout keeps the process; configuration changes restart it.

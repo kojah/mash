@@ -15,8 +15,8 @@ while [[ $# -gt 0 ]]; do
         --replay-views) replay_views=--replay-views; shift ;;
         # A breaking TOML change needs the previous release's config on rollback.
         --rollback-config) [[ $# -ge 2 && -f $2 ]] || usage; rollback_config=$2; shift 2 ;;
-        # Across a silver schema change the new release cannot open old shared
-        # silver. Retire those node databases so their nodes republish; never
+        # Retire databases outside the candidate's supported migration range
+        # so their nodes republish; never
         # implied, because it discards what the nodes last published.
         --retire-incompatible-silver) [[ $# -ge 2 && $2 == /* ]] || usage; silver_dir=$2; shift 2 ;;
         *) usage ;;
@@ -24,6 +24,11 @@ while [[ $# -gt 0 ]]; do
 done
 exec {deploy_lock}>"$pointer.deploy.lock"
 flock -w 60 "$deploy_lock" || { echo 'Another API rollout is active; inspect its job before retrying.' >&2; exit 1; }
+marker="$pointer.deploy-pending"
+[[ ! -e $marker ]] || {
+    echo "Unfinished API rollout: inspect $marker; recover forward after activation." >&2
+    exit 1
+}
 load_api_environment "$environment" "$token_name"
 verify_api_process "$pointer"
 old_pid=$(pointer_pid "$pointer")
@@ -64,6 +69,7 @@ revision=$(git -C "$(dirname "$0")/.." rev-parse HEAD)
 new_pid=''
 committed=false
 stopped=false
+activation=false
 retired=()
 
 start_api() {
@@ -95,19 +101,19 @@ write_pointer() {
 
 rollback() {
     local status=$?
-    # After the old API stops, any failure restarts it, even before a new one
-    # started (retiring silver can fail too).
-    if [[ "$committed" != true && "$stopped" == true ]]; then
-        if [[ -n "$new_pid" ]]; then
-            kill -TERM "$new_pid" 2>/dev/null || true
-            if ! wait_exit "$new_pid"; then
-                echo 'New API did not stop; rollback not started. Inspect private logs.' >&2
-                exit 1
-            fi
-        fi
+    trap - EXIT
+    # Starting a candidate can migrate SQLite or acknowledge writes before
+    # readiness succeeds. Never restore an older binary or state afterward.
+    if [[ "$committed" != true && "$activation" == true ]]; then
+        echo "API activation failed; retained state: $scratch. Recover forward; no automatic rollback." >&2
+    elif [[ "$committed" != true && "$stopped" == true ]]; then
         restore_silver
         start_api "$old_binary" "$scratch/rollback.log" '' '' "$rollback_config"
         write_pointer "$scratch/previous-release.json" "$new_pid" "$pointer"
+        verify_api_process "$pointer"
+        check_api_http "$base" "$scratch"
+        printf 'restored-before-activation\n' > "$scratch/phase"
+        rm "$marker"
         echo 'API deployment failed; previous binary restarted. Inspect private logs.' >&2
     fi
     exit "$status"
@@ -141,11 +147,17 @@ restore_silver() {
 }
 
 trap rollback EXIT
+printf '%s\n' "$scratch" > "$marker"
+printf 'prepared\n' > "$scratch/phase"
 kill -TERM "$old_pid"
 wait_exit "$old_pid" || { echo 'Previous API did not stop; no replacement started.' >&2; exit 1; }
 stopped=true
+printf 'stopped\n' > "$scratch/phase"
 retire_silver
+printf 'activating\n' > "$scratch/phase"
+activation=true
 start_api "$binary" "$scratch/api.log" "$activate_query" "$replay_views"
+printf '%s\n' "$new_pid" > "$scratch/candidate-pid"
 ready=false
 for ((attempt=0; attempt<60; attempt++)); do
     kill -0 "$new_pid" 2>/dev/null || break
@@ -170,4 +182,6 @@ jq -n --arg source_commit "$revision" --arg binary_sha256 "$digest" \
     > "$pointer.incoming.$$"
 mv "$pointer.incoming.$$" "$pointer"
 committed=true
+printf 'complete\n' > "$scratch/phase"
+rm "$marker"
 jq '{source_commit,binary_sha256,pid,authenticated_readiness:true,publications_preserved:((.republish // []) | length == 0),republish:(.republish // [])}' "$pointer"

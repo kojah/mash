@@ -99,6 +99,26 @@ durability after power loss and manual recovery are outside this model. The
 script retains old state for recovery; it does not migrate archive formats or
 establish that every node can republish. Validate those prerequisites separately.
 
+### LegacyActivation: migration before readiness
+
+`LegacyActivation.tla` maps to `tools/restart-dev-api.sh`. `Prepare` writes the
+pending marker before stopping the recorded process; `Stop` completes only when
+that process exits. `Activate` writes the recovery phase before spawning the
+candidate. `Change` represents a migration or durable write that may happen
+before readiness, even if the candidate subsequently exits. After activation,
+failure retains the marker and never restarts the old binary. A subsequent
+rollout refuses that marker. Only pre-activation failure may restore old state.
+
+The model checks that an old binary never runs after a candidate changes state,
+and interruptions retain the recovery marker. Its deliberate rollback mutation
+reproduces the old unsafe behavior. The shell fixture makes a candidate write
+data and exit, checks that the write and marker survive, and verifies that retry
+is refused. The fixture's write simulates a migration; SQLite transaction safety
+is covered separately by `SilverMigration` and storage tests. This model does
+not certify the legacy per-file retirement procedure, process-tree containment,
+power-loss durability, or manual recovery. Rollouts must exclusively own their
+server processes and state, as with the systemd model.
+
 ### MutationAdmission: bounded FIFO waiting and worker ownership
 
 `MutationAdmission.tla` models four requests, one or two active slots and two

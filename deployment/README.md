@@ -123,6 +123,13 @@ deployment does not bypass it. Process-crash recovery is conservative and manual
 the script does not promise power-loss atomicity or control separately launched
 servers. See the `SystemdCutover` model and disposable shell fixtures.
 
+The legacy process installer uses the same activation boundary: it can restore
+the previous process before activation, but requires forward recovery afterward.
+Its marker is `POINTER.deploy-pending`; the retained directory records the phase,
+candidate PID, previous release record and process logs. This prevents an old
+binary from reopening a database the candidate may already have migrated.
+See `LegacyActivation` for the bounded model and its limitations.
+
 The probe verifies build and contract identity, query readiness, shared freshness
 and bounded lexical/available semantic searches. Restart existing Mash MCP
 connections after upgrading the binary, and reload updated plugin instructions.
