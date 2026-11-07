@@ -551,6 +551,17 @@ journal. This read-and-receipt path adds no durable boundary to the modeled
 mutating commits; Rust regressions check repeated receipts, unchanged evidence
 and confirmations, and reuse after forgetting without restoring text.
 
+Explicit `supports`/`contradicts` links use that same immediate transaction:
+check both endpoint revisions/owner/scope/evidence, insert the link, journal both
+ends, and save the receipt. They do not revise either statement or confirm it.
+This is an additive relation operation, not a competing-successor transition;
+the model's `SingleSuccessor` claim does not apply to relation additions.
+There is no new durable boundary or awaited work. Conflict flags are computed
+inside existing read transactions; they do not infer semantic disagreement.
+The existing model is unchanged; ordinary Rust tests cover these sequential
+checks and retry behavior. Link semantics remain attached to record identities
+until retirement, supersession or forgetting makes the conflict inactive.
+
 The model's `Prepare` represents a caller retaining a request, not an uncommitted
 SQL write. `Commit` is the actual SQLite transaction commit; `Crash` models failure
 before it, and repeating a prepared operation models a lost response after it.

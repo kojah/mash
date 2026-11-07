@@ -27,7 +27,11 @@ class Hint:
 
     @classmethod
     def parse(cls, value: Any) -> Hint:
-        if not isinstance(value, dict) or value.get("status") != "current":
+        if (
+            not isinstance(value, dict)
+            or value.get("status") != "current"
+            or value.get("conflicted", False) is not False
+        ):
             raise ValueError("recall returned a non-current record")
         body = value.get("body")
         if not isinstance(body, dict) or body.get("review") != "established":

@@ -36,8 +36,29 @@ async fn documents(service: &Service) -> Value {
     response["result"]["points"].clone()
 }
 
+fn contradict(storage: &mut crate::storage::Storage, first: &crate::records::Receipt) -> String {
+    let create = serde_json::from_value(json!({"operation_id":"other-claim", "change":{
+        "action":"create","scope":{"kind":"personal"},
+        "body":{"statement":"Shared history is unavailable","review":"established","recorded_by":"test agent",
+        "details":{"kind":"fact","state":"current","reported_by":"user"}},
+        "evidence":[{"message_id":"searchable","quote":"hello shared history","purpose":"report"}]
+    }})).unwrap();
+    let other = storage.mutate_record(&create).unwrap();
+    let link = serde_json::from_value(json!({"operation_id":"contradiction", "change":{
+        "action":"link","expected":{"id":first.record_id,"revision":1},
+        "target":{"id":other.record_id,"revision":1},"relation":"contradicts"
+    }}))
+    .unwrap();
+    storage.mutate_record(&link).unwrap();
+    other.record_id
+}
+
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the ordered publication, retry and privacy sequence visible together."
+)]
 async fn native_records_qdrant_publication_retry_preserves_chat_certificate() {
     let service = Service::qdrant(384).await;
     let directory = tempfile::tempdir().unwrap();
@@ -53,6 +74,7 @@ async fn native_records_qdrant_publication_retry_preserves_chat_certificate() {
         "evidence":[{"message_id":"searchable","quote":"hello shared history","purpose":"report"}]}
     })).unwrap();
     let receipt = storage.mutate_record(&create).unwrap();
+    let other = contradict(&mut storage, &receipt);
     let mut initial = snapshot(1);
     initial.insert(initial.len() - 1, record_batch(&connection));
     service
@@ -103,6 +125,7 @@ async fn native_records_qdrant_publication_retry_preserves_chat_certificate() {
         .await
         .unwrap();
     assert_eq!(record["revisions"].as_array().unwrap().len(), 2);
+    assert_eq!(record["conflicted"], true);
     assert_eq!(
         record["revisions"][0]["body"]["statement"],
         "Shared history remains available"
@@ -134,6 +157,18 @@ async fn native_records_qdrant_publication_retry_preserves_chat_certificate() {
             .is_success()
     );
     assert_eq!(documents(&service).await, before);
+    let remaining: Value = service
+        .request("record", FIRST)
+        .json(&json!({"id":other,"node_id":"first"}))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(remaining["conflicted"], false);
     assert_eq!(
         service.state().await.silver_revision.as_ref(),
         Some(&certificate)

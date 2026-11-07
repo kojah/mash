@@ -95,6 +95,7 @@ pub(crate) fn read_page(
         current_revision,
         revisions,
         links,
+        conflicted: super::relations::conflicted(connection, &request.id, super::now()?)?,
         next_before_revision,
         next_link_offset,
     };

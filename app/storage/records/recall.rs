@@ -43,7 +43,7 @@ impl Storage {
             } else {
                 Status::Current
             };
-            if status != Status::Current && !request.include_review {
+            if (status != Status::Current || record.conflicted) && !request.include_review {
                 continue;
             }
             let mut text = format!("{}\n{}", revision.body.statement, revision.body.rationale);
@@ -82,14 +82,15 @@ impl Storage {
                 revision: revision.revision,
                 body: revision.body,
                 status,
+                conflicted: record.conflicted,
                 confirmations: revision.confirmations,
                 last_confirmed_at,
                 score: relevance + revision.confirmations.min(8) * 2 + recency,
             });
         }
         items.sort_by(|a, b| {
-            (a.status != Status::Current)
-                .cmp(&(b.status != Status::Current))
+            (a.status != Status::Current || a.conflicted)
+                .cmp(&(b.status != Status::Current || b.conflicted))
                 .then_with(|| b.score.cmp(&a.score))
                 .then_with(|| a.id.cmp(&b.id))
         });

@@ -562,6 +562,21 @@ impl Import {
     }
 
     pub(crate) fn finish(connection: &Connection) -> Result<(), AppError> {
+        let opposite: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM record_links a JOIN record_links b
+             ON ((a.source_id=b.source_id AND a.target_id=b.target_id) OR
+                 (a.source_id=b.target_id AND a.target_id=b.source_id))
+             WHERE a.relation='supports' AND b.relation='contradicts')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(AppError::database)?;
+        if opposite {
+            return Err(AppError::usage(
+                "record archive contains opposite relationships for the same pair",
+            ));
+        }
         let invalid:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM records r WHERE r.forgotten=0 AND NOT EXISTS(SELECT 1 FROM record_revisions v WHERE v.record_id=r.id AND v.revision=r.revision))",[],|row|row.get(0)).map_err(AppError::database)?;
         if invalid {
             return Err(AppError::usage("record archive lacks its current revision"));

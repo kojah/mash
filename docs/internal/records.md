@@ -20,7 +20,7 @@ hold contradictory records. Supersession and resolution initially require the
 same owner and scope.
 
 Scopes are typed: personal (within the owner namespace), repository (explicit
-identity, not basename), local project (canonical path, not shared as a fleet
+identity, not basename), local project (exact absolute path, not shared as a fleet
 identity), or chat (owner plus chat ID). Evidence must belong to the requested
 scope. Broadening scope is explicit. Supplied actor labels are attribution,
 not authentication or proof of approval.

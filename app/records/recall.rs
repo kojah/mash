@@ -35,6 +35,7 @@ pub(crate) struct Item {
     pub revision: i64,
     pub body: Body,
     pub status: Status,
+    pub conflicted: bool,
     pub confirmations: u32,
     pub last_confirmed_at: Option<i64>,
     pub score: u32,

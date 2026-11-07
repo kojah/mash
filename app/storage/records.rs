@@ -5,6 +5,7 @@ mod extraction;
 mod matches;
 mod reading;
 mod recall;
+mod relations;
 #[cfg(test)]
 mod tests;
 pub(crate) mod transfer;
@@ -211,6 +212,11 @@ fn change(
         blake3::hash(request.operation_id.as_bytes()).to_hex()
     );
     match &request.change {
+        Change::Link {
+            expected,
+            target,
+            relation,
+        } => relations::link(connection, expected, target, *relation, timestamp),
         Change::Create {
             scope,
             body,

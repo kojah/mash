@@ -39,6 +39,7 @@ for line in sys.stdin:
             continue
         packet = {"records": [{"id": "record/test/one", "revision": 1,
             "status": "candidate" if mode == "candidate" else "current",
+            "conflicted": mode == "conflict",
             "body": {"review": "established", "statement": "Keep source evidence.",
                      "details": {"kind": "decision"}}}]}
         result = {"structuredContent": packet}
@@ -101,7 +102,7 @@ class RecordRecall(unittest.TestCase):
         self.assertTrue(file_context.claim("other-session", "/repo/a.rs"))
 
     def test_failure_timeout_and_optout_fail_open(self) -> None:
-        for mode in ("candidate", "oversize", "sleep"):
+        for mode in ("candidate", "conflict", "oversize", "sleep"):
             with (
                 self.subTest(mode=mode),
                 patch.dict(os.environ, {"RECALL_TEST_MODE": mode}),

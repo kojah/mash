@@ -6,6 +6,7 @@ mod projection;
 mod publication;
 mod reading;
 mod recall;
+mod relations;
 
 fn database() -> (tempfile::TempDir, Storage) {
     let directory = tempfile::tempdir().unwrap();

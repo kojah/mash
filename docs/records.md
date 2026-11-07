@@ -22,7 +22,9 @@ means more than 256 recent records existed in the selected scope. Use
 `list_records` and its pagination for a complete inspection.
 
 `include_review` adds records labeled `candidate`, `stale_evidence` or `inactive`
-after current records. These labels are not approval. Personal records are only
+after current records. It also includes records with `conflicted: true`; default
+recall and automatic hooks omit these. Conflict is separate from evidence freshness,
+so a record can have both stale evidence and a known disagreement. These labels are not approval. Personal records are only
 included alongside another scope when explicitly requested with `include_personal`.
 For file context, supply `file: "src/main.rs"` with a repository or local-project
 scope. It matches that exact relative path in the record text or retained quotes,
@@ -81,6 +83,21 @@ copy. Shared reads use your configured group's authentication and need no models
 They do not silently fall back to local records when the server is unavailable.
 Edits still happen on the owning node and reach the shared copy through normal
 publication. Records scoped to a local project path stay local.
+
+## Relate conclusions
+
+To explicitly record agreement or disagreement, use `record` with
+`change.action: "link"`, `expected: {"id": "SOURCE_ID", "revision": 1}`,
+`target: {"id": "TARGET_ID", "revision": 1}`, and `relation: "supports"` or
+`"contradicts"`, plus a new `operation_id`. Both endpoints must be established,
+current records with matching evidence, owned locally in the same scope.
+Mash does not infer contradictions from wording or choose a winner.
+
+Links describe the record identities, not just their current wording. A correction
+does not silently erase a disagreement. Retire or supersede a changed claim;
+once either endpoint is inactive, the conflict is no longer active. Forgetting
+either endpoint removes the link. Inspect both directions through `get_record`'s
+paginated `links`. Adding or retrying a link never adds confirmations.
 
 ## Review an older chat
 

@@ -275,6 +275,11 @@ impl DuplicatePolicy {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Change {
+    Link {
+        expected: Expected,
+        target: Expected,
+        relation: AssertionRelation,
+    },
     Create {
         scope: Scope,
         body: Body,
@@ -364,6 +369,7 @@ pub(crate) struct Record {
     pub current_revision: i64,
     pub revisions: Vec<RecordRevision>,
     pub links: Vec<Link>,
+    pub conflicted: bool,
     pub next_before_revision: Option<i64>,
     pub next_link_offset: Option<usize>,
 }
@@ -426,6 +432,14 @@ pub(crate) struct Link {
 pub(crate) enum Relation {
     Supersedes,
     Resolves,
+    Supports,
+    Contradicts,
+}
+
+/// Explicit interpretation by the caller; never inferred from similar wording.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AssertionRelation {
     Supports,
     Contradicts,
 }

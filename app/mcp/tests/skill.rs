@@ -57,6 +57,7 @@ fn mcp(tool: &str, text: &str) -> Result<(), String> {
         }
         "view" => arguments::<View>(text).map(|_| ()),
         "list_records" => arguments::<crate::records::List>(text).map(|_| ()),
+        "record" => arguments::<crate::records::Mutation>(text).map(|_| ()),
         "status" => {
             let input = arguments::<Status>(text)?;
             input.coverage.map_or(Ok(()), |coverage| {

@@ -127,6 +127,10 @@ fn search(query: &str, intent: Intent) -> Search {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the typed live-help examples together for contract generation."
+)]
 pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
     let mut drill = search("Qdrant", Intent::ExactMention);
     drill.unit = Some(crate::search_results::SearchUnit::Messages);
@@ -145,6 +149,37 @@ pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
     let mut next_page = search("why we chose Qdrant", Intent::RelatedDiscussion);
     next_page.offset = Some(5);
     Ok(vec![
+        example(
+            "record",
+            crate::records::Mutation {
+                operation_id: "NEW_STABLE_OPERATION_ID".into(),
+                change: crate::records::Change::Create {
+                    scope: crate::records::Scope::Chat {
+                        id: "RETURNED_CHAT_ID".into(),
+                    },
+                    body: crate::records::Body {
+                        statement: "Use small focused commits".into(),
+                        rationale:
+                            "Review the quoted user reply before establishing this preference"
+                                .into(),
+                        review: crate::records::Review::Candidate,
+                        details: crate::records::Details::Preference {
+                            state: crate::records::PreferenceState::Active,
+                            conditions: Vec::new(),
+                        },
+                        effective_at: None,
+                        recorded_by: "YOUR_AGENT_NAME".into(),
+                    },
+                    evidence: vec![crate::records::Citation {
+                        message_id: "RETURNED_MESSAGE_ID".into(),
+                        quote: "EXACT_QUOTE_FROM_VIEW".into(),
+                        purpose: crate::records::EvidenceUse::Context,
+                        expected_fingerprint: None,
+                    }],
+                    on_duplicate: crate::records::DuplicatePolicy::Report,
+                },
+            },
+        )?,
         example("list_records", crate::records::List::default())?,
         example(
             "search",
