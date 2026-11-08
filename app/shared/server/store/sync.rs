@@ -208,13 +208,13 @@ impl Store {
                 && let Some(latest) = self.views.node_views(identity).await?
                 && latest.compatible(&self.views, identity)
             {
-                for (id, chat) in latest.projections.chats() {
-                    let scope = id.clone();
-                    if views.projections.get(&scope).is_none() {
-                        views.projections.insert(scope, chat.clone());
-                    }
-                }
+                // This upload has not written any new coverage yet. The
+                // latest stored state supersedes the commit-time snapshot;
+                // keeping its old markers can erase a completed batch's
+                // replacement before the certification merge sees it.
+                views = latest;
             }
+            views.silver = None;
             self.views.put_node_views(identity, &views).await?;
         }
         for id in &applied.deleted {

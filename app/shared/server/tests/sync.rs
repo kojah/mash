@@ -2484,6 +2484,88 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
     service.cleanup().await;
 }
 
+/// A batch captured old coverage before another batch finished writing a chat.
+/// Restoring that completed batch at the commit/certify boundary must survive
+/// the next batch's invalidation write, not just its final certification merge.
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_upload_preparation_preserves_newer_coverage() {
+    use std::io::Write as _;
+    let service = Service::qdrant(384).await;
+    let identity = service.first.clone();
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let old = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut changed = snapshot(2);
+    changed[2]["records"][0]["content"] = json!("revised chat content");
+    changed[2]["records"][0]["projection"] = json!("revised chat content");
+    service
+        .upload(FIRST, &changed)
+        .await
+        .error_for_status()
+        .unwrap();
+    let completed = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Capture the old evidence, then finish the other batch before this one's
+    // pre-write invalidation. The node lock does not cover views writes.
+    service.store.put_views(&identity, &old).await.unwrap();
+    let mut later = snapshot(3);
+    later[0]["snapshot"] = json!(false);
+    later[0]["base_revision"] = json!(2);
+    later[1]["records"][0]["id"] = json!("later-chat");
+    later[2]["records"] = json!([]);
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    for event in later {
+        writeln!(file, "{event}").unwrap();
+    }
+    let commit = service
+        .store
+        .commit_silver(
+            &identity,
+            file,
+            crate::shared::activity::Progress::default(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    service
+        .store
+        .put_views(&identity, &completed)
+        .await
+        .unwrap();
+    let indexed = service.store.certify_views(commit).await.unwrap();
+    assert!(
+        indexed.views_current,
+        "completed coverage was lost during upload preparation"
+    );
+    let final_views = service
+        .store
+        .compatible_views(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(final_views.projections.chats().count(), 2);
+    assert_eq!(
+        final_views.projections.get("conversation"),
+        completed.projections.get("conversation")
+    );
+    service.cleanup().await;
+}
+
 /// Canonical acceptance does not certify a dense projection with missing vectors.
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]

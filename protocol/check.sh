@@ -146,6 +146,7 @@ if $self_test; then
     check BackfillReceipts BackfillReceiptsMixedBug ServerProgressIsReceipt
     check BackfillReceipts BackfillReceiptsOrderBug ServerProgressIsReceipt
     check CoverageMerge CoverageMergeStaleBug CompletedHasCoverage
+    check CoverageMerge CoverageMergeInvalidationBug CompletedHasCoverage
     # Proposed synchronization contracts, not deliberate mutations of Rust code.
     check SyncTransfer SyncTransferEarlyCheckpoint CheckpointIsDurable
     check SyncTransfer SyncTransferSplitReceipt CommitHasReceipt
