@@ -20,6 +20,7 @@ import { label, recordPage } from "../lib/records";
 import { chatHref, recordHref, recordsHref } from "../lib/route.svelte";
 import type { Message } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
+import LoadError from "./LoadError.svelte";
 import MessageBody from "./MessageBody.svelte";
 
 let {
@@ -230,7 +231,7 @@ function page(next: number): void {
           {#if anchor}<button type="button" onclick={() => page(0)}>Read from the beginning</button>{/if}
         </div>
       </header>
-      {#if catalogue.error}<p role="alert">{catalogue.error.message} <button type="button" onclick={() => catalogue.refetch()}>Retry catalogue</button></p>{/if}
+      {#if catalogue.error}<LoadError title="Couldn’t load the chat list" message={catalogue.error.message} retry={() => catalogue.refetch()} busy={catalogue.isFetching} retryLabel="Retry catalogue"/>{/if}
       {#each catalogue.data?.warnings ?? [] as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
       {#if live.isPending}
         <div role="status" class="rounded-xl border border-line bg-surface p-5">
@@ -238,7 +239,7 @@ function page(next: number): void {
           <div aria-hidden="true" class="mt-5 flex flex-col gap-3"><div class="h-3 w-1/3 rounded bg-fill"></div><div class="h-3 w-full rounded bg-fill"></div><div class="h-3 w-4/5 rounded bg-fill"></div></div>
         </div>
       {/if}
-      {#if live.error}<p role="alert">{live.error.message} <button type="button" onclick={() => live.refetch()}>Retry</button></p>{/if}
+      {#if live.error}<LoadError title="Couldn’t load this conversation" message={live.error.message} retry={() => live.refetch()} busy={live.isFetching}/>{/if}
       {#if changed}<button type="button" class="rounded-lg bg-accent-soft p-3 text-accent-ink" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}>This page has changed. Show updated messages</button>{/if}
       {#if notice}<p role="status" class="text-sm text-muted">{notice}</p>{/if}
       {#if loaded}
@@ -282,7 +283,7 @@ function page(next: number): void {
     <aside class="reader-memory" aria-label="Chat memory">
       <h2><a href={recordsHref(memoryParams)}>Memory</a></h2>
       {#if memories.isPending}<p>Loading memory…</p>{/if}
-      {#if memories.error}<p role="alert">{memories.error.message} <button type="button" onclick={() => memories.refetch()}>Retry</button></p>{/if}
+      {#if memories.error}<LoadError title="Couldn’t load chat memory" message={memories.error.message} retry={() => memories.refetch()} busy={memories.isFetching}/>{/if}
       {#each memories.data?.records ?? [] as record (record.id)}
         {@const revision = record.revisions.find(revision => revision.revision === record.currentRevision)}
         {#if revision}<a class="memory-aside-link" href={recordHref(record.id, record.node, recordsHref(memoryParams))}><span>{revision.statement}</span><small>{label(revision.details.kind)} · {label(revision.details.state)}</small></a>{/if}

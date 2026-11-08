@@ -67,6 +67,14 @@ export async function read(
   const response = await fetch(`${path}?${params}`, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
     cache: "no-store",
+  }).catch((error: unknown) => {
+    if (signal.aborted) throw error;
+    if (error instanceof Error && error.name === "TimeoutError")
+      throw new Error("Mash took too long to respond. Try again in a moment.", { cause: error });
+    throw new Error(
+      "Could not reach Mash. Check your connection and that the dashboard server is running, then retry.",
+      { cause: error },
+    );
   });
   if (!response.ok) {
     let detail = "Check that mash dash and the requested history source are available.";

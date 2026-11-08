@@ -81,6 +81,11 @@ by default throughout the app. Pull-to-refresh is suppressed in browsers that
 support overscroll control; the browser's Reload command and recovery of a
 discarded tab remain outside the app's control.
 
+If a request fails, an error panel names what could not load and offers **Retry**.
+Retry fetches that data without reloading the page. A connection error means the
+browser could not reach Mash; check the connection and that `mash dash` is still
+running. It does not mean your indexed chats or memories were deleted.
+
 To make new conversations available, run `mash index`, or leave
 `mash index --watch` running in another terminal.
 

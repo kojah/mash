@@ -3,6 +3,7 @@ import { createQuery } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
 import { getRecord, label, scopeLabel, timingLabel } from "../lib/records";
 import { chatHref, recordHref } from "../lib/route.svelte";
+import LoadError from "./LoadError.svelte";
 
 let { id, node, back }: { id: string; node: string; back: string } = $props();
 let before = $state<number | null>(null);
@@ -36,8 +37,8 @@ function date(value: number | null): string {
 <main class="page-column memory-detail flex flex-col gap-6">
   <nav class="flex flex-wrap gap-5 text-sm"><a href="#/">Chats</a><a href={back}>Back to memory</a><button type="button" onclick={refresh} disabled={latest.isFetching}>Refresh record</button></nav>
   {#if latest.isPending}<p role="status">Loading record…</p>{/if}
-  {#if latest.error}<p role="alert">{latest.error.message} <button type="button" onclick={refresh}>Retry</button></p>{/if}
-  {#if page.error && !latest.error}<p role="alert">{page.error.message} <button type="button" onclick={() => page.refetch()}>Retry history</button></p>{/if}
+  {#if latest.error}<LoadError title="Couldn’t load this memory" message={latest.error.message} retry={refresh} busy={latest.isFetching}/>{/if}
+  {#if page.error && !latest.error}<LoadError title="Couldn’t load memory history" message={page.error.message} retry={() => page.refetch()} busy={page.isFetching} retryLabel="Retry history"/>{/if}
   {#if record && current && !latest.error && !page.error}
     <header>
       <p class="m-0 text-sm text-muted">{label(current.details.kind)} · {label(current.details.state)} · {label(current.review)}</p>

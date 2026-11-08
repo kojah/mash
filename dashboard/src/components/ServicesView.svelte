@@ -17,6 +17,7 @@ import {
   servicesHref,
   unlockServices,
 } from "../lib/services.svelte";
+import LoadError from "./LoadError.svelte";
 import ServiceStatus from "./ServiceStatus.svelte";
 
 let { params }: { params: string } = $props();
@@ -114,13 +115,13 @@ const consequences = $derived(
   <a class="service-back" href={machineId ? servicesHref(serviceId ? machineId : "") : "#/"}><ArrowLeft size={14}/>{serviceId ? machineId : machineId ? "Services" : "Home"}</a>
   <div class="service-heading"><h1>{service?.name ?? machine?.id ?? "Services"}</h1><button class="plain-button" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={14}/>{fleet.isFetching ? "Checking…" : "Check for updates"}</button></div>
   <p class="text-muted">Statuses reflect the last check. This page does not refresh automatically.</p>
-  {#if access.error}<p role="alert">{access.error.message} <button type="button" onclick={() => access.refetch()}>Retry</button></p>{/if}
+  {#if access.error}<LoadError title="Couldn’t connect to services" message={access.error.message} retry={() => access.refetch()} busy={access.isFetching}/>{/if}
   {#if access.data?.authenticationRequired}
     {#if !serviceSession.unlocked || fleet.error}<form class="service-unlock" onsubmit={unlock}><label for="service-token">Services access token</label><div><input id="service-token" type="password" autocomplete="off" bind:value={token} required/><button class="plain-button" type="submit">Unlock services</button></div><p class="text-muted">Kept only in this tab’s memory; never saved to browser storage.</p></form>
     {:else}<button type="button" class="service-lock" onclick={lock}>Lock services</button>{/if}
   {/if}
   {#if enabled && fleet.isPending}<p role="status">Checking machines…</p>{/if}
-  {#if enabled && fleet.error}<p role="alert">{fleet.error.message} Previously displayed statuses have not been verified.</p>{/if}
+  {#if enabled && fleet.error}<LoadError title="Couldn’t check service status" message={fleet.error.message} retry={refresh} busy={fleet.isFetching}/><p class="service-warning">Previously displayed statuses have not been verified.</p>{/if}
   {#if pending}<p role="status">Service action in progress. You can check recent activity if the connection is interrupted.</p>{/if}
   {#if actionError}<p role="alert">{actionError}</p>{/if}
   {#if result}<p role="status"><strong>{actionLabel[result.request.action]} on {result.request.machine}: {result.outcome}.</strong> {result.message}</p>{/if}

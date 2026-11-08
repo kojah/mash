@@ -43,6 +43,43 @@ body {
   line-height: 1.55;
 }
 
+.load-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  margin: 20px 0;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+}
+.load-error > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-muted);
+}
+.load-error-copy {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.load-error-copy strong {
+  font-weight: 600;
+}
+.load-error-copy p {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.load-error-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+}
+
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;

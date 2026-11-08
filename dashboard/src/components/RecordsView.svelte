@@ -4,6 +4,7 @@ import { untrack } from "svelte";
 import { catalogOptions, stableRead } from "../lib/queries";
 import { kinds, label, recordPage, scopeLabel, states, timingLabel } from "../lib/records";
 import { recordHref, recordsHref } from "../lib/route.svelte";
+import LoadError from "./LoadError.svelte";
 
 let { params }: { params: string } = $props();
 const initial = untrack(() => new URLSearchParams(params));
@@ -93,7 +94,7 @@ function kindHref(value: string): string {
   {#if chat}<p class="m-0 text-sm text-muted">Memory citing chat <span class="break-all font-mono">{chat}</span> in any retained revision. <a href="#/records">Show all memory</a></p>{/if}
   <div class="flex justify-between gap-4 text-xs text-muted"><span>{lifecycle ? label(lifecycle) : "All statuses"}{review ? ` · ${label(review)}` : ""}{source ? ` · ${source === "shared" ? "Shared" : source.slice(5)}` : ""}</span><button type="button" onclick={() => page.refetch()} disabled={page.isFetching}>Refresh memory</button></div>
   {#if page.isPending}<p role="status">Loading records…</p>{/if}
-  {#if page.error}<p role="alert">{page.error.message} <button type="button" onclick={() => page.refetch()}>Retry</button></p>{/if}
+  {#if page.error}<LoadError title="Couldn’t load memory" message={page.error.message} retry={() => page.refetch()} busy={page.isFetching}/>{/if}
   {#if page.data && !page.error}
     {#if !page.data.records.length}<p>{hasNext ? "No matching records on this page. Continue to the next page." : "No records match these filters. Records are saved through your agent’s Mash tools."}</p>{/if}
     <ul class="m-0 flex list-none flex-col gap-3 p-0">

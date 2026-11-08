@@ -10,12 +10,18 @@ import { chatHref, recordsHref } from "../lib/route.svelte";
 import type { ChatSummary } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import HomeServices from "./HomeServices.svelte";
+import LoadError from "./LoadError.svelte";
 import MemoryCategories from "./MemoryCategories.svelte";
 
 let {
   section = "home",
 }: { section?: "home" | "recent" | "machines" | "agents" | "continue" | "status" } = $props();
 const catalogue = createQuery(() => catalogOptions);
+let loadError = $state<Error | null>(null);
+$effect(() => {
+  if (catalogue.error) loadError = catalogue.error;
+  else if (!catalogue.isFetching) loadError = null;
+});
 let snapshot = $state<Catalog | null>(null);
 $effect(() => {
   if (catalogue.data && !snapshot) snapshot = catalogue.data;
@@ -73,8 +79,8 @@ function search(event: SubmitEvent): void {
     <button type="submit" class="search-submit">Search</button>
   </form>
   {#if section !== "status"}<button type="button" class="home-refresh" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()}>{catalogue.isFetching ? "Checking…" : "Check for updates"}</button>{/if}
-  {#if catalogue.isPending}<p role="status">Loading chats…</p>{/if}
-  {#if catalogue.error}<p role="alert">{catalogue.error.message} <button type="button" onclick={() => catalogue.refetch()}>Retry</button></p>{/if}
+  {#if catalogue.isPending && !loadError}<p role="status">Loading chats…</p>{/if}
+  {#if loadError}<LoadError title="Couldn’t load chats" message={loadError.message} retry={() => catalogue.refetch()} busy={catalogue.isFetching}/>{/if}
   {#if section === "status"}
     <section><h1>Index status</h1><p class="text-muted">Mash reads indexed history. Indexing runs separately.</p>
       <p>Local node: {data?.localNode ?? "Loading…"}</p>

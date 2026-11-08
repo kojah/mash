@@ -11,6 +11,7 @@ import { catalogOptions, stableRead } from "../lib/queries";
 import { chatHref } from "../lib/route.svelte";
 import type { Agent, SearchFilters } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
+import LoadError from "./LoadError.svelte";
 
 let {
   onClose,
@@ -222,8 +223,8 @@ const chip = "inline-flex min-h-8 items-center gap-1 rounded-md px-2.5 text-[13p
     {/each}
   </div>
 
-  {#if catalog.error}<p role="alert">{catalog.error.message}</p>{/if}
-  {#if result.error}<p role="alert">{result.error.message} <button type="button" onclick={() => result.refetch()}>Retry</button></p>{/if}
+  {#if catalog.error}<LoadError title="Couldn’t load search filters" message={catalog.error.message} retry={() => catalog.refetch()} busy={catalog.isFetching} retryLabel="Retry filters"/>{/if}
+  {#if result.error}<LoadError title="Couldn’t load search results" message={result.error.message} retry={() => result.refetch()} busy={result.isFetching}/>{/if}
   {#if submitted && result.isPending}<p role="status">Searching…</p>{/if}
   {#each result.data?.warnings ?? [] as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
   {#if results === null && !submitted}
