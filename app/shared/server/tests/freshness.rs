@@ -6,6 +6,72 @@ async fn read(service: &Service, token: &str) -> crate::shared::Freshness {
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_replayed_unpublished_node_does_not_block_published_search() {
+    let service = Service::qdrant(384).await;
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let unpublished = service
+        .identities
+        .get(&blake3::hash(SECOND.as_bytes()))
+        .unwrap();
+    let models = tempfile::tempdir().unwrap();
+    let replayed = service
+        .store
+        .replay(unpublished, models.path())
+        .await
+        .unwrap();
+    assert_eq!(replayed.messages, 0);
+    let empty = service
+        .store
+        .compatible_views(unpublished)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        read(&service, FIRST).await.unpublished_nodes,
+        Some(vec!["second".into()])
+    );
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/search", service.url))
+        .bearer_auth(FIRST)
+        .json(&serde_json::json!({"query":"hello", "vector":vec![1.0; 384]}))
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert!(status.is_success(), "{status}: {body}");
+    let candidates: crate::shared::protocol::Candidates = serde_json::from_str(&body).unwrap();
+    assert!(!candidates.semantic.is_empty());
+    assert!(
+        candidates
+            .semantic
+            .iter()
+            .all(|hit| hit.node_id.as_deref() == Some("first"))
+    );
+    // Once a node publishes, its uncertified views must still fail closed.
+    service
+        .upload(SECOND, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    service.store.put_views(unpublished, &empty).await.unwrap();
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/search", service.url))
+        .bearer_auth(FIRST)
+        .json(&serde_json::json!({"query":"hello", "vector":vec![1.0; 384]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn qdrant_freshness_reports_unpublished_members_only_in_the_authorized_group() {
     let service = Service::qdrant(384).await;
     let initial = read(&service, FIRST).await;

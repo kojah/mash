@@ -504,10 +504,11 @@ impl Store {
         dense: bool,
         exclude_self: bool,
     ) -> Result<BTreeSet<String>, AppError> {
-        // Views exist only after a node publishes its history,
-        // so configured nodes without it are simply absent from search.
+        // Replay can create empty views for configured nodes that have never
+        // published. Only committed publication heads establish searchable
+        // membership; Qdrant metadata alone must not add a node to the group.
         let mut active = BTreeSet::new();
-        for node_id in self.silver.nodes(&identity.group_id).iter().cloned() {
+        for node_id in self.heads(&identity.group_id).await?.into_keys() {
             if exclude_self && node_id == identity.node_id {
                 continue;
             }
