@@ -74,7 +74,7 @@ let exporting = $state(false);
 let exportController: AbortController | undefined;
 let snapshot = $state<{ key: string; page: MessagePage } | null>(null);
 // Keep the sidebar mounted across chat navigation. Only explicit navigation
-// resets the reading page; catalogue polling never touches it.
+// resets the reading page; catalogue updates never touch it.
 $effect(() => {
   const route = [id, node, messageId, shared] as const;
   anchor = route[2];
@@ -91,13 +91,7 @@ const live = createQuery(() => ({
     anchor
       ? context(anchor, machine, signal, shared)
       : transcript(id, machine, offset, signal, shared),
-  staleTime: 15_000,
-  refetchInterval: 30_000,
-  refetchIntervalInBackground: false,
-  retry: false,
-  refetchOnMount: false,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
+  ...stableRead,
 }));
 const loaded = $derived(snapshot?.key === key ? snapshot.page : undefined);
 let rememberedKey = "";

@@ -71,6 +71,7 @@ function search(event: SubmitEvent): void {
     <input aria-label="Search your agent chats" type="search" placeholder="Search conversations and code" bind:value={query} />
     <button type="submit" class="search-submit">Search</button>
   </form>
+  {#if section !== "status"}<button type="button" class="home-refresh" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()}>{catalogue.isFetching ? "Checking…" : "Check for updates"}</button>{/if}
   {#if catalogue.isPending}<p role="status">Loading chats…</p>{/if}
   {#if catalogue.error}<p role="alert">{catalogue.error.message} <button type="button" onclick={() => catalogue.refetch()}>Retry</button></p>{/if}
   {#if section === "status"}

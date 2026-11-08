@@ -147,6 +147,8 @@ test("real API shapes, explicit search, source identity, safe content and stable
   title = "Refreshed catalogue";
   await page.clock.runFor(31_000);
   await expect(page.getByRole("link", { name: /Refreshed catalogue/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /New or updated chats/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Check for updates" }).click();
   await page.getByRole("button", { name: /New or updated chats/ }).click();
   await expect(page.getByRole("link", { name: /Refreshed catalogue/ })).toBeVisible();
   const homeInput = page.getByRole("searchbox");
@@ -183,9 +185,15 @@ test("real API shapes, explicit search, source identity, safe content and stable
   expect(errors).toEqual([]);
 });
 
-test("chat navigation retains the sidebar and polling preserves the displayed transcript", async ({
+test("chat navigation retains the sidebar and refresh requires an explicit request", async ({
   page,
 }) => {
+  let requests = 0;
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/")) requests++;
+    if (request.resourceType() === "document") documents++;
+  });
   let content = "Original answer";
   await page.route("**/api/chats**", (route) =>
     route.fulfill({
@@ -222,7 +230,13 @@ test("chat navigation retains the sidebar and polling preserves the displayed tr
   await expect(sidebar).toHaveAttribute("data-retained", "yes");
   expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
   content = "Background replacement";
-  await page.clock.runFor(31_000);
+  await page.waitForLoadState("networkidle");
+  const beforeIdle = requests;
+  await page.clock.runFor(91_000);
+  expect(requests).toBe(beforeIdle);
+  expect(documents).toBe(1);
+  await expect(page.getByRole("button", { name: /This page has changed/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Check for updates" }).click();
   await expect(page.getByRole("button", { name: /This page has changed/ })).toBeVisible();
   await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
   await expect(page.getByText("Background replacement", { exact: true })).toHaveCount(0);

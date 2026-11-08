@@ -4,9 +4,7 @@ import { catalog } from "./api";
 export const catalogOptions = queryOptions({
   queryKey: ["catalog"],
   queryFn: ({ signal }) => catalog(signal),
-  staleTime: 15_000,
-  refetchInterval: 30_000,
-  refetchIntervalInBackground: false,
+  staleTime: Infinity,
   retry: false,
   refetchOnMount: false,
   refetchOnWindowFocus: false,

@@ -266,6 +266,12 @@ button:disabled {
   gap: 0;
   padding: 0 0 0 40px;
 }
+.home-refresh {
+  align-self: flex-end;
+  margin-top: -24px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
 .home-browse {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

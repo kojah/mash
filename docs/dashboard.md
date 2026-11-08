@@ -66,10 +66,10 @@ an unavailable shared source produces an error rather than opening a local copy.
 
 ## Keep your place
 
-Mash checks for changes in the background. Choose **Show updates** to update the
-recent-chat list. An open transcript stays put
-until you choose **Show updated messages**. Use **Check for updates** to see
-whether there is anything new.
+Mash does not refresh the chat list or transcript automatically. Choose
+**Check for updates** to check for new content, then **Show updates** to update
+the recent-chat list or **Show updated messages** to update an open transcript.
+Returning to the browser tab or reconnecting does not trigger a refresh.
 
 Submitted searches and their filters are kept while you open a result and return
 with your browser’s Back button. The menu and chat links navigate without reloading
