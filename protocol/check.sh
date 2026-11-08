@@ -48,7 +48,7 @@ for dependency in java timeout sha256sum; do
 done
 verify_jar || { echo "Missing or incorrect TLC $version jar: $jar" >&2; exit 2; }
 
-models=(ServiceControl Publication BackfillOrdering BackfillReceipts CoverageMerge SharedViews NativeSilver RetryViews LocalUpgrade LocalWriter LocalGold RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify SystemdCutover LegacyActivation SilverMigration Records SharedRecords RecallBackfill RecordExtraction)
+models=(ServiceControl Publication BackfillOrdering BackfillReceipts BackfillTarget CoverageMerge SharedViews NativeSilver RetryViews LocalUpgrade LocalWriter LocalGold RuntimeUpgrade MutationAdmission SyncTransfer ProgressiveBackfill PublishFairness CommitCertify SystemdCutover LegacyActivation SilverMigration Records SharedRecords RecallBackfill RecordExtraction)
 self_test=false
 if [[ ${1:-} == --self-test ]]; then
     [[ $# == 1 ]] || { echo 'Unexpected self-test argument' >&2; exit 2; }
@@ -59,7 +59,7 @@ elif [[ $# == 0 ]]; then
 else
     for model in "$@"; do
         case "$model" in
-            ServiceControl|Publication|BackfillOrdering|BackfillReceipts|CoverageMerge|SharedViews|NativeSilver|RetryViews|LocalUpgrade|LocalWriter|LocalGold|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify|SystemdCutover|LegacyActivation|SilverMigration|Records|SharedRecords|RecallBackfill|RecordExtraction) ;;
+            ServiceControl|Publication|BackfillOrdering|BackfillReceipts|BackfillTarget|CoverageMerge|SharedViews|NativeSilver|RetryViews|LocalUpgrade|LocalWriter|LocalGold|RuntimeUpgrade|MutationAdmission|SyncTransfer|ProgressiveBackfill|PublishFairness|CommitCertify|SystemdCutover|LegacyActivation|SilverMigration|Records|SharedRecords|RecallBackfill|RecordExtraction) ;;
             *) echo "Unknown model: $model" >&2; exit 2 ;;
         esac
     done
@@ -112,6 +112,7 @@ for model in "${models[@]}"; do
     fi
 done
 if $self_test; then
+    check BackfillTarget BackfillTargetMissingPreparation CompletedIsAcknowledged
     check LegacyActivation LegacyActivationRollback NoOldBinaryAfterChange
     check RecordExtraction RecordExtractionEarlyCheckpoint CheckpointHasRecords
     check RecordExtraction RecordExtractionStaleSource ReviewedVersionCommitted

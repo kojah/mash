@@ -714,6 +714,20 @@ commit/receipt/acknowledgement order. Planner regressions check oversize rejecti
 before a plan is returned, deterministic retry payloads and separation from chat
 batches. The model begins after successful preparation, so needs no new action.
 
+`BackfillTarget.tla` covers destination preparation before that baseline capture.
+`Prepare` maps to `Storage::prepare_publication_target` under the publication
+lock; `Capture` freezes the resulting revision, `Publish` abstracts the complete
+chat and record receipts, and `Ack` maps to the destination-conditional
+`acknowledge_publication` update. A crash between these steps retains durable
+state and permits another attempt. The model starts with either an unset target
+or an acknowledged previous target. `CompletedIsAcknowledged` rejects success
+without a matching local receipt; the missing-preparation variant reproduces
+the zero-row acknowledgement found in mash-2db7. The CLI baseline regressions
+check a separate status call after both first publication and a target change.
+This bounded model assumes the existing publication lock and SQLite transaction
+atomicity. It abstracts upload internals covered by `RecallBackfill` and
+`SyncTransfer`, and does not model concurrent source edits or guarantee progress.
+
 `docs/internal/agent-history.md` defines the agent-history domain and the relationship
 between canonical chats, messages, derived turns, publication, and replay.
 Model changes here should keep that document in sync.

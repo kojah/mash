@@ -528,6 +528,12 @@ pub(crate) async fn publish_backfill(
     let _lock = acquire_publish_lock(path, &target_key, PUBLISH_LOCK_WAIT)
         .await?
         .ok_or_else(|| AppError::shared(SHARED_PENDING))?;
+    // Acknowledgement is conditional on this destination. Prepare it before
+    // capturing the baseline: changing an acknowledged target advances the
+    // local revision and invalidates the previous destination's journal base.
+    let db = path.to_path_buf();
+    let key = target_key.clone();
+    crate::blocking(move || Storage::open_existing(&db)?.prepare_publication_target(&key)).await?;
     let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
     let target = super::reuse::Target::from_freshness(&freshness, config)?;
     if target.build != crate::views::config::Build::default() {

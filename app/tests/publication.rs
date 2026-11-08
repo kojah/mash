@@ -113,11 +113,21 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
 
 #[test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
+    assert_cli_baseline_acknowledged(false);
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
+fn qdrant_backfill_command_acknowledges_a_changed_destination() {
+    assert_cli_baseline_acknowledged(true);
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "verify baseline receipts through CLI and shared status"
 )]
-fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
+fn assert_cli_baseline_acknowledged(previous_destination: bool) {
     let dir = tempfile::tempdir().expect("temp");
     let database = dir.path().join("local.sqlite3");
     seed_readiness_database(&database, Some(""));
@@ -126,6 +136,14 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     open_silver(&database)
         .execute("UPDATE shared_publication SET revision=5000000", [])
         .expect("advance local journal");
+    if previous_destination {
+        open_silver(&database)
+            .execute(
+                "UPDATE shared_publication SET target='previous-destination', acknowledged=revision",
+                [],
+            )
+            .expect("seed previous destination receipt");
+    }
     let models = dir.path().join("models");
     create_valid_model_marker(&models);
     let config = dir.path().join("config.toml");
@@ -224,6 +242,7 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
         .expect("run status");
     assert!(status.status.success());
     let status: Value = serde_json::from_slice(&status.stdout).expect("status JSON");
+    assert_eq!(status["shared"]["state"], "published", "{status}");
     assert_eq!(
         status["shared_index"]["nodes"][0]["revision"].as_i64(),
         Some(revision)
@@ -235,6 +254,9 @@ fn qdrant_backfill_command_publishes_a_baseline_through_the_cli() {
     .expect("mapping JSON");
     assert_eq!(mapping["server"].as_i64(), Some(revision));
     assert!(mapping["local"].as_i64().unwrap() >= 5_000_000);
+    if previous_destination {
+        assert_eq!(mapping["local"].as_i64(), Some(5_000_001));
+    }
     assert!(
         revision < 5_000_000,
         "server assigns its own baseline revisions"
