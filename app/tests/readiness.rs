@@ -225,6 +225,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
         serde_json::json!({
             "path": std::fs::canonicalize(&config).expect("canonical config"),
             "loaded": true,
+            "records": {"enabled": true, "backfill_since": null},
             "attachments": {"allowed_roots": [], "share_files": false},
             "redaction": {"output": true, "publication": true},
             "shared": null,

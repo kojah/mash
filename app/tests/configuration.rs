@@ -58,6 +58,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
         serde_json::json!({
             "path": config_home.join("mash/config.toml"),
             "loaded": false,
+            "records": {"enabled": true, "backfill_since": null},
             "attachments": {"allowed_roots": [], "share_files": false},
             "redaction": {"output": true, "publication": true},
             "shared": null,
