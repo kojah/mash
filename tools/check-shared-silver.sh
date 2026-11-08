@@ -18,6 +18,7 @@ for directory in "$2" "$2"/*; do
     }
 done
 for file in "$2"/*/*.sqlite3; do
+    [[ $file != "$2/sync/catalog.sqlite3" ]] || continue
     version=$(silver_version "$file")
     if ! silver_schema_supported "$version"; then incompatible=true; fi
 done

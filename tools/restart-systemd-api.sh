@@ -60,6 +60,7 @@ for directory in "$silver" "$silver"/*; do
     [[ ! -d $directory || ( -r $directory && -x $directory ) ]] || exit 1
 done
 for file in "$silver"/*/*.sqlite3; do
+    [[ $file != "$silver/sync/catalog.sqlite3" ]] || continue
     version=$(silver_version "$file")
     silver_schema_supported "$version" || incompatible=true
 done

@@ -80,6 +80,7 @@ root = pathlib.Path(sys.argv[1])
 with sqlite3.connect(root / 'group/node.sqlite3') as db:
     db.execute('PRAGMA user_version=54')
 with sqlite3.connect(root / 'sync/catalog.sqlite3') as db:
+    db.execute('PRAGMA user_version=1')
     db.execute('CREATE TABLE receipt (value TEXT)')
     db.execute("INSERT INTO receipt VALUES ('retained')")
 (root / 'sync/spool').write_text('retained transfer piece')

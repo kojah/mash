@@ -54,6 +54,7 @@ if [[ -z "$activate_query$replay_views" ]] && jq -e \
         silver_binary_range "$artifact"
         shopt -s nullglob
         for file in "$silver_dir"/*/*.sqlite3; do
+            [[ $file != "$silver_dir/sync/catalog.sqlite3" ]] || continue
             version=$(silver_version "$file")
             silver_schema_supported "$version" || compatible=false
         done
@@ -124,6 +125,7 @@ retire_silver() {
     silver_binary_range "$binary"
     shopt -s nullglob
     for file in "$silver_dir"/*/*.sqlite3; do
+        [[ $file != "$silver_dir/sync/catalog.sqlite3" ]] || continue
         version=$(silver_version "$file")
         silver_schema_supported "$version" && continue
         group=$(basename "$(dirname "$file")")

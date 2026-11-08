@@ -171,6 +171,12 @@ sha256sum --check "$scratch/silver-before.sha256" >/dev/null
 [[ $(jq -r .pid "$TEST_API_POINTER") == "$previous_pid" ]]
 kill -0 "$previous_pid"
 mkdir -p "$scratch/compatible-silver/group"
+mkdir -p "$scratch/compatible-silver/sync"
+python3 - "$scratch/compatible-silver/sync/catalog.sqlite3" <<'PY'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute('PRAGMA user_version=1')
+PY
 cp "$silver/group/current.sqlite3" "$scratch/compatible-silver/group/current.sqlite3"
 bash "$repository/tools/check-shared-silver.sh" "$scratch/schema.rs" "$scratch/compatible-silver" >/dev/null
 # Supported migration versions pass without modifying history; versions on
