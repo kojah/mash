@@ -266,6 +266,31 @@ button:disabled {
   gap: 0;
   padding: 0 0 0 40px;
 }
+.home-browse {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.home-browse-links {
+  list-style: none;
+  margin: 0;
+  padding: 10px 0 0;
+}
+.home-browse-links a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.home-browse-links svg,
+.home-browse-links img {
+  flex-shrink: 0;
+}
+.home-browse-links span {
+  overflow-wrap: anywhere;
+}
 .browse-list a {
   display: flex;
   align-items: center;

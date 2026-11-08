@@ -51,7 +51,20 @@ for (const width of [1440, 390]) {
     });
     await page.goto("/");
     await expect(page.locator(".chat-row")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Machines" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Machines" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    await page
+      .getByRole("region", { name: "Agents", exact: true })
+      .getByRole("link", { name: "Codex" })
+      .click();
+    await expect(page).toHaveURL(/agent=codex/);
+    await page.goBack();
+    await page
+      .getByRole("region", { name: "Machines", exact: true })
+      .getByRole("link", { name: "local" })
+      .click();
+    await expect(page).toHaveURL(/machine=local/);
+    await page.goBack();
     expect(
       await page
         .locator(".chat-row img")
