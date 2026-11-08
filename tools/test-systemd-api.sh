@@ -28,7 +28,16 @@ set -euo pipefail
 root=$TEST_SYSTEMD_ROOT
 case $2 in
     is-active) [[ $(cat "$root/pid") != 0 ]] ;;
-    show) cat "$root/pid" ;;
+    show)
+        if [[ $* == *FragmentPath* ]]; then echo "$root/unit.service";
+        else cat "$root/pid"; fi
+        ;;
+    daemon-reload)
+        if [[ ${TEST_FAIL_RELOAD:-0} == 1 ]]; then
+            # Fail once so restoration can reload the original unit.
+            if [[ ! -e $root/reload-failed ]]; then touch "$root/reload-failed"; exit 1; fi
+        fi
+        ;;
     stop)
         kill "$(cat "$root/pid")"
         printf '0\n' > "$root/pid"
@@ -39,7 +48,8 @@ case $2 in
         python3 - "$root" <<'PY'
 import pathlib, subprocess, sys
 root = pathlib.Path(sys.argv[1])
-p = subprocess.Popen([str(root / 'mash'), '--server-config', 'fixture.toml'], stdin=subprocess.DEVNULL,
+binary = (root / 'unit.service').read_text().strip().split('ExecStart=')[1]
+p = subprocess.Popen([binary, '--server-config', 'fixture.toml'], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      close_fds=True, start_new_session=True)
 (root / 'pid').write_text(str(p.pid))
@@ -73,6 +83,7 @@ export PATH="$scratch/bin:$PATH"
 echo 'TEST_TOKEN=fixture-token' > "$scratch/environment"
 echo '{}' > "$scratch/pointer"
 echo '# fixture' > "$scratch/config"
+printf '[Service]\nExecStart=%s/mash\n' "$scratch" > "$scratch/unit.service"
 systemctl --user start fixture.service
 python3 - "$scratch/silver" <<'PY'
 import pathlib, sqlite3, sys
@@ -157,4 +168,28 @@ run install --retire-incompatible-silver
 retained=$(jq -r .backup "$scratch/pointer")
 [[ -f $retained/shared-state/group/node.sqlite3 && -f $retained/shared-state/sync/catalog.sqlite3 ]]
 [[ ! -e $scratch/silver/group/node.sqlite3 && ! -e $scratch/silver/sync/catalog.sqlite3 ]]
+# Splitting the shared server from the CLI changes the unit only while stopped.
+printf '[Service]\nExecStart=%s/mash-server\n' "$scratch" > "$scratch/next-unit"
+split_run() {
+    bash "$repository/tools/restart-systemd-api.sh" "$1" fixture.service \
+        "$scratch/artifact" "$scratch/mash-server" "$scratch/config" "$scratch/environment" \
+        "$scratch/pointer" http://fixture TEST_TOKEN "$scratch/logs" "$scratch/silver" \
+        --previous-binary "$scratch/mash" --next-unit "$scratch/next-unit"
+}
+cp "$scratch/unit.service" "$scratch/unit-before"
+sha256sum "$scratch/mash" > "$scratch/cli-before.sha256"
+split_run preflight
+export TEST_FAIL_RELOAD=1
+if split_run install; then echo 'Ignored unit reload failure' >&2; exit 1; fi
+unset TEST_FAIL_RELOAD
+cmp "$scratch/unit.service" "$scratch/unit-before"
+[[ $(readlink "/proc/$(cat "$scratch/pid")/exe") == "$scratch/mash" ]]
+[[ ! -e $scratch/pointer.systemd-pending ]]
+split_run install
+cmp "$scratch/unit.service" "$scratch/next-unit"
+sha256sum --check "$scratch/cli-before.sha256" >/dev/null
+[[ $(readlink "/proc/$(cat "$scratch/pid")/exe") == "$scratch/mash-server" ]]
+live_pid=$(cat "$scratch/pid")
+[[ $(split_run install | jq -r .unchanged) == true ]]
+[[ $(cat "$scratch/pid") == "$live_pid" ]]
 echo 'Systemd deployment fixtures passed.'

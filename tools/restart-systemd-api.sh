@@ -3,7 +3,7 @@
 set -euo pipefail
 umask 077
 usage() {
-    echo 'usage: restart-systemd-api.sh preflight|install|check UNIT ARTIFACT DESTINATION CONFIG ENV POINTER API_URL TOKEN_ENV LOG_ROOT SILVER_DIR [--retire-incompatible-silver] [--next-environment PATH]' >&2
+    echo 'usage: restart-systemd-api.sh preflight|install|check UNIT ARTIFACT DESTINATION CONFIG ENV POINTER API_URL TOKEN_ENV LOG_ROOT SILVER_DIR [--retire-incompatible-silver] [--next-environment PATH] [--previous-binary PATH --next-unit PATH]' >&2
     exit 2
 }
 [[ $# -ge 11 ]] || usage
@@ -11,11 +11,15 @@ action=$1 unit=$2 artifact=$3 destination=$4 config=$5 environment=$6
 pointer=$7 base=$8 token_name=$9 root=${10} silver=${11}
 retire=false
 next_environment=''
+previous_binary=$destination
+next_unit=''
 shift 11
 while [[ $# -gt 0 ]]; do
     case $1 in
         --retire-incompatible-silver) retire=true; shift ;;
         --next-environment) [[ $# -ge 2 && -r $2 ]] || usage; next_environment=$2; shift 2 ;;
+        --previous-binary) [[ $# -ge 2 && $2 == /* && -x $2 ]] || usage; previous_binary=$2; shift 2 ;;
+        --next-unit) [[ $# -ge 2 && $2 == /* && -r $2 ]] || usage; next_unit=$2; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -32,19 +36,42 @@ marker="$pointer.systemd-pending"
 }
 mkdir -p "$root"
 scratch=$(mktemp -d "$root/systemd-api.XXXXXXXX")
+active_binary=$previous_binary
+# On a completed split deployment, the configured old path may still be the CLI.
+# Verify the running server against the destination before choosing its identity.
+if [[ $previous_binary != "$destination" && -f $destination ]]; then
+    running_pid=$(systemctl --user show "$unit" --property MainPID --value)
+    if [[ $running_pid =~ ^[0-9]+$ && $running_pid -gt 1 ]]; then
+        running_digest=$(sha256sum "/proc/$running_pid/exe")
+        destination_digest=$(sha256sum "$destination")
+        if [[ $(readlink "/proc/$running_pid/exe") == "$(realpath "$destination")" && ${running_digest%% *} == "${destination_digest%% *}" ]]; then
+            active_binary=$destination
+        fi
+    fi
+fi
+unit_path=''
+unit_unchanged=true
+if [[ -n $next_unit ]]; then
+    unit_path=$(systemctl --user show "$unit" --property FragmentPath --value)
+    [[ $unit_path == /* && -f $unit_path && ! -L $unit_path && -w $unit_path && -w $(dirname "$unit_path") ]]
+    cmp -s "$next_unit" "$unit_path" || unit_unchanged=false
+elif [[ $previous_binary != "$destination" ]]; then
+    echo 'Changing the server executable path requires --next-unit.' >&2
+    exit 1
+fi
 check_service() {
     systemctl --user is-active --quiet "$unit" || return 1
     pid=$(systemctl --user show "$unit" --property MainPID --value) || return 1
     [[ $pid =~ ^[0-9]+$ && $pid -gt 1 ]] || return 1
     local expected actual
-    expected=$(sha256sum "$destination") || return 1
+    expected=$(sha256sum "$active_binary") || return 1
     actual=$(sha256sum "/proc/$pid/exe") || return 1
     [[ ${expected%% *} == "${actual%% *}" ]] || return 1
     check_api_http "$base" "$scratch"
 }
 check_service
 [[ $action != check ]] || exit 0
-[[ -w $destination && -w $pointer && -w $(dirname "$pointer") ]]
+[[ ( ! -e $destination || -w $destination ) && -w $(dirname "$destination") && -w $pointer && -w $(dirname "$pointer") ]]
 silver_schema_range "$(dirname "$0")/../app/storage/schema.rs"
 if [[ $action == install ]]; then
     [[ -x $artifact ]]
@@ -86,13 +113,15 @@ check_service
 digest=$(sha256sum "$artifact")
 config_digest=$(sha256sum "$config")
 environment_digest=$(sha256sum "${next_environment:-$environment}")
-if ! $incompatible && jq -e --arg binary "${digest%% *}" --arg config "${config_digest%% *}" \
+if ! $incompatible && $unit_unchanged && [[ $active_binary == "$destination" ]] && jq -e --arg binary "${digest%% *}" --arg config "${config_digest%% *}" \
     --arg environment "${environment_digest%% *}" \
     '.binary_sha256 == $binary and .config_sha256 == $config and .environment_sha256 == $environment' "$pointer" >/dev/null; then
     echo '{"deployed":false,"unchanged":true}'
     exit 0
 fi
-cp "$destination" "$scratch/previous-mash"
+cp "$active_binary" "$scratch/previous-mash"
+restore_binary=$active_binary
+if [[ -n $unit_path ]]; then cp -p "$unit_path" "$scratch/previous-unit"; fi
 cp "$pointer" "$scratch/previous-release.json"
 cp "$environment" "$scratch/previous-environment"
 publication_identity "$scratch/freshness.json" > "$scratch/before.json"
@@ -109,7 +138,13 @@ finish() {
             [[ ! -e $silver ]] || rmdir "$silver"
             mv "$scratch/shared-state" "$silver"
         fi
-        bash "$(dirname "$0")/install-dev-binary.sh" "$scratch/previous-mash" "$destination"
+        bash "$(dirname "$0")/install-dev-binary.sh" "$scratch/previous-mash" "$restore_binary"
+        active_binary=$restore_binary
+        if [[ -n $unit_path ]]; then
+            cp -p "$scratch/previous-unit" "$unit_path.incoming.$$"
+            mv "$unit_path.incoming.$$" "$unit_path"
+            systemctl --user daemon-reload
+        fi
         cp "$scratch/previous-environment" "$environment.incoming.$$"
         mv "$environment.incoming.$$" "$environment"
         load_api_environment "$environment" "$token_name"
@@ -137,6 +172,13 @@ if $incompatible; then
     mkdir -m 700 "$silver"
 fi
 bash "$(dirname "$0")/install-dev-binary.sh" "$artifact" "$destination"
+active_binary=$destination
+if [[ -n $unit_path ]]; then
+    cp "$next_unit" "$unit_path.incoming.$$"
+    chmod 600 "$unit_path.incoming.$$"
+    mv "$unit_path.incoming.$$" "$unit_path"
+    systemctl --user daemon-reload
+fi
 if [[ -n $next_environment ]]; then
     cp "$next_environment" "$environment.incoming.$$"
     chmod 600 "$environment.incoming.$$"

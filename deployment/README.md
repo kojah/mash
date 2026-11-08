@@ -11,6 +11,16 @@ History nodes and MCP launchers continue to use `mash`; `mash dash` is unchanged
 Do not point both roles at the same installed executable. Existing units using
 `mash serve` must be updated during their next planned deployment. Merely
 installing the new CLI does not replace or restart a running server.
+For an existing systemd service that still runs `mash serve`, the trusted
+`tools/restart-systemd-api.sh` installer accepts `--previous-binary PATH` and
+`--next-unit PATH`. Set its destination to the separate `mash-server` path and
+provide a complete private unit file whose `ExecStart` uses that path with
+`--server-config`. Preflight checks the running old executable; installation
+stops the service before replacing its unit and reloading systemd. A failure
+before activation restores the previous unit and executable. After activation,
+the pending marker requires forward recovery. Inspect existing unit drop-ins
+before preparing the replacement, because they can override its settings.
+Once the split is verified, ordinary deployments use the new server path.
 The macOS builder copies its CLI to `OUTPUT` and its server to `OUTPUT-server`,
 each with its own checksum and revision file; Linux keeps both in the release
 target directory. Release archives and public installers include both binaries.

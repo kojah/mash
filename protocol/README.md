@@ -105,6 +105,14 @@ allowed only before activation. After activation, failures retain the marker and
 require forward recovery. A process interruption can leave any completed step
 intact; a subsequent invocation refuses an existing marker.
 
+`InstallBinary` and `ConfigureUnit` represent installing the server executable
+and replacing/reloading the optional systemd unit while its process is stopped.
+They are separate steps: interruption between them leaves the pending marker.
+Pre-activation rollback restores the original executable path and unit before
+starting the old server. After activation the new unit stays in place for forward
+recovery. The model abstracts successful unit replacement and daemon reload as
+one step; shell fixtures also inject a reload failure after the file replacement.
+
 The model checks that receipts stay with their history, retirement stops the old
 owner, and rollback cannot discard new acknowledgements. Two deliberate mutations
 retain the old catalogue or permit rollback after activation; both must produce
