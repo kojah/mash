@@ -132,7 +132,9 @@ test("records filter on submission, expose history and safe citations, and navig
   ).toHaveAttribute("aria-current", "page");
   await page.getByRole("link", { name: /fact fixture on port/ }).click();
   await page.getByRole("link", { name: "Open source message" }).click();
-  await expect(page.getByText("The service uses port 8080.", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("#message-message-1").getByText("The service uses port 8080.", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Browse chat memory" }).click();
   await expect(page.getByText(/Memory citing chat/)).toContainText("chat-1");
   expect(documents).toBe(1);

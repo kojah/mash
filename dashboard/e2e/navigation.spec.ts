@@ -1,5 +1,54 @@
 import { expect, test } from "@playwright/test";
 
+test("hamburger routes update history without triggering fragment navigation", async ({ page }) => {
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") documents++;
+  });
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { local_node: "local", chats: [], truncated: false } }),
+  );
+  await page.goto("/");
+  await page.evaluate(() => {
+    document.documentElement.dataset.fragmentNavigations = "0";
+    document.querySelector("header")?.setAttribute("data-retained", "true");
+    window.addEventListener("hashchange", () => {
+      document.documentElement.dataset.fragmentNavigations = String(
+        Number(document.documentElement.dataset.fragmentNavigations) + 1,
+      );
+    });
+  });
+  for (const [label, hash] of [
+    ["Machines", "#/machines"],
+    ["Agents", "#/agents"],
+    ["Continue reading", "#/continue"],
+    ["Recent conversations", "#/recent"],
+    ["Memory", "#/records"],
+    ["Decisions", "#/records?kind=decision"],
+    ["Services", "#/services"],
+    ["Index status", "#/status"],
+    ["Home", "#/"],
+  ] as const) {
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page
+      .getByRole("navigation", { name: "Main navigation" })
+      .getByRole("link", { name: label, exact: true })
+      .click();
+    await expect(page.getByRole("dialog", { name: "Navigation" })).not.toBeVisible();
+    expect(await page.evaluate(() => location.hash)).toBe(hash);
+    await expect(page.locator(".app-header")).toHaveAttribute("data-retained", "true");
+  }
+  expect(await page.evaluate(() => document.documentElement.dataset.fragmentNavigations)).toBe("0");
+  expect(documents).toBe(1);
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Index status", exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(
+    page.getByRole("heading", { name: "Recent conversations", exact: true }),
+  ).toBeVisible();
+  expect(documents).toBe(1);
+});
+
 test("the app boundary prevents document navigation from bare links and unhandled forms", async ({
   page,
 }) => {

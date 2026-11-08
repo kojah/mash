@@ -1,6 +1,7 @@
 <script lang="ts">
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
+import { navigate } from "../lib/navigation";
 import { catalogOptions, stableRead } from "../lib/queries";
 import { kinds, label, recordPage, scopeLabel, states, timingLabel } from "../lib/records";
 import { recordHref, recordsHref } from "../lib/route.svelte";
@@ -47,7 +48,7 @@ function submit(event: SubmitEvent): void {
     next.set("shared", "true");
     if (source.startsWith("node:")) next.set("node", source.slice(5));
   }
-  location.hash = recordsHref(next);
+  navigate(recordsHref(next));
 }
 function nextPage(): void {
   if (!page.data) return;
@@ -59,14 +60,14 @@ function nextPage(): void {
     next.set("cursor_node", page.data.nextCursor.node);
     next.set("cursor_offset", String(page.data.nextCursor.offset));
   } else if (page.data.nextOffset !== null) next.set("offset", String(page.data.nextOffset));
-  location.hash = recordsHref(next);
+  navigate(recordsHref(next));
 }
 function firstPage(): void {
   const next = new URLSearchParams(params);
   next.delete("offset");
   next.delete("cursor_node");
   next.delete("cursor_offset");
-  location.hash = recordsHref(next);
+  navigate(recordsHref(next));
 }
 function kindHref(value: string): string {
   const next = new URLSearchParams(params);

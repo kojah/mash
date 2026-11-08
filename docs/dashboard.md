@@ -75,7 +75,8 @@ Returning to the browser tab or reconnecting does not trigger a refresh.
 
 Submitted searches and their filters are kept while you open a result and return
 with your browser’s Back button. The menu and chat links navigate without reloading
-the page. A shared navigation boundary prevents internal links and ordinary
+the page. App links update browser history directly, without requesting even a
+fragment navigation from the browser. A shared navigation boundary prevents internal links and ordinary
 form submissions from replacing the document. Automatic query refresh is off
 by default throughout the app. Pull-to-refresh is suppressed in browsers that
 support overscroll control; the browser's Reload command and recovery of a

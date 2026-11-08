@@ -75,9 +75,12 @@ class Router {
   current = $state<Route>(parseRoute(globalThis.location?.hash ?? ""));
 
   constructor() {
-    globalThis.addEventListener?.("hashchange", () => {
+    const update = () => {
       this.current = parseRoute(location.hash);
-    });
+    };
+    globalThis.addEventListener?.("mash:navigate", update);
+    globalThis.addEventListener?.("popstate", update);
+    globalThis.addEventListener?.("hashchange", update);
   }
 }
 

@@ -1,5 +1,14 @@
 /** Keep app links and forms inside the current document, even if a component
  * forgets preventDefault. Browser controls and external links remain native. */
+export function navigate(hash: string, view: Window = window): void {
+  if (!hash.startsWith("#/")) throw new Error("Expected an app route");
+  if (view.location.hash === hash) return;
+  // Unlike location.hash, pushState does not invoke browser navigation. This
+  // matters for embedded browsers that handle fragment changes as page loads.
+  view.history.pushState(null, "", hash);
+  view.dispatchEvent(new Event("mash:navigate"));
+}
+
 export function installNavigationBoundary(document: Document): () => void {
   const view = document.defaultView;
   if (!view) throw new Error("Navigation requires a browser window");
@@ -19,11 +28,11 @@ export function installNavigationBoundary(document: Document): () => void {
       destination.search !== current.search
     )
       return;
-    event.preventDefault();
-    // Setting a fragment cannot request a new document. Bare home links are
-    // normalized too, instead of letting the browser reload the current URL.
+    // Only app routes are handled here; content anchors keep native behavior.
     const hash = destination.hash || "#/";
-    if (current.hash !== hash) current.hash = hash;
+    if (!hash.startsWith("#/")) return;
+    event.preventDefault();
+    navigate(hash, view);
   };
   const submit = (event: SubmitEvent) => event.preventDefault();
   document.addEventListener("click", click, true);

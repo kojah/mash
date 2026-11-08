@@ -4,6 +4,7 @@ import Search from "@lucide/svelte/icons/search";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import type { Catalog } from "../lib/api";
+import { navigate } from "../lib/navigation";
 import { catalogOptions } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
 import { chatHref, recordsHref } from "../lib/route.svelte";
@@ -68,7 +69,7 @@ function time(chat: ChatSummary): string {
 }
 function search(event: SubmitEvent): void {
   event.preventDefault();
-  location.hash = `#/search?${new URLSearchParams({ q: query })}`;
+  navigate(`#/search?${new URLSearchParams({ q: query })}`);
 }
 </script>
 
