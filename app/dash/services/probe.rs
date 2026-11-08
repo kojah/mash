@@ -58,14 +58,14 @@ pub(super) fn local_files(paths: &Paths) -> (Vec<Service>, Vec<String>) {
         .clone()
         .unwrap_or_else(crate::core::default_database_path);
     let (watch_state, watch_summary) = match crate::watch::active(&database_path) {
-        Ok(true) => (State::Healthy, "Watcher leadership lock is held"),
-        Ok(false) => (State::Stopped, "No active watcher leader for this database"),
-        Err(_) => (State::Unknown, "Watcher leadership could not be checked"),
+        Ok(true) => (State::Healthy, "Watcher running"),
+        Ok(false) => (State::Stopped, "Not running"),
+        Err(_) => (State::Unknown, "Could not check watcher status"),
     };
-    services.push(Service { id:"watcher-leadership".into(), name:"Index watcher leadership".into(), kind:Kind::Watcher,
+    services.push(Service { id:"watcher-leadership".into(), name:"Automatic indexing".into(), kind:Kind::Watcher,
         state:watch_state, summary:watch_summary.into(), checked_at:now(), pid:None, actions:vec![],
-        control_note:"Leadership is an observation, not a supervisor target. Configure the watcher service to enable controls.".into(),
-        diagnostics:vec![Diagnostic {label:"Scope".into(),value:"A held lock proves leadership, not successful indexing or schema compatibility. Registered runtimes below report their own compatibility.".into()}],
+        control_note:"Configure a managed watcher service to enable controls here.".into(),
+        diagnostics:vec![Diagnostic {label:"What this checks".into(),value:"Checks whether a watcher holds this database's exclusive lock. This does not confirm that indexing is succeeding or that the index is up to date. The process entries below show schema compatibility. Manual indexing can still run when the watcher is stopped.".into()}],
         compatibility:None, control_revision: None, logs_available:false });
     let mut warnings = vec!["Process inventory covers registered MCP/watch processes for this database. Older releases and other databases may not be represented.".into()];
     if !inventory.complete {
