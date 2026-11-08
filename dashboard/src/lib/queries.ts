@@ -17,4 +17,5 @@ export const stableRead = {
   refetchOnReconnect: false,
   refetchOnMount: false,
   retry: false,
+  refetchInterval: false,
 } as const;

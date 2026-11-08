@@ -7,9 +7,10 @@ import RecordView from "./components/RecordView.svelte";
 import SearchView from "./components/SearchView.svelte";
 import ServicesView from "./components/ServicesView.svelte";
 import TranscriptView from "./components/TranscriptView.svelte";
+import { stableRead } from "./lib/queries";
 import { router } from "./lib/route.svelte";
 
-const client = new QueryClient();
+const client = new QueryClient({ defaultOptions: { queries: stableRead } });
 let searchParams = $state<string | null>(null);
 $effect(() => {
   if (router.current.page === "search") searchParams = router.current.params;

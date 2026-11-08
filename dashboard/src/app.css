@@ -29,6 +29,8 @@
 }
 
 html {
+  /* Prevent scroll chaining into browser pull-to-refresh on touch devices. */
+  overscroll-behavior-y: none;
   background: var(--color-ground);
   color: var(--color-ink);
   font-family: var(--font-sans);
