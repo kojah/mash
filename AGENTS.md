@@ -142,6 +142,13 @@ until the reader requests an update. Before completing front-end changes, run `p
 Render all chat content as text or through a sanitizer; archived history is
 untrusted.
 
+Keep linked preview servers available while the user reviews them. Build and
+validate a replacement on a separate endpoint before sharing it; do not stop an
+in-use preview as part of a test or rebuild. Record the preview PID, address,
+startup time and log location under mash-artifacts. For reported browser failures,
+correlate the recording's time with preview process lifecycles before assuming a
+routing defect, and test the affected browser engine when available.
+
 ## Python conventions
 
 Use `.agents/skills/python-coding-conventions/SKILL.md` when changing Python.

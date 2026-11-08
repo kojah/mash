@@ -85,6 +85,8 @@ If a request fails, an error panel names what could not load and offers **Retry*
 Retry fetches that data without reloading the page. A connection error means the
 browser could not reach Mash; check the connection and that `mash dash` is still
 running. It does not mean your indexed chats or memories were deleted.
+Opening a view while offline reports the failed request instead of leaving it
+queued behind a loading message. Once connected again, choose **Retry**.
 
 To make new conversations available, run `mash index`, or leave
 `mash index --watch` running in another terminal.
