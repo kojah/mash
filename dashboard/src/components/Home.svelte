@@ -9,6 +9,7 @@ import { reading } from "../lib/reading.svelte";
 import { chatHref, recordsHref } from "../lib/route.svelte";
 import type { ChatSummary } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
+import HomeServices from "./HomeServices.svelte";
 import MemoryCategories from "./MemoryCategories.svelte";
 
 let {
@@ -107,15 +108,8 @@ function search(event: SubmitEvent): void {
       </ul>
     </section>
     {#if section === "home"}
-      {#if machines.length || providers.length}
         <div class="home-browse">
-          <section aria-labelledby="home-machines">
-            <div class="section-heading"><h2 id="home-machines"><a href="#/machines">Machines</a></h2></div>
-            <ul class="home-browse-links">
-              {#each machines.slice(0, 6) as machine (machine)}<li><a href={"#/search?" + new URLSearchParams({ machine })}><Laptop size={16} aria-hidden="true" /><span>{machine}</span></a></li>{/each}
-              {#if machines.length > 6}<li><a href="#/machines">View all machines</a></li>{/if}
-            </ul>
-          </section>
+          <HomeServices {machines}/>
           <section aria-labelledby="home-agents">
             <div class="section-heading"><h2 id="home-agents"><a href="#/agents">Agents</a></h2></div>
             <ul class="home-browse-links">
@@ -123,7 +117,6 @@ function search(event: SubmitEvent): void {
             </ul>
           </section>
         </div>
-      {/if}
       <section aria-labelledby="home-records"><div class="section-heading"><h2 id="home-records"><a href={recordsHref()}>Memory</a></h2></div><MemoryCategories /></section>
     {/if}
   {/if}

@@ -1,5 +1,36 @@
 use super::*;
 
+#[test]
+fn runtime_schema_evidence_is_optional_for_old_records() {
+    let root = tempfile::tempdir().unwrap();
+    let executable = root.path().join("mash");
+    std::fs::write(&executable, "fixture").unwrap();
+    let paths = Paths {
+        db: Some(root.path().join("index.sqlite3")),
+        ..Paths::default()
+    };
+    let _lease = Lease::fixture(&paths, &executable);
+    assert_eq!(
+        inspect(&paths).processes[0].schema_version,
+        Some(crate::storage::schema::SCHEMA_VERSION)
+    );
+    let path = std::fs::read_dir(directory(&paths).unwrap())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .unwrap();
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record.as_object_mut().unwrap().remove("schema_version");
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let inventory = inspect(&paths);
+    assert!(inventory.complete);
+    assert_eq!(inventory.processes[0].schema_version, None);
+}
+
 #[cfg(unix)]
 #[test]
 fn runtime_inventory_is_unverified_when_its_relative_database_cannot_be_resolved() {

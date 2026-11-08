@@ -47,6 +47,11 @@ case "${1:-}" in
         config=.cargo/mutants-runtime.toml
         if [[ $1 == --list-runtime ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
         ;;
+    --services|--list-services)
+        [[ $# == 1 ]] || exit 2
+        config=.cargo/mutants-services.toml
+        if [[ $1 == --list-services ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
+        ;;
     --certification|--list-certification)
         [[ $# == 1 ]] || exit 2
         config=.cargo/mutants-certification.toml
@@ -54,7 +59,7 @@ case "${1:-}" in
         [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
         [[ -n ${MASH_TEST_QDRANT_GRPC_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance' >&2; exit 2; }
         ;;
-    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--certification|--list-certification]' >&2; exit 2 ;;
+    *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--services|--list-services|--certification|--list-certification]' >&2; exit 2 ;;
 esac
 mkdir -p "$artifacts/runs" "$artifacts/tmp"
 run=$(mktemp -d "$artifacts/runs/audit.XXXXXX")

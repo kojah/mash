@@ -124,7 +124,7 @@ words match a phrase: “log rotation” won't find “rotate the application lo
 Try “rotate,” or enable [search by meaning](docs/indexing.md#enable-semantic-search).
 
 Prefer browsing? [Build the web interface](docs/dashboard.md) for a source
-installation, then start the local, read-only dashboard:
+installation, then start the local dashboard (chat history is read-only):
 
 ```bash
 mash dash

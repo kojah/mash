@@ -1,6 +1,7 @@
 // Hash routes keep the static bundle servable from any path: #/ and #/chat/<id>.
 export type Route =
   | { readonly page: "home" }
+  | { readonly page: "services"; readonly params: string }
   | {
       readonly page: "browse";
       readonly section: "machines" | "agents" | "recent" | "continue" | "status";
@@ -17,6 +18,8 @@ export type Route =
     };
 
 export function parseRoute(hash: string): Route {
+  if (/^#\/services(?:\?|$)/.test(hash))
+    return { page: "services", params: new URLSearchParams(hash.split("?")[1]).toString() };
   if (/^#\/search(?:\?|$)/.test(hash))
     return { page: "search", params: new URLSearchParams(hash.split("?")[1]).toString() };
   const section = /^#\/(machines|agents|recent|continue|status)$/.exec(hash)?.[1];

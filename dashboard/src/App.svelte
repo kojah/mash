@@ -5,6 +5,7 @@ import Home from "./components/Home.svelte";
 import RecordsView from "./components/RecordsView.svelte";
 import RecordView from "./components/RecordView.svelte";
 import SearchView from "./components/SearchView.svelte";
+import ServicesView from "./components/ServicesView.svelte";
 import TranscriptView from "./components/TranscriptView.svelte";
 import { router } from "./lib/route.svelte";
 
@@ -22,7 +23,9 @@ $effect(() => {
     {#key searchParams}<SearchView params={searchParams} />{/key}
   </div>
 {/if}
-{#if router.current.page === "records"}
+{#if router.current.page === "services"}
+  <ServicesView params={router.current.params}/>
+{:else if router.current.page === "records"}
   {#key router.current.params}<RecordsView params={router.current.params} />{/key}
 {:else if router.current.page === "record"}
   {#key JSON.stringify([router.current.id, router.current.node])}<RecordView id={router.current.id} node={router.current.node} back={router.current.back} />{/key}

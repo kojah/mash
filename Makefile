@@ -15,6 +15,10 @@ mutation-tools:
 mutation-check:
 	$(DEV_RUN) bash tools/mutation-check.sh
 
+.PHONY: mutation-services
+mutation-services:
+	$(DEV_RUN) bash tools/mutation-check.sh --services
+
 mutation-certification:
 	$(DEV_RUN) bash tools/mutation-check.sh --certification
 

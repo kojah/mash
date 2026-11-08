@@ -232,11 +232,14 @@ enum Command {
     },
     /// Serve search tools over the stdio MCP protocol.
     Mcp,
-    /// Serve the local read-only web dashboard.
+    /// Serve the dashboard (history is read-only; service management is opt-in).
     Dash {
         /// Address to listen on; loopback by default.
         #[arg(long, value_name = "ADDRESS", default_value = "127.0.0.1:8790")]
         listen: std::net::SocketAddr,
+        /// Explicit service inventory and authentication (TOML). Enables fleet management.
+        #[arg(long, value_name = "PATH")]
+        services_config: Option<PathBuf>,
     },
 }
 
@@ -567,13 +570,17 @@ where
         .enable_all()
         .build()
         .map_err(|_| AppError::internal("failed to start async runtime"))?;
-    if let Command::Dash { listen } = cli.command {
+    if let Command::Dash {
+        listen,
+        services_config,
+    } = cli.command
+    {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        runtime.block_on(crate::dash::run(paths, listen))?;
+        runtime.block_on(crate::dash::run(paths, listen, services_config))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp = cli.command {
         let paths = Paths {

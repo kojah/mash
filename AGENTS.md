@@ -6,7 +6,7 @@ mash is a Rust CLI with JSON output and stdio MCP server for local agent histori
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`, `view`,
 `status`, `forget`, `export`, `import`, `models install`, `mcp`, and `dash`
-(the local read-only web dashboard).
+(the local web dashboard: history is read-only; service management is opt-in).
 The shared HTTP service has its own `mash-server` executable; keep its process
 arguments separate from the local CLI and share the typed server implementation.
 `init` is first-run setup: it writes configuration for detected histories, registers
@@ -120,7 +120,16 @@ appropriate guide linked from `docs/README.md`.
 
 ## Dashboard front end
 
-`dashboard/` holds the front end for `mash dash`, a local, read-only web
+Service management uses `mash dash --services-config PATH` with strict TOML,
+an explicit machine/service allowlist and bearer authentication. Permit only
+configured OS-supervisor targets; never accept command strings from browsers,
+install daemons, control agent-owned MCPs or mutate SQLite through these routes.
+Service checks must not migrate databases. Keep process liveness, schema
+compatibility and application readiness distinct. Persist action receipts before
+calling a supervisor, never retry ambiguous mutations automatically, and keep
+remote credentials server-side. History routes remain read-only.
+
+`dashboard/` holds the front end for `mash dash`, a local web
 dashboard (Beads mash-twg6; design mockup linked there). It uses Svelte 5, Vite,
 TypeScript 7 (`svelte-check --tsgo`, with TypeScript 6 kept only as its
 compatibility dependency), Tailwind CSS 4, Lucide Svelte, pnpm, Biome and Vitest;

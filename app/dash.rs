@@ -1,4 +1,5 @@
-//! `mash dash`: a local, read-only web dashboard. It serves the front end built
+//! `mash dash`: read-only history with optional authenticated service control.
+//! It serves the front end built
 //! from `dashboard/` (embedded at compile time) and a small JSON API over the
 //! same typed core as the CLI and MCP. It binds to loopback by default and
 //! answers only requests addressed to the bound host, so other websites cannot
@@ -12,6 +13,8 @@ use axum::response::{IntoResponse, Response};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+mod services;
+
 mod assets {
     include!(concat!(env!("OUT_DIR"), "/dash_assets.rs"));
 }
@@ -20,9 +23,18 @@ struct Dash {
     paths: Paths,
     hosts: Vec<String>,
     model_work: tokio::sync::Semaphore,
+    services: services::Services,
 }
 
-pub(crate) async fn run(paths: Paths, listen: SocketAddr) -> Result<(), AppError> {
+pub(crate) async fn run(
+    paths: Paths,
+    listen: SocketAddr,
+    services_config: Option<std::path::PathBuf>,
+) -> Result<(), AppError> {
+    let services =
+        tokio::task::spawn_blocking(move || services::Services::load(services_config.as_deref()))
+            .await
+            .map_err(|_| AppError::internal("load services configuration"))??;
     let listener = tokio::net::TcpListener::bind(listen)
         .await
         .map_err(|_| AppError::configuration("could not bind the dashboard address"))?;
@@ -33,6 +45,7 @@ pub(crate) async fn run(paths: Paths, listen: SocketAddr) -> Result<(), AppError
         paths,
         hosts: allowed_hosts(address),
         model_work: tokio::sync::Semaphore::new(1),
+        services,
     });
     crate::write_json(
         &mut std::io::stderr(),
@@ -49,6 +62,18 @@ pub(crate) async fn run(paths: Paths, listen: SocketAddr) -> Result<(), AppError
 fn router(state: Arc<Dash>) -> Router {
     Router::new()
         .route("/api/health", axum::routing::get(health))
+        .route("/api/services/access", axum::routing::get(services::access))
+        .route("/api/services", axum::routing::get(services::fleet))
+        .route("/api/services/local", axum::routing::get(services::local))
+        .route("/api/services/log", axum::routing::get(services::logs))
+        .route(
+            "/api/services/operations",
+            axum::routing::get(services::history),
+        )
+        .route(
+            "/api/services/action",
+            axum::routing::post(services::action),
+        )
         .route("/api/chats", axum::routing::get(list_chats))
         .route("/api/search", axum::routing::get(search))
         .route("/api/view", axum::routing::get(view))
@@ -91,7 +116,39 @@ async fn guard(
     {
         return (StatusCode::MISDIRECTED_REQUEST, "unexpected Host header").into_response();
     }
-    if request.method() != axum::http::Method::GET && request.method() != axum::http::Method::HEAD {
+    let service_path = request.uri().path() == "/api/services"
+        || request.uri().path().starts_with("/api/services/");
+    if service_path
+        && request.uri().path() != "/api/services/access"
+        && !state.services.authorized(request.headers())
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(AppError::configuration(
+                "Unlock services with the dashboard access token",
+            )),
+        )
+            .into_response();
+    }
+    let service_action = request.uri().path() == "/api/services/action"
+        && request.method() == axum::http::Method::POST;
+    if service_action && let Some(origin) = request.headers().get(header::ORIGIN) {
+        let valid = origin
+            .to_str()
+            .ok()
+            .and_then(|value| reqwest::Url::parse(value).ok())
+            .is_some_and(|url| {
+                matches!(url.scheme(), "http" | "https")
+                    && url.authority().eq_ignore_ascii_case(host)
+            });
+        if !valid {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+    if !service_action
+        && request.method() != axum::http::Method::GET
+        && request.method() != axum::http::Method::HEAD
+    {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
     let api = request.uri().path().starts_with("/api/");
@@ -489,6 +546,7 @@ mod tests {
             paths,
             hosts: allowed_hosts(address),
             model_work: tokio::sync::Semaphore::new(0),
+            services: super::services::Services::load(None).unwrap(),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -535,6 +593,7 @@ mod tests {
             paths,
             hosts: allowed_hosts(address),
             model_work: tokio::sync::Semaphore::new(0),
+            services: super::services::Services::load(None).unwrap(),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -624,6 +683,7 @@ mod tests {
             },
             hosts: allowed_hosts(address),
             model_work: tokio::sync::Semaphore::new(1),
+            services: super::services::Services::load(None).unwrap(),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();

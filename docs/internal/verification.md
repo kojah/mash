@@ -10,6 +10,7 @@ The entry points are:
 | --- | --- | --- |
 | Bounded protocol exploration | `make protocol-check` | Explicit `make protocol-tools` installation |
 | Revision/freshness mutation audit | `make mutation-check` | Explicit `make mutation-tools` installation |
+| Dashboard service auth/schema audit | `make mutation-services` | Explicit `make mutation-tools` installation |
 
 Mutation audits remain explicit because they rebuild and retest each variant.
 On Xenia all Make targets use `agent-test` for heavy work. No check installs

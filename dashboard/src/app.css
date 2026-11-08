@@ -266,6 +266,209 @@ button:disabled {
   gap: 0;
   padding: 0 0 0 40px;
 }
+.services-page {
+  font-size: 14px;
+}
+.services-page h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+.services-page h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.services-page h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.services-page section {
+  margin-top: 32px;
+}
+.service-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-bottom: 24px;
+}
+.service-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+:where(.services-page) .plain-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+}
+.service-status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.service-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #92918c;
+}
+.service-dot.healthy {
+  background: #438562;
+}
+.service-dot.degraded,
+.service-dot.stopped {
+  background: #b78429;
+}
+.service-dot.failed {
+  background: #b44f47;
+}
+.service-checked,
+.service-warning {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.service-machine-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+}
+.service-list,
+.service-activity,
+.home-service-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.service-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-hairline);
+}
+.service-list strong {
+  font-weight: 600;
+}
+.service-list small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+}
+.service-list .service-status {
+  max-width: 50%;
+}
+.service-diagnostics {
+  margin: 16px 0;
+}
+.service-diagnostics > div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-hairline);
+}
+.service-diagnostics dt {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.service-diagnostics dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.service-confirm {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--color-fill);
+  border-radius: 8px;
+}
+.service-log {
+  padding: 16px;
+  background: var(--color-fill);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.service-activity li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-hairline);
+  font-size: 12px;
+}
+:where(.service-activity li) > span {
+  display: block;
+  color: var(--color-muted);
+  margin-top: 4px;
+}
+.service-unlock {
+  margin: 24px 0;
+}
+.service-unlock > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.service-unlock input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 8px;
+}
+.service-lock {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.home-service-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  font-size: 13px;
+}
+.home-service-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.home-service-list svg {
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .service-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .service-list a {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .service-list .service-status {
+    max-width: 100%;
+  }
+  .service-diagnostics > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
 .home-refresh {
   align-self: flex-end;
   margin-top: -24px;

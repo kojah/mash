@@ -117,6 +117,9 @@ struct Record {
     pid: u32,
     kind: Kind,
     build_revision: String,
+    /// Older runtime records cannot establish schema compatibility.
+    #[serde(default)]
+    schema_version: Option<i64>,
     executable: PathBuf,
     identity: Identity,
 }
@@ -168,6 +171,7 @@ impl Lease {
             pid: std::process::id(),
             kind,
             build_revision: env!("MASH_BUILD_REVISION").into(),
+            schema_version: Some(crate::storage::schema::SCHEMA_VERSION),
             identity,
             executable,
         };
@@ -218,8 +222,9 @@ pub(crate) enum State {
 #[derive(Debug, Serialize)]
 pub(crate) struct Process {
     pub(crate) pid: u32,
-    kind: Kind,
-    build_revision: String,
+    pub(crate) kind: Kind,
+    pub(crate) build_revision: String,
+    pub(crate) schema_version: Option<i64>,
     executable: PathBuf,
     pub(crate) state: State,
 }
@@ -292,6 +297,7 @@ fn inspect_directory(directory: &Path) -> Inventory {
             pid: record.pid,
             kind: record.kind,
             build_revision: record.build_revision,
+            schema_version: record.schema_version,
             executable: record.executable,
             state,
         });

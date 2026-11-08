@@ -61,7 +61,7 @@ for (const width of [1440, 390]) {
     await page.goBack();
     await page
       .getByRole("region", { name: "Machines", exact: true })
-      .getByRole("link", { name: "local" })
+      .getByRole("link", { name: "local", exact: true })
       .click();
     await expect(page).toHaveURL(/machine=local/);
     await page.goBack();

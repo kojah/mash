@@ -30,6 +30,7 @@ export default defineConfig({
             "search",
             "agents",
             "dashboard",
+            "services",
             "synchronization",
             "indexing",
             "shared-index",

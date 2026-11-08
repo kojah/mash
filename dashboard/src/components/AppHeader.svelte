@@ -19,13 +19,16 @@ const items = [
   { href: "#/recent", label: "Recent conversations", icon: Clock },
   { href: "#/machines", label: "Machines", icon: Laptop },
   { href: "#/agents", label: "Agents", icon: Bot },
+  { href: "#/services", label: "Services", icon: Activity },
 ] as const;
 const active = $derived(
   router.current.page === "browse"
     ? `#/${router.current.section}`
-    : router.current.page === "home"
-      ? "#/"
-      : "",
+    : router.current.page === "services"
+      ? "#/services"
+      : router.current.page === "home"
+        ? "#/"
+        : "",
 );
 </script>
 

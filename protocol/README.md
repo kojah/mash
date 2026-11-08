@@ -8,6 +8,24 @@ specifications or proofs of the backing services.
 
 ## Run
 
+`ServiceControl` models dashboard supervisor actions in
+`app/dash/services/operations.rs`. `Acquire` is the OS-held per-service lock;
+`Receipt` is the completed create-new request write and file sync (plus directory
+sync on Unix); `Send` is the one manager invocation; `Finish` is the result
+receipt. A process crash releases the lock but retains receipts. Repeated IDs
+read the receipt and cannot resend, including when the result is unknown.
+The model checks at-most-once submission per ID, not supervisor readiness,
+exactly-once effects, or exclusion of externally initiated operations. Different
+IDs are different user requests. Browser cancellation leaves the detached worker
+running. Partial/corrupt receipts fail closed in Rust; the model abstracts them
+as durable receipts because both prevent resubmission. Filesystem power-loss
+durability, especially directory persistence on Windows, is not established by
+these checks. The missing-receipt configuration deliberately sends before the
+receipt and must violate `AtMostOnce` after crash/retry. The matching Rust
+regression checks interrupted receipts and target/action ID binding. Runtime
+schema reporting adds observational data only and does not change the existing
+`RuntimeUpgrade` admission protocol.
+
 Requires Bash, Java 11+, GNU `timeout`, `sha256sum`, and `curl` for installation.
 The checker is the fixed [TLA+ tools v1.7.4 release](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4),
 verified against SHA-256

@@ -37,8 +37,10 @@ opened in the current browser session. The reader has an outline of the messages
 on the current page; phones put Outline, Memory and Export in a bottom toolbar.
 Expand tool activity and reasoning when you need more context.
 
-The dashboard is read-only. Your chats stay separate from the public Mash
-documentation website.
+Chat and Memory views are read-only. **Services** shows local process and database
+checks; [configure service management](services.md) to inspect other machines,
+read configured logs and control explicitly permitted supervisor targets.
+Your chats stay separate from the public Mash documentation website.
 
 ## Inspect conversation records
 
