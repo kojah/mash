@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn large_tool_heavy_session_preserves_every_message_and_checkpoint() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("opencode.db");
+    let upstream = fixture(&path);
+    let output = "x".repeat(1024 * 1024);
+    for i in 0..40 {
+        let data = serde_json::json!({"content": [
+            {"type": "text", "text": format!("answer {i}")},
+            {"type": "tool", "name": "read", "state": {"output": output}}
+        ]});
+        upstream
+            .execute(
+                "INSERT INTO session_message VALUES(?1,'alpha','assistant',?2,1790726401000,?3)",
+                rusqlite::params![format!("large-{i}"), i + 10, data.to_string()],
+            )
+            .unwrap();
+    }
+    let source = discover(&path).unwrap().remove(0);
+    let checkpoint = source.stamp().unwrap();
+    let chat = parse(&source.identity).unwrap().chat.unwrap();
+    assert_eq!(chat.messages.len(), 42);
+    for (i, message) in chat.messages.rows().unwrap().skip(2).enumerate() {
+        let message = message.unwrap();
+        assert!(message.content.contains(&output));
+        assert_eq!(
+            message.dialogue_text.as_deref(),
+            Some(format!("answer {i}").as_str())
+        );
+    }
+    drop(chat);
+    let local = directory.path().join("index.sqlite3");
+    let mut writer = Storage::open_writer(&local).unwrap();
+    index(&mut writer, &options(&path)).unwrap();
+    writer.commit_writer().unwrap();
+    assert_eq!(writer.counts().unwrap().messages, 43);
+    assert!(
+        writer
+            .source_checkpoint_matches(Provider::Opencode, &source.identity, &checkpoint)
+            .unwrap()
+    );
+    drop(writer);
+    let mut writer = Storage::open_writer(&local).unwrap();
+    index(&mut writer, &options(&path)).unwrap();
+    writer.commit_writer().unwrap();
+    assert_eq!(writer.counts().unwrap().messages, 43);
+}
+
+#[test]
 fn oversized_current_and_fragmented_legacy_sessions_preserve_index_and_checkpoint() {
     for current in [true, false] {
         let directory = tempfile::tempdir().unwrap();
@@ -23,7 +71,7 @@ fn oversized_current_and_fragmented_legacy_sessions_preserve_index_and_checkpoin
             serde_json::to_string(&serde_json::json!({"type":"text", "text": text})).unwrap()
         };
         assert!(data.len() < 8 * 1024 * 1024);
-        for i in 0..17 {
+        for i in 0..31 {
             if current {
                 upstream
                     .execute(

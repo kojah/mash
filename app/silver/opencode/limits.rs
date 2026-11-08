@@ -1,7 +1,10 @@
 //! Bound a session before fetching SQLite text and retaining normalized copies.
 use crate::AppError;
 
-pub(super) const MAX_RETAINED_BYTES: usize = 32 * 1024 * 1024;
+// Tool-heavy chats can retain more than 32 MiB without approaching the native
+// input cap. Large sources already reserve the whole parser admission budget;
+// keep a separate bounded allowance for canonical text and searchable copies.
+pub(super) const MAX_RETAINED_BYTES: usize = 64 * 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_RECORDS: usize = 65_536;
 
