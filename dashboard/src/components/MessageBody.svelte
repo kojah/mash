@@ -25,5 +25,5 @@ let expanded = $state(false);
 .prose :global(code) { font-size: .85em; }
 .prose :global(a) { color: var(--color-accent); text-decoration: underline; }
 .prose :global(table) { display: block; overflow-x: auto; border-collapse: collapse; }
-.prose :global(td), .prose :global(th) { padding: .4rem; border: 1px solid var(--color-line); }
+.prose :global(td), .prose :global(th) { padding: .4rem .6rem; border-bottom: 1px solid var(--color-line); text-align: left; }
 </style>

@@ -1,3 +1,4 @@
+import process from "node:process";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
@@ -7,6 +8,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [tailwindcss(), svelte()],
   build: { outDir: "dist", emptyOutDir: true, sourcemap: false },
-  server: { proxy: { "/api": { target: "http://127.0.0.1:8790", changeOrigin: true } } },
+  server: {
+    proxy: {
+      "/api": {
+        target: process.env.MASH_DASHBOARD_API_URL || "http://127.0.0.1:8790",
+        changeOrigin: true,
+      },
+    },
+  },
   test: { environment: "node", include: ["src/**/*.test.ts"] },
 });

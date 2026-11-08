@@ -21,9 +21,12 @@ test("front page record categories work even when chat history is unavailable", 
   ] as const) {
     const section = page.getByRole("region", { name: "Memory", exact: true });
     await section.getByRole("link", { name: label, exact: true }).click();
-    await expect(page.getByRole("combobox", { name: "Kind", exact: true })).toHaveValue(kind);
+    await expect(page).toHaveURL(new RegExp(`kind=${kind}`));
+    await expect(
+      page.getByRole("navigation", { name: "Memory kind" }).getByRole("link", { name: label }),
+    ).toHaveAttribute("aria-current", "page");
     await expect(page.getByText(/No records match these filters/)).toBeVisible();
-    await page.getByRole("link", { name: "Chats", exact: true }).click();
+    await page.getByRole("link", { name: "Mash home", exact: true }).click();
   }
   expect(documents).toBe(1);
 });
@@ -100,13 +103,17 @@ test("records filter on submission, expose history and safe citations, and navig
   await page.getByRole("link", { name: "Memory", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible();
   await expect(page.locator("li h2")).toHaveCount(4);
-  await page.getByRole("combobox", { name: "Kind", exact: true }).selectOption("fact");
+  await page
+    .getByRole("navigation", { name: "Memory kind" })
+    .getByRole("link", { name: "Facts", exact: true })
+    .click();
+  await expect(page.locator("li h2")).toHaveCount(1);
   await page.getByLabel("Search statements").fill("port");
-  expect(requests).toHaveLength(1);
+  expect(requests).toHaveLength(2);
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page.locator("li h2")).toHaveCount(1);
   expect(requests.at(-1)?.searchParams.get("kind")).toBe("fact");
-  expect(requests.at(-1)?.searchParams.get("q")).toBe("port");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("q")).toBe("port");
   await page.getByRole("link", { name: /fact fixture on port/ }).click();
   await expect(page.getByRole("heading", { name: statement, exact: true })).toBeVisible();
   expect(await page.evaluate(() => "recordPwned" in window)).toBe(false);
@@ -120,11 +127,13 @@ test("records filter on submission, expose history and safe citations, and navig
   await page.getByRole("link", { name: "question-1", exact: true }).click();
   await expect(page.getByText("The platform team owns the review.", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Back to memory" }).click();
-  await expect(page.getByRole("combobox", { name: "Kind", exact: true })).toHaveValue("fact");
+  await expect(
+    page.getByRole("navigation", { name: "Memory kind" }).getByRole("link", { name: "Facts" }),
+  ).toHaveAttribute("aria-current", "page");
   await page.getByRole("link", { name: /fact fixture on port/ }).click();
   await page.getByRole("link", { name: "Open source message" }).click();
   await expect(page.getByText("The service uses port 8080.", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Chat memory" }).click();
+  await page.getByRole("link", { name: "Browse chat memory" }).click();
   await expect(page.getByText(/Memory citing chat/)).toContainText("chat-1");
   expect(documents).toBe(1);
   expect(errors).toEqual([]);
@@ -214,13 +223,15 @@ for (const sourceNode of ["remote/one", "local"]) {
       sourceNode,
     );
     await page.getByRole("link", { name: "Open source message" }).click();
-    await expect(page.getByText("Shared source reply", { exact: true })).toBeVisible();
-    await page.getByText("Export", { exact: true }).click();
+    await expect(
+      page.locator("main .prose").getByText("Shared source reply", { exact: true }),
+    ).toBeVisible();
+    await page.locator("#reader-export summary").click();
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export to Markdown" }).click();
     expect((await download).suggestedFilename()).toContain(".md");
     await expect(page.getByRole("status")).toContainText("Exported 1 messages");
-    await page.getByRole("link", { name: "Chat memory" }).click();
+    await page.getByRole("link", { name: "Browse chat memory" }).click();
     await expect(page.getByText(/No matching records on this page/)).toBeVisible();
     expect(requests.at(-1)?.searchParams.get("node")).toBe(sourceNode);
     expect(requests.at(-1)?.searchParams.get("shared")).toBe("true");

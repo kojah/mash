@@ -27,9 +27,15 @@ mash dash
 Use the same repository revision as your existing Mash installation to avoid a
 schema mismatch.
 
-Choose a recent chat from the sidebar, or search for something you remember
-and open a matching message. Expand tool activity and reasoning when you need
-more context.
+For frontend development, `pnpm --dir dashboard run dev` forwards API requests
+to `http://127.0.0.1:8790`. Set `MASH_DASHBOARD_API_URL` to use a different running
+dashboard backend. This changes the development proxy, not Mash configuration.
+
+Start with search or a recent conversation. The navigation menu opens machines,
+agents, recent chats and Memory. **Continue reading** keeps positions for chats
+opened in the current browser session. The reader has an outline of the messages
+on the current page; phones put Outline, Memory and Export in a bottom toolbar.
+Expand tool activity and reasoning when you need more context.
 
 The dashboard is read-only. Your chats stay separate from the public Mash
 documentation website.
@@ -39,13 +45,13 @@ documentation website.
 Below the chat sections, the front page has a **Memory** section with icons for **Decisions**, **Preferences**,
 **Facts** and **Questions**. Choose a kind to browse it directly, or use the
 **Memory** section title to browse all kinds. Search their statements,
-filter by kind, status or review, and choose
+switch kinds using the category tabs. Open **Filters** to filter by status or review, and choose
 local records or records published to your configured shared group. Choose
 **Apply filters** to run the search; use **Next page** to continue.
 
 Open a record to read its revision history, quoted supporting messages and
 related records. **Open source message** takes you to the cited chat message.
-From a transcript, **Chat memory** finds records citing that chat in any
+From a transcript, **Browse chat memory** (or **Memory** in the phone toolbar) finds records citing that chat in any
 retained revision, including records whose latest revision cites another chat.
 
 Browsing includes candidates and resolved or retired records. Review the status,
@@ -60,9 +66,14 @@ an unavailable shared source produces an error rather than opening a local copy.
 
 ## Keep your place
 
-The recent-chat list refreshes automatically. An open transcript stays put
+Mash checks for changes in the background. Choose **Show updates** to update the
+recent-chat list. An open transcript stays put
 until you choose **Show updated messages**. Use **Check for updates** to see
 whether there is anything new.
+
+Submitted searches and their filters are kept while you open a result and return
+with your browser’s Back button. The menu and chat links navigate without reloading
+the page.
 
 To make new conversations available, run `mash index`, or leave
 `mash index --watch` running in another terminal.

@@ -23,7 +23,11 @@ test("live records browse, filter, expose revisions and open the real source cha
     path: "../../mash-artifacts/dashboard-records-live/list.png",
     fullPage: true,
   });
-  await page.getByRole("combobox", { name: "Kind", exact: true }).selectOption("fact");
+  await page
+    .getByRole("navigation", { name: "Memory kind" })
+    .getByRole("link", { name: "Facts", exact: true })
+    .click();
+  await expect(page.locator("li h2")).toHaveCount(1);
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page.locator("li h2")).toHaveCount(1);
   await page.getByRole("link", { name: /Dashboard fact revised/ }).click();
@@ -42,7 +46,7 @@ test("live records browse, filter, expose revisions and open the real source cha
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Chat memory" }).click();
+  await page.getByRole("link", { name: "Browse chat memory" }).click();
   await expect(page.locator("li h2")).toHaveCount(4);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });

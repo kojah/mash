@@ -16,13 +16,12 @@ for (const submit of ["Enter", "button"] as const) {
     });
     await page.goto("/");
     await expect(page.locator('a[href*="/chat/"]').first()).toBeVisible({ timeout: 30_000 });
-    await page.locator("#home-search").click();
-    await page.locator("#search-query").fill(query);
+    await page.getByRole("searchbox").fill(query);
     const responseReady = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/search",
       { timeout: 90_000 },
     );
-    if (submit === "Enter") await page.locator("#search-query").press("Enter");
+    if (submit === "Enter") await page.getByRole("searchbox").press("Enter");
     else await page.getByRole("button", { name: "Search", exact: true }).click();
     const response = await responseReady;
     expect(response.status()).toBe(200);

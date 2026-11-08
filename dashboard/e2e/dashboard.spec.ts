@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/records?**", (route) =>
+    route.fulfill({ json: { records: [], next_offset: null } }),
+  );
+});
+
 const chat = {
   chat_id: "same-id",
   provider: "codex",
@@ -121,6 +127,8 @@ test("real API shapes, explicit search, source identity, safe content and stable
           next_offset: null,
         },
       });
+    } else if (url.pathname === "/api/records") {
+      await route.fulfill({ json: { records: [], next_offset: null } });
     } else {
       chatRequests.push(url);
       await route.fulfill({
@@ -138,24 +146,28 @@ test("real API shapes, explicit search, source identity, safe content and stable
   await expect(page.getByRole("link", { name: /Real fixture chat/ })).toHaveCount(2);
   title = "Refreshed catalogue";
   await page.clock.runFor(31_000);
+  await expect(page.getByRole("link", { name: /Refreshed catalogue/ })).toHaveCount(0);
+  await page.getByRole("button", { name: /New or updated chats/ }).click();
   await expect(page.getByRole("link", { name: /Refreshed catalogue/ })).toBeVisible();
-  await page.getByPlaceholder("Search chats").click();
-  const input = page.getByRole("dialog").getByRole("searchbox");
-  await input.fill("needle");
+  const homeInput = page.getByRole("searchbox");
+  await homeInput.fill("needle");
   expect(searchRequests).toBe(0);
-  await input.press("Enter");
+  await homeInput.press("Enter");
+  const input = page.getByRole("searchbox");
   await expect(page.getByText("matching snippet")).toBeVisible();
   expect(searchRequests).toBe(1);
   await input.fill("unsubmitted draft");
   await page.clock.runFor(31_000);
   expect(searchRequests).toBe(1);
   await page
-    .getByRole("dialog")
+    .getByRole("main")
     .getByRole("link", { name: /Real fixture chat/ })
     .click();
   await expect(page.getByText("Initial", { exact: false }).last()).toBeVisible();
   expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
-  expect(await page.locator("main script, main img, main a[href^='javascript:']").count()).toBe(0);
+  expect(
+    await page.locator(".prose script, .prose img, .prose a[href^='javascript:']").count(),
+  ).toBe(0);
   await expect(page.locator("main strong")).toHaveText("reply");
   content = "Updated reply";
   await page.getByRole("button", { name: "Check for updates" }).click();
@@ -197,7 +209,8 @@ test("chat navigation retains the sidebar and polling preserves the displayed tr
   await page.clock.install();
   await page.goto("/#/chat/chat-0?node=local");
   await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
-  const sidebar = page.getByRole("complementary");
+  const sidebar = page.getByRole("complementary", { name: "Conversation outline" });
+  await sidebar.locator("summary").click();
   await sidebar.evaluate((element) => {
     element.scrollTop = 500;
     element.setAttribute("data-retained", "yes");
@@ -257,9 +270,10 @@ test("switching a scrolled chat keeps the header and sidebar stationary", async 
   });
   await page.goto("/#/chat/chat-0?node=local");
   await page.locator("main ol li").first().waitFor();
-  const header = page.getByRole("button", { name: "Search chats", exact: true });
+  const header = page.getByRole("link", { name: "Search chats", exact: true });
   const initialHeader = await header.boundingBox();
-  const sidebar = page.getByRole("complementary");
+  const sidebar = page.getByRole("complementary", { name: "Conversation outline" });
+  await sidebar.locator("summary").click();
   await page.locator("main").evaluate((element) => {
     element.scrollTop = 600;
   });
@@ -269,7 +283,7 @@ test("switching a scrolled chat keeps the header and sidebar stationary", async 
   });
   const sidebarScroll = await sidebar.evaluate((element) => element.scrollTop);
   try {
-    await sidebar.getByRole("link", { name: /^Chat 8 / }).click();
+    await sidebar.getByRole("link", { name: "Chat 8", exact: true }).click();
     await expect(page.getByText("Loading messages…", { exact: true })).toBeVisible();
     expect(await header.boundingBox()).toEqual(initialHeader);
     expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(sidebarScroll);

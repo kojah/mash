@@ -15,8 +15,16 @@ import AgentMark from "./AgentMark.svelte";
 let {
   onClose,
   compact = false,
+  initialQuery = "",
+  autoSubmit = false,
   initial = { agents: [], machines: [], projects: [], days: null },
-}: { onClose: () => void; compact?: boolean; initial?: SearchFilters } = $props();
+}: {
+  onClose: () => void;
+  compact?: boolean;
+  initial?: SearchFilters;
+  initialQuery?: string;
+  autoSubmit?: boolean;
+} = $props();
 
 type Facet = "agents" | "machines" | "projects";
 const dates = [
@@ -26,7 +34,7 @@ const dates = [
   { label: "30 days", days: 30 },
 ] as const;
 
-let query = $state("");
+let query = $state(untrack(() => initialQuery));
 let selected = $state<{ agents: Agent[]; machines: string[]; projects: string[] }>({
   agents: untrack(() => [...initial.agents]),
   machines: untrack(() => [...initial.machines]),
@@ -59,6 +67,13 @@ const result = createQuery(() => ({
   },
 }));
 const results = $derived(result.data?.hits ?? null);
+let started = false;
+$effect(() => {
+  if (autoSubmit && catalog.data && !started) {
+    started = true;
+    untrack(run);
+  }
+});
 
 const options = $derived({
   agents: [...new Set(catalogue.map((chat) => chat.agent))],
@@ -132,8 +147,7 @@ function label(facet: Facet): string {
   return chosen.length === 1 ? `${names[facet]}: ${first}` : `${names[facet]}: ${chosen.length}`;
 }
 
-const chip =
-  "inline-flex min-h-8 items-center gap-1 rounded-full border px-2.5 text-[13px] cursor-pointer";
+const chip = "inline-flex min-h-8 items-center gap-1 rounded-md px-2.5 text-[13px] cursor-pointer";
 </script>
 
 <div class="flex flex-col gap-5" class:gap-4={compact}>
@@ -164,7 +178,7 @@ const chip =
         </button>
       {/if}
     </div>
-    <button type="button" aria-label="Search" onclick={run} class="inline-flex size-[52px] shrink-0 items-center justify-center rounded-xl bg-accent text-white">
+    <button type="button" aria-label="Search" onclick={run} class="inline-flex size-[52px] shrink-0 items-center justify-center rounded-xl bg-ink text-white">
       <Search size={20} strokeWidth={2} />
     </button>
   </div>
@@ -219,7 +233,7 @@ const chip =
       <p class="m-0 text-[13px] text-muted">
         {results.length} chat{results.length === 1 ? "" : "s"} on this page · {submitted?.query.trim() || "Newest first"}
       </p>
-      <ul class="m-0 flex list-none flex-col overflow-hidden rounded-xl bg-surface p-0">
+      <ul class="search-results m-0 flex list-none flex-col p-0">
         {#each results as hit (JSON.stringify([hit.chat.machine, hit.chat.id, hit.messageId]))}
           <li>
             <a href={chatHref(hit.chat.id, hit.chat.machine, hit.messageId)} onclick={onClose} class="row items-start py-3">

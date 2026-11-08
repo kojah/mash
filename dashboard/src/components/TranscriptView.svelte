@@ -1,5 +1,7 @@
 <script lang="ts">
-import Search from "@lucide/svelte/icons/search";
+import Download from "@lucide/svelte/icons/download";
+import Layers from "@lucide/svelte/icons/layers";
+import List from "@lucide/svelte/icons/list";
 import { createQuery } from "@tanstack/svelte-query";
 import { tick, untrack } from "svelte";
 import { agents } from "../lib/agents";
@@ -12,12 +14,13 @@ import {
   markdownExport,
   messageText,
 } from "../lib/export";
-import { catalogOptions } from "../lib/queries";
-import { chatHref, recordsHref } from "../lib/route.svelte";
+import { catalogOptions, stableRead } from "../lib/queries";
+import { reading } from "../lib/reading.svelte";
+import { label, recordPage } from "../lib/records";
+import { chatHref, recordHref, recordsHref } from "../lib/route.svelte";
 import type { Message } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import MessageBody from "./MessageBody.svelte";
-import SearchPanel from "./SearchPanel.svelte";
 
 let {
   id,
@@ -32,7 +35,39 @@ const sessions = $derived(catalogue.data?.chats ?? []);
 const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine === displayMachine));
 let offset = $state(0);
 let anchor = $state(untrack(() => messageId));
-let searchOpen = $state(false);
+let outlineOpen = $state(false);
+let currentMessage = $state("");
+const memoryParams = $derived(
+  new URLSearchParams({
+    chat: id,
+    ...(shared || (machine && machine !== catalogue.data?.localNode)
+      ? { shared: "true", node: machine }
+      : {}),
+  }),
+);
+const memories = createQuery(() => ({
+  ...stableRead,
+  enabled: catalogue.data !== undefined,
+  queryKey: ["chat-memory", id, memoryParams.toString()],
+  queryFn: ({ signal }) => recordPage(memoryParams.toString(), signal),
+}));
+function remember(): void {
+  const pane = transcriptPane;
+  if (!pane || !loaded) return;
+  const top = pane.getBoundingClientRect().top;
+  const elements = Array.from(pane.querySelectorAll<HTMLElement>("[data-message]"));
+  const first = elements.find((element) => element.getBoundingClientRect().bottom > top + 30);
+  if (first?.dataset.message) {
+    currentMessage = first.dataset.message;
+    reading.remember({ id, node: displayMachine, message: first.dataset.message, shared });
+  }
+}
+function jump(message: string): void {
+  currentMessage = message;
+  document.getElementById(`message-${message}`)?.scrollIntoView({ block: "start" });
+  outlineOpen = false;
+}
+
 let transcriptPane: HTMLElement | undefined = $state();
 let notice = $state("");
 let exporting = $state(false);
@@ -45,7 +80,7 @@ $effect(() => {
   anchor = route[2];
   offset = 0;
   notice = "";
-  searchOpen = false;
+  outlineOpen = false;
   transcriptPane?.scrollTo({ top: 0, behavior: "instant" });
   return () => exportController?.abort();
 });
@@ -65,6 +100,16 @@ const live = createQuery(() => ({
   refetchOnReconnect: false,
 }));
 const loaded = $derived(snapshot?.key === key ? snapshot.page : undefined);
+let rememberedKey = "";
+$effect(() => {
+  const first = loaded?.messages[0];
+  if (first && catalogue.data && rememberedKey !== key) {
+    rememberedKey = key;
+    currentMessage = anchor || first.id;
+    const position = { id, node: displayMachine, message: first.id, shared };
+    untrack(() => reading.remember(position));
+  }
+});
 const changed = $derived(
   loaded && live.data && JSON.stringify(loaded) !== JSON.stringify(live.data),
 );
@@ -157,31 +202,27 @@ function page(next: number): void {
 }
 </script>
 
-<svelte:window onkeydown={(event) => event.key === "Escape" && (searchOpen = false)} />
-<div class="flex h-dvh flex-col overflow-hidden px-5 pt-6 pb-6">
-  <header class="mx-auto mb-7 flex w-full max-w-[1120px] shrink-0 items-center gap-5">
-    <a href="#/" aria-label="Mash home"><img src="/mash-logo.png" alt="" width="34" height="31" /></a>
-    <a href="#/records" class="text-sm">Memory</a>
-    {#if catalogue.data}<a class="text-sm" href={recordsHref(new URLSearchParams({ chat: id, ...((shared || machine && machine !== catalogue.data.localNode) ? { shared: "true", node: machine } : {}) }))}>Chat memory</a>{/if}
-    <button type="button" onclick={() => searchOpen = true} class="flex min-h-10 flex-1 items-center gap-2 rounded-[10px] bg-fill px-3 text-left text-sm text-muted"><Search size={15} />Search chats</button>
-  </header>
-  <div class="mx-auto grid min-h-0 w-full max-w-[1120px] flex-1 items-start gap-10 [grid-template-columns:260px_minmax(0,1fr)] max-[700px]:[grid-template-columns:minmax(0,1fr)]">
-    <aside aria-label="Recent chats" class="h-full min-h-0 overflow-auto max-[700px]:hidden">
-      {#each sessions.slice(0, 100) as session (JSON.stringify([session.machine, session.id]))}
-        {@const current = session.id === id && session.machine === displayMachine}
-        <a href={chatHref(session.id, session.machine)} title={`${session.title}\n${session.project}\n${session.updatedAt}\n${session.id}`} aria-current={current ? "page" : undefined} class="flex min-h-[46px] items-start gap-2 rounded-[10px] p-2 no-underline {current ? 'bg-accent text-white' : 'text-ink hover:bg-fill'}">
-          <AgentMark agent={session.agent} />
-          <span class="min-w-0"><span class="line-clamp-2 text-sm font-medium">{session.title}</span><span class="block truncate text-xs">{session.project.split('/').filter(Boolean).at(-1) || 'No project'} · {session.machine}</span><span class="block text-xs opacity-75">{session.updatedAt} · {session.id.slice(-6)}</span></span>
-        </a>
+<svelte:window onkeydown={(event) => { if (event.key === "Escape") outlineOpen = false; }} />
+<div class="reader-layout">
+    <aside class="reader-outline" class:mobile-open={outlineOpen} aria-label="Conversation outline">
+      <h2>Outline <button type="button" class="mobile-only" onclick={() => outlineOpen = false}>Close</button></h2>
+      <p class="text-xs text-muted">Messages on this page</p>
+      {#each loaded?.messages.filter(message => message.role === "user") ?? [] as message (message.id)}
+        <button type="button" class="outline-item" aria-current={currentMessage === message.id ? "location" : undefined} onclick={() => jump(message.id)}><span>{message.ordinal ?? ""}</span><span>{plainText(message).slice(0, 110)}</span></button>
       {/each}
+      <details class="recent-sidebar"><summary>Recent chats</summary>
+        {#each sessions.slice(0, 30) as session (JSON.stringify([session.machine, session.id]))}
+          <a href={chatHref(session.id, session.machine)} aria-current={session.id === id && session.machine === displayMachine ? "page" : undefined}>{session.title}</a>
+        {/each}
+      </details>
     </aside>
-    <main bind:this={transcriptPane} class="flex h-full min-h-0 min-w-0 flex-col gap-6 overflow-auto pr-2 pb-10 [scrollbar-gutter:stable] [&>*]:shrink-0">
+    <main bind:this={transcriptPane} onscroll={remember} class="transcript-pane">
       <header class="flex flex-col gap-2">
-        <h1 class="m-0 text-[28px] font-semibold">{chat?.title ?? `Chat ${id.slice(-8)}`}</h1>
-        <p class="m-0 text-sm text-muted">{chat ? agents[chat.agent].name : ""} · {displayMachine} · {chat?.project ?? ""}</p>
+        <h1 class="reader-title">{chat?.title ?? `Chat ${id.slice(-8)}`}</h1>
+        <p class="reader-metadata">{#if chat}<AgentMark agent={chat.agent} size={13} />{agents[chat.agent].name} · {/if}{displayMachine} · {chat?.project ?? ""}</p>
         <p class="m-0 text-xs text-muted">{anchor ? "Context around the selected search match" : `Message positions ${offset}–${offset + PAGE_SIZE - 1}`} · Browser Find searches this page. Branches are shown in recorded display order.</p>
-        <div class="flex flex-wrap gap-4 text-sm text-accent">
-          <details class="relative">
+        <div class="reader-actions">
+          <details class="relative" id="reader-export">
             <summary class="cursor-pointer">Export</summary>
             <div class="absolute left-0 top-7 z-10 flex w-56 flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-lg">
               <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('pdf')}>Export to PDF</button>
@@ -210,7 +251,7 @@ function page(next: number): void {
         {#if !loaded.messages.length}<p>No messages at this position. The chat may have been removed or this is the end.</p>{/if}
         <ol class="m-0 flex list-none flex-col gap-6 p-0">
           {#each loaded.messages as message (message.id)}
-            <li id="message-{message.id}" class="flex min-w-0 flex-col gap-2 scroll-mt-8 {message.id === messageId ? 'rounded-lg ring-2 ring-accent p-3' : ''}">
+            <li id="message-{message.id}" data-message={message.id} class="flex min-w-0 flex-col gap-2 scroll-mt-8 {message.id === messageId ? 'rounded-lg ring-2 ring-accent p-3' : ''}">
               {#if message.presentation && message.presentation !== "dialogue"}
                 <details class="rounded-lg border border-line bg-surface p-3">
                   <summary class="cursor-pointer text-sm"><strong>{message.presentation === 'tool-result' ? 'Tool output' : message.presentation === 'reasoning' ? 'Reasoning' : message.toolLabel || 'Tool call'}</strong><span class="ml-2 text-xs text-muted">{message.at}</span></summary>
@@ -219,7 +260,7 @@ function page(next: number): void {
                 </details>
               {:else}
               <span class="text-xs text-muted">{message.role === 'user' ? 'You' : message.role} · {message.at}</span>
-              <div class="min-w-0 {message.role === 'user' ? 'ml-auto max-w-[85%] rounded-2xl bg-accent-soft p-3' : ''}">
+              <div class="min-w-0 {message.role === 'user' ? 'user-message' : ''}">
                 {#each message.blocks as block, i (i)}
                   {#if block.type === "text"}<MessageBody text={block.markdown} />{/if}
                 {/each}
@@ -227,6 +268,12 @@ function page(next: number): void {
               {#if message.activity}<details class="rounded-lg bg-fill p-3"><summary class="cursor-pointer text-sm">Recorded tool activity</summary><pre class="max-h-80 overflow-auto text-xs whitespace-pre-wrap">{message.activity}</pre></details>{/if}
               {/if}
               <button type="button" class="self-start text-xs text-muted" onclick={() => copy(message)}>Copy</button>
+              {#each memories.data?.records ?? [] as record (record.id)}
+                {@const revision = record.revisions.find(revision => revision.revision === record.currentRevision)}
+                {#if revision?.evidence.some(source => source.messageId === message.id)}
+                  <a class="citation-note" href={recordHref(record.id, record.node, recordsHref(memoryParams))}>Cited in {label(revision.details.kind).toLowerCase()}: {revision.statement}</a>
+                {/if}
+              {/each}
             </li>
           {/each}
         </ol>
@@ -238,11 +285,21 @@ function page(next: number): void {
         {/if}
       {/if}
     </main>
-  </div>
+    <aside class="reader-memory" aria-label="Chat memory">
+      <h2><a href={recordsHref(memoryParams)}>Memory</a></h2>
+      {#if memories.isPending}<p>Loading memory…</p>{/if}
+      {#if memories.error}<p role="alert">{memories.error.message} <button type="button" onclick={() => memories.refetch()}>Retry</button></p>{/if}
+      {#each memories.data?.records ?? [] as record (record.id)}
+        {@const revision = record.revisions.find(revision => revision.revision === record.currentRevision)}
+        {#if revision}<a class="memory-aside-link" href={recordHref(record.id, record.node, recordsHref(memoryParams))}><span>{revision.statement}</span><small>{label(revision.details.kind)} · {label(revision.details.state)}</small></a>{/if}
+      {/each}
+      {#if memories.data && !memories.data.records.length}<p>No memory cites this chat yet.</p>{/if}
+      <a class="text-xs" href={recordsHref(memoryParams)}>Browse chat memory</a>
+      <h2>Source</h2><p>{displayMachine}<br />{chat?.project ?? ""}</p>
+    </aside>
 </div>
-{#if searchOpen}
-  <button type="button" aria-label="Close search" class="fixed inset-0 z-10 bg-black/30" onclick={() => searchOpen = false}></button>
-  <div role="dialog" aria-modal="true" aria-label="Search" class="fixed top-[12vh] left-1/2 z-20 max-h-[76vh] w-[min(720px,calc(100vw-32px))] -translate-x-1/2 overflow-auto rounded-2xl bg-ground p-6">
-    <SearchPanel onClose={() => searchOpen = false} />
-  </div>
-{/if}
+<nav class="reader-dock" aria-label="Reading tools">
+  <button type="button" onclick={() => outlineOpen = !outlineOpen}><List size={17} />Outline</button>
+  <a href={recordsHref(memoryParams)}><Layers size={17} />Memory</a>
+  <button type="button" onclick={() => { const element = document.getElementById("reader-export"); if (element instanceof HTMLDetailsElement) { element.open = !element.open; element.scrollIntoView({ block: "center" }); } }}><Download size={17} />Export</button>
+</nav>
