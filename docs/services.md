@@ -11,14 +11,18 @@ updates** refreshes the report. There is no timer-based polling or page reload.
 Dates tell you when a check was made; an old green result is not a continuous
 health guarantee.
 
-## Enable authenticated service access
+## Enable service access
 
 Create a separate, private TOML file. This example assumes the named systemd
 user unit already exists; Mash does not install it.
 
+`token_env` is optional. When present, the dashboard asks for that token once
+per tab before showing or controlling services. When absent, the service APIs
+are open: only bind `mash dash` to a trusted private network such as Tailscale.
+
 ```toml
 node = "xenia"
-token_env = "MASH_SERVICES_TOKEN"
+# token_env = "MASH_SERVICES_TOKEN"
 
 [[services]]
 id = "watcher"
@@ -29,18 +33,19 @@ unit = "mash-watch.service"
 allow_control = true
 ```
 
-Set `MASH_SERVICES_TOKEN` in the dashboard process's environment to a distinct,
-random secret of at least 32 printable ASCII characters. Use your secret manager
-or a private environment file. Do not put secrets in URLs, Git or shared logs.
+With `token_env` set, export that variable in the dashboard process's environment
+to a distinct, random secret of at least 32 printable ASCII characters. Use your
+secret manager or a private environment file. Do not put secrets in URLs, Git or
+shared logs.
 
 ```sh
 mash dash --services-config /private/mash-services.toml
 ```
 
-Open **Services** and enter that token to unlock it. The browser keeps it only
-in memory for the current tab; **Lock services** clears it and its cached service
-reports. This authentication protects the service APIs. Existing history routes
-retain their local dashboard access rules.
+Without `token_env`, **Services** opens directly. With it, enter the token once;
+the browser keeps it only in memory for the current tab, and **Lock services**
+clears it and its cached reports. Existing history routes retain their local
+dashboard access rules.
 
 For remote access, bind explicitly with `--listen ADDRESS:PORT`. Use a private
 encrypted connection such as Tailscale, or HTTPS through a correctly configured
@@ -58,13 +63,15 @@ to the dashboard you use as your main entry point:
 [[machines]]
 id = "dev-macbook"
 url = "http://100.64.0.12:8790"
-token_env = "MASH_MACBOOK_SERVICES_TOKEN"
+# token_env = "MASH_MACBOOK_SERVICES_TOKEN"
 ```
 
-The remote `node` must equal `id`. The main dashboard resolves this remote token
-from its own environment and forwards requests; it never sends remote tokens to
-the browser. Each remote executes only its own configured actions. Requests do
-not chain through further dashboards. An unavailable or incorrectly authenticated
+The remote `node` must equal `id`. A peer `token_env` is optional and follows the
+same rule: when omitted, the remote dashboard must also run without a token, and
+both endpoints must stay on a trusted private network. The main dashboard
+resolves remote tokens from its own environment and never sends them to the
+browser. Each remote executes only its own configured actions. Requests do not
+chain through further dashboards. An unavailable or incorrectly authenticated
 machine appears **Unknown**, not **Stopped**. A fresh remote report is required
 before its service controls are shown.
 

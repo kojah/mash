@@ -27,7 +27,7 @@ pub(super) struct Services {
 struct Peer {
     id: String,
     url: String,
-    token: String,
+    token: Option<String>,
 }
 
 impl Services {
@@ -35,7 +35,8 @@ impl Services {
         let config = path.map(config::Configuration::load).transpose()?;
         let token_hash = config
             .as_ref()
-            .map(|c| config::token(&c.token_env).map(|s| blake3::hash(s.as_bytes())))
+            .and_then(|c| c.token_env.as_deref())
+            .map(|name| config::token(name).map(|s| blake3::hash(s.as_bytes())))
             .transpose()?;
         let mut peers = Vec::new();
         if let Some(config) = &config {
@@ -43,7 +44,7 @@ impl Services {
                 peers.push(Peer {
                     id: peer.id.clone(),
                     url: peer.url.trim_end_matches('/').into(),
-                    token: config::token(&peer.token_env)?,
+                    token: peer.token_env.as_deref().map(config::token).transpose()?,
                 });
             }
         }
@@ -101,12 +102,15 @@ impl Services {
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<T, String> {
-        let response = self
+        let mut request = self
             .client
             .get(format!("{}{path}", peer.url))
             .header("x-mash-service-forwarded", "1")
-            .query(query)
-            .bearer_auth(&peer.token)
+            .query(query);
+        if let Some(token) = &peer.token {
+            request = request.bearer_auth(token);
+        }
+        let response = request
             .send()
             .await
             .map_err(|_| "Machine could not be reached".to_owned())?;
@@ -273,15 +277,15 @@ pub(super) async fn action(
         else {
             return error(StatusCode::NOT_FOUND, "Unknown machine");
         };
-        let result = state
+        let mut call = state
             .services
             .client
             .post(format!("{}/api/services/action", peer.url))
-            .header("x-mash-service-forwarded", "1")
-            .bearer_auth(&peer.token)
-            .json(&request)
-            .send()
-            .await;
+            .header("x-mash-service-forwarded", "1");
+        if let Some(token) = &peer.token {
+            call = call.bearer_auth(token);
+        }
+        let result = call.json(&request).send().await;
         return match result {
             Ok(response) => match decode::<operations::Operation>(response).await {
                 Ok(operation) if operation.request == request => {

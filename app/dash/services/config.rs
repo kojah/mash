@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
     pub node: String,
-    pub token_env: String,
+    #[serde(default)]
+    pub token_env: Option<String>,
     #[serde(default)]
     pub services: Vec<Service>,
     #[serde(default)]
@@ -32,7 +33,8 @@ pub(super) struct Database {
 pub(super) struct Machine {
     pub id: String,
     pub url: String,
-    pub token_env: String,
+    #[serde(default)]
+    pub token_env: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -200,6 +202,13 @@ impl Configuration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn services_inventory_allows_missing_authentication_tokens() {
+        let config: Configuration = toml::from_str("node = \"local\"\n").unwrap();
+        assert!(config.token_env.is_none());
+        config.validate().unwrap();
+    }
 
     #[test]
     fn services_inventory_rejects_shell_fragments_and_ambiguous_targets() {

@@ -158,7 +158,7 @@ async fn services_remote_failures_are_unknown_and_forwarding_cannot_loop() {
         vec![Peer {
             id: "offline".into(),
             url: "http://127.0.0.1:1".into(),
-            token: TOKEN.into(),
+            token: Some(TOKEN.into()),
         }],
     )
     .await;
@@ -200,7 +200,7 @@ async fn services_remote_reports_keep_identity_and_private_credentials() {
         vec![Peer {
             id: "remote-node".into(),
             url: remote_url,
-            token: TOKEN.into(),
+            token: Some(TOKEN.into()),
         }],
     )
     .await;
