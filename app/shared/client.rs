@@ -100,8 +100,9 @@ impl Endpoint {
             super::BULK_TIMEOUT
         } else if matches!(self, Self::Attachment) {
             Duration::from_secs(15)
-        } else if matches!(self, Self::Fingerprints) {
-            // Reads every configured node's fingerprints.
+        } else if matches!(self, Self::Fingerprints | Self::Catalog) {
+            // These enumerate the fleet. Catalogs include provider titles,
+            // which may be full opening prompts rather than short labels.
             Duration::from_secs(10)
         } else if matches!(self, Self::Query) {
             // The server runs a bounded query; leave room for its 30s budget.

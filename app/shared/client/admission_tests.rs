@@ -43,6 +43,29 @@ async fn server() -> Server {
 }
 
 #[tokio::test]
+async fn fleet_catalog_can_finish_after_short_interactive_deadline() {
+    static CAPACITY: Admission = Admission::new(1, 1);
+    let app = axum::Router::new().route(
+        "/",
+        axum::routing::get(|| async {
+            tokio::time::sleep(Duration::from_millis(2100)).await;
+            axum::Json(true)
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let response = response_admitted::<bool>(
+        reqwest::Client::new().get(url),
+        Endpoint::Catalog,
+        &CAPACITY,
+    )
+    .await;
+    task.abort();
+    assert!(response.unwrap());
+}
+
+#[tokio::test]
 async fn admission_deadline_expires_without_sending_or_exposing_request_metadata() {
     static CAPACITY: Admission = Admission::new(0, 1);
     let server = server().await;
