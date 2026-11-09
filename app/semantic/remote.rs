@@ -266,6 +266,7 @@ fn http_client(timeout_seconds: u32) -> std::result::Result<reqwest::Client, App
     skip_all,
     fields(
         inputs = texts.len(),
+        request_bytes = tracing::field::Empty,
         roundtrip_ms = tracing::field::Empty,
         inference_ms = tracing::field::Empty,
         response_bytes = tracing::field::Empty
@@ -280,6 +281,7 @@ async fn send(
     let started = std::time::Instant::now();
     let request = request(texts)?;
     let body = encode(&request)?;
+    let request_bytes = body.len();
     // No response bodies or transport errors enter diagnostics: they may echo
     // credentials or private input. A timeout can still have incurred GPU cost.
     let failure = || {
@@ -321,6 +323,7 @@ async fn send(
         "roundtrip_ms",
         u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     );
+    span.record("request_bytes", request_bytes);
     span.record("inference_ms", result.inference_milliseconds);
     span.record("response_bytes", response_bytes);
     Ok(result)
