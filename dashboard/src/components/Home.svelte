@@ -19,7 +19,7 @@ let {
   section = "home",
   listPage = 1,
 }: {
-  section?: "home" | "recent" | "machines" | "agents" | "continue" | "status";
+  section?: "home" | "recent" | "machines" | "agents" | "continue";
   listPage?: number;
 } = $props();
 const pageSize = 50;
@@ -33,7 +33,7 @@ let snapshot = $state<Catalog | null>(null);
 $effect(() => {
   if (catalogue.data && !snapshot) snapshot = catalogue.data;
 });
-const data = $derived(section === "status" ? catalogue.data : (snapshot ?? catalogue.data));
+const data = $derived(snapshot ?? catalogue.data);
 const changed = $derived(
   snapshot &&
     catalogue.data &&
@@ -92,16 +92,10 @@ function search(event: SubmitEvent): void {
     <input aria-label="Search your agent chats" type="search" placeholder="Search conversations and code" bind:value={query} />
     <button type="submit" class="search-submit">Search</button>
   </form>
-  {#if section !== "status"}<button type="button" class="home-refresh" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()}>{catalogue.isFetching ? "Checking…" : "Check for updates"}</button>{/if}
+  <button type="button" class="home-refresh" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()}>{catalogue.isFetching ? "Checking…" : "Check for updates"}</button>
   {#if catalogue.isPending && !loadError}<p role="status">Loading chats…</p>{/if}
   {#if loadError}<LoadError title="Couldn’t load chats" message={loadError.message} retry={() => catalogue.refetch()} busy={catalogue.isFetching}/>{/if}
-  {#if section === "status"}
-    <section><h1>Index status</h1><p class="text-muted">Mash reads indexed history. Indexing runs separately.</p>
-      <p>Local node: {data?.localNode ?? "Loading…"}</p>
-      {#each data?.warnings ?? [] as warning (warning)}<p role="status">{warning}</p>{/each}
-      <button type="button" class="plain-button" onclick={() => catalogue.refetch()}>Refresh status</button>
-    </section>
-  {:else if section === "machines" || section === "agents"}
+  {#if section === "machines" || section === "agents"}
     <section><h1>{section === "machines" ? "Machines" : "Agents"}</h1>
       <ul class="browse-list">
         {#if section === "machines"}

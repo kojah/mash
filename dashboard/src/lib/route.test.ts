@@ -71,3 +71,7 @@ describe("recent conversation pages", () => {
     expect(parseRoute("#/recent")).toEqual({ page: "browse", section: "recent" });
   });
 });
+
+it("sends the old index status route to services", () => {
+  expect(parseRoute("#/status")).toEqual({ page: "services", params: "" });
+});

@@ -4,7 +4,7 @@ export type Route =
   | { readonly page: "services"; readonly params: string }
   | {
       readonly page: "browse";
-      readonly section: "machines" | "agents" | "recent" | "continue" | "status";
+      readonly section: "machines" | "agents" | "recent" | "continue";
       /** One-based page of the recent conversations list. */
       readonly listPage?: number;
     }
@@ -20,6 +20,8 @@ export type Route =
     };
 
 export function parseRoute(hash: string): Route {
+  // The old index status page now lives on the services overview.
+  if (hash === "#/status") return { page: "services", params: "" };
   if (/^#\/services(?:\?|$)/.test(hash))
     return { page: "services", params: new URLSearchParams(hash.split("?")[1]).toString() };
   if (/^#\/search(?:\?|$)/.test(hash))
@@ -32,13 +34,12 @@ export function parseRoute(hash: string): Route {
       listPage: Number.isSafeInteger(listPage) && listPage > 0 ? listPage : 1,
     };
   }
-  const section = /^#\/(machines|agents|recent|continue|status)$/.exec(hash)?.[1];
+  const section = /^#\/(machines|agents|recent|continue)$/.exec(hash)?.[1];
   if (
     section === "machines" ||
     section === "agents" ||
     section === "recent" ||
-    section === "continue" ||
-    section === "status"
+    section === "continue"
   )
     return { page: "browse", section };
   if (/^#\/records(?:\?|$)/.test(hash))
