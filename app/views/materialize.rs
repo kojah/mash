@@ -146,6 +146,8 @@ impl<'a> Writer<'a> {
 
     /// Input is canonical silver in chat order. Hidden rows still define
     /// inference batch boundaries, which can affect quantized model output.
+    /// Production materializes chat windows; focused tests use this helper.
+    #[cfg(test)]
     pub(crate) async fn write_chat(
         &mut self,
         chat: &ChatRecord,
@@ -322,6 +324,7 @@ impl<'a> Writer<'a> {
         Ok(())
     }
 
+    #[cfg(test)]
     async fn write_prepared(
         &mut self,
         chat: &ChatRecord,

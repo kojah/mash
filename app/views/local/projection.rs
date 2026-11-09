@@ -1,6 +1,12 @@
 //! Agent message writes for a captured local silver snapshot.
 use super::{AppError, Arc, Input, NodeViews, ProjectionEvidence, Scope, Store};
+use crate::views::documents::{ChatRecord, SearchMessage};
 use crate::views::materialize::Writer;
+
+/// Chats materialized together so remote inference fills whole batches across
+/// chat boundaries. Kept below the replay window because local chats can be
+/// much larger and the snapshot is held in memory while preparing.
+const LOCAL_CHAT_WINDOW: usize = 64;
 
 pub(super) async fn native(
     store: &Store,
@@ -10,6 +16,8 @@ pub(super) async fn native(
     previous: Option<&NodeViews>,
     node: &mut NodeViews,
 ) -> Result<(), AppError> {
+    let mut pending = Vec::new();
+    let mut identities = Vec::new();
     for (id, chat) in &input.chats {
         if let Some(old) = previous
             .and_then(|n| n.projections.get(&id.clone()))
@@ -32,15 +40,36 @@ pub(super) async fn native(
                     .collect(),
             )
             .await?;
-        let built = writer.write_chat(&chat.record, &messages).await?;
+        identities.push((id.clone(), chat.fingerprint.clone()));
+        pending.push((chat.record.clone(), messages));
+        if pending.len() >= LOCAL_CHAT_WINDOW {
+            flush(writer, &mut pending, &mut identities, node).await?;
+        }
+    }
+    flush(writer, &mut pending, &mut identities, node).await?;
+    writer.flush().await
+}
+
+async fn flush(
+    writer: &mut Writer<'_>,
+    pending: &mut Vec<(ChatRecord, Vec<SearchMessage>)>,
+    identities: &mut Vec<(String, String)>,
+    node: &mut NodeViews,
+) -> Result<(), AppError> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let built = writer.write_chats(pending.as_slice()).await?;
+    for ((id, fingerprint), (_, build)) in identities.drain(..).zip(built) {
         node.projections.insert(
-            id.clone(),
+            id,
             ProjectionEvidence {
-                fingerprint: chat.fingerprint.clone(),
-                embeddings: built.embeddings,
-                complete: built.complete,
+                fingerprint,
+                embeddings: build.embeddings,
+                complete: build.complete,
             },
         );
     }
-    writer.flush().await
+    pending.clear();
+    Ok(())
 }
