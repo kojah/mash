@@ -1,5 +1,6 @@
 //! Optional, authenticated service inspection and allowlisted supervisor control.
 mod config;
+pub(super) mod fleet_jobs;
 mod manager;
 mod model;
 mod operations;
@@ -21,6 +22,7 @@ pub(super) struct Services {
     peers: Vec<Peer>,
     directory: Option<PathBuf>,
     client: reqwest::Client,
+    fleet_path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -33,6 +35,22 @@ struct Peer {
 impl Services {
     pub(super) fn load(path: Option<&Path>) -> Result<Self, crate::AppError> {
         let config = path.map(config::Configuration::load).transpose()?;
+        Self::configured(path, config)
+    }
+
+    pub(super) fn load_fleet(path: &Path, node: Option<&str>) -> Result<Self, crate::AppError> {
+        let inventory =
+            mash_fleet::inventory::Inventory::load(path).map_err(crate::AppError::configuration)?;
+        let config = config::Configuration::from_fleet(&inventory, node)?;
+        let mut services = Self::configured(Some(path), Some(config))?;
+        services.fleet_path = Some(path.to_path_buf());
+        Ok(services)
+    }
+
+    fn configured(
+        path: Option<&Path>,
+        config: Option<config::Configuration>,
+    ) -> Result<Self, crate::AppError> {
         let token_hash = config
             .as_ref()
             .and_then(|c| c.token_env.as_deref())
@@ -78,6 +96,7 @@ impl Services {
             peers,
             directory,
             client,
+            fleet_path: None,
         })
     }
 

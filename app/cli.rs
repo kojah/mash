@@ -240,6 +240,12 @@ enum Command {
         /// Explicit service inventory and authentication (TOML). Enables fleet management.
         #[arg(long, value_name = "PATH")]
         services_config: Option<PathBuf>,
+        /// Shared machine/service inventory used by mash-fleet (TOML).
+        #[arg(long, value_name = "PATH", conflicts_with = "services_config")]
+        fleet_config: Option<PathBuf>,
+        /// This dashboard's machine ID; defaults to the inventory controller.
+        #[arg(long, requires = "fleet_config")]
+        fleet_node: Option<String>,
     },
 }
 
@@ -573,6 +579,8 @@ where
     if let Command::Dash {
         listen,
         services_config,
+        fleet_config,
+        fleet_node,
     } = cli.command
     {
         let paths = Paths {
@@ -580,7 +588,13 @@ where
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        runtime.block_on(crate::dash::run(paths, listen, services_config))?;
+        runtime.block_on(crate::dash::run(
+            paths,
+            listen,
+            services_config,
+            fleet_config,
+            fleet_node,
+        ))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp = cli.command {
         let paths = Paths {

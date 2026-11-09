@@ -5,6 +5,15 @@ schema migrations and readiness checks. `mash-fleet` is the Rust command-line
 entry point; its internal MCP probe checks installed history and performs
 explicitly requested refreshes. It delegates orchestration to these playbooks.
 
+For dashboard fleet controls, use the canonical private TOML inventory shown in
+[fleet.example.toml](fleet.example.toml). Pass it to both
+`mash-fleet --fleet-config /private/mash-fleet.toml status --all` and
+`mash dash --fleet-config /private/mash-fleet.toml`. The runner generates its
+Ansible JSON inventory from that file; do not maintain a second YAML inventory
+for the same setup. The legacy YAML workflow below remains available separately.
+See [dashboard fleet management](../docs/services.md#manage-the-fleet-from-one-inventory)
+for peer setup, authentication, confirmations, and job recovery.
+
 Build the controller with `cargo build --release -p mash-fleet`. Run it from a
 Mash checkout, or pass `--repository /path/to/mash` after the subcommand. It
 requires Bash, Git, jq, flock, timeout and uv on the controller; uv installs the locked Ansible

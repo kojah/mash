@@ -10,6 +10,7 @@ for inherited in $(compgen -e); do
 done
 # A fleet-driven build passes its own probe executable; fixtures use their double.
 unset MASH_FLEET_BINARY
+unset MASH_FLEET_JOB_DIRECTORY
 scratch=$(mktemp -d "${TMPDIR:?}/ansible-fleet-test.XXXXXXXX")
 # On an unexpected failure, show the newest nested runner log before the scratch tree is removed.
 trap 'status=$?; if [[ $status -ne 0 ]]; then newest=$(ls -t "$scratch"/*/runner.log 2>/dev/null | head -n 1); [[ -n $newest ]] && tail -n 80 "$newest" >&2; fi; rm -rf "$scratch"' EXIT

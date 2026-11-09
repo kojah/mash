@@ -241,7 +241,117 @@ export async function serviceAction(
       service,
       action,
       control_revision: controlRevision,
-      request_id: crypto.randomUUID(),
+      request_id: serviceRequestId(),
     }),
   );
+}
+
+/** getRandomValues also works on private HTTP dashboards without a secure context. */
+export function serviceRequestId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 15) | 64;
+  bytes[8] = ((bytes[8] ?? 0) & 63) | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+const fleetActions = [
+  "status",
+  "preflight",
+  "deploy",
+  "sync",
+  "local-views",
+  "replay-views",
+  "watch-start",
+  "watch-stop",
+  "watch-status",
+  "watch-logs",
+] as const;
+export type FleetAction = (typeof fleetActions)[number];
+export interface FleetRequest {
+  id: string;
+  action: FleetAction;
+  targets: string[];
+  revision: string;
+}
+export const fleetActionLabel: Record<FleetAction, string> = {
+  status: "Check machines",
+  preflight: "Check deployment readiness",
+  deploy: "Deploy Mash",
+  sync: "Index and publish",
+  "local-views": "Rebuild local search",
+  "replay-views": "Rebuild shared search",
+  "watch-start": "Set up and start watchers",
+  "watch-stop": "Stop watchers",
+  "watch-status": "Check watchers",
+  "watch-logs": "Collect watcher logs",
+};
+export function parseFleetCatalog(value: unknown) {
+  const row = object(value);
+  const enabled = boolean(row.enabled);
+  const revision = row.revision === null ? null : text(row.revision);
+  if (enabled && !revision) throw new Error("Fleet configuration revision is missing.");
+  return {
+    enabled,
+    revision,
+    actions: list(row.actions).map((value) => {
+      const action = object(value);
+      return {
+        action: choice(action.action, fleetActions),
+        targets: list(action.targets).map(text),
+      };
+    }),
+  };
+}
+export function parseFleetJob(value: unknown) {
+  const row = object(value);
+  const submitted = object(row.request);
+  const request: FleetRequest = {
+    id: text(submitted.id),
+    action: choice(submitted.action, fleetActions),
+    targets: list(submitted.targets).map(text),
+    revision: text(submitted.revision),
+  };
+  return {
+    request,
+    requested_at: integer(row.requested_at),
+    completed_at: optionalInteger(row.completed_at),
+    outcome: choice(row.outcome, ["running", "succeeded", "partial", "failed", "unknown"]),
+    targets: list(row.targets).map((value) => {
+      const target = object(value);
+      const progress = target.progress === null ? null : object(target.progress);
+      return {
+        id: text(target.id),
+        state: choice(target.state, [
+          "waiting",
+          "running",
+          "succeeded",
+          "failed",
+          "skipped",
+          "unknown",
+        ]),
+        progress:
+          progress === null
+            ? null
+            : {
+                progress: finiteProgress(progress.progress),
+                total: progress.total === null ? null : finiteProgress(progress.total),
+              },
+      };
+    }),
+  };
+}
+function finiteProgress(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    throw new Error("Invalid fleet progress.");
+  return value;
+}
+export async function fleetCatalog(signal: AbortSignal) {
+  return parseFleetCatalog(await request("/api/services/fleet", signal));
+}
+export async function fleetHistory(signal: AbortSignal) {
+  return list(await request("/api/services/fleet/jobs", signal)).map(parseFleetJob);
+}
+export async function submitFleetJob(submitted: FleetRequest) {
+  return parseFleetJob(await request("/api/services/fleet/jobs", undefined, submitted));
 }

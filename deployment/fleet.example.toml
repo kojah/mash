@@ -1,0 +1,55 @@
+# Copy outside the checkout and replace paths, hosts, and trusted commands.
+# Credentials are environment variable references, never literal secrets.
+version = 1
+
+[controller]
+node = "workstation"
+repository = "/home/operator/mash"
+binary = "/home/operator/bin/mash-fleet"
+jobs = "/home/operator/mash-private/fleet-jobs"
+allow_actions = ["status", "watch-start", "watch-stop", "watch-status"]
+
+[[machines]]
+id = "workstation"
+platform = "linux"
+roles = ["history"]
+dashboard_url = "http://127.0.0.1:8790"
+token_env = "MASH_WORKSTATION_SERVICES_TOKEN"
+
+[machines.transport]
+kind = "local"
+
+[machines.deployment]
+connection_check = ["true"]
+mcp = ["/home/operator/bin/mash", "mcp"]
+
+[machines.watcher]
+home = "/home/operator"
+launcher = "/home/operator/bin/mash-watch"
+allow_control = true
+
+[[machines.databases]]
+id = "history"
+name = "Agent history"
+path = "/home/operator/.local/share/mash/silver.sqlite3"
+
+[[machines]]
+id = "macbook"
+platform = "darwin"
+roles = ["history"]
+dashboard_url = "http://100.64.0.12:8790"
+token_env = "MASH_MACBOOK_SERVICES_TOKEN"
+
+[machines.transport]
+kind = "ssh"
+host = "100.64.0.12"
+user = "operator"
+
+[machines.deployment]
+connection_check = ["ssh", "operator@100.64.0.12", "true"]
+mcp = ["ssh", "operator@100.64.0.12", "/Users/operator/bin/mash", "mcp"]
+
+[machines.watcher]
+home = "/Users/operator"
+launcher = "/Users/operator/bin/mash-watch"
+allow_control = true

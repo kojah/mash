@@ -9,7 +9,58 @@ The front page shows a status dot for each reported machine. Open a machine,
 then a service, to see its diagnostics and schema compatibility. **Check for
 updates** refreshes the report. There is no timer-based polling or page reload.
 Dates tell you when a check was made; an old green result is not a continuous
-health guarantee.
+health guarantee. Fleet job progress, when enabled below, updates automatically
+while an operation is running; it does not reload the page or the chat history.
+
+## Manage the fleet from one inventory
+
+Use a shared private TOML inventory to give `mash-fleet` and the dashboard the
+same machine names, services, and watcher definitions. This is an alternative
+to the standalone `--services-config` setup below; do not pass both flags.
+Start with [the example inventory](../deployment/fleet.example.toml), copy it
+outside Git, and replace its paths and machine addresses. The controller needs
+the Mash checkout, built `mash-fleet` binary, and its Ansible runtime dependencies.
+See [fleet setup](../deployment/README.md) for those prerequisites.
+
+```sh
+mash-fleet --fleet-config /private/mash-fleet.toml status --all
+mash dash --fleet-config /private/mash-fleet.toml
+```
+
+On each peer, use the same inventory with its machine ID and an explicit private
+listen address:
+
+```sh
+mash dash --fleet-config /private/mash-fleet.toml --fleet-node macbook --listen 100.64.0.12:8790
+```
+
+Each dashboard needs its own configured token environment variable. The
+controller also needs the peer token variables so it can fetch reports and
+forward service actions; peers do not need each other's tokens. Keep the
+inventory and job directory private. Trusted deployment commands belong in
+that file, never in browser requests.
+
+Open **Services → Fleet operations** on the controller. Choose an allowed
+operation, select machines, and review the named targets before confirming.
+The controller's `allow_actions` selects which operations appear. Deployment
+requires configured build/install/preflight commands; adding `deploy` to the
+allowlist alone does not provide an installer. Include required API machines
+when selecting their dependent history machines.
+
+Watcher start installs the configured systemd user unit or macOS LaunchAgent
+and starts `mash index --watch` through your existing launcher. Stop disables
+that supervisor job. The same watcher definition supplies the individual
+service controls, so unit names and plist paths do not need a second inventory.
+Fleet watcher operations require their action in `allow_actions`; the watcher's
+`allow_control` separately enables individual dashboard service buttons.
+
+Jobs continue when you leave the page. Each submission has a saved request ID,
+and repeating that ID cannot launch it again. An **unknown** outcome means the
+controller could not confirm completion; check the affected machines before
+starting another operation. Raw logs and command output remain in the private
+controller job directory. **Collect watcher logs** saves logs there; it does not
+display raw fleet logs in the browser. Individual configured services retain
+their existing **View log** button.
 
 ## Enable service access
 

@@ -30,11 +30,18 @@ pub(crate) async fn run(
     paths: Paths,
     listen: SocketAddr,
     services_config: Option<std::path::PathBuf>,
+    fleet_config: Option<std::path::PathBuf>,
+    fleet_node: Option<String>,
 ) -> Result<(), AppError> {
-    let services =
-        tokio::task::spawn_blocking(move || services::Services::load(services_config.as_deref()))
-            .await
-            .map_err(|_| AppError::internal("load services configuration"))??;
+    let services = tokio::task::spawn_blocking(move || {
+        if let Some(path) = fleet_config {
+            services::Services::load_fleet(&path, fleet_node.as_deref())
+        } else {
+            services::Services::load(services_config.as_deref())
+        }
+    })
+    .await
+    .map_err(|_| AppError::internal("load services configuration"))??;
     let listener = tokio::net::TcpListener::bind(listen)
         .await
         .map_err(|_| AppError::configuration("could not bind the dashboard address"))?;
@@ -65,6 +72,14 @@ fn router(state: Arc<Dash>) -> Router {
         .route("/api/services/access", axum::routing::get(services::access))
         .route("/api/services", axum::routing::get(services::fleet))
         .route("/api/services/local", axum::routing::get(services::local))
+        .route(
+            "/api/services/fleet",
+            axum::routing::get(services::fleet_jobs::catalog),
+        )
+        .route(
+            "/api/services/fleet/jobs",
+            axum::routing::get(services::fleet_jobs::history).post(services::fleet_jobs::submit),
+        )
         .route("/api/services/log", axum::routing::get(services::logs))
         .route(
             "/api/services/operations",
@@ -130,8 +145,10 @@ async fn guard(
         )
             .into_response();
     }
-    let service_action = request.uri().path() == "/api/services/action"
-        && request.method() == axum::http::Method::POST;
+    let service_action = matches!(
+        request.uri().path(),
+        "/api/services/action" | "/api/services/fleet/jobs"
+    ) && request.method() == axum::http::Method::POST;
     if service_action && let Some(origin) = request.headers().get(header::ORIGIN) {
         let valid = origin
             .to_str()

@@ -8,7 +8,13 @@ export default defineConfig({
   testMatch: liveUrl ? "**/*.live.ts" : "**/*.spec.ts",
   workers: 1,
   outputDir: "../../mash-artifacts/dashboard-browser",
-  use: { baseURL: liveUrl || "http://127.0.0.1:4179", headless: true },
+  use: {
+    baseURL: liveUrl || "http://127.0.0.1:4179",
+    headless: true,
+    ...(process.env.MASH_BROWSER_EXECUTABLE
+      ? { launchOptions: { executablePath: process.env.MASH_BROWSER_EXECUTABLE } }
+      : {}),
+  },
   ...(liveUrl
     ? {}
     : {

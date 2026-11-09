@@ -21,7 +21,12 @@ logs=${MASH_DEPLOY_LOGS:-/home/james/scratch/mash-artifacts/dev-jobs}
 [[ -f "$inventory" ]] || { echo 'Set MASH_DEPLOY_INVENTORY to a private inventory.' >&2; exit 2; }
 umask 077
 mkdir -p "$logs"
-job=$(mktemp -d "$logs/$operation.XXXXXXXX")
+if [[ -n ${MASH_FLEET_JOB_DIRECTORY:-} ]]; then
+    job=$MASH_FLEET_JOB_DIRECTORY
+    mkdir -m 700 "$job"
+else
+    job=$(mktemp -d "$logs/$operation.XXXXXXXX")
+fi
 mkdir "$job/env"
 export ANSIBLE_CONFIG="$repository/deployment/ansible.cfg"
 source "$repository/tools/controller-environment.sh"

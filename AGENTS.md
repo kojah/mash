@@ -129,7 +129,14 @@ appropriate guide linked from `docs/README.md`.
 Service management uses `mash dash --services-config PATH` with strict TOML,
 an explicit machine/service allowlist and bearer authentication. Permit only
 configured OS-supervisor targets; never accept command strings from browsers,
-install daemons, control agent-owned MCPs or mutate SQLite through these routes.
+control agent-owned MCPs or mutate SQLite through individual service routes.
+Opt-in dashboard fleet operations use `--fleet-config` and the same private
+typed inventory as `mash-fleet`. Only the configured controller can submit
+allowlisted actions against explicit machine IDs. Fleet watcher start may
+install its configured user supervisor job through the existing Ansible
+workflow. Persist revision-bound request receipts before launching work,
+never resubmit an ambiguous request, and keep command output and credentials
+on the controller. Peer dashboards expose their local services only.
 Service checks must not migrate databases. Keep process liveness, schema
 compatibility and application readiness distinct. Persist action receipts before
 calling a supervisor, never retry ambiguous mutations automatically, and keep

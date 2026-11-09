@@ -8,6 +8,25 @@ specifications or proofs of the backing services.
 
 ## Run
 
+`FleetJobs` covers dashboard fleet admission in
+`crates/mash-fleet/src/jobs.rs`. `Reserve` is create-new request-directory
+admission and acquisition of its worker lock. `Record` is the atomic receipt
+publication after file sync, followed by directory sync on Unix. `Launch` is
+the single awaited subprocess launch; `ChildExit` is its exit, and `Finish`
+is publication of a completed result. `LoseOwner` covers worker interruption
+or timeout: the child may keep running, and the retained directory prevents
+another admission using that ID. An incomplete reservation fails closed;
+it does not authorize retry. Repeated IDs and browser disconnects stutter.
+Different IDs remain different operations. The model does not establish
+exclusion between distinct requests, supervisor readiness, command success,
+or power-loss durability. Preparation failure and uncertain results are
+conservatively represented by loss of ownership without a successful result.
+It checks receipt-before-launch and at-most-once submission for two IDs; the
+missing-receipt variant must violate `LaunchRecorded`. Rust regressions cover
+simultaneous admission, lost workers, corrupt receipts, request binding,
+and refusing to report success without per-machine evidence. External
+subprocess effects after loss of ownership are deliberately permitted.
+
 `ServiceControl` models dashboard supervisor actions in
 `app/dash/services/operations.rs`. `Acquire` is the OS-held per-service lock;
 `Receipt` is the completed create-new request write and file sync (plus directory

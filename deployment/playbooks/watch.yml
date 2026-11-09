@@ -11,6 +11,7 @@
           - mash_platform in ['linux', 'darwin']
           - mash_watch_launcher is defined
           - mash_watch_launcher is match('^/[A-Za-z0-9_./-]+$')
+          - mash_watch_home is not defined or mash_watch_home == ansible_facts.user_dir
         fail_msg: Configure mash_watch_enabled and an absolute mash_watch_launcher before managing this watcher.
 
     - name: Manage watcher and record failures

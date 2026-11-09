@@ -1773,6 +1773,7 @@ dependencies = [
  "hf-hub",
  "indicatif",
  "inquire",
+ "mash-fleet",
  "mash-query",
  "notify",
  "ort",
@@ -1811,12 +1812,14 @@ dependencies = [
 name = "mash-fleet"
 version = "0.2.0"
 dependencies = [
+ "blake3",
  "clap",
  "rmcp",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
+ "toml",
 ]
 
 [[package]]

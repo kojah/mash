@@ -9,6 +9,9 @@ use std::{path::PathBuf, process::ExitCode};
 #[derive(Parser)]
 #[command(version, about = "Manage Mash across configured machines")]
 struct Cli {
+    /// Shared TOML inventory used by the dashboard and fleet CLI.
+    #[arg(long, global = true)]
+    fleet_config: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -125,9 +128,42 @@ async fn execute(operation: &str, targets: Targets) -> Result<ExitCode, String> 
     })
 }
 
+async fn execute_configured(
+    operation: &str,
+    targets: Targets,
+    path: PathBuf,
+) -> Result<ExitCode, String> {
+    if targets.inventory.is_some() || targets.repository != std::path::Path::new(".") {
+        return Err(
+            "--fleet-config supplies the repository and inventory; do not combine overrides".into(),
+        );
+    }
+    let inventory = mash_fleet::inventory::Inventory::load(&path)?;
+    let action = mash_fleet::inventory::Action::from_operation(operation)
+        .ok_or("unsupported fleet operation")?;
+    inventory.targets(action, &targets.hosts)?;
+    std::fs::create_dir_all(&inventory.controller.jobs)
+        .map_err(|_| "cannot create private fleet job directory")?;
+    let directory = tempfile::Builder::new()
+        .prefix("request-")
+        .tempdir_in(&inventory.controller.jobs)
+        .map_err(|_| "cannot create fleet request directory")?
+        .keep();
+    let status = mash_fleet::runner::command(&inventory, action, &targets.hosts, &directory)?
+        .status()
+        .await
+        .map_err(|_| "cannot start fleet runner")?;
+    Ok(if status.success() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
-    let (operation, targets) = match Cli::parse().command {
+    let cli = Cli::parse();
+    let (operation, targets) = match cli.command {
         Command::Watch { action } => match action {
             Watch::Start(targets) => ("watch-start", targets),
             Watch::Stop(targets) => ("watch-stop", targets),
@@ -155,7 +191,12 @@ async fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
     };
-    match execute(operation, targets).await {
+    let result = if let Some(path) = cli.fleet_config {
+        execute_configured(operation, targets, path).await
+    } else {
+        execute(operation, targets).await
+    };
+    match result {
         Ok(code) => code,
         Err(error) => {
             eprintln!("{error}");

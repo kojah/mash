@@ -17,6 +17,7 @@ import {
   servicesHref,
   unlockServices,
 } from "../lib/services.svelte";
+import FleetControls from "./FleetControls.svelte";
 import IndexStatus from "./IndexStatus.svelte";
 import LoadError from "./LoadError.svelte";
 import ServiceStatus from "./ServiceStatus.svelte";
@@ -152,5 +153,5 @@ const consequences = $derived(
     {/each}
   {/if}
   {#if enabled && machineId}<section><h2>Recent activity</h2>{#if history.error}<p role="alert">{history.error.message}</p>{/if}{#if history.isPending}<p role="status">Loading activity…</p>{/if}<ul class="service-activity">{#each history.data?.filter(item => !serviceId || item.request.service === serviceId) ?? [] as item (item.request.request_id)}<li><strong>{actionLabel[item.request.action]} · {item.outcome}</strong><span>{checkedTime(item.requested_at)} · {item.request.service}</span><p>{item.message}</p></li>{:else}{#if history.data}<li>No recorded service actions.</li>{/if}{/each}</ul></section>{/if}
-  {#if !machineId}<IndexStatus />{/if}
+  {#if !machineId}<FleetControls {enabled}/><IndexStatus />{/if}
 </main>

@@ -40,6 +40,10 @@ async fn app_named(
         hosts: super::super::allowed_hosts(address),
         model_work: tokio::sync::Semaphore::new(1),
         services: Services {
+            fleet_path: root
+                .join("fleet.toml")
+                .exists()
+                .then(|| root.join("fleet.toml")),
             config: Some(config),
             token_hash: Some(blake3::hash(TOKEN.as_bytes())),
             peers,
@@ -57,6 +61,177 @@ async fn app_named(
             .unwrap();
     });
     (format!("http://{address}"), handle)
+}
+
+fn fleet_fixture(root: &Path) -> mash_fleet::inventory::Inventory {
+    let inventory: mash_fleet::inventory::Inventory = serde_json::from_value(serde_json::json!({
+        "version": 1,
+        "controller": { "node": "test-node", "repository": root, "binary": std::env::current_exe().unwrap(), "jobs": root.join("jobs"), "allow_actions": ["status"] },
+        "machines": [{ "id": "test-node", "platform": "linux", "roles": ["history"], "transport": {"kind": "local"} }]
+    })).unwrap();
+    std::fs::write(
+        root.join("fleet.toml"),
+        toml::to_string(&inventory).unwrap(),
+    )
+    .unwrap();
+    inventory
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn fleet_http_auth_admission_and_duplicate_requests() {
+    let root = tempfile::tempdir().unwrap();
+    let inventory = fleet_fixture(root.path());
+    std::fs::create_dir(root.path().join("tools")).unwrap();
+    std::fs::write(root.path().join("tools/fleet.sh"),
+        "set -eu\nmkdir \"$MASH_FLEET_JOB_DIRECTORY\"\nprintf 'run\\n' >> \"$MASH_DEPLOY_LOGS/executions\"\nprintf '%s' '{\"state\":\"succeeded\"}' > \"$MASH_FLEET_JOB_DIRECTORY/test-node.json\"\n").unwrap();
+    let (url, server) = app(root.path(), vec![]).await;
+    let client = reqwest::Client::new();
+    let request = mash_fleet::jobs::Request {
+        id: "00000000-0000-4000-8000-000000000001".into(),
+        action: mash_fleet::inventory::Action::Status,
+        targets: vec!["test-node".into()],
+        revision: inventory.revision().unwrap(),
+    };
+    for path in ["/api/services/fleet", "/api/services/fleet/jobs"] {
+        assert_eq!(
+            client
+                .get(format!("{url}{path}"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    let endpoint = format!("{url}/api/services/fleet/jobs");
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .bearer_auth(TOKEN)
+            .header("origin", "http://evil.test")
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .bearer_auth(TOKEN)
+            .header("x-mash-service-forwarded", "1")
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let mut stale = request.clone();
+    stale.revision = "stale".into();
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .bearer_auth(TOKEN)
+            .json(&stale)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    assert!(!inventory.controller.jobs.exists());
+    for _ in 0..2 {
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .bearer_auth(TOKEN)
+                .header("origin", &url)
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::ACCEPTED
+        );
+    }
+    expect_fleet_job_completed(&client, &endpoint).await;
+    assert_eq!(
+        std::fs::read_to_string(inventory.controller.jobs.join("executions")).unwrap(),
+        "run\n"
+    );
+    server.abort();
+}
+
+#[cfg(unix)]
+async fn expect_fleet_job_completed(client: &reqwest::Client, endpoint: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let jobs: Vec<mash_fleet::jobs::Job> = client
+                .get(endpoint)
+                .bearer_auth(TOKEN)
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            if jobs
+                .first()
+                .is_some_and(|job| job.outcome != mash_fleet::jobs::Outcome::Running)
+            {
+                assert_eq!(jobs.len(), 1);
+                assert_eq!(jobs[0].outcome, mash_fleet::jobs::Outcome::Succeeded);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn fleet_http_rejects_jobs_on_peer_dashboard() {
+    let root = tempfile::tempdir().unwrap();
+    fleet_fixture(root.path());
+    let (url, server) = app_named(root.path(), vec![], "peer-node").await;
+    let client = reqwest::Client::new();
+    let catalog: serde_json::Value = client
+        .get(format!("{url}/api/services/fleet"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(catalog["enabled"], false);
+    assert_eq!(
+        client
+            .get(format!("{url}/api/services/fleet/jobs"))
+            .bearer_auth(TOKEN)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    server.abort();
 }
 
 #[tokio::test]

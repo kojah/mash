@@ -118,6 +118,52 @@ pub(super) fn token(name: &str) -> Result<String, AppError> {
 }
 
 impl Configuration {
+    pub(super) fn from_fleet(
+        inventory: &mash_fleet::inventory::Inventory,
+        node: Option<&str>,
+    ) -> Result<Self, AppError> {
+        let node = node.unwrap_or(&inventory.controller.node);
+        let machine = inventory
+            .machines
+            .iter()
+            .find(|machine| machine.id == node)
+            .ok_or_else(|| {
+                AppError::configuration("dashboard machine is absent from fleet inventory")
+            })?;
+        let config = Self {
+            node: node.into(),
+            token_env: machine.token_env.clone(),
+            services: machine
+                .managed_services()
+                .into_iter()
+                .map(Service::from)
+                .collect(),
+            databases: machine
+                .databases
+                .iter()
+                .map(|database| Database {
+                    id: database.id.clone(),
+                    name: database.name.clone(),
+                    path: database.path.clone(),
+                })
+                .collect(),
+            machines: inventory
+                .machines
+                .iter()
+                .filter(|peer| node == inventory.controller.node && peer.id != node)
+                .filter_map(|peer| {
+                    peer.dashboard_url.as_ref().map(|url| Machine {
+                        id: peer.id.clone(),
+                        url: url.clone(),
+                        token_env: peer.token_env.clone(),
+                    })
+                })
+                .collect(),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
     pub fn load(path: &Path) -> Result<Self, AppError> {
         let mut text = String::new();
         std::fs::File::open(path)
@@ -134,7 +180,7 @@ impl Configuration {
         Ok(config)
     }
 
-    fn validate(&self) -> Result<(), AppError> {
+    pub(super) fn validate(&self) -> Result<(), AppError> {
         let invalid = || {
             AppError::configuration(
                 "invalid services inventory: use unique identifiers, explicit manager units and absolute file paths",
@@ -197,6 +243,61 @@ impl Configuration {
         }
         Ok(())
     }
+}
+
+impl From<mash_fleet::inventory::Service> for Service {
+    fn from(service: mash_fleet::inventory::Service) -> Self {
+        use mash_fleet::inventory::{Manager as FleetManager, ServiceKind};
+        Self {
+            #[cfg(test)]
+            interrupt_after_command: false,
+            id: service.id,
+            name: service.name,
+            kind: match service.kind {
+                ServiceKind::Watcher => Kind::Watcher,
+                ServiceKind::Qdrant => Kind::Qdrant,
+                ServiceKind::Server => Kind::Server,
+                ServiceKind::Dashboard => Kind::Dashboard,
+            },
+            manager: match service.manager {
+                FleetManager::SystemdUser => Manager::SystemdUser,
+                FleetManager::SystemdSystem => Manager::SystemdSystem,
+                FleetManager::Launchd => Manager::Launchd,
+                FleetManager::WindowsService => Manager::WindowsService,
+                FleetManager::WindowsTask => Manager::WindowsTask,
+            },
+            unit: service.unit,
+            plist: service.plist,
+            log: service.log,
+            allow_control: service.allow_control,
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn fleet_projection_shares_watcher_identity_and_limits_peer_credentials() {
+    let inventory: mash_fleet::inventory::Inventory =
+        toml::from_str(include_str!("../../../deployment/fleet.example.toml")).unwrap();
+    let controller = Configuration::from_fleet(&inventory, None).unwrap();
+    assert_eq!(controller.node, "workstation");
+    assert_eq!(controller.machines.len(), 1);
+    assert_eq!(controller.machines[0].id, "macbook");
+    assert_eq!(controller.services[0].unit, "mash-index-watch.service");
+    let peer = Configuration::from_fleet(&inventory, Some("macbook")).unwrap();
+    assert!(peer.machines.is_empty());
+    assert_eq!(
+        peer.token_env.as_deref(),
+        Some("MASH_MACBOOK_SERVICES_TOKEN")
+    );
+    assert_eq!(peer.services[0].unit, "dev.mash.index-watch");
+    assert_eq!(
+        peer.services[0].plist.as_deref(),
+        Some(Path::new(
+            "/Users/operator/Library/LaunchAgents/dev.mash.index-watch.plist"
+        ))
+    );
+    assert!(Configuration::from_fleet(&inventory, Some("missing")).is_err());
 }
 
 #[cfg(test)]
