@@ -200,6 +200,13 @@ impl<'a> Writer<'a> {
         chats: &[(ChatRecord, Vec<SearchMessage>)],
     ) -> Result<Vec<(String, ChatBuild)>, AppError> {
         let batch_rows = embedding::batch_rows(&self.execution);
+        // Remote requests are sent in pairs, so fill two batches before
+        // flushing. This also avoids discarding the tail of each chat group.
+        let pending_rows = if matches!(self.execution, crate::config::Embeddings::Remote { .. }) {
+            batch_rows * 2
+        } else {
+            batch_rows
+        };
         let mut pending = Vec::new();
         let mut pending_inputs = 0usize;
         let mut stats = vec![ChatStats::default(); chats.len()];
@@ -227,7 +234,7 @@ impl<'a> Writer<'a> {
                     let input_count = group_texts.iter().filter(|text| text.is_some()).count();
                     stats[chat_index].expected += input_count as u64;
                     let group_cached: Vec<_> = cached.by_ref().take(input_count).collect();
-                    if !pending.is_empty() && pending_inputs + input_count > batch_rows {
+                    if !pending.is_empty() && pending_inputs + input_count > pending_rows {
                         self.flush_pending(&mut pending, &mut stats).await?;
                         pending_inputs = 0;
                     }
@@ -239,7 +246,7 @@ impl<'a> Writer<'a> {
                         cached: group_cached,
                     });
                     pending_inputs += input_count;
-                    if pending_inputs >= batch_rows {
+                    if pending_inputs >= pending_rows {
                         self.flush_pending(&mut pending, &mut stats).await?;
                         pending_inputs = 0;
                     }

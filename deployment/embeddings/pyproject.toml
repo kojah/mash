@@ -10,6 +10,7 @@ dependencies = [
   "tokenizers==0.22.1",
   "huggingface-hub>=0.35,<1",
   "orjson>=3.11,<4",
+  "zstandard>=0.23,<1",
 ]
 
 [dependency-groups]

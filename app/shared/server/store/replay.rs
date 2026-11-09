@@ -56,7 +56,7 @@ fn millis(started: Instant) -> u64 {
 
 /// Chats materialized together so remote inference fills whole batches across
 /// chat boundaries.
-const CHAT_WINDOW: usize = 32;
+const CHAT_WINDOW: usize = 256;
 
 /// Replay result for one node.
 #[derive(Debug, serde::Serialize)]

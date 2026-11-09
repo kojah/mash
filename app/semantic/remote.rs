@@ -9,6 +9,13 @@ const DIMENSIONS: usize = 384;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_INPUTS: usize = 256;
+/// Requests kept in flight together. The worker serializes GPU inference but
+/// can receive and reply concurrently, hiding proxy round-trip latency.
+const REQUEST_CONCURRENCY: usize = 2;
+/// Small bodies gain nothing from framing overhead, so only compress requests
+/// whose text is large enough to pay for the zstd frame.
+const COMPRESSION_THRESHOLD: usize = 1024;
+const COMPRESSION_LEVEL: i32 = 3;
 
 // Versioned binary frames shared with deployment/embeddings/contract.py.
 const REQUEST_MAGIC: &[u8; 4] = b"MSH1";
@@ -225,11 +232,8 @@ impl Client {
     }
 
     pub(crate) async fn embed(&self, texts: &[&str]) -> std::result::Result<Result, AppError> {
+        let mut batches = Vec::new();
         let mut remaining = texts;
-        let mut result = Result {
-            vectors: Vec::new(),
-            inference_milliseconds: 0,
-        };
         while !remaining.is_empty() {
             let mut bytes = 0;
             let count = remaining
@@ -243,10 +247,31 @@ impl Client {
             if count == 0 {
                 return Err(AppError::model("remote embedding input exceeds byte limit"));
             }
-            let batch = send(&self.http, &self.url, &self.token, &remaining[..count]).await?;
-            result.vectors.extend(batch.vectors);
-            result.inference_milliseconds += batch.inference_milliseconds;
+            batches.push(&remaining[..count]);
             remaining = &remaining[count..];
+        }
+        let mut result = Result {
+            vectors: Vec::new(),
+            inference_milliseconds: 0,
+        };
+        for pair in batches.chunks(REQUEST_CONCURRENCY) {
+            let mut completed = Vec::with_capacity(pair.len());
+            match pair {
+                [only] => completed.push(send(&self.http, &self.url, &self.token, only).await?),
+                [left, right] => {
+                    let (left, right) = tokio::join!(
+                        send(&self.http, &self.url, &self.token, left),
+                        send(&self.http, &self.url, &self.token, right),
+                    );
+                    completed.push(left?);
+                    completed.push(right?);
+                }
+                _ => unreachable!("request concurrency is two"),
+            }
+            for batch in completed {
+                result.vectors.extend(batch.vectors);
+                result.inference_milliseconds += batch.inference_milliseconds;
+            }
         }
         Ok(result)
     }
@@ -267,6 +292,7 @@ fn http_client(timeout_seconds: u32) -> std::result::Result<reqwest::Client, App
     fields(
         inputs = texts.len(),
         request_bytes = tracing::field::Empty,
+        request_frame_bytes = tracing::field::Empty,
         roundtrip_ms = tracing::field::Empty,
         inference_ms = tracing::field::Empty,
         response_bytes = tracing::field::Empty
@@ -280,7 +306,17 @@ async fn send(
 ) -> std::result::Result<Result, AppError> {
     let started = std::time::Instant::now();
     let request = request(texts)?;
-    let body = encode(&request)?;
+    let frame = encode(&request)?;
+    let request_frame_bytes = frame.len();
+    let (body, compressed) = if frame.len() >= COMPRESSION_THRESHOLD {
+        (
+            zstd::stream::encode_all(frame.as_slice(), COMPRESSION_LEVEL)
+                .map_err(|_| AppError::internal("cannot compress embedding request"))?,
+            true,
+        )
+    } else {
+        (frame, false)
+    };
     let request_bytes = body.len();
     // No response bodies or transport errors enter diagnostics: they may echo
     // credentials or private input. A timeout can still have incurred GPU cost.
@@ -289,14 +325,14 @@ async fn send(
             "remote embedding request failed; it was not retried and may have incurred inference cost",
         )
     };
-    let mut response = client
+    let mut builder = client
         .post(url)
         .bearer_auth(token)
-        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
-        .body(body)
-        .send()
-        .await
-        .map_err(|_| failure())?;
+        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream");
+    if compressed {
+        builder = builder.header(reqwest::header::CONTENT_ENCODING, "zstd");
+    }
+    let mut response = builder.body(body).send().await.map_err(|_| failure())?;
     if !response.status().is_success() {
         return Err(AppError::model(format!(
             "embedding service returned HTTP {}; request was not retried",
@@ -324,6 +360,7 @@ async fn send(
         u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     );
     span.record("request_bytes", request_bytes);
+    span.record("request_frame_bytes", request_frame_bytes);
     span.record("inference_ms", result.inference_milliseconds);
     span.record("response_bytes", response_bytes);
     Ok(result)
@@ -508,25 +545,32 @@ mod tests {
         let observed = Arc::clone(&calls);
         let app = axum::Router::new().route(
             "/",
-            axum::routing::post(move |body: axum::body::Bytes| {
-                let observed = Arc::clone(&observed);
-                async move {
-                    observed.fetch_add(1, Ordering::SeqCst);
-                    let (request_id, inputs) = decode_request(&body);
-                    let vectors = inputs
-                        .iter()
-                        .map(|(id, text)| {
-                            let mut values = vec![0.0; DIMENSIONS];
-                            values[usize::from(text.as_bytes()[0] - b'a')] = 1.0;
-                            (*id, values)
-                        })
-                        .collect::<Vec<_>>();
-                    (
-                        [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
-                        frame(&request_id, 2, &vectors),
-                    )
-                }
-            }),
+            axum::routing::post(
+                move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                    let observed = Arc::clone(&observed);
+                    async move {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        let body = if headers.contains_key(axum::http::header::CONTENT_ENCODING) {
+                            zstd::stream::decode_all(body.as_ref()).unwrap()
+                        } else {
+                            body.to_vec()
+                        };
+                        let (request_id, inputs) = decode_request(&body);
+                        let vectors = inputs
+                            .iter()
+                            .map(|(id, text)| {
+                                let mut values = vec![0.0; DIMENSIONS];
+                                values[usize::from(text.as_bytes()[0] - b'a')] = 1.0;
+                                (*id, values)
+                            })
+                            .collect::<Vec<_>>();
+                        (
+                            [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+                            frame(&request_id, 2, &vectors),
+                        )
+                    }
+                },
+            ),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let client = Client {

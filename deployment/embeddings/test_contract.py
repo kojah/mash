@@ -3,6 +3,7 @@
 import struct
 
 import pytest
+import zstandard
 
 from contract import (
     DIMENSIONS,
@@ -13,6 +14,7 @@ from contract import (
     VECTOR_BYTES,
     ContractError,
     decode_batch,
+    decompress_request,
     encode_reply,
 )
 
@@ -62,6 +64,15 @@ def test_batch_rejects_unknown_recipe_and_malformed_frames() -> None:
     for malformed in [b"", valid[:5], valid + b"x", b"XSH1" + valid[4:]]:
         with pytest.raises(ContractError):
             decode_batch(malformed)
+
+
+def test_compressed_requests_round_trip_and_reject_malformed_input() -> None:
+    valid = pack([(0, "hello"), (1, "東京")])
+    compressed = zstandard.ZstdCompressor(level=3).compress(valid)
+    assert decompress_request(compressed) == valid
+    assert decode_batch(decompress_request(compressed)).inputs[1].text == "東京"
+    with pytest.raises(ContractError):
+        decompress_request(b"not a zstd frame")
 
 
 def test_reply_is_fixed_width_f16_and_bounded() -> None:

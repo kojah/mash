@@ -27,9 +27,10 @@ memory use. Request bodies and errors never log or echo chat text.
 Requests and replies use versioned binary frames (`MSH1`/`MSR1`). Inputs stay
 UTF-8 text with explicit lengths, and reply vectors travel as little-endian f16,
 which carries more precision than the int8 vectors Mash stores while keeping the
-payload about ten times smaller than JSON. The worker still accepts the previous
-JSON contract and replies in kind, so deployed clients keep working during a
-staged rollout.
+payload about ten times smaller than JSON. Requests above one kilobyte are zstd
+compressed and marked `Content-Encoding: zstd`; smaller and legacy bodies stay
+uncompressed. The worker still accepts the previous JSON contract and replies in
+kind, so deployed clients keep working during a staged rollout.
 
 The recipe pins Xenova's MiniLM model revision, FP32 ONNX inference, 512-token
 truncation, attention-mask mean pooling and L2 normalization. Mash validates the

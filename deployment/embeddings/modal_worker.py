@@ -1,5 +1,7 @@
 """Explicitly deploy an authenticated GPU worker; importing does not launch jobs."""
 
+import asyncio
+import threading
 from pathlib import Path
 from time import perf_counter
 
@@ -13,6 +15,7 @@ from contract import (
     REVISION,
     ContractError,
     decode_batch,
+    decompress_request,
     encode_reply,
 )
 from legacy import decode_legacy_batch, encode_legacy_reply
@@ -43,6 +46,7 @@ image = (
         "fastapi>=0.115,<1",
         "pydantic>=2.12,<3",
         "orjson>=3.11,<4",
+        "zstandard>=0.23,<1",
     )
     .add_local_file(Path(__file__).with_name("contract.py"), "/root/contract.py", copy=True)
     .add_local_file(Path(__file__).with_name("legacy.py"), "/root/legacy.py", copy=True)
@@ -62,6 +66,7 @@ image = (
     scaledown_window=30,
     retries=0,
 )
+@modal.concurrent(max_inputs=2)
 class Worker:
     @modal.enter()
     def load(self) -> None:
@@ -80,63 +85,84 @@ class Worker:
         if self.session.get_providers()[0] != "CUDAExecutionProvider":
             raise RuntimeError("CUDA inference is unavailable")
         self.session.disable_fallback()
+        # One GPU: overlap request transfer with inference, never inference itself.
+        self.compute = threading.Lock()
+
+    def infer(self, inputs: list, binary: bool) -> tuple[int, list, list]:
+        import numpy as np
+
+        results: list[tuple[int, bytes]] = []
+        legacy_results: list[tuple[int, list[float]]] = []
+        with self.compute:
+            started = perf_counter()
+            # Amortize network cost with a larger request while bounding the GPU's
+            # attention workspace and padding separately for each inference batch.
+            for start in range(0, len(inputs), 32):
+                chunk = inputs[start : start + 32]
+                encodings = self.tokenizer.encode_batch([item.text for item in chunk])
+                feed = {
+                    "input_ids": np.asarray([item.ids for item in encodings], dtype=np.int64),
+                    "attention_mask": np.asarray(
+                        [item.attention_mask for item in encodings], dtype=np.int64
+                    ),
+                    "token_type_ids": np.asarray(
+                        [item.type_ids for item in encodings], dtype=np.int64
+                    ),
+                }
+                outputs = np.asarray(self.session.run(None, feed)[0], dtype=np.float32)
+                mask = feed["attention_mask"][..., None].astype(np.float32)
+                vectors = (outputs * mask).sum(axis=1) / mask.sum(axis=1).clip(min=1)
+                vectors /= np.linalg.norm(vectors, axis=1, keepdims=True).clip(min=1e-12)
+                if vectors.shape != (len(chunk), 384) or not np.isfinite(vectors).all():
+                    raise HTTPException(500, "invalid model output")
+                if binary:
+                    # Halves are enough for the int8 vectors Mash stores, and keep
+                    # the response five times smaller than JSON float32 text.
+                    encoded = vectors.astype("<f2", copy=False)
+                    results.extend(
+                        (item.id, row.tobytes())
+                        for item, row in zip(chunk, encoded, strict=True)
+                    )
+                else:
+                    legacy_results.extend(
+                        (item.id, values)
+                        for item, values in zip(chunk, vectors.tolist(), strict=True)
+                    )
+            inference_milliseconds = round((perf_counter() - started) * 1000)
+        return inference_milliseconds, results, legacy_results
 
     @modal.fastapi_endpoint(method="POST", requires_proxy_auth=True, docs=False)
     async def embed(self, request: Request) -> Response:
-        import numpy as np
-
         body = bytearray()
         async for chunk in request.stream():
             if len(body) + len(chunk) > MAX_BODY_BYTES:
                 raise HTTPException(413, "embedding request exceeds byte limit")
             body.extend(chunk)
-        binary = body[:4] == REQUEST_MAGIC
+        raw = bytes(body)
+        encoding = request.headers.get("content-encoding")
+        if encoding is not None:
+            if encoding != "zstd":
+                raise HTTPException(415, "unsupported content encoding")
+            try:
+                raw = decompress_request(raw)
+            except ContractError:
+                raise HTTPException(400, "invalid embedding batch") from None
+        binary = raw[:4] == REQUEST_MAGIC
         request_id: bytes | None = None
         legacy_id: str | None = None
         try:
             if binary:
-                decoded = decode_batch(bytes(body))
+                decoded = decode_batch(raw)
                 request_id = decoded.request_id
                 inputs = decoded.inputs
             else:
-                legacy_id, inputs = decode_legacy_batch(bytes(body))
+                legacy_id, inputs = decode_legacy_batch(raw)
         except (ContractError, ValidationError):
             # Diagnostics may echo input text; never return them.
             raise HTTPException(400, "invalid embedding batch") from None
-        started = perf_counter()
-        results: list[tuple[int, bytes]] = []
-        legacy_results: list[tuple[int, list[float]]] = []
-        # Amortize network cost with a larger request while bounding the GPU's
-        # attention workspace and padding separately for each inference batch.
-        for start in range(0, len(inputs), 32):
-            chunk = inputs[start : start + 32]
-            encodings = self.tokenizer.encode_batch([item.text for item in chunk])
-            feed = {
-                "input_ids": np.asarray([item.ids for item in encodings], dtype=np.int64),
-                "attention_mask": np.asarray(
-                    [item.attention_mask for item in encodings], dtype=np.int64
-                ),
-                "token_type_ids": np.asarray([item.type_ids for item in encodings], dtype=np.int64),
-            }
-            outputs = np.asarray(self.session.run(None, feed)[0], dtype=np.float32)
-            mask = feed["attention_mask"][..., None].astype(np.float32)
-            vectors = (outputs * mask).sum(axis=1) / mask.sum(axis=1).clip(min=1)
-            vectors /= np.linalg.norm(vectors, axis=1, keepdims=True).clip(min=1e-12)
-            if vectors.shape != (len(chunk), 384) or not np.isfinite(vectors).all():
-                raise HTTPException(500, "invalid model output")
-            if binary:
-                # Halves are enough for the int8 vectors Mash stores, and keep
-                # the response five times smaller than JSON float32 text.
-                encoded = vectors.astype("<f2", copy=False)
-                results.extend(
-                    (item.id, row.tobytes())
-                    for item, row in zip(chunk, encoded, strict=True)
-                )
-            else:
-                legacy_results.extend(
-                    (item.id, values) for item, values in zip(chunk, vectors.tolist(), strict=True)
-                )
-        inference_milliseconds = round((perf_counter() - started) * 1000)
+        inference_milliseconds, results, legacy_results = await asyncio.to_thread(
+            self.infer, inputs, binary
+        )
         if request_id is not None:
             reply = encode_reply(request_id, inference_milliseconds, results)
             return Response(reply, media_type="application/octet-stream")

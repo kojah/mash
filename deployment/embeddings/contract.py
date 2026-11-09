@@ -5,6 +5,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+import zstandard
+
 REVISION = "751bff37182d3f1213fa05d7196b954e230abad9"
 RECIPE = f"minilm-l6-v2:{REVISION}:onnx-f32:mean-mask:512:l2:v1"
 MAX_INPUT_BYTES = 1024 * 1024
@@ -76,6 +78,16 @@ def decode_batch(body: bytes) -> Batch:
     if sorted(item.id for item in inputs) != list(range(count)):
         raise ContractError("input IDs must be unique and contiguous")
     return Batch(request_id=request_id, inputs=inputs)
+
+
+def decompress_request(data: bytes) -> bytes:
+    """Decode a zstd HTTP body while bounding the decompressed size."""
+    try:
+        return zstandard.ZstdDecompressor().decompress(
+            data, max_output_size=MAX_BODY_BYTES
+        )
+    except zstandard.ZstdError:
+        raise ContractError("invalid compressed embedding batch") from None
 
 
 def encode_reply(
