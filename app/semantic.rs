@@ -5,6 +5,7 @@ mod embeddings;
 #[cfg(test)]
 pub(crate) mod evaluation;
 mod models;
+pub(crate) mod remote;
 mod retrieval;
 #[cfg(test)]
 pub(crate) mod test_embeddings;

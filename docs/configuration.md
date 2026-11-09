@@ -40,6 +40,40 @@ To include all ages permanently, replace `since_days = 90` with
 `all_history = true`. Do not set both. One-off indexing flags such as
 `--all-history` override the configured age selection.
 
+## Embedding inference
+
+Embedding generation runs locally by default. To send indexing batches to an
+authenticated Mash embedding worker, add:
+
+```toml
+[embeddings]
+backend = "remote"
+url = "https://YOUR-WORKER.modal.run"
+token_env = "MASH_EMBEDDING_TOKEN"
+timeout_seconds = 120
+```
+
+Set the named environment variable in the process running `mash index`, including
+watchers. Use a Modal proxy token in `TOKEN_ID.TOKEN_SECRET` form, not your Modal
+account API key. The credential value is never written to configuration or status.
+HTTPS is required except for a worker on loopback.
+
+This opt-in sends prepared searchable text to the worker, which may contain
+sensitive conversation content. It does not grant the worker database access.
+Search-query embeddings and reranking remain local; install local models with
+`mash models install` for offline semantic searches.
+
+Existing matching vectors are reused. Failed remote requests return an error;
+Mash does not automatically retry the request or silently switch to local
+inference. A timed-out request may still have incurred GPU cost. Check the worker
+before explicitly retrying indexing. To return to local inference, remove the
+table or set only `backend = "local"`.
+
+The worker must implement Mash's model-specific contract; an arbitrary embedding
+API is not interchangeable. Changing the embedding recipe can require rebuilding
+search data. Deployment instructions live in `deployment/embeddings/README.md`
+in the source repository.
+
 ## Memory capture
 
 Automatic capture of new outcomes is enabled by default when using the current

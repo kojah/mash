@@ -226,7 +226,8 @@ pub(crate) async fn build(
     store
         .retain_node_chats(&scope, input.chats.keys().cloned().collect())
         .await?;
-    let mut writer = super::materialize::Writer::new(&store, &scope, Some(models));
+    let mut writer = super::materialize::Writer::new(&store, &scope, Some(models))
+        .with_execution(configuration.embeddings.clone());
     Box::pin(projection::native(
         &store,
         &scope,

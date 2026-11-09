@@ -7,6 +7,37 @@ use super::loading::{MAX_CONFIG_BYTES, load_from_paths};
 use super::*;
 
 #[test]
+fn remote_embedding_configuration_is_explicit_strict_and_keeps_credentials_unresolved() {
+    let prefix = "version = 1\n[providers]\n";
+    assert_eq!(
+        parse_document(prefix.as_bytes()).unwrap().embeddings,
+        Embeddings::Local {}
+    );
+    let base = format!(
+        "{prefix}[embeddings]\nbackend = 'remote'\nurl = 'https://example.com/embed'\ntoken_env = 'MASH_TEST_NOT_PRESENT'\n"
+    );
+    assert!(parse_document(base.as_bytes()).is_ok());
+    for setting in [
+        base.replace("https://example.com/embed", "http://example.com/embed"),
+        base.replace(
+            "https://example.com/embed",
+            "https://user:secret@example.com/embed",
+        ),
+        base.replace(
+            "https://example.com/embed",
+            "https://example.com/embed?secret=x",
+        ),
+        base.replace("MASH_TEST_NOT_PRESENT", "1BAD"),
+        format!("{base}timeout_seconds = 0\n"),
+        format!("{base}timeout_seconds = 121\n"),
+        format!("{base}token = 'secret'\n"),
+        base.replace("backend = 'remote'", "backend = 'local'"),
+    ] {
+        assert!(parse_document(setting.as_bytes()).is_err());
+    }
+}
+
+#[test]
 fn local_qdrant_configuration_is_strict_and_does_not_resolve_credentials() {
     let prefix = "version = 1\n[providers]\n";
     let defaults = parse_document(prefix.as_bytes()).unwrap();
@@ -566,7 +597,7 @@ fn default_path_failure_is_typed() {
 }
 
 #[test]
-fn removed_remote_embeddings_settings_are_rejected() {
+fn legacy_remote_embeddings_settings_are_rejected() {
     for setting in [
         "[embeddings]\nurl='https://embed.example/v1/embeddings'\nmodel='test'\ndimensions=384",
         "[embeddings]\napi='voyage'\nmodel='voyage-4'",
@@ -574,7 +605,10 @@ fn removed_remote_embeddings_settings_are_rejected() {
     ] {
         let error = parse_document(format!("{VALID}\n{setting}\n").as_bytes()).unwrap_err();
         assert_configuration_error(&error);
-        assert!(error.error.message.contains("unknown field"));
+        assert!(
+            error.error.message.contains("unknown field")
+                || error.error.message.contains("missing field")
+        );
     }
 }
 

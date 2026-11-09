@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 mod document;
+mod embeddings;
 pub(crate) mod init;
 mod loading;
 mod qdrant;
@@ -13,6 +14,7 @@ mod qdrant;
 mod tests;
 
 pub(crate) use document::validate_identifier;
+pub(crate) use embeddings::Embeddings;
 pub(crate) use loading::{default_path, load};
 pub(crate) use qdrant::QdrantConfig;
 
@@ -21,6 +23,7 @@ const MAX_SINCE_DAYS: u32 = 36_500;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedConfig {
+    pub(crate) embeddings: Embeddings,
     pub(crate) qdrant: QdrantConfig,
     pub(crate) attachments: crate::attachments::Configuration,
     pub(crate) redaction: crate::redaction::Settings,
@@ -55,6 +58,7 @@ pub(crate) struct SharedConfig {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ConfigurationStatus {
+    embeddings: Embeddings,
     qdrant: QdrantConfig,
     attachments: crate::attachments::Configuration,
     redaction: crate::redaction::Settings,
@@ -81,6 +85,7 @@ struct IndexStatus {
 impl ResolvedConfig {
     pub(crate) fn status(&self) -> ConfigurationStatus {
         ConfigurationStatus {
+            embeddings: self.embeddings.clone(),
             qdrant: self.qdrant.clone(),
             attachments: self.attachments.clone(),
             redaction: self.redaction,

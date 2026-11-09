@@ -13,6 +13,7 @@ pub(crate) struct Writer<'a> {
     scope: &'a Scope,
     model: Option<&'a Path>,
     pool: Option<LoadedIndexer>,
+    execution: crate::config::Embeddings,
     build: Build,
     documents: Documents,
 }
@@ -96,9 +97,15 @@ impl<'a> Writer<'a> {
             scope,
             model,
             pool: None,
+            execution: crate::config::Embeddings::Local {},
             build: Build::default(),
             documents: Documents::new(scope),
         }
+    }
+
+    pub(crate) fn with_execution(mut self, execution: crate::config::Embeddings) -> Self {
+        self.execution = execution;
+        self
     }
 
     /// Input is canonical silver in chat order. Hidden rows still define
@@ -160,10 +167,8 @@ impl<'a> Writer<'a> {
         } = prepared;
         let mut cached = cached.into_iter();
         let mut vectors = Vec::new();
-        for (rows, texts) in rows
-            .chunks(embedding::BATCH_ROWS)
-            .zip(texts.chunks(embedding::BATCH_ROWS))
-        {
+        let batch_rows = embedding::batch_rows(&self.execution);
+        for (rows, texts) in rows.chunks(batch_rows).zip(texts.chunks(batch_rows)) {
             let inputs = inputs(chat, rows, texts);
             let evidence = cached.by_ref().take(inputs.len()).collect();
             vectors.extend(
@@ -174,6 +179,7 @@ impl<'a> Writer<'a> {
                     &mut self.pool,
                     &mut self.build,
                     evidence,
+                    &self.execution,
                 )
                 .await?,
             );

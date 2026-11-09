@@ -55,8 +55,12 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;
   MCP must not construct CLI arguments or call CLI handlers.
-- Keep local FastEmbed embeddings with cosine search, RRF, and bounded CPU
-  reranking. Embedding inference runs locally; do not add remote embedding APIs.
+- Keep cosine search, RRF, and bounded CPU reranking. Embedding inference defaults
+  to local FastEmbed/Core ML; support explicitly configured remote batch inference
+  through the same typed embedding contract. Keep query embeddings local and
+  offline-capable. Remote inference must use authenticated bounded requests,
+  validate the exact embedding recipe and results, and preserve compatible cached
+  vectors. Never silently fall back or automatically retry ambiguous billable work.
 - Qdrant publication uses the generated Tonic client with bounded protobuf requests,
   explicit completion checks and no automatic mutation retries or REST fallback.
   Reads and collection setup use the existing reqwest client and typed REST models, named dense/sparse

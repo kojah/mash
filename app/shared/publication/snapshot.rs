@@ -129,6 +129,7 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
 }
 
 struct Reader {
+    batch_rows: usize,
     units: crate::views::units::Stream,
     input: std::io::BufReader<std::fs::File>,
     pending: VecDeque<MessageRecord>,
@@ -140,6 +141,7 @@ struct Reader {
 impl Reader {
     fn new(input: std::fs::File, redaction: crate::redaction::Policy) -> Result<Self, AppError> {
         Ok(Self {
+            batch_rows: views::BATCH_ROWS,
             units: crate::views::units::Stream::default(),
             input: std::io::BufReader::with_capacity(64 * 1024, input),
             pending: VecDeque::new(),
@@ -152,7 +154,7 @@ impl Reader {
     fn next(mut self) -> Result<(Self, Vec<MessageRecord>), AppError> {
         let mut batch: Vec<MessageRecord> = Vec::new();
         loop {
-            if batch.len() == views::BATCH_ROWS
+            if batch.len() == self.batch_rows
                 || self.pending.front().is_some_and(|message| {
                     batch
                         .first()
@@ -280,6 +282,11 @@ async fn embed_batch(
         pool,
         build,
         cached,
+        inference
+            .local
+            .map_or(&crate::config::Embeddings::Local {}, |config| {
+                &config.embeddings
+            }),
     )
     .await?;
     for (message, (vector, _)) in batch
@@ -320,6 +327,9 @@ pub(super) async fn prepare(
     };
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input, redaction)).await?;
+    if let Some(configuration) = inference.as_ref().and_then(|inference| inference.local) {
+        reader.batch_rows = views::batch_rows(&configuration.embeddings);
+    }
     let mut build = views::Build::default();
     let mut pool = None;
     let mut estimate = crate::progress::Estimate::new();

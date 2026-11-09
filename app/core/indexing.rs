@@ -194,6 +194,10 @@ async fn index(
     let database = database_path.to_path_buf();
     let root = models_dir.to_path_buf();
     let build = configuration.views.build.clone();
+    let local_inference = matches!(
+        configuration.embeddings,
+        crate::config::Embeddings::Local {}
+    );
     let (summary, certificate, storage_setup_milliseconds, ingestion_milliseconds) =
         crate::blocking(move || {
             let database_path = database.as_path();
@@ -203,7 +207,7 @@ async fn index(
                 require_certified_silver(&Storage::open_silver(database_path)?)?;
             }
             let models = Models::new(root);
-            if build.dense_enabled() && !build.users_only() {
+            if local_inference && build.dense_enabled() && !build.users_only() {
                 models.require_indexer()?;
             }
             let storage_started = Instant::now();

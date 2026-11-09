@@ -18,7 +18,7 @@ terminal, or browse conversations in the dashboard.
 - **Export and import indexed history**, including chats from different providers, for backups or moving between machines. [Backups →](docs/upgrades.md)
 - **BM25 keyword search + vector search with Qdrant**, so you can search for an exact error or describe what you remember. [Search →](docs/search.md)
 - **Search across machines** with `mash-server`, or keep everything local. [Multi-machine setup →](docs/shared-index.md)
-- **Local embeddings** without a remote embedding API.
+- **Local embeddings by default**, with opt-in [remote batch inference](docs/configuration.md#embedding-inference).
 - Runs on **Linux, macOS, and Windows**.
 
 **Documentation website:** [mashapp.dev](https://mashapp.dev)

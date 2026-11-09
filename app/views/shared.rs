@@ -9,8 +9,16 @@ pub(crate) const BATCH_ROWS: usize = 32;
 pub(crate) const CACHE_ROWS: usize = 256;
 const _: () = assert!(CACHE_ROWS.is_multiple_of(BATCH_ROWS));
 
+pub(crate) const fn batch_rows(execution: &crate::config::Embeddings) -> usize {
+    match execution {
+        crate::config::Embeddings::Local {} => BATCH_ROWS,
+        crate::config::Embeddings::Remote { .. } => crate::semantic::remote::MAX_INPUTS,
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Build {
+    remote: Option<crate::semantic::remote::Client>,
     pub(crate) embeddings: EmbeddingSummary,
     pub(crate) model_load_milliseconds: u64,
     pub(crate) embedding_milliseconds: u64,
@@ -26,6 +34,7 @@ pub(crate) async fn embed_units(
     pool: &mut Option<LoadedIndexer>,
     result: &mut Build,
     cached: Vec<Option<Vec<f64>>>,
+    execution: &crate::config::Embeddings,
 ) -> Result<Vec<(Vec<f64>, String)>, AppError> {
     if cached.len() != inputs.len() {
         return Err(AppError::internal(
@@ -40,8 +49,24 @@ pub(crate) async fn embed_units(
     let vectors = if texts.is_empty() {
         Vec::new()
     } else {
-        let models = model.ok_or_else(AppError::models_missing)?;
-        embed_texts(models, pool, &texts, result).await?
+        match execution {
+            crate::config::Embeddings::Local {} => {
+                let models = model.ok_or_else(AppError::models_missing)?;
+                embed_texts(models, pool, &texts, result).await?
+            }
+            crate::config::Embeddings::Remote { .. } => {
+                if result.remote.is_none() {
+                    result.remote = Some(crate::semantic::remote::Client::new(execution)?);
+                }
+                let client = result
+                    .remote
+                    .as_ref()
+                    .ok_or_else(|| AppError::internal("missing embedding client"))?;
+                let embedded = client.embed(&texts).await?;
+                result.embedding_milliseconds += embedded.inference_milliseconds;
+                embedded.vectors
+            }
+        }
     };
     if vectors.len() != texts.len()
         || vectors

@@ -54,11 +54,12 @@ If your configuration contains `views.query.experimental_gpu_reranking`, remove
 that setting. Experimental GPU reranking has been removed; contextual reranking
 uses CPU. This configuration change does not require reindexing or new models.
 
-Remote embedding APIs have also been removed. Remove the `[embeddings]` table
-and `redaction.remote_embeddings` from node and server configurations. Mash
-rejects these settings rather than silently changing your embedding model.
-If you previously used remote embeddings, run `mash models install` to install
-the local embedding model and rebuild local views with
+Legacy remote-provider settings are unsupported. Replace old `[embeddings]`
+settings with the explicit local/remote configuration described in
+[embedding inference](configuration.md#embedding-inference), and remove
+`redaction.remote_embeddings`. Server configuration still rejects these settings.
+If you previously used a different embedding model, run `mash models install`
+to install the local query model and rebuild local views with
 `mash index --rebuild-local-views --full`. Existing local-model installations
 and their vectors remain valid.
 

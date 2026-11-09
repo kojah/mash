@@ -7,7 +7,9 @@ original history files. The public documentation website receives none of
 your indexed chats.
 
 Sharing across machines uploads history to your configured Mash server.
-Embedding inference runs locally.
+Embedding inference runs locally by default. Opting into a remote embedding
+worker sends prepared searchable text to that endpoint; this text may contain
+sensitive history. Query embeddings and reranking stay local.
 
 The local dashboard has no login. Keep its default address or restrict access
 to a trusted private network.

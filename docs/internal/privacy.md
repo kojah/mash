@@ -6,7 +6,9 @@
 
 A local-only setup reads your agent history without modifying the original files.
 Optional shared indexing publishes history to your configured server.
-Embedding inference runs locally.
+Embedding inference defaults to local execution. Explicit remote batch inference
+sends prepared searchable text to the configured authenticated worker. Query
+embeddings and reranking remain local. Remote inference grants no database access.
 The public Mash documentation website receives none of your indexed chats.
 
 The dashboard serves readable history to anyone who can reach its listening
