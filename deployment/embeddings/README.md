@@ -24,6 +24,13 @@ is warm and scales down after 30 idle seconds. Each request holds at most 256 in
 and one MiB of UTF-8 text. The worker runs GPU batches of at most 32 inputs to bound
 memory use. Request bodies and errors never log or echo chat text.
 
+Requests and replies use versioned binary frames (`MSH1`/`MSR1`). Inputs stay
+UTF-8 text with explicit lengths, and reply vectors travel as little-endian f16,
+which carries more precision than the int8 vectors Mash stores while keeping the
+payload about ten times smaller than JSON. The worker still accepts the previous
+JSON contract and replies in kind, so deployed clients keep working during a
+staged rollout.
+
 The recipe pins Xenova's MiniLM model revision, FP32 ONNX inference, 512-token
 truncation, attention-mask mean pooling and L2 normalization. Mash validates the
 recipe and each vector, then performs its common quantization before storage.

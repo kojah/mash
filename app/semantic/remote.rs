@@ -1,6 +1,5 @@
 //! Bounded, single-attempt inference; database ownership stays with Mash.
 use crate::{AppError, config::Embeddings};
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 // This identifies the inference recipe, independently of execution location.
@@ -11,33 +10,21 @@ const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_INPUTS: usize = 256;
 
-#[derive(Serialize)]
+// Versioned binary frames shared with deployment/embeddings/contract.py.
+const REQUEST_MAGIC: &[u8; 4] = b"MSH1";
+const RESPONSE_MAGIC: &[u8; 4] = b"MSR1";
+const REQUEST_ID_BYTES: usize = 32;
+const RESPONSE_HEADER_BYTES: usize = 4 + REQUEST_ID_BYTES + 4 + 4;
+const VECTOR_BYTES: usize = 4 + DIMENSIONS * 2;
+
 struct Batch<'a> {
-    recipe: &'static str,
-    request_id: String,
+    request_id: blake3::Hash,
     inputs: Vec<Input<'a>>,
 }
 
-#[derive(Serialize)]
 struct Input<'a> {
-    id: usize,
+    id: u32,
     text: &'a str,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Response {
-    recipe: String,
-    request_id: String,
-    vectors: Vec<Vector>,
-    inference_milliseconds: u64,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Vector {
-    id: usize,
-    values: Vec<f32>,
 }
 
 pub(crate) struct Result {
@@ -61,43 +48,126 @@ fn request<'a>(texts: &'a [&'a str]) -> std::result::Result<Batch<'a>, AppError>
         hash.update(text.as_bytes());
     }
     Ok(Batch {
-        recipe: RECIPE,
-        request_id: hash.finalize().to_hex().to_string(),
+        request_id: hash.finalize(),
         inputs: texts
             .iter()
             .enumerate()
-            .map(|(id, text)| Input { id, text })
+            .map(|(id, text)| Input {
+                id: u32::try_from(id).unwrap_or(u32::MAX),
+                text,
+            })
             .collect(),
     })
 }
 
-fn validate(response: Response, request: &Batch<'_>) -> std::result::Result<Result, AppError> {
-    if response.recipe != request.recipe
-        || response.request_id != request.request_id
-        || response.vectors.len() != request.inputs.len()
-    {
-        return Err(AppError::model(
-            "embedding service returned mismatched recipe or batch",
-        ));
+/// Encode the bounded request as a versioned binary frame. The recipe and
+/// input lengths make the request self-describing without JSON escaping.
+fn encode(request: &Batch<'_>) -> std::result::Result<Vec<u8>, AppError> {
+    let recipe = RECIPE.as_bytes();
+    let recipe_length = u16::try_from(recipe.len())
+        .map_err(|_| AppError::internal("embedding recipe is too long"))?;
+    let count = u32::try_from(request.inputs.len())
+        .map_err(|_| AppError::internal("embedding batch is too large"))?;
+    let mut bytes =
+        Vec::with_capacity(4 + 2 + recipe.len() + REQUEST_ID_BYTES + 4 + request.inputs.len() * 8);
+    bytes.extend_from_slice(REQUEST_MAGIC);
+    bytes.extend_from_slice(&recipe_length.to_le_bytes());
+    bytes.extend_from_slice(recipe);
+    bytes.extend_from_slice(request.request_id.as_bytes());
+    bytes.extend_from_slice(&count.to_le_bytes());
+    for input in &request.inputs {
+        let length = u32::try_from(input.text.len())
+            .map_err(|_| AppError::internal("embedding input is too long"))?;
+        bytes.extend_from_slice(&input.id.to_le_bytes());
+        bytes.extend_from_slice(&length.to_le_bytes());
+        bytes.extend_from_slice(input.text.as_bytes());
     }
-    let mut vectors = vec![None; request.inputs.len()];
-    for vector in response.vectors {
-        let Some(slot) = vectors.get_mut(vector.id) else {
+    Ok(bytes)
+}
+
+fn invalid() -> AppError {
+    AppError::model("embedding service returned an invalid response")
+}
+
+fn mismatched() -> AppError {
+    AppError::model("embedding service returned mismatched batch")
+}
+
+/// Decode f16 without a dependency; the worker emits IEEE 754 half bits.
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = u32::from(bits & 0x8000) << 16;
+    let exponent = u32::from((bits >> 10) & 0x1f);
+    let mantissa = u32::from(bits & 0x03ff);
+    let value = match (exponent, mantissa) {
+        (0, 0) => sign,
+        (0, mantissa) => {
+            let mut normalized = mantissa;
+            let mut shift = 0;
+            while normalized & 0x0400 == 0 {
+                normalized <<= 1;
+                shift += 1;
+            }
+            let exponent = 113 - shift;
+            sign | (exponent << 23) | ((normalized & 0x03ff) << 13)
+        }
+        (0x1f, mantissa) => sign | 0x7f80_0000 | (mantissa << 13),
+        (exponent, mantissa) => sign | ((exponent + 127 - 15) << 23) | (mantissa << 13),
+    };
+    f32::from_bits(value)
+}
+
+fn validate(bytes: &[u8], request: &Batch<'_>) -> std::result::Result<Result, AppError> {
+    if bytes.len() < RESPONSE_HEADER_BYTES || &bytes[..4] != RESPONSE_MAGIC {
+        return Err(invalid());
+    }
+    if &bytes[4..4 + REQUEST_ID_BYTES] != request.request_id.as_bytes() {
+        return Err(mismatched());
+    }
+    let inference_milliseconds = u64::from(u32::from_le_bytes(
+        bytes[36..40].try_into().map_err(|_| invalid())?,
+    ));
+    let count = usize::try_from(u32::from_le_bytes(
+        bytes[40..44].try_into().map_err(|_| invalid())?,
+    ))
+    .map_err(|_| invalid())?;
+    if count != request.inputs.len() {
+        return Err(mismatched());
+    }
+    if bytes.len() != RESPONSE_HEADER_BYTES + count * VECTOR_BYTES {
+        return Err(invalid());
+    }
+    let mut vectors = vec![None; count];
+    let mut cursor = RESPONSE_HEADER_BYTES;
+    for _ in 0..count {
+        let id = usize::try_from(u32::from_le_bytes(
+            bytes[cursor..cursor + 4]
+                .try_into()
+                .map_err(|_| invalid())?,
+        ))
+        .map_err(|_| invalid())?;
+        cursor += 4;
+        let Some(slot) = vectors.get_mut(id) else {
             return Err(AppError::model(
                 "embedding service returned an unknown input ID",
             ));
         };
-        let norm = vector
-            .values
-            .iter()
-            .map(|v| f64::from(*v).powi(2))
-            .sum::<f64>();
-        if slot.is_some()
-            || vector.values.len() != DIMENSIONS
-            || vector
-                .values
-                .iter()
-                .any(|v| !v.is_finite() || v.abs() > 1.001)
+        if slot.is_some() {
+            return Err(AppError::model(
+                "embedding service returned duplicate input IDs",
+            ));
+        }
+        let mut values = Vec::with_capacity(DIMENSIONS);
+        for _ in 0..DIMENSIONS {
+            let bits = u16::from_le_bytes(
+                bytes[cursor..cursor + 2]
+                    .try_into()
+                    .map_err(|_| invalid())?,
+            );
+            cursor += 2;
+            values.push(half_to_f32(bits));
+        }
+        let norm = values.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>();
+        if values.iter().any(|v| !v.is_finite() || v.abs() > 1.001)
             || !(0.99..=1.01).contains(&norm)
         {
             return Err(AppError::model(
@@ -105,7 +175,7 @@ fn validate(response: Response, request: &Batch<'_>) -> std::result::Result<Resu
             ));
         }
         *slot = Some(
-            super::retrieval::quantize_vector(&vector.values)
+            super::retrieval::quantize_vector(&values)
                 .values
                 .into_iter()
                 .map(|value| f64::from(value.cast_signed()))
@@ -118,7 +188,7 @@ fn validate(response: Response, request: &Batch<'_>) -> std::result::Result<Resu
         .ok_or_else(|| AppError::model("embedding service omitted an input"))?;
     Ok(Result {
         vectors,
-        inference_milliseconds: response.inference_milliseconds,
+        inference_milliseconds,
     })
 }
 
@@ -209,6 +279,7 @@ async fn send(
 ) -> std::result::Result<Result, AppError> {
     let started = std::time::Instant::now();
     let request = request(texts)?;
+    let body = encode(&request)?;
     // No response bodies or transport errors enter diagnostics: they may echo
     // credentials or private input. A timeout can still have incurred GPU cost.
     let failure = || {
@@ -219,7 +290,8 @@ async fn send(
     let mut response = client
         .post(url)
         .bearer_auth(token)
-        .json(&request)
+        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+        .body(body)
         .send()
         .await
         .map_err(|_| failure())?;
@@ -243,9 +315,7 @@ async fn send(
         bytes.extend_from_slice(&chunk);
     }
     let response_bytes = bytes.len();
-    let response = serde_json::from_slice(&bytes)
-        .map_err(|_| AppError::model("embedding service returned an invalid response"))?;
-    let result = validate(response, &request)?;
+    let result = validate(&bytes, &request)?;
     let span = tracing::Span::current();
     span.record(
         "roundtrip_ms",
@@ -260,27 +330,91 @@ async fn send(
 mod tests {
     use super::*;
 
-    fn response(request: &Batch<'_>) -> Response {
-        Response {
-            recipe: RECIPE.to_owned(),
-            request_id: request.request_id.clone(),
-            inference_milliseconds: 12,
-            vectors: (0..request.inputs.len())
-                .map(|id| {
-                    let mut values = vec![0.0; DIMENSIONS];
-                    values[id] = 1.0;
-                    Vector { id, values }
-                })
-                .collect(),
+    fn half(value: f32) -> u16 {
+        match value {
+            0.0 => 0x0000,
+            1.0 => 0x3c00,
+            -1.0 => 0xbc00,
+            value if value.is_nan() => 0x7e00,
+            _ => unimplemented!("test vectors only use 0, 1, -1 and NaN"),
         }
+    }
+
+    fn basis(index: usize) -> Vec<f32> {
+        let mut values = vec![0.0; DIMENSIONS];
+        values[index] = 1.0;
+        values
+    }
+
+    fn frame(
+        request_id: &[u8],
+        inference_milliseconds: u32,
+        vectors: &[(u32, Vec<f32>)],
+    ) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(RESPONSE_MAGIC);
+        bytes.extend_from_slice(request_id);
+        bytes.extend_from_slice(&inference_milliseconds.to_le_bytes());
+        bytes.extend_from_slice(&u32::try_from(vectors.len()).unwrap().to_le_bytes());
+        for (id, values) in vectors {
+            bytes.extend_from_slice(&id.to_le_bytes());
+            for value in values {
+                bytes.extend_from_slice(&half(*value).to_le_bytes());
+            }
+        }
+        bytes
+    }
+
+    fn response(request: &Batch<'_>) -> Vec<u8> {
+        frame(
+            request.request_id.as_bytes(),
+            12,
+            &(0..request.inputs.len())
+                .map(|id| (u32::try_from(id).unwrap(), basis(id)))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn decode_request(bytes: &[u8]) -> (Vec<u8>, Vec<(u32, String)>) {
+        assert_eq!(&bytes[..4], REQUEST_MAGIC);
+        let recipe_length = usize::from(u16::from_le_bytes(bytes[4..6].try_into().unwrap()));
+        assert_eq!(&bytes[6..6 + recipe_length], RECIPE.as_bytes());
+        let mut cursor = 6 + recipe_length;
+        let request_id = bytes[cursor..cursor + REQUEST_ID_BYTES].to_vec();
+        cursor += REQUEST_ID_BYTES;
+        let count = usize::try_from(u32::from_le_bytes(
+            bytes[cursor..cursor + 4].try_into().unwrap(),
+        ))
+        .unwrap();
+        cursor += 4;
+        let mut inputs = Vec::with_capacity(count);
+        for _ in 0..count {
+            let id = u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap());
+            cursor += 4;
+            let length = usize::try_from(u32::from_le_bytes(
+                bytes[cursor..cursor + 4].try_into().unwrap(),
+            ))
+            .unwrap();
+            cursor += 4;
+            let text = std::str::from_utf8(&bytes[cursor..cursor + length])
+                .unwrap()
+                .to_owned();
+            cursor += length;
+            inputs.push((id, text));
+        }
+        assert_eq!(cursor, bytes.len());
+        (request_id, inputs)
     }
 
     #[test]
     fn remote_embeddings_preserve_input_identity_when_results_arrive_reordered() {
         let request = request(&["first", "second"]).unwrap();
-        let mut reply = response(&request);
-        reply.vectors.reverse();
-        let result = validate(reply, &request).unwrap();
+        let reply = frame(
+            request.request_id.as_bytes(),
+            12,
+            &[(1, basis(1)), (0, basis(0))],
+        );
+        let result = validate(&reply, &request).unwrap();
         assert_eq!(result.vectors[0][0], 127.0);
         assert_eq!(result.vectors[0][1], 0.0);
         assert_eq!(result.vectors[1][0], 0.0);
@@ -290,31 +424,64 @@ mod tests {
     #[test]
     fn remote_embeddings_reject_wrong_identity_and_malformed_vectors() {
         let request = request(&["first", "second"]).unwrap();
+        let identity = request.request_id.as_bytes();
         for defect in 0..8 {
-            let mut reply = response(&request);
-            match defect {
-                0 => reply.recipe.push('x'),
-                1 => reply.request_id.push('x'),
+            let reply = match defect {
+                0 => {
+                    let mut bytes = response(&request);
+                    bytes[5] ^= 0xff;
+                    bytes
+                }
+                1 => {
+                    let mut bytes = response(&request);
+                    bytes.push(0);
+                    bytes
+                }
                 2 => {
-                    reply.vectors.pop();
+                    let mut bytes = response(&request);
+                    let length = bytes.len();
+                    bytes.truncate(length - VECTOR_BYTES);
+                    bytes
                 }
-                3 => reply.vectors[1].id = 0,
-                4 => reply.vectors[1].id = 2,
+                3 => frame(identity, 12, &[(0, basis(0)), (0, basis(1))]),
+                4 => frame(identity, 12, &[(0, basis(0)), (2, basis(1))]),
                 5 => {
-                    reply.vectors[0].values.pop();
+                    let mut bytes = response(&request);
+                    let length = bytes.len();
+                    bytes.truncate(length - 2);
+                    bytes
                 }
-                6 => reply.vectors[0].values[0] = f32::NAN,
-                _ => reply.vectors[0].values.fill(0.0),
-            }
+                6 => {
+                    let mut values = basis(0);
+                    values[0] = f32::NAN;
+                    frame(identity, 12, &[(0, values), (1, basis(1))])
+                }
+                _ => frame(
+                    identity,
+                    12,
+                    &[(0, vec![0.0; DIMENSIONS]), (1, vec![0.0; DIMENSIONS])],
+                ),
+            };
             assert!(
-                validate(reply, &request).is_err(),
+                validate(&reply, &request).is_err(),
                 "accepted defect {defect}"
             );
         }
     }
 
     #[test]
-    fn remote_embeddings_bound_batches_and_bind_exact_inputs() {
+    fn remote_embeddings_round_trip_binary_frame_and_bound_inputs() {
+        let batch = request(&["ab", "c"]).unwrap();
+        let bytes = encode(&batch).unwrap();
+        let (id, inputs) = decode_request(&bytes);
+        assert_eq!(id, batch.request_id.as_bytes());
+        assert_eq!(inputs, vec![(0, "ab".to_owned()), (1, "c".to_owned())]);
+        assert_eq!(half_to_f32(0x3c00), 1.0);
+        assert_eq!(half_to_f32(0xbc00), -1.0);
+        assert_eq!(half_to_f32(0x0000), 0.0);
+        assert_eq!(half_to_f32(0x0001), 2f32.powi(-24));
+        assert_eq!(half_to_f32(0x03ff), 1023.0 * 2f32.powi(-24));
+        assert!(half_to_f32(0x7e00).is_nan());
         assert!(request(&[]).is_err());
         assert!(request(&["x"; MAX_INPUTS + 1]).is_err());
         assert!(request(&[&"x".repeat(MAX_INPUT_BYTES + 1)]).is_err());
@@ -336,20 +503,28 @@ mod tests {
         };
         let calls = Arc::new(AtomicUsize::new(0));
         let observed = Arc::clone(&calls);
-        let app = axum::Router::new().route("/", axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
-            let observed = Arc::clone(&observed);
-            async move {
-                observed.fetch_add(1, Ordering::SeqCst);
-                let inputs = body["inputs"].as_array().unwrap();
-                let vectors = inputs.iter().map(|input| {
-                    let text = input["text"].as_str().unwrap();
-                    let mut values = vec![0.0; DIMENSIONS];
-                    values[usize::from(text.as_bytes()[0] - b'a')] = 1.0;
-                    serde_json::json!({"id": input["id"], "values": values})
-                }).collect::<Vec<_>>();
-                axum::Json(serde_json::json!({"recipe": RECIPE, "request_id": body["request_id"], "vectors": vectors, "inference_milliseconds": 2}))
-            }
-        }));
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::post(move |body: axum::body::Bytes| {
+                let observed = Arc::clone(&observed);
+                async move {
+                    observed.fetch_add(1, Ordering::SeqCst);
+                    let (request_id, inputs) = decode_request(&body);
+                    let vectors = inputs
+                        .iter()
+                        .map(|(id, text)| {
+                            let mut values = vec![0.0; DIMENSIONS];
+                            values[usize::from(text.as_bytes()[0] - b'a')] = 1.0;
+                            (*id, values)
+                        })
+                        .collect::<Vec<_>>();
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+                        frame(&request_id, 2, &vectors),
+                    )
+                }
+            }),
+        );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let client = Client {
             http: http_client(5).unwrap(),
@@ -409,25 +584,34 @@ mod tests {
 
     #[tokio::test]
     async fn remote_embeddings_validate_http_results_and_refuse_redirects() {
-        use axum::{Json, http::StatusCode, routing::post};
+        use axum::{http::StatusCode, routing::post};
         let app = axum::Router::new()
-            .route("/valid", post(|headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>| async move {
-                assert_eq!(headers["authorization"], "Bearer test-credential");
-                assert_eq!(body["inputs"][0]["text"], "hello");
-                let mut values = vec![0.0; DIMENSIONS];
-                values[0] = 1.0;
-                Json(serde_json::json!({
-                    "recipe": RECIPE,
-                    "request_id": body["request_id"],
-                    "vectors": [{"id": 0, "values": values}],
-                    "inference_milliseconds": 7,
-                }))
-            }))
-            .route("/malformed", post(|| async { "private-input invalid JSON" }))
-            .route("/oversized", post(|| async { "x".repeat(MAX_RESPONSE_BYTES + 1) }))
-            .route("/redirect", post(|| async {
-                (StatusCode::TEMPORARY_REDIRECT, [("location", "/valid")])
-            }));
+            .route(
+                "/valid",
+                post(
+                    |headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
+                        assert_eq!(headers["authorization"], "Bearer test-credential");
+                        let (request_id, inputs) = decode_request(&body);
+                        assert_eq!(inputs, vec![(0, "hello".to_owned())]);
+                        (
+                            [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+                            frame(&request_id, 7, &[(0, basis(0))]),
+                        )
+                    },
+                ),
+            )
+            .route(
+                "/malformed",
+                post(|| async { "private-input invalid response" }),
+            )
+            .route(
+                "/oversized",
+                post(|| async { vec![0u8; MAX_RESPONSE_BYTES + 1] }),
+            )
+            .route(
+                "/redirect",
+                post(|| async { (StatusCode::TEMPORARY_REDIRECT, [("location", "/valid")]) }),
+            );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let server = tokio::spawn(async move {
