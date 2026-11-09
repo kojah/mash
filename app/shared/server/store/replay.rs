@@ -73,7 +73,10 @@ impl Store {
                     messages: 0,
                     embeddings: 0,
                 };
-                let mut writer = bulk.writer(models).with_execution(self.embeddings.clone());
+                let mut writer = bulk
+                    .writer(models)
+                    .with_execution(self.embeddings.clone())
+                    .without_reuse();
                 for (id, fingerprint) in &fingerprints {
                     let chat = id.clone();
                     let (chat, messages) = self

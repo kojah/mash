@@ -14,6 +14,7 @@ pub(crate) struct Writer<'a> {
     model: Option<&'a Path>,
     pool: Option<LoadedIndexer>,
     execution: crate::config::Embeddings,
+    reuse: bool,
     build: Build,
     documents: Documents,
 }
@@ -37,6 +38,7 @@ impl Prepared {
         chat: &ChatRecord,
         batch: &[SearchMessage],
         mut units: super::units::Stream,
+        reuse: bool,
     ) -> Result<(super::units::Stream, Self), AppError> {
         let rows = batch.to_vec();
         let title = chat.title.clone();
@@ -61,7 +63,13 @@ impl Prepared {
         })
         .await?;
         let inputs = inputs(chat, &rows, &texts);
-        let cached = store.reusable_vectors(scope, &inputs).await?;
+        // A whole-node replay deletes every document first, so Qdrant has
+        // nothing to reuse. Skip those per-chat reads entirely.
+        let cached = if reuse {
+            store.reusable_vectors(scope, &inputs).await?
+        } else {
+            vec![None; inputs.len()]
+        };
         Ok((
             units,
             Self {
@@ -98,6 +106,7 @@ impl<'a> Writer<'a> {
             model,
             pool: None,
             execution: crate::config::Embeddings::Local {},
+            reuse: true,
             build: Build::default(),
             documents: Documents::new(scope),
         }
@@ -111,6 +120,12 @@ impl<'a> Writer<'a> {
     /// Stage writes without awaiting each batch; the caller supplies the barrier.
     pub(crate) fn with_bulk(mut self) -> Self {
         self.documents = self.documents.with_wait(false);
+        self
+    }
+
+    /// A replay starts from an empty node; do not query Qdrant for vectors to reuse.
+    pub(crate) fn without_reuse(mut self) -> Self {
+        self.reuse = false;
         self
     }
 
@@ -135,6 +150,7 @@ impl<'a> Writer<'a> {
             chat,
             first,
             super::units::Stream::default(),
+            self.reuse,
         )
         .await?;
         let mut stored = 0;
@@ -143,7 +159,7 @@ impl<'a> Writer<'a> {
             // Only reads/preparation overlap the single writer. Join both even
             // on error: no queued mutation escapes the caller's admission.
             let (next, written) = tokio::join!(
-                Prepared::read(self.store, self.scope, chat, batch, units),
+                Prepared::read(self.store, self.scope, chat, batch, units, self.reuse,),
                 self.write_prepared(chat, prepared),
             );
             let (count, wanted) = written?;
