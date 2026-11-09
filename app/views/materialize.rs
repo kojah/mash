@@ -108,6 +108,12 @@ impl<'a> Writer<'a> {
         self
     }
 
+    /// Stage writes without awaiting each batch; the caller supplies the barrier.
+    pub(crate) fn with_bulk(mut self) -> Self {
+        self.documents = self.documents.with_wait(false);
+        self
+    }
+
     /// Input is canonical silver in chat order. Hidden rows still define
     /// inference batch boundaries, which can affect quantized model output.
     pub(crate) async fn write_chat(

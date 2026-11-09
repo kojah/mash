@@ -69,30 +69,39 @@ impl Client {
         &self,
         name: &str,
         points: Vec<q::PointStruct>,
+        wait: bool,
     ) -> Result<(), AppError> {
         let request = self.request(q::UpsertPoints {
             collection_name: name.into(),
             points,
-            wait: Some(true),
+            wait: Some(wait),
             ordering: Some(ordering()),
             timeout: Some(WRITE_TIMEOUT.as_secs()),
             ..Default::default()
         })?;
-        completed(
-            &self
-                .points
-                .clone()
-                .upsert(request)
-                .await
-                .map_err(|_| failure())?
-                .into_inner(),
-        )
+        let response = self
+            .points
+            .clone()
+            .upsert(request)
+            .await
+            .map_err(|_| failure())?
+            .into_inner();
+        if wait {
+            completed(&response)
+        } else {
+            accepted(&response)
+        }
     }
 
-    pub(super) async fn delete(&self, name: &str, filter: Filter) -> Result<(), AppError> {
+    pub(super) async fn delete(
+        &self,
+        name: &str,
+        filter: Filter,
+        wait: bool,
+    ) -> Result<(), AppError> {
         let request = self.request(q::DeletePoints {
             collection_name: name.into(),
-            wait: Some(true),
+            wait: Some(wait),
             ordering: Some(ordering()),
             points: Some(q::PointsSelector {
                 points_selector_one_of: Some(q::points_selector::PointsSelectorOneOf::Filter(
@@ -102,15 +111,18 @@ impl Client {
             timeout: Some(WRITE_TIMEOUT.as_secs()),
             ..Default::default()
         })?;
-        completed(
-            &self
-                .points
-                .clone()
-                .delete(request)
-                .await
-                .map_err(|_| failure())?
-                .into_inner(),
-        )
+        let response = self
+            .points
+            .clone()
+            .delete(request)
+            .await
+            .map_err(|_| failure())?
+            .into_inner();
+        if wait {
+            completed(&response)
+        } else {
+            accepted(&response)
+        }
     }
 }
 
@@ -123,8 +135,20 @@ fn ordering() -> q::WriteOrdering {
 fn completed(response: &q::PointsOperationResponse) -> Result<(), AppError> {
     if response
         .result
+        .as_ref()
         .is_some_and(|r| r.status == q::UpdateStatus::Completed as i32)
     {
+        Ok(())
+    } else {
+        Err(failure())
+    }
+}
+
+fn accepted(response: &q::PointsOperationResponse) -> Result<(), AppError> {
+    if response.result.as_ref().is_some_and(|r| {
+        r.status == q::UpdateStatus::Acknowledged as i32
+            || r.status == q::UpdateStatus::Completed as i32
+    }) {
         Ok(())
     } else {
         Err(failure())

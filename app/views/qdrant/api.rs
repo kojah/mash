@@ -939,7 +939,17 @@ impl Client {
         name: &str,
         input: &Upsert<P>,
     ) -> Result<(), AppError> {
+        self.upsert_with_wait(name, input, true).await
+    }
+
+    pub(super) async fn upsert_with_wait<P: Serialize>(
+        &self,
+        name: &str,
+        input: &Upsert<P>,
+        wait: bool,
+    ) -> Result<(), AppError> {
         let mut batch = StagingBatch::default();
+        batch.set_wait(wait);
         for point in &input.points {
             batch
                 .push(
@@ -1098,6 +1108,15 @@ impl Client {
     }
     #[tracing::instrument(name = "qdrant_native_delete", skip_all)]
     pub(super) async fn delete_filtered(&self, name: &str, filter: Filter) -> Result<(), AppError> {
-        self.mutations()?.delete(name, filter).await
+        self.delete_filtered_with_wait(name, filter, true).await
+    }
+
+    pub(super) async fn delete_filtered_with_wait(
+        &self,
+        name: &str,
+        filter: Filter,
+        wait: bool,
+    ) -> Result<(), AppError> {
+        self.mutations()?.delete(name, filter, wait).await
     }
 }

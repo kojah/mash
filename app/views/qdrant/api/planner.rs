@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 // at 384 float32 dimensions it permits scans of roughly six vectors per segment.
 pub(super) const FULL_SCAN_KIB: usize = 10;
 const INDEXING_KIB: usize = 1024;
+// Keep bulk load from rebuilding HNSW after each staged batch.
+const BULK_INDEXING_KIB: usize = 10_000_000;
 
 #[derive(Default, Deserialize, Serialize)]
 pub(super) struct Optimizers {
@@ -58,7 +60,39 @@ impl Update {
     }
 }
 
+#[derive(Serialize)]
+struct ThresholdPatch {
+    optimizers_config: Optimizers,
+}
+
 impl Client {
+    /// A bulk loader disables graph construction until its writes are applied.
+    pub(in crate::views::qdrant) async fn begin_bulk(&self, name: &str) -> Result<(), AppError> {
+        self.set_indexing_threshold(name, BULK_INDEXING_KIB).await
+    }
+
+    /// Restore the search threshold once, so the optimizer builds one graph.
+    pub(in crate::views::qdrant) async fn end_bulk(&self, name: &str) -> Result<(), AppError> {
+        self.set_indexing_threshold(name, INDEXING_KIB).await
+    }
+
+    async fn set_indexing_threshold(&self, name: &str, threshold: usize) -> Result<(), AppError> {
+        let path = format!("collections/{name}");
+        let threshold_patch = ThresholdPatch {
+            optimizers_config: Optimizers {
+                indexing_threshold: Some(threshold),
+            },
+        };
+        let _: bool = self
+            .call(Method::PATCH, &path, Some(&threshold_patch))
+            .await?;
+        let observed: Info = self.call(Method::GET, &path, None::<&()>).await?;
+        if observed.config.optimizers_config.indexing_threshold != Some(threshold) {
+            return Err(failure());
+        }
+        Ok(())
+    }
+
     /// An intentional query activation may schedule a one-time graph rebuild.
     /// Serving and publication do not wait for that background rebuild.
     pub(in crate::views::qdrant) async fn prepare_query(

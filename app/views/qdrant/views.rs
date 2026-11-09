@@ -175,8 +175,25 @@ impl Store {
         identity: &Scope,
         views: &NodeViews,
     ) -> Result<(), AppError> {
+        self.put_node_views_with_wait(identity, views, true).await
+    }
+
+    pub(crate) async fn put_node_views_unwaited(
+        &self,
+        identity: &Scope,
+        views: &NodeViews,
+    ) -> Result<(), AppError> {
+        self.put_node_views_with_wait(identity, views, false).await
+    }
+
+    async fn put_node_views_with_wait(
+        &self,
+        identity: &Scope,
+        views: &NodeViews,
+        wait: bool,
+    ) -> Result<(), AppError> {
         self.api
-            .upsert(
+            .upsert_with_wait(
                 &collection(&identity.group_id, true),
                 &api::Upsert {
                     points: vec![api::Point {
@@ -185,6 +202,7 @@ impl Store {
                         payload: views,
                     }],
                 },
+                wait,
             )
             .await
     }
@@ -217,6 +235,25 @@ impl Store {
         identity: &Scope,
         current: Vec<String>,
     ) -> Result<(), AppError> {
+        self.retain_node_chats_with_wait(identity, current, true)
+            .await
+    }
+
+    pub(crate) async fn retain_node_chats_unwaited(
+        &self,
+        identity: &Scope,
+        current: Vec<String>,
+    ) -> Result<(), AppError> {
+        self.retain_node_chats_with_wait(identity, current, false)
+            .await
+    }
+
+    async fn retain_node_chats_with_wait(
+        &self,
+        identity: &Scope,
+        current: Vec<String>,
+        wait: bool,
+    ) -> Result<(), AppError> {
         let mut filter = api::Filter {
             must: vec![api::matches("node_id", vec![identity.node_id.clone()])],
             ..api::Filter::default()
@@ -225,7 +262,7 @@ impl Store {
             filter.must_not.push(api::matches("chat_id", current));
         }
         self.api
-            .delete_filtered(&collection(&identity.group_id, false), filter)
+            .delete_filtered_with_wait(&collection(&identity.group_id, false), filter, wait)
             .await
     }
 
@@ -260,6 +297,29 @@ impl Store {
         }
         Ok(())
     }
+
+    /// Defer HNSW construction while a bulk index is staging documents.
+    pub(crate) async fn begin_bulk(&self, identity: &Scope) -> Result<(), AppError> {
+        if !self.build.dense_enabled() {
+            return Ok(());
+        }
+        self.api
+            .begin_bulk(&collection(&identity.group_id, false))
+            .await
+    }
+
+    /// Lower the threshold after all writes, scheduling one graph build.
+    /// Exact-only local views do not need a graph at all.
+    pub(crate) async fn end_bulk(&self, identity: &Scope) -> Result<(), AppError> {
+        if !self.build.dense_enabled()
+            || !matches!(self.vector_index, super::VectorIndex::Hnsw { .. })
+        {
+            return Ok(());
+        }
+        self.api
+            .end_bulk(&collection(&identity.group_id, false))
+            .await
+    }
 }
 
 /// Buffered views documents for one node; `finish` sends the remainder.
@@ -275,6 +335,12 @@ impl Documents {
             name: collection(&identity.group_id, false),
             batch: api::StagingBatch::default(),
         }
+    }
+
+    /// Let a bulk caller queue unwaited writes; the final state point is awaited.
+    pub(crate) fn with_wait(mut self, wait: bool) -> Self {
+        self.batch.set_wait(wait);
+        self
     }
 
     /// Queue one message's document; returns 1 when it carries an embedding.

@@ -8,13 +8,27 @@ const MAX_POINTS: usize = 512;
 const TARGET_BYTES: usize = 2 * 1024 * 1024;
 const MAX_POINT_BYTES: usize = 30 * 1024 * 1024 - 1024;
 
-#[derive(Default)]
 pub(in crate::views::qdrant) struct StagingBatch {
     points: Vec<qdrant_client::qdrant::PointStruct>,
     bytes: usize,
+    wait: bool,
+}
+
+impl Default for StagingBatch {
+    fn default() -> Self {
+        Self {
+            points: Vec::new(),
+            bytes: 0,
+            wait: true,
+        }
+    }
 }
 
 impl StagingBatch {
+    pub(in crate::views::qdrant) fn set_wait(&mut self, wait: bool) {
+        self.wait = wait;
+    }
+
     pub(in crate::views::qdrant) async fn push<P: Serialize>(
         &mut self,
         client: &Client,
@@ -56,7 +70,7 @@ impl StagingBatch {
         }
         client
             .mutations()?
-            .upsert(collection, self.points.clone())
+            .upsert(collection, self.points.clone(), self.wait)
             .await?;
         self.points.clear();
         self.bytes = 0;

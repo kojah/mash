@@ -209,6 +209,7 @@ pub(crate) async fn build(
     .with_build(configuration.views.build.clone());
     let version = store.select_views(&scope, true).await?;
     store.select_query(&scope, true).await?;
+    store.begin_bulk(&scope).await?;
     let previous = store
         .node_views(&scope)
         .await?
@@ -222,12 +223,13 @@ pub(crate) async fn build(
     }
     let mut node = NodeViews::empty(&store, &scope);
     // Persist stale metadata before any document mutation, including deletions.
-    store.put_node_views(&scope, &node).await?;
+    store.put_node_views_unwaited(&scope, &node).await?;
     store
-        .retain_node_chats(&scope, input.chats.keys().cloned().collect())
+        .retain_node_chats_unwaited(&scope, input.chats.keys().cloned().collect())
         .await?;
     let mut writer = super::materialize::Writer::new(&store, &scope, Some(models))
-        .with_execution(configuration.embeddings.clone());
+        .with_execution(configuration.embeddings.clone())
+        .with_bulk();
     Box::pin(projection::native(
         &store,
         &scope,
@@ -238,9 +240,6 @@ pub(crate) async fn build(
     ))
     .await?;
     let mut work = writer.finish().await?;
-    let stored = node.stored_vectors();
-    emit_progress(stored, &work.embeddings, started);
-    store.settle(&scope).await?;
     let path = database.to_path_buf();
     let certificate =
         crate::blocking(move || Storage::open_silver(&path)?.silver_certificate()).await?;
@@ -258,7 +257,13 @@ pub(crate) async fn build(
     let ready = certificate.permits_views() && node.projections.complete();
     node.certified = ready;
     node.silver = ready.then_some(state);
+    // The single completion barrier: strongly ordered after the stale state,
+    // the delete and every unwaited document batch.
     store.put_node_views(&scope, &node).await?;
+    store.end_bulk(&scope).await?;
+    let stored = node.stored_vectors();
+    emit_progress(stored, &work.embeddings, started);
+    store.settle(&scope).await?;
     work.embeddings.stored_vectors = stored;
     work.embeddings.reused_vectors = stored.saturating_sub(work.embeddings.model_inferences);
     Ok(Build {
