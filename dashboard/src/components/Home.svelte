@@ -5,6 +5,7 @@ import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import type { Catalog } from "../lib/api";
 import { navigate } from "../lib/navigation";
+import { pageOf } from "../lib/pagination";
 import { catalogOptions } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
 import { chatHref, recordsHref } from "../lib/route.svelte";
@@ -16,7 +17,12 @@ import MemoryCategories from "./MemoryCategories.svelte";
 
 let {
   section = "home",
-}: { section?: "home" | "recent" | "machines" | "agents" | "continue" | "status" } = $props();
+  listPage = 1,
+}: {
+  section?: "home" | "recent" | "machines" | "agents" | "continue" | "status";
+  listPage?: number;
+} = $props();
+const pageSize = 50;
 const catalogue = createQuery(() => catalogOptions);
 let loadError = $state<Error | null>(null);
 $effect(() => {
@@ -47,6 +53,13 @@ const chats = $derived(
       ? (data?.chats ?? []).slice(0, 8)
       : (data?.chats ?? []),
 );
+const paged = $derived(section === "recent" ? pageOf(chats, listPage, pageSize) : null);
+const visible = $derived(paged?.items ?? chats);
+let shownPage: number | undefined;
+$effect(() => {
+  if (shownPage !== undefined && shownPage !== listPage) window.scrollTo(0, 0);
+  shownPage = listPage;
+});
 function href(chat: ChatSummary): string {
   const position = reading.positions.find(
     (position) => position.id === chat.id && position.node === chat.machine,
@@ -105,14 +118,21 @@ function search(event: SubmitEvent): void {
       <div class="section-heading"><h2 id="recent">{section === "continue" ? "Continue reading" : "Recent conversations"}</h2>{#if section === "home"}<a href="#/recent">View all</a>{/if}</div>
       {#if data && !chats.length}<p>{section === "continue" ? "Open a conversation to keep your reading position in this browser session." : "No indexed chats yet. Run Mash indexing, then refresh."}</p>{/if}
       <ul class="chat-list">
-        {#each chats as chat, index (JSON.stringify([chat.machine, chat.id]))}
-          {#if index === 0 || day(chats[index - 1] ?? chat) !== day(chat)}<li class="day-label">{day(chat)}</li>{/if}
+        {#each visible as chat, index (JSON.stringify([chat.machine, chat.id]))}
+          {#if index === 0 || day(visible[index - 1] ?? chat) !== day(chat)}<li class="day-label">{day(chat)}</li>{/if}
           <li><a class="chat-row" href={href(chat)}>
             <span class="chat-time">{time(chat)}</span>
             <span class="chat-summary"><span class="chat-title">{chat.title}</span><span class="chat-metadata"><AgentMark agent={chat.agent} size={13} />{agentInfo[chat.agent].name}<span aria-hidden="true">·</span>{chat.project.split('/').filter(Boolean).at(-1) || 'No project'}<span aria-hidden="true">·</span>{chat.machine}</span></span>
           </a></li>
         {/each}
       </ul>
+      {#if paged && paged.pageCount > 1}
+        <nav class="pager" aria-label="Recent conversations pages">
+          {#if paged.page > 1}<a rel="prev" href={`#/recent?page=${paged.page - 1}`}>Previous</a>{:else}<span aria-hidden="true"></span>{/if}
+          <span aria-live="polite">{paged.first.toLocaleString()}–{paged.last.toLocaleString()} of {paged.total.toLocaleString()}</span>
+          {#if paged.page < paged.pageCount}<a rel="next" href={`#/recent?page=${paged.page + 1}`}>Next</a>{:else}<span aria-hidden="true"></span>{/if}
+        </nav>
+      {/if}
     </section>
     {#if section === "home"}
         <div class="home-browse">

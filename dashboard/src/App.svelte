@@ -35,7 +35,7 @@ $effect(() => {
 {:else if router.current.page === "search"}
   <!-- Keep the submitted search mounted while a chat is open. -->
 {:else if router.current.page === "browse"}
-  <Home section={router.current.section} />
+  <Home section={router.current.section} listPage={router.current.listPage ?? 1} />
 {:else}
   <Home />
 {/if}

@@ -57,3 +57,17 @@ describe("routes", () => {
     }
   });
 });
+
+describe("recent conversation pages", () => {
+  it("reads the page from the route and ignores invalid ones", () => {
+    expect(parseRoute("#/recent?page=3")).toEqual({
+      page: "browse",
+      section: "recent",
+      listPage: 3,
+    });
+    for (const value of ["0", "-1", "1.5", "x"]) {
+      expect(parseRoute(`#/recent?page=${value}`)).toMatchObject({ listPage: 1 });
+    }
+    expect(parseRoute("#/recent")).toEqual({ page: "browse", section: "recent" });
+  });
+});

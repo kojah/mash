@@ -241,6 +241,26 @@ button:disabled {
   font-weight: 500;
   color: var(--color-muted);
 }
+.pager {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding-top: 16px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.pager a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  font-weight: 500;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.pager a[rel="next"] {
+  justify-self: end;
+}
 .chat-list,
 .browse-list {
   list-style: none;

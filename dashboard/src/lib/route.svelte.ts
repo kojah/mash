@@ -5,6 +5,8 @@ export type Route =
   | {
       readonly page: "browse";
       readonly section: "machines" | "agents" | "recent" | "continue" | "status";
+      /** One-based page of the recent conversations list. */
+      readonly listPage?: number;
     }
   | { readonly page: "search"; readonly params: string }
   | { readonly page: "records"; readonly params: string }
@@ -22,6 +24,14 @@ export function parseRoute(hash: string): Route {
     return { page: "services", params: new URLSearchParams(hash.split("?")[1]).toString() };
   if (/^#\/search(?:\?|$)/.test(hash))
     return { page: "search", params: new URLSearchParams(hash.split("?")[1]).toString() };
+  if (/^#\/recent\?/.test(hash)) {
+    const listPage = Number(new URLSearchParams(hash.split("?")[1]).get("page"));
+    return {
+      page: "browse",
+      section: "recent",
+      listPage: Number.isSafeInteger(listPage) && listPage > 0 ? listPage : 1,
+    };
+  }
   const section = /^#\/(machines|agents|recent|continue|status)$/.exec(hash)?.[1];
   if (
     section === "machines" ||
