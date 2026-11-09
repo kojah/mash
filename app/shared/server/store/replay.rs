@@ -47,6 +47,8 @@ impl Store {
         models: &Path,
     ) -> Result<Replayed, AppError> {
         let _node = self.lock(identity).await?;
+        let _replay = self.replay_lock(&identity.group_id).await?;
+        self.views.begin_bulk(identity).await?;
         let fingerprints = self
             .read(identity, |connection| {
                 silver_store::fingerprints(connection)
@@ -55,10 +57,10 @@ impl Store {
         // Metadata and documents live in separate collections. Persist stale
         // certification before destructive writes so interruption fails closed.
         let mut node = NodeViews::empty(&self.views, identity);
-        self.views.put_node_views(identity, &node).await?;
+        self.views.put_node_views_unwaited(identity, &node).await?;
         #[cfg(test)]
         self.interrupt_replay(ReplayFault::AfterInvalidation)?;
-        self.views.delete_node_documents(identity).await?;
+        self.views.delete_node_documents_unwaited(identity).await?;
         #[cfg(test)]
         self.interrupt_replay(ReplayFault::AfterDeletion)?;
         let mut replayed = Replayed {
@@ -68,7 +70,7 @@ impl Store {
             messages: 0,
             embeddings: 0,
         };
-        let mut writer = Writer::new(&self.views, identity, Some(models));
+        let mut writer = Writer::new(&self.views, identity, Some(models)).with_bulk();
         for (id, fingerprint) in &fingerprints {
             let chat = id.clone();
             let (chat, messages) = self
@@ -97,7 +99,7 @@ impl Store {
         // Every chat was rebuilt from the silver read above, so these views
         // reflect the head the lock protects.
         node.input = Some(self.head_revision(identity).await?);
-        self.certify(
+        self.certify_bulk(
             identity,
             node,
             &crate::shared::activity::Progress::default(),

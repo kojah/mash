@@ -268,13 +268,29 @@ impl Store {
 
     /// Delete all documents of one node, for a complete replay.
     pub(crate) async fn delete_node_documents(&self, identity: &Scope) -> Result<(), AppError> {
+        self.delete_node_documents_with_wait(identity, true).await
+    }
+
+    pub(crate) async fn delete_node_documents_unwaited(
+        &self,
+        identity: &Scope,
+    ) -> Result<(), AppError> {
+        self.delete_node_documents_with_wait(identity, false).await
+    }
+
+    async fn delete_node_documents_with_wait(
+        &self,
+        identity: &Scope,
+        wait: bool,
+    ) -> Result<(), AppError> {
         self.api
-            .delete_filtered(
+            .delete_filtered_with_wait(
                 &collection(&identity.group_id, false),
                 api::Filter {
                     must: vec![api::matches("node_id", vec![identity.node_id.clone()])],
                     ..api::Filter::default()
                 },
+                wait,
             )
             .await
     }

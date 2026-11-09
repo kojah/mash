@@ -28,6 +28,8 @@ pub(crate) struct Store {
     /// Serializes the short read-check-write that stamps node views. Distinct
     /// from `nodes`: certification may not run under the publication lock.
     views_writes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
+    /// Replays are whole-group bulk writes; their threshold is group-wide.
+    replays: Arc<std::sync::Mutex<HashMap<String, NodeLock>>>,
     /// Whether HTTP read responses mask recognizable credentials.
     responses: crate::redaction::Policy,
     #[cfg(test)]
@@ -143,6 +145,7 @@ impl Store {
             max_upload_bytes,
             nodes: Arc::default(),
             views_writes: Arc::default(),
+            replays: Arc::default(),
             responses: crate::redaction::Policy::ON,
             #[cfg(test)]
             replay_fault: None,
@@ -219,6 +222,21 @@ impl Store {
             .lock()
             .map_err(|_| AppError::internal("shared node locks are poisoned"))?
             .entry((identity.group_id.clone(), identity.node_id.clone()))
+            .or_default()
+            .clone();
+        Ok(lock.lock_owned().await)
+    }
+
+    /// One whole-group replay at a time: the bulk threshold is collection-wide.
+    async fn replay_lock(
+        &self,
+        group_id: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, AppError> {
+        let lock = self
+            .replays
+            .lock()
+            .map_err(|_| AppError::internal("shared replay locks are poisoned"))?
+            .entry(group_id.to_owned())
             .or_default()
             .clone();
         Ok(lock.lock_owned().await)

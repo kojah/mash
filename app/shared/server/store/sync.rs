@@ -349,8 +349,29 @@ impl Store {
     pub(crate) async fn certify(
         &self,
         identity: &Identity,
+        views: NodeViews,
+        progress: &Progress,
+    ) -> Result<(), AppError> {
+        self.certify_inner(identity, views, progress, false).await
+    }
+
+    /// Certification for a bulk replay; the final state write is the barrier,
+    /// then the group-wide graph threshold is restored once.
+    pub(crate) async fn certify_bulk(
+        &self,
+        identity: &Identity,
+        views: NodeViews,
+        progress: &Progress,
+    ) -> Result<(), AppError> {
+        self.certify_inner(identity, views, progress, true).await
+    }
+
+    async fn certify_inner(
+        &self,
+        identity: &Identity,
         mut views: NodeViews,
         progress: &Progress,
+        bulk: bool,
     ) -> Result<(), AppError> {
         // Every caller records the revision its chats were built from. Treat a
         // missing input as a bug rather than silently claiming the head: the
@@ -415,6 +436,9 @@ impl Store {
             .flatten();
         self.views.put_node_views(identity, &views).await?;
         drop(write);
+        if bulk {
+            self.views.end_bulk(identity).await?;
+        }
         progress.phase(
             crate::shared::activity::Phase::CheckingSearch,
             crate::shared::activity::Unit::Records,
