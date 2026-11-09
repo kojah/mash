@@ -49,6 +49,15 @@ impl Store {
         let _node = self.lock(identity).await?;
         let _replay = self.replay_lock(&identity.group_id).await?;
         self.views.begin_bulk(identity).await?;
+        let result = self.replay_bulk(identity, models).await;
+        // A replay failure must not leave the whole group with graph indexing deferred.
+        if result.is_err() {
+            let _ = self.views.end_bulk(identity).await;
+        }
+        result
+    }
+
+    async fn replay_bulk(&self, identity: &Identity, models: &Path) -> Result<Replayed, AppError> {
         let fingerprints = self
             .read(identity, |connection| {
                 silver_store::fingerprints(connection)
