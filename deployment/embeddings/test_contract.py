@@ -66,6 +66,11 @@ def test_batch_rejects_unknown_recipe_and_malformed_frames() -> None:
             decode_batch(malformed)
 
 
+def test_non_binary_bodies_are_rejected() -> None:
+    with pytest.raises(ContractError):
+        decode_batch(b'{"recipe":"legacy","request_id":"' + b"a" * 64 + b'","inputs":[]}')
+
+
 def test_compressed_requests_round_trip_and_reject_malformed_input() -> None:
     valid = pack([(0, "hello"), (1, "東京")])
     compressed = zstandard.ZstdCompressor(level=3).compress(valid)

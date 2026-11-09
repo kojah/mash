@@ -5,11 +5,9 @@ requires-python = ">=3.12"
 dependencies = [
   "modal==1.6.3",
   "fastapi>=0.115,<1",
-  "pydantic>=2.12,<3",
   "numpy==2.2.6",
   "tokenizers==0.22.1",
   "huggingface-hub>=0.35,<1",
-  "orjson>=3.11,<4",
   "zstandard>=0.23,<1",
 ]
 

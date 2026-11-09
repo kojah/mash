@@ -11,7 +11,7 @@ const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_INPUTS: usize = 256;
 /// Requests kept in flight together. The worker serializes GPU inference but
 /// can receive and reply concurrently, hiding proxy round-trip latency.
-const REQUEST_CONCURRENCY: usize = 2;
+pub(crate) const REQUEST_CONCURRENCY: usize = 4;
 /// Small bodies gain nothing from framing overhead, so only compress requests
 /// whose text is large enough to pay for the zstd frame.
 const COMPRESSION_THRESHOLD: usize = 1024;
@@ -254,21 +254,15 @@ impl Client {
             vectors: Vec::new(),
             inference_milliseconds: 0,
         };
-        for pair in batches.chunks(REQUEST_CONCURRENCY) {
-            let mut completed = Vec::with_capacity(pair.len());
-            match pair {
-                [only] => completed.push(send(&self.http, &self.url, &self.token, only).await?),
-                [left, right] => {
-                    let (left, right) = tokio::join!(
-                        send(&self.http, &self.url, &self.token, left),
-                        send(&self.http, &self.url, &self.token, right),
-                    );
-                    completed.push(left?);
-                    completed.push(right?);
-                }
-                _ => unreachable!("request concurrency is two"),
-            }
+        for group in batches.chunks(REQUEST_CONCURRENCY) {
+            let completed = futures_util::future::join_all(
+                group
+                    .iter()
+                    .map(|texts| send(&self.http, &self.url, &self.token, texts)),
+            )
+            .await;
             for batch in completed {
+                let batch = batch?;
                 result.vectors.extend(batch.vectors);
                 result.inference_milliseconds += batch.inference_milliseconds;
             }

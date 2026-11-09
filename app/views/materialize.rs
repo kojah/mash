@@ -200,10 +200,10 @@ impl<'a> Writer<'a> {
         chats: &[(ChatRecord, Vec<SearchMessage>)],
     ) -> Result<Vec<(String, ChatBuild)>, AppError> {
         let batch_rows = embedding::batch_rows(&self.execution);
-        // Remote requests are sent in pairs, so fill two batches before
-        // flushing. This also avoids discarding the tail of each chat group.
+        // Fill one batch per in-flight remote request before flushing. This
+        // also avoids discarding the tail of each chat group.
         let pending_rows = if matches!(self.execution, crate::config::Embeddings::Remote { .. }) {
-            batch_rows * 2
+            batch_rows * crate::semantic::remote::REQUEST_CONCURRENCY
         } else {
             batch_rows
         };

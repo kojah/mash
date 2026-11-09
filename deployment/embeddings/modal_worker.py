@@ -7,7 +7,6 @@ from time import perf_counter
 
 import modal
 from fastapi import HTTPException, Request, Response
-from pydantic import ValidationError
 
 from contract import (
     MAX_BODY_BYTES,
@@ -18,7 +17,6 @@ from contract import (
     decompress_request,
     encode_reply,
 )
-from legacy import decode_legacy_batch, encode_legacy_reply
 
 app = modal.App("mash-embeddings")
 MODEL_ROOT = "/opt/mash-model"
@@ -44,12 +42,9 @@ image = (
         "tokenizers==0.22.1",
         "huggingface-hub>=0.35,<1",
         "fastapi>=0.115,<1",
-        "pydantic>=2.12,<3",
-        "orjson>=3.11,<4",
         "zstandard>=0.23,<1",
     )
     .add_local_file(Path(__file__).with_name("contract.py"), "/root/contract.py", copy=True)
-    .add_local_file(Path(__file__).with_name("legacy.py"), "/root/legacy.py", copy=True)
     .run_function(download_model)
 )
 
@@ -88,11 +83,10 @@ class Worker:
         # One GPU: overlap request transfer with inference, never inference itself.
         self.compute = threading.Lock()
 
-    def infer(self, inputs: list, binary: bool) -> tuple[int, list, list]:
+    def infer(self, inputs: list) -> tuple[int, list[tuple[int, bytes]]]:
         import numpy as np
 
         results: list[tuple[int, bytes]] = []
-        legacy_results: list[tuple[int, list[float]]] = []
         with self.compute:
             started = perf_counter()
             # Amortize network cost with a larger request while bounding the GPU's
@@ -115,21 +109,15 @@ class Worker:
                 vectors /= np.linalg.norm(vectors, axis=1, keepdims=True).clip(min=1e-12)
                 if vectors.shape != (len(chunk), 384) or not np.isfinite(vectors).all():
                     raise HTTPException(500, "invalid model output")
-                if binary:
-                    # Halves are enough for the int8 vectors Mash stores, and keep
-                    # the response five times smaller than JSON float32 text.
-                    encoded = vectors.astype("<f2", copy=False)
-                    results.extend(
-                        (item.id, row.tobytes())
-                        for item, row in zip(chunk, encoded, strict=True)
-                    )
-                else:
-                    legacy_results.extend(
-                        (item.id, values)
-                        for item, values in zip(chunk, vectors.tolist(), strict=True)
-                    )
+                # Halves are enough for the int8 vectors Mash stores, and keep
+                # the response five times smaller than JSON float32 text.
+                encoded = vectors.astype("<f2", copy=False)
+                results.extend(
+                    (item.id, row.tobytes())
+                    for item, row in zip(chunk, encoded, strict=True)
+                )
             inference_milliseconds = round((perf_counter() - started) * 1000)
-        return inference_milliseconds, results, legacy_results
+        return inference_milliseconds, results
 
     @modal.fastapi_endpoint(method="POST", requires_proxy_auth=True, docs=False)
     async def embed(self, request: Request) -> Response:
@@ -147,25 +135,13 @@ class Worker:
                 raw = decompress_request(raw)
             except ContractError:
                 raise HTTPException(400, "invalid embedding batch") from None
-        binary = raw[:4] == REQUEST_MAGIC
-        request_id: bytes | None = None
-        legacy_id: str | None = None
+        if raw[:4] != REQUEST_MAGIC:
+            raise HTTPException(400, "invalid embedding batch")
         try:
-            if binary:
-                decoded = decode_batch(raw)
-                request_id = decoded.request_id
-                inputs = decoded.inputs
-            else:
-                legacy_id, inputs = decode_legacy_batch(raw)
-        except (ContractError, ValidationError):
+            batch = decode_batch(raw)
+        except ContractError:
             # Diagnostics may echo input text; never return them.
             raise HTTPException(400, "invalid embedding batch") from None
-        inference_milliseconds, results, legacy_results = await asyncio.to_thread(
-            self.infer, inputs, binary
-        )
-        if request_id is not None:
-            reply = encode_reply(request_id, inference_milliseconds, results)
-            return Response(reply, media_type="application/octet-stream")
-        assert legacy_id is not None
-        reply = encode_legacy_reply(legacy_id, inference_milliseconds, legacy_results)
-        return Response(reply, media_type="application/json")
+        inference_milliseconds, results = await asyncio.to_thread(self.infer, batch.inputs)
+        reply = encode_reply(batch.request_id, inference_milliseconds, results)
+        return Response(reply, media_type="application/octet-stream")
