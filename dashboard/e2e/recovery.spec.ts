@@ -9,10 +9,11 @@ test("opening chats while offline settles and retries without a document reload"
     if (request.resourceType() === "document") documents++;
   });
   await page.route("**/api/services/access", (route) =>
-    route.fulfill({ json: { authentication_required: true, local_node: "local" } }),
+    route.fulfill({ json: { authentication_required: false, local_node: "local" } }),
   );
+  await page.route("**/api/services", (route) => route.fulfill({ json: [] }));
   await page.goto("/#/services");
-  await expect(page.getByLabel("Services access token")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.getByRole("link", { name: "Home", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Could not reach Mash");
@@ -37,8 +38,9 @@ for (const width of [390, 1440]) {
       if (request.resourceType() === "document") documents++;
     });
     await page.route("**/api/services/access", (route) =>
-      route.fulfill({ json: { authentication_required: true, local_node: "local" } }),
+      route.fulfill({ json: { authentication_required: false, local_node: "local" } }),
     );
+    await page.route("**/api/services", (route) => route.fulfill({ json: [] }));
     await page.route("**/api/chats**", (route) => route.abort("connectionfailed"));
     await page.goto("/");
     const alert = page.getByRole("alert");

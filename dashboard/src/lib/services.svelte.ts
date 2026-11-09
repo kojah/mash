@@ -145,28 +145,18 @@ function operation(value: unknown): Operation {
   };
 }
 
-let credential = "";
-export const serviceSession = $state({ epoch: 0, unlocked: false });
-export function unlockServices(token: string): void {
-  credential = token;
-  serviceSession.unlocked = !!token;
-  serviceSession.epoch++;
-}
 async function request(path: string, signal?: AbortSignal, body?: unknown): Promise<unknown> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     cache: "no-store",
-    headers: {
-      ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    },
+    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" } }),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]),
   });
   if (!response.ok) {
     let message =
       response.status === 401
-        ? "Access token required or not accepted."
+        ? "Services refused this request. Remove token_env from this dashboard's services configuration."
         : "Service request failed. Check status before repeating an action.";
     try {
       message = text(object(object(await response.json()).error).message);
@@ -182,16 +172,13 @@ export const serviceAccessOptions = queryOptions({
   queryKey: ["service-access"],
   queryFn: async ({ signal }) => {
     const row = object(await request("/api/services/access", signal));
-    return {
-      authenticationRequired: boolean(row.authentication_required),
-      localNode: text(row.local_node),
-    };
+    return { localNode: text(row.local_node) };
   },
 });
 export function serviceOptions(enabled: boolean) {
   return queryOptions({
     ...stableRead,
-    queryKey: ["services", serviceSession.epoch],
+    queryKey: ["services"],
     enabled,
     queryFn: async ({ signal }) => parseMachines(await request("/api/services", signal)),
   });

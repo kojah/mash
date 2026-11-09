@@ -469,25 +469,6 @@ button:disabled {
   color: var(--color-muted);
   margin-top: 4px;
 }
-.service-unlock {
-  margin: 24px 0;
-}
-.service-unlock > div {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.service-unlock input {
-  min-width: 0;
-  flex: 1;
-  border: 1px solid var(--color-line);
-  border-radius: 6px;
-  padding: 8px;
-}
-.service-lock {
-  font-size: 12px;
-  color: var(--color-muted);
-}
 .home-service-list li {
   display: flex;
   justify-content: space-between;

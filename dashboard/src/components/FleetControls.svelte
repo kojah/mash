@@ -9,7 +9,6 @@ import {
   fleetCatalog,
   fleetHistory,
   serviceRequestId,
-  serviceSession,
   submitFleetJob,
 } from "../lib/services.svelte";
 import LoadError from "./LoadError.svelte";
@@ -18,13 +17,13 @@ const { enabled }: { enabled: boolean } = $props();
 const client = useQueryClient();
 const catalog = createQuery(() => ({
   ...stableRead,
-  queryKey: ["fleet-catalog", serviceSession.epoch],
+  queryKey: ["fleet-catalog"],
   enabled,
   queryFn: ({ signal }) => fleetCatalog(signal),
 }));
 const history = createQuery(() => ({
   ...stableRead,
-  queryKey: ["fleet-jobs", serviceSession.epoch],
+  queryKey: ["fleet-jobs"],
   enabled: enabled && catalog.data?.enabled === true,
   queryFn: ({ signal }) => fleetHistory(signal),
   refetchInterval: (query) =>
@@ -57,7 +56,7 @@ function prepare(): void {
 async function submit(): Promise<void> {
   if (!confirmation || pending) return;
   const request = confirmation;
-  const key = ["fleet-jobs", serviceSession.epoch];
+  const key = ["fleet-jobs"];
   confirmation = null;
   pending = true;
   try {

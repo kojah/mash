@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 for (const width of [390, 1440]) {
-  test(`services authenticate, inspect schemas and manage explicit targets at ${width}px`, async ({
+  test(`services open directly, inspect schemas and manage explicit targets at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -77,9 +77,9 @@ for (const width of [390, 1440]) {
       const request = route.request(),
         url = new URL(request.url());
       if (url.pathname === "/api/services/access")
-        return route.fulfill({ json: { authentication_required: true, local_node: "xenia" } });
+        return route.fulfill({ json: { authentication_required: false, local_node: "xenia" } });
       if (url.pathname.startsWith("/api/services")) {
-        expect(request.headers().authorization).toBe("Bearer fixture-access-token");
+        expect(request.headers().authorization).toBeUndefined();
         if (url.pathname === "/api/services") {
           serviceReads++;
           return route.fulfill({ json: machines() });
@@ -120,9 +120,7 @@ for (const width of [390, 1440]) {
     });
     await page.clock.install();
     await page.goto("/#/services");
-    await page.getByLabel("Services access token").fill("fixture-access-token");
-    expect(serviceReads).toBe(0);
-    await page.getByRole("button", { name: "Unlock services" }).click();
+    await expect(page.getByLabel("Services access token")).toHaveCount(0);
     await expect(page.getByText("Running · schema mismatch", { exact: true })).toBeVisible();
     await page.getByRole("link", { name: /Mash MCP · PID 10/ }).click();
     await expect(page.getByRole("heading", { name: "Schema compatibility" })).toBeVisible();
@@ -155,14 +153,6 @@ for (const width of [390, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    expect(
-      await page.evaluate(() =>
-        Object.values(localStorage).some((value) => value.includes("fixture-access-token")),
-      ),
-    ).toBe(false);
-    await page.getByRole("button", { name: "Lock services" }).click();
-    await expect(page.getByLabel("Services access token")).toBeVisible();
-    await expect(page.getByText("old-build", { exact: true })).toHaveCount(0);
     expect(documents).toBe(1);
     expect(errors).toEqual([]);
   });

@@ -13,9 +13,7 @@ import {
   serviceHistory,
   serviceLog,
   serviceOptions,
-  serviceSession,
   servicesHref,
-  unlockServices,
 } from "../lib/services.svelte";
 import FleetControls from "./FleetControls.svelte";
 import IndexStatus from "./IndexStatus.svelte";
@@ -28,26 +26,23 @@ const selection = $derived(new URLSearchParams(params));
 const machineId = $derived(selection.get("machine") ?? "");
 const serviceId = $derived(selection.get("service") ?? "");
 const access = createQuery(() => serviceAccessOptions);
-const enabled = $derived(
-  access.data !== undefined && (!access.data.authenticationRequired || serviceSession.unlocked),
-);
+const enabled = $derived(access.data !== undefined);
 const fleet = createQuery(() => serviceOptions(enabled));
 const machine = $derived(fleet.data?.find((machine) => machine.id === machineId));
 const service = $derived(machine?.services.find((service) => service.id === serviceId));
 const history = createQuery(() => ({
   ...stableRead,
-  queryKey: ["service-history", serviceSession.epoch, machineId],
+  queryKey: ["service-history", machineId],
   enabled: enabled && !!machineId,
   queryFn: ({ signal }) => serviceHistory(machineId, signal),
 }));
 let showLog = $state(false);
 const log = createQuery(() => ({
   ...stableRead,
-  queryKey: ["service-log", serviceSession.epoch, machineId, serviceId],
+  queryKey: ["service-log", machineId, serviceId],
   enabled: enabled && showLog && !!serviceId,
   queryFn: ({ signal }) => serviceLog(machineId, serviceId, signal),
 }));
-let token = $state("");
 let confirm = $state<ServiceAction | null>(null);
 let pending = $state(false);
 let actionError = $state("");
@@ -86,19 +81,6 @@ async function act(): Promise<void> {
     pending = false;
   }
 }
-function unlock(event: SubmitEvent): void {
-  event.preventDefault();
-  unlockServices(token);
-  token = "";
-}
-function lock(): void {
-  unlockServices("");
-  queryClient.removeQueries({ queryKey: ["services"] });
-  queryClient.removeQueries({ queryKey: ["service-history"] });
-  queryClient.removeQueries({ queryKey: ["service-log"] });
-  result = null;
-  actionError = "";
-}
 const actionLabel: Record<ServiceAction, string> = {
   start: "Start",
   stop: "Stop",
@@ -118,10 +100,6 @@ const consequences = $derived(
   <div class="service-heading"><h1>{service?.name ?? machine?.id ?? "Services"}</h1><button class="plain-button" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={14}/>{fleet.isFetching ? "Checking…" : "Check for updates"}</button></div>
   <p class="text-muted">Statuses reflect the last check. This page does not refresh automatically.</p>
   {#if access.error}<LoadError title="Couldn’t connect to services" message={access.error.message} retry={() => access.refetch()} busy={access.isFetching}/>{/if}
-  {#if access.data?.authenticationRequired}
-    {#if !serviceSession.unlocked || fleet.error}<form class="service-unlock" onsubmit={unlock}><label for="service-token">Services access token</label><div><input id="service-token" type="password" autocomplete="off" bind:value={token} required/><button class="plain-button" type="submit">Unlock services</button></div><p class="text-muted">Kept only in this tab’s memory; never saved to browser storage.</p></form>
-    {:else}<button type="button" class="service-lock" onclick={lock}>Lock services</button>{/if}
-  {/if}
   {#if enabled && fleet.isPending}<p role="status">Checking machines…</p>{/if}
   {#if enabled && fleet.error}<LoadError title="Couldn’t check service status" message={fleet.error.message} retry={refresh} busy={fleet.isFetching}/><p class="service-warning">Previously displayed statuses have not been verified.</p>{/if}
   {#if pending}<p role="status">Service action in progress. You can check recent activity if the connection is interrupted.</p>{/if}

@@ -34,10 +34,8 @@ listen address:
 mash dash --fleet-config /private/mash-fleet.toml --fleet-node macbook --listen 100.64.0.12:8790
 ```
 
-Each dashboard needs its own configured token environment variable. The
-controller also needs the peer token variables so it can fetch reports and
-forward service actions; peers do not need each other's tokens. Keep the
-inventory and job directory private. Trusted deployment commands belong in
+Keep every dashboard on a trusted private network, because the browser does not
+sign in. Keep the inventory and job directory private. Trusted deployment commands belong in
 that file, never in browser requests.
 
 Open **Services → Fleet operations** on the controller. Choose an allowed
@@ -71,13 +69,13 @@ fleet inventory, `mash-fleet watch start HOST` installs the watcher as
 Use those same supervisor identifiers in the dashboard inventory so both tools
 manage the same process.
 
-`token_env` is optional. When present, the dashboard asks for that token once
-per tab before showing or controlling services. When absent, the service APIs
-are open: only bind `mash dash` to a trusted private network such as Tailscale.
+The service APIs have no browser sign-in, so only bind `mash dash` to a trusted
+private network such as Tailscale. Leave `token_env` unset on any dashboard you
+open in a browser, because the browser cannot supply a token and its requests
+would be refused.
 
 ```toml
 node = "xenia"
-# token_env = "MASH_SERVICES_TOKEN"
 
 [[services]]
 id = "watcher"
@@ -88,30 +86,23 @@ unit = "mash-index-watch.service"
 allow_control = true
 ```
 
-With `token_env` set, export that variable in the dashboard process's environment
-to a distinct, random secret of at least 32 printable ASCII characters. Use your
-secret manager or a private environment file. Do not put secrets in URLs, Git or
-shared logs.
-
 ```sh
 mash dash --services-config /private/mash-services.toml
 ```
 
-Without `token_env`, **Services** opens directly. With it, enter the token once;
-the browser keeps it only in memory for the current tab, and **Lock services**
-clears it and its cached reports. Existing history routes retain their local
+**Services** then opens directly. Existing history routes retain their local
 dashboard access rules.
 
 For remote access, bind explicitly with `--listen ADDRESS:PORT`. Use a private
 encrypted connection such as Tailscale, or HTTPS through a correctly configured
-proxy. A plain HTTP connection on an untrusted network would expose the token.
+proxy. Anyone who can reach the dashboard can view and control its services.
 The existing Host check still applies: the request Host must match the dashboard's
 bound address. Cross-origin browser action requests are rejected.
 
 ## Add other machines
 
 Run `mash dash --services-config ...` on each participating machine with its own
-`node` name, token and locally configured supervisor targets. Add those machines
+`node` name and locally configured supervisor targets. Add those machines
 to the dashboard you use as your main entry point:
 
 ```toml
