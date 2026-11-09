@@ -24,6 +24,7 @@ pub(crate) struct Store {
     silver: SilverStore,
     views: qdrant_index::Store,
     max_upload_bytes: u64,
+    embeddings: crate::config::Embeddings,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
     /// Serializes the short read-check-write that stamps node views. Distinct
     /// from `nodes`: certification may not run under the publication lock.
@@ -108,7 +109,8 @@ pub(super) async fn initialize(
             group_store.select_query(identity, activate_query).await?;
         }
     }
-    Ok(Store::new(silver, views, config.max_upload_bytes()?))
+    Ok(Store::new(silver, views, config.max_upload_bytes()?)
+        .with_embeddings(config.embeddings.clone()))
 }
 
 /// Bound on one Qdrant response; documents are read a page at a time.
@@ -143,6 +145,7 @@ impl Store {
             silver,
             views,
             max_upload_bytes,
+            embeddings: crate::config::Embeddings::Local {},
             nodes: Arc::default(),
             views_writes: Arc::default(),
             replays: Arc::default(),
@@ -156,6 +159,11 @@ impl Store {
                 false,
             )),
         }
+    }
+
+    pub(crate) fn with_embeddings(mut self, embeddings: crate::config::Embeddings) -> Self {
+        self.embeddings = embeddings;
+        self
     }
 
     pub(crate) fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {

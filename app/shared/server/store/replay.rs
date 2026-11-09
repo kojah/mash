@@ -79,7 +79,9 @@ impl Store {
             messages: 0,
             embeddings: 0,
         };
-        let mut writer = Writer::new(&self.views, identity, Some(models)).with_bulk();
+        let mut writer = Writer::new(&self.views, identity, Some(models))
+            .with_execution(self.embeddings.clone())
+            .with_bulk();
         for (id, fingerprint) in &fingerprints {
             let chat = id.clone();
             let (chat, messages) = self

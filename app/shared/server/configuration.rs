@@ -25,6 +25,8 @@ pub(super) struct Configuration {
     version: u32,
     #[serde(default)]
     pub(super) views: View,
+    #[serde(default)]
+    pub(super) embeddings: crate::config::Embeddings,
     #[serde(default = "default_listen")]
     pub(super) listen: SocketAddr,
     pub(super) qdrant_url_env: Option<String>,
@@ -113,6 +115,7 @@ pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.views.query.vector_search.validate()?;
+    config.embeddings.validate()?;
     config.silver_dir()?;
     for (group, policy) in &config.views.query.groups {
         crate::config::validate_identifier(group, "group_id")?;
@@ -241,8 +244,25 @@ mod tests {
             let error = toml::from_str::<Configuration>(&format!("version=1\nnodes=[]\n{setting}"))
                 .err()
                 .expect("removed setting");
-            assert!(error.message().contains("unknown field"));
+            assert!(
+                error.message().contains("unknown field") || error.message().contains("backend"),
+                "{error}"
+            );
         }
+    }
+
+    #[test]
+    fn remote_embeddings_are_configurable() {
+        let config: Configuration = toml::from_str(
+            "version=1\nnodes=[]\n[embeddings]\nbackend='remote'\nurl='https://example.com/embed'\ntoken_env='MASH_TEST_TOKEN'\ntimeout_seconds=120",
+        )
+        .unwrap();
+        assert!(matches!(
+            config.embeddings,
+            crate::config::Embeddings::Remote { .. }
+        ));
+        let default: Configuration = toml::from_str("version=1\nnodes=[]").unwrap();
+        assert_eq!(default.embeddings, crate::config::Embeddings::Local {});
     }
 
     #[test]
