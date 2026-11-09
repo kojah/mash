@@ -1,4 +1,5 @@
 //! Built-in views: rebuildable retrieval artifacts over canonical silver history.
+pub(crate) mod bulk;
 pub(crate) mod config;
 pub(crate) mod diagnostics;
 pub(crate) mod documents;

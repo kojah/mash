@@ -1,5 +1,6 @@
 //! Direct local Qdrant projection from committed SQLite silver. No HTTP service.
 use super::{
+    bulk::{BulkPolicy, BulkViews},
     manifest::Manifest,
     qdrant::{NodeViews, ProjectionEvidence, Store},
     scope::Scope,
@@ -209,7 +210,7 @@ pub(crate) async fn build(
     .with_build(configuration.views.build.clone());
     let version = store.select_views(&scope, true).await?;
     store.select_query(&scope, true).await?;
-    store.begin_bulk(&scope).await?;
+    let bulk = BulkViews::begin(&store, &scope, BulkPolicy::local()).await?;
     let previous = store
         .node_views(&scope)
         .await?
@@ -221,51 +222,58 @@ pub(crate) async fn build(
     {
         return Ok(unchanged(&input, &scope, configuration, node, started));
     }
-    let mut node = NodeViews::empty(&store, &scope);
-    // Persist stale metadata before any document mutation, including deletions.
-    store.put_node_views_unwaited(&scope, &node).await?;
-    store
-        .retain_node_chats_unwaited(&scope, input.chats.keys().cloned().collect())
+    let (certificate, node, work) = bulk
+        .run(
+            || async {
+                let mut node = NodeViews::empty(&store, &scope);
+                // Persist stale metadata before any document mutation,
+                // including deletions.
+                bulk.invalidate(&node).await?;
+                bulk.retain_chats(input.chats.keys().cloned()).await?;
+                let mut writer = bulk
+                    .writer(models)
+                    .with_execution(configuration.embeddings.clone());
+                Box::pin(projection::native(
+                    &store,
+                    &scope,
+                    &mut writer,
+                    &input,
+                    previous.as_ref(),
+                    &mut node,
+                ))
+                .await?;
+                let work = bulk.finish(writer).await?;
+                let path = database.to_path_buf();
+                let certificate =
+                    crate::blocking(move || Storage::open_silver(&path)?.silver_certificate())
+                        .await?;
+                if certificate != input.certificate
+                    || store.views_configuration(&scope).await?.version != version
+                {
+                    return Err(AppError::search_not_ready(
+                        "local silver or views settings changed during refresh; retry indexing",
+                    ));
+                }
+                node.input = Some(
+                    i64::try_from(certificate.revision)
+                        .map_err(|_| AppError::database_data("silver revision overflow"))?,
+                );
+                let ready = certificate.permits_views() && node.projections.complete();
+                node.certified = ready;
+                node.silver = ready.then_some(state);
+                // The single completion barrier: strongly ordered after the
+                // stale state, the delete and every unwaited document batch.
+                store.put_node_views(&scope, &node).await?;
+                Ok((certificate, node, work))
+            },
+            |(_, node, work)| emit_progress(node.stored_vectors(), &work.embeddings, started),
+        )
         .await?;
-    let mut writer = super::materialize::Writer::new(&store, &scope, Some(models))
-        .with_execution(configuration.embeddings.clone())
-        .with_bulk();
-    Box::pin(projection::native(
-        &store,
-        &scope,
-        &mut writer,
-        &input,
-        previous.as_ref(),
-        &mut node,
-    ))
-    .await?;
-    let mut work = writer.finish().await?;
-    let path = database.to_path_buf();
-    let certificate =
-        crate::blocking(move || Storage::open_silver(&path)?.silver_certificate()).await?;
-    if certificate != input.certificate
-        || store.views_configuration(&scope).await?.version != version
-    {
-        return Err(AppError::search_not_ready(
-            "local silver or views settings changed during refresh; retry indexing",
-        ));
-    }
-    node.input = Some(
-        i64::try_from(certificate.revision)
-            .map_err(|_| AppError::database_data("silver revision overflow"))?,
-    );
-    let ready = certificate.permits_views() && node.projections.complete();
-    node.certified = ready;
-    node.silver = ready.then_some(state);
-    // The single completion barrier: strongly ordered after the stale state,
-    // the delete and every unwaited document batch.
-    store.put_node_views(&scope, &node).await?;
-    store.end_bulk(&scope).await?;
     let stored = node.stored_vectors();
-    emit_progress(stored, &work.embeddings, started);
-    store.settle(&scope).await?;
-    work.embeddings.stored_vectors = stored;
-    work.embeddings.reused_vectors = stored.saturating_sub(work.embeddings.model_inferences);
+    let ready = node.certified;
+    let mut embeddings = work.embeddings;
+    embeddings.stored_vectors = stored;
+    embeddings.reused_vectors = stored.saturating_sub(embeddings.model_inferences);
     Ok(Build {
         counts: input.counts.clone(),
         ready,
@@ -276,7 +284,7 @@ pub(crate) async fn build(
                 certificate,
             )
         }),
-        embeddings: work.embeddings,
+        embeddings,
         model_load_milliseconds: work.model_load_milliseconds,
         embedding_milliseconds: work.embedding_milliseconds,
         search_refresh_milliseconds: crate::progress::milliseconds(started),
