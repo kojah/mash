@@ -1,8 +1,65 @@
 # Mash fleet deployment
 
 Ansible owns fleet selection, platform builds, API-first installation, required
-schema migrations and readiness checks. The standalone Rust RMCP probe checks
-the installed history MCP and performs explicitly requested refreshes.
+schema migrations and readiness checks. `mash-fleet` is the Rust command-line
+entry point; its internal MCP probe checks installed history and performs
+explicitly requested refreshes. It delegates orchestration to these playbooks.
+
+Build the controller with `cargo build --release -p mash-fleet`. Run it from a
+Mash checkout, or pass `--repository /path/to/mash` after the subcommand. It
+requires Bash, Git, jq, flock, timeout and uv on the controller; uv installs the locked Ansible
+runtime. The CLI passes its own executable to Ansible for MCP probes. For direct
+`tools/fleet.sh` use, set `mash_fleet` in the private inventory to the controller
+binary's absolute path (replacing the old `mash_probe` setting).
+
+```bash
+mash-fleet status --all
+mash-fleet deploy shared-api xenia
+mash-fleet sync xenia
+mash-fleet watch start --all
+mash-fleet watch status --all
+mash-fleet watch stop dev-macbook
+mash-fleet logs dev-macbook
+```
+
+`--all` selects eligible hosts from the inventory, including child groups:
+history hosts for sync, local views and watchers; API hosts for replay; both
+for deployment and readiness checks. It cannot be combined with named targets.
+Offline machines have separate skipped reports; a skip does not mean the
+requested operation took place. Unknown names and host patterns are rejected.
+
+Watcher management is opt-in per history host: set `mash_watch_enabled: true`
+and `mash_watch_launcher` to an installed absolute executable path. The launcher
+must load that node's configuration and credentials, then **exec**
+`mash index --watch`. Paths currently accept letters, numbers, slash, dot,
+underscore and hyphen. Credentials belong in the launcher environment or
+private configuration, never in the unit or command-line arguments.
+Ansible runs supervisor commands as its connection user; configure SSH for
+remote hosts rather than a controller-local connection.
+
+Start installs a user systemd unit on Linux or a LaunchAgent on macOS and enables
+login startup. The macOS user must have a GUI login session. Linux user services
+normally stop at logout unless that machine separately enables lingering.
+Failed processes restart after a delay. Starting an already-running watcher
+does not restart it; changed launcher settings take effect after an explicit
+stop/start. Stop disables login startup as well as stopping the process.
+These operations do not install Mash, download models, or change indexing
+configuration. Starting the watcher does trigger its normal initial indexing.
+
+`watch status` reports supervisor state with readiness marked `unchecked`.
+Use `status` to check schema, build and search readiness over MCP. `logs` returns
+the last 100 log lines; output and private reports may contain sensitive history
+or paths. macOS logs use `~/Library/Logs/mash-index-watch.log`; configure rotation
+locally for long-running installations. Watcher commands never retry failed
+supervisor mutations automatically.
+
+The dashboard can manage the same installed supervisor targets: configure
+`manager = "systemd_user"`, `unit = "mash-index-watch.service"` on Linux;
+on macOS use `manager = "launchd"`, `unit = "dev.mash.index-watch"` and the
+absolute `plist` path under `~/Library/LaunchAgents`. This shares the service
+identity while keeping browser access within the dashboard's explicit TOML
+allowlist. After a fleet stop removes the macOS login plist, use fleet start to
+install it again before starting it through the dashboard.
 
 Builds produce separate `mash` and `mash-server` executables at the same version.
 Install `mash-server` on API hosts and use

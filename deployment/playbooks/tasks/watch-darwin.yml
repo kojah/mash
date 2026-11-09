@@ -1,0 +1,86 @@
+- ansible.builtin.set_fact:
+    mash_watch_plist: "{{ ansible_facts.user_dir }}/Library/LaunchAgents/dev.mash.index-watch.plist"
+    mash_watch_log: "{{ ansible_facts.user_dir }}/Library/Logs/mash-index-watch.log"
+    mash_watch_domain: "gui/{{ ansible_facts.user_uid }}"
+
+- name: Ensure user launch and log directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0700'
+  loop:
+    - "{{ ansible_facts.user_dir }}/Library/LaunchAgents"
+    - "{{ ansible_facts.user_dir }}/Library/Logs"
+  when: mash_operation == 'watch-start'
+
+- name: Install opt-in login watcher
+  ansible.builtin.copy:
+    dest: "{{ mash_watch_plist }}"
+    mode: '0600'
+    content: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0"><dict>
+      <key>Label</key><string>dev.mash.index-watch</string>
+      <key>ProgramArguments</key><array><string>{{ mash_watch_launcher | e }}</string></array>
+      <key>RunAtLoad</key><true/>
+      <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+      <key>ThrottleInterval</key><integer>10</integer>
+      <key>StandardOutPath</key><string>{{ mash_watch_log | e }}</string>
+      <key>StandardErrorPath</key><string>{{ mash_watch_log | e }}</string>
+      </dict></plist>
+  when: mash_operation == 'watch-start'
+
+- name: Inspect loaded watcher
+  ansible.builtin.command:
+    argv: [launchctl, print, "{{ mash_watch_domain }}/dev.mash.index-watch"]
+  changed_when: false
+  failed_when: mash_watch_query.rc not in [0, 113]
+  register: mash_watch_query
+
+- name: Load watcher only when absent
+  ansible.builtin.command:
+    argv: [launchctl, bootstrap, "{{ mash_watch_domain }}", "{{ mash_watch_plist }}"]
+  when: mash_operation == 'watch-start' and mash_watch_query.rc != 0
+  changed_when: true
+
+- name: Stop loaded watcher
+  ansible.builtin.command:
+    argv: [launchctl, bootout, "{{ mash_watch_domain }}/dev.mash.index-watch"]
+  when: mash_operation == 'watch-stop' and mash_watch_query.rc == 0
+  changed_when: true
+
+- name: Start an idle loaded watcher without replacing a running process
+  ansible.builtin.command:
+    argv: [launchctl, kickstart, "{{ mash_watch_domain }}/dev.mash.index-watch"]
+  when: mash_operation == 'watch-start' and 'state = running' not in mash_watch_query.stdout
+  changed_when: true
+
+- name: Remove login startup after explicit stop
+  ansible.builtin.file:
+    path: "{{ mash_watch_plist }}"
+    state: absent
+  when: mash_operation == 'watch-stop'
+
+- name: Inspect final watcher state
+  ansible.builtin.command:
+    argv: [launchctl, print, "{{ mash_watch_domain }}/dev.mash.index-watch"]
+  changed_when: false
+  failed_when: mash_watch_final.rc not in [0, 113]
+  register: mash_watch_final
+  until: mash_operation != 'watch-start' or 'state = running' in mash_watch_final.stdout
+  retries: 5
+  delay: 2
+
+- ansible.builtin.set_fact:
+    mash_watch_state: "{{ 'running' if 'state = running' in mash_watch_final.stdout else ('loaded' if mash_watch_final.rc == 0 else 'stopped') }}"
+
+- name: Read bounded watcher logs
+  ansible.builtin.command:
+    argv: [tail, -n, '100', "{{ mash_watch_log }}"]
+  changed_when: false
+  register: mash_watch_log_result
+  when: mash_operation == 'watch-logs'
+
+- ansible.builtin.set_fact:
+    mash_watch_logs: "{{ mash_watch_log_result.stdout | default('') }}"

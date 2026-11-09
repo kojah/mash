@@ -1,0 +1,33 @@
+- import_playbook: prepare.yml
+
+- name: Manage explicitly configured history watchers
+  hosts: mash_available:&mash_history
+  gather_facts: true
+  tasks:
+    - name: Validate opt-in watcher configuration
+      ansible.builtin.assert:
+        that:
+          - mash_watch_enabled | default(false) | bool
+          - mash_platform in ['linux', 'darwin']
+          - mash_watch_launcher is defined
+          - mash_watch_launcher is match('^/[A-Za-z0-9_./-]+$')
+        fail_msg: Configure mash_watch_enabled and an absolute mash_watch_launcher before managing this watcher.
+
+    - name: Manage watcher and record failures
+      block:
+        - ansible.builtin.include_tasks: "tasks/watch-{{ mash_platform }}.yml"
+        - name: Record supervisor state separately from index readiness
+          ansible.builtin.copy:
+            dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+            mode: '0600'
+            content: "{{ {'state': 'succeeded', 'process': mash_watch_state, 'readiness': 'unchecked', 'logs': mash_watch_logs | default(''), 'results': []} | to_json }}"
+          delegate_to: localhost
+      rescue:
+        - name: Record failed watcher operation
+          ansible.builtin.copy:
+            dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+            mode: '0600'
+            content: '{"state":"failed","error":"Watcher operation failed; inspect the private runner log.","results":[]}'
+          delegate_to: localhost
+        - ansible.builtin.fail:
+            msg: Watcher operation failed; no automatic retry was attempted.

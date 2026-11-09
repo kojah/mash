@@ -10,6 +10,7 @@
           - mash_selected_nodes | difference((groups['mash_api'] | default([])) + (groups['mash_history'] | default([]))) | length == 0
           - mash_operation not in ['sync', 'local-views'] or mash_selected_nodes | difference(groups['mash_history'] | default([])) | length == 0
           - mash_operation != 'replay-views' or mash_selected_nodes | difference(groups['mash_api'] | default([])) | length == 0
+          - not mash_operation.startswith('watch-') or mash_selected_nodes | difference(groups['mash_history'] | default([])) | length == 0
         quiet: true
     - name: Validate required APIs for deployment
       ansible.builtin.assert:

@@ -8,6 +8,8 @@ source "$repository/tools/controller-environment.sh"
 for inherited in $(compgen -e); do
     case $inherited in ANSIBLE_* | AWX_* | RUNNER_*) unset "$inherited" ;; esac
 done
+# A fleet-driven build passes its own probe executable; fixtures use their double.
+unset MASH_FLEET_BINARY
 scratch=$(mktemp -d "${TMPDIR:?}/ansible-fleet-test.XXXXXXXX")
 # On an unexpected failure, show the newest nested runner log before the scratch tree is removed.
 trap 'status=$?; if [[ $status -ne 0 ]]; then newest=$(ls -t "$scratch"/*/runner.log 2>/dev/null | head -n 1); [[ -n $newest ]] && tail -n 80 "$newest" >&2; fi; rm -rf "$scratch"' EXIT
@@ -40,7 +42,7 @@ all:
   vars:
     ansible_connection: local
     ansible_python_interpreter: $(command -v python3)
-    mash_probe: $scratch/probe
+    mash_fleet: $scratch/probe
     mash_builds:
       test:
         - [sh, -c, 'echo build >> $scratch/actions']
@@ -163,4 +165,12 @@ if MASH_DEPLOY_INVENTORY="$scratch/inventory.yml" MASH_DEPLOY_LOGS="$scratch/lau
     echo 'Direct launcher accepted a deployment without its API.' >&2; exit 1
 fi
 jq -se 'any(.[]; .state == "unverified")' "$scratch/missing-api.jsonl" > /dev/null
-echo 'Ansible build reuse, ordering, skips, failure blocking and explicit refresh checks passed.'
+MASH_FLEET_BINARY="$scratch/probe" MASH_DEPLOY_INVENTORY="$scratch/inventory.yml" MASH_DEPLOY_LOGS="$scratch/all-launcher" \
+    bash "$repository/tools/fleet.sh" check --all > "$scratch/all.jsonl"
+jq -se 'length == 3 and ([.[].target] | sort) == ["api", "offline", "one"]' "$scratch/all.jsonl" > /dev/null
+MASH_DEPLOY_INVENTORY="$scratch/inventory.yml" MASH_DEPLOY_LOGS="$scratch/all-sync" \
+    bash "$repository/tools/fleet.sh" sync --all > "$scratch/all-sync.jsonl"
+jq -se 'length == 2 and all(.[]; .target != "api")' "$scratch/all-sync.jsonl" > /dev/null
+echo 'Ansible build reuse, ordering, skips, failure blocking, target selection and explicit refresh checks passed.'
+bash "$repository/tools/test-fleet-systemd.sh"
+bash "$repository/tools/test-fleet-launchd.sh"

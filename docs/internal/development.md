@@ -251,7 +251,7 @@ binary for the current commit. Source changes invalidate the gate receipt, and
 changes during validation or compilation fail the rollout. The API helper locks
 concurrent rollouts and skips restarting an identical healthy release.
 Ansible owns fleet selection, builds, API-first rollout, offline skips and
-required schema migrations. `mash-dev-probe` verifies the installed build,
+required schema migrations. `mash-fleet probe` verifies the installed build,
 contract, query readiness and shared publication over MCP. Ordinary deployment
 never ingests history or installs models. A silver upgrade runs one explicit sync
 to re-ingest stale interpretation, rebuild local views and publish.

@@ -186,7 +186,7 @@ jobs:
       - name: Verify direct deployment probe and explicit refresh
         run: |
           MASH_TEST_CLI_BINARY="$PWD/target/debug/mash" \
-            cargo nextest run -p mash-dev --profile ci --run-ignored only --no-tests fail \
+            cargo nextest run -p mash-fleet --profile ci --run-ignored only --no-tests fail \
               -E 'test(probe_checks_without_ingestion_and_refreshes_only_when_requested)'
       - name: Clean owned restart fixtures after test failure or timeout
         if: always()

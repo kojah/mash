@@ -2,7 +2,7 @@
 all:
   vars:
     ansible_connection: local
-    mash_probe: /absolute/validated/artifacts/mash-dev-probe
+    mash_fleet: /absolute/validated/artifacts/mash-fleet
     mash_builds:
       linux:
         - [/absolute/agent-test, env, TMPDIR=/persistent/temp, CARGO_TARGET_DIR=/persistent/target, CARGO_INCREMENTAL=0, bash, tools/build-dev-linux.sh]
@@ -29,6 +29,10 @@ all:
           mash_platform: linux
           mash_requires: [shared-api]
           mash_shared: true
+          # Opt in only after installing a launcher that execs mash index --watch
+          # with this node's configuration and credentials. Runs as the SSH user.
+          mash_watch_enabled: false
+          mash_watch_launcher: /absolute/installed/mash-node-watch
           mash_deploy_preflight: [[test, -w, /absolute/installed]]
           mash_install:
             - [bash, tools/upgrade-local-index.sh, /absolute/installed/mash, /absolute/artifacts/mash, /absolute/data/mash.sqlite3, /private/index-backups]
@@ -40,6 +44,8 @@ all:
           ansible_ssh_common_args: '-o ControlPath=none -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2'
           mash_platform: darwin
           mash_build_root: /Users/operator/.local/share/mash/build
+          mash_watch_enabled: false
+          mash_watch_launcher: /Users/operator/.local/bin/mash-node-watch
           mash_requires: [shared-api]
           mash_shared: true
           mash_preflight: [ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, -o, ServerAliveInterval=15, -o, ServerAliveCountMax=2, dev-macbook, 'true']

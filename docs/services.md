@@ -14,7 +14,11 @@ health guarantee.
 ## Enable service access
 
 Create a separate, private TOML file. This example assumes the named systemd
-user unit already exists; Mash does not install it.
+user unit already exists. The dashboard does not install units. With an opt-in
+fleet inventory, `mash-fleet watch start HOST` installs the watcher as
+`mash-index-watch.service` on Linux or `dev.mash.index-watch` on macOS.
+Use those same supervisor identifiers in the dashboard inventory so both tools
+manage the same process.
 
 `token_env` is optional. When present, the dashboard asks for that token once
 per tab before showing or controlling services. When absent, the service APIs
@@ -29,7 +33,7 @@ id = "watcher"
 name = "Index watcher"
 kind = "watcher"
 manager = "systemd_user"
-unit = "mash-watch.service"
+unit = "mash-index-watch.service"
 allow_control = true
 ```
 

@@ -23,8 +23,8 @@ bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "zip"
 
 [workspace]
-members = ["crates/mash-query", "crates/mash-dev"]
-default-members = [".", "crates/mash-query", "crates/mash-dev"]
+members = ["crates/mash-query", "crates/mash-fleet"]
+default-members = [".", "crates/mash-query", "crates/mash-fleet"]
 resolver = "3"
 
 [lib]

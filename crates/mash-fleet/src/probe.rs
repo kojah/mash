@@ -1,6 +1,5 @@
 //! Ansible invokes this concrete RMCP client for read-only checks or explicit refresh.
-mod readiness;
-mod report;
+use crate::{readiness, report};
 
 use clap::{Parser, ValueEnum};
 use report::Report;
@@ -15,7 +14,7 @@ use std::{io::Write, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
 #[derive(Parser)]
-struct Arguments {
+pub(crate) struct Arguments {
     #[arg(long)]
     repository: PathBuf,
     #[arg(long)]
@@ -248,9 +247,7 @@ fn write_report(path: &std::path::Path, report: &Report) -> Result<(), String> {
     std::fs::rename(incoming, path).map_err(|_| "cannot publish probe report".into())
 }
 
-#[tokio::main]
-async fn main() {
-    let arguments = Arguments::parse();
+pub(crate) async fn run_probe(arguments: Arguments) {
     let report = Arc::new(Mutex::new(report::Report::default()));
     let outcome = check(&arguments, report.clone()).await;
     let mut report = report.lock().await;
@@ -312,6 +309,10 @@ mod tests {
     #[ignore = "requires MASH_TEST_CLI_BINARY with the current build and contract"]
     async fn probe_checks_without_ingestion_and_refreshes_only_when_requested() {
         let binary = std::env::var_os("MASH_TEST_CLI_BINARY").expect("built Mash CLI binary");
+        let qdrant =
+            std::env::var("MASH_TEST_QDRANT_URL").expect("disposable Qdrant HTTP endpoint");
+        let qdrant_grpc =
+            std::env::var("MASH_TEST_QDRANT_GRPC_URL").expect("disposable Qdrant gRPC endpoint");
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         let sources = root.join("history");
@@ -319,8 +320,10 @@ mod tests {
         let config = root.join("node.toml");
         let database = root.join("silver.sqlite3");
         std::fs::write(&config, format!(
-            "version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
-            serde_json::to_string(&sources).unwrap()
+            "version=1\n[providers.claude-code]\nroots=[{}]\n[qdrant]\nurl={}\ngrpc_url={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
+            serde_json::to_string(&sources).unwrap(),
+            serde_json::to_string(&qdrant).unwrap(),
+            serde_json::to_string(&qdrant_grpc).unwrap()
         )).unwrap();
         let mut arguments = Arguments {
             repository: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),

@@ -67,7 +67,7 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   vectors on Qdrant 1.19+. Default to HNSW vector retrieval with ef_runtime=200;
   permit explicit exact search. Never report uncertified views as current, and
   fail closed on incompatible existing schemas or superseded views settings.
-- Do not add provider traits, registries, installed daemons, compatibility
+- Do not add provider traits, registries, compatibility
   shims, alternate output modes, a TUI, or analytics. Portable silver export/import
   is supported; exclude deployment credentials, models and provider files.
   Clearly document that exports preserve sensitive canonical history.
@@ -75,7 +75,9 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
 - Support opt-in debounced synchronization only with `index --watch` in a
   separate process, plus the plugin's throttled one-shot SessionStart catch-up
   (a detached incremental `mash index`, opt-out with `MASH_AUTO_INDEX=off`). MCP reads the refreshed index and permits explicit indexing;
-  it does not own watchers. Do not install a daemon. Superseded long-lived
+  it does not own watchers. `mash-fleet` may explicitly install opt-in user
+  systemd/launchd supervision for `index --watch`; local setup never installs it.
+  Superseded long-lived
   runtimes refuse new writes; already admitted operations may finish.
 - Use concrete, enum-selected history adapters with typed input models. The
   provider set includes Claude Code, Codex, OpenCode, GitHub Copilot, Cursor,
@@ -289,7 +291,7 @@ in that loop, and doctests at release milestones. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
-The workspace defaults include `mash`, `mash-query` and `mash-dev`. Query-only iteration can use
+The workspace defaults include `mash`, `mash-query` and `mash-fleet`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [docs/crate-boundaries.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
 when changing query behavior.
@@ -335,8 +337,8 @@ Keep background synchronization or explicit ingestion separate from redeployment
 See [docs/redeployment.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redeployment.md) for readiness checks, measured costs and pending delta work.
 
 Run deployment and refresh directly with `bash tools/fleet.sh`, explicit targets
-and the private Ansible inventory. The `mash-dev` crate contains only the RMCP
-readiness/refresh probe; it must not duplicate indexing or schema logic. Keep
+and the private Ansible inventory. The `mash-fleet` crate provides the fleet CLI
+and RMCP readiness/refresh probe; it must not duplicate indexing or schema logic. Keep
 deploy and refresh separate and raw command logs private. See deployment/README.md.
 
 ## Agent work tracking

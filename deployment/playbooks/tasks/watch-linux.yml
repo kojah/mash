@@ -1,0 +1,66 @@
+- name: Inspect installed watcher unit
+  ansible.builtin.stat:
+    path: "{{ ansible_facts.user_dir }}/.config/systemd/user/mash-index-watch.service"
+  register: mash_watch_existing
+
+- name: Ensure user service directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts.user_dir }}/.config/systemd/user"
+    state: directory
+    mode: '0700'
+  when: mash_operation == 'watch-start'
+
+- name: Install opt-in watcher unit
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts.user_dir }}/.config/systemd/user/mash-index-watch.service"
+    mode: '0600'
+    content: |
+      [Unit]
+      Description=Mash history watcher
+      [Service]
+      ExecStart={{ mash_watch_launcher }}
+      Restart=on-failure
+      RestartSec=10
+      [Install]
+      WantedBy=default.target
+  register: mash_watch_unit
+  when: mash_operation == 'watch-start'
+
+- name: Start watcher without restarting a healthy process
+  ansible.builtin.systemd_service:
+    name: mash-index-watch.service
+    scope: user
+    daemon_reload: "{{ mash_watch_unit.changed }}"
+    enabled: true
+    state: started
+  when: mash_operation == 'watch-start'
+
+- name: Stop watcher and disable login startup
+  ansible.builtin.systemd_service:
+    name: mash-index-watch.service
+    scope: user
+    enabled: false
+    state: stopped
+  when: mash_operation == 'watch-stop' and mash_watch_existing.stat.exists
+
+- name: Read watcher process state
+  ansible.builtin.command:
+    argv: [systemctl, --user, show, mash-index-watch.service, --property=ActiveState, --value]
+  changed_when: false
+  register: mash_watch_query
+  until: mash_operation != 'watch-start' or mash_watch_query.stdout | trim == 'active'
+  retries: 5
+  delay: 2
+
+- ansible.builtin.set_fact:
+    mash_watch_state: "{{ mash_watch_query.stdout | trim }}"
+
+- name: Read bounded watcher logs
+  ansible.builtin.command:
+    argv: [journalctl, --user, --unit=mash-index-watch.service, --lines=100, --no-pager]
+  changed_when: false
+  register: mash_watch_log_result
+  when: mash_operation == 'watch-logs'
+
+- ansible.builtin.set_fact:
+    mash_watch_logs: "{{ mash_watch_log_result.stdout | default('') }}"

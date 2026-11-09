@@ -1,14 +1,14 @@
 [package]
-name = "mash-dev"
+name = "mash-fleet"
 version = "0.2.0"
 edition = "2024"
-description = "Deployment checks and explicit refresh over Mash MCP"
+description = "Mash fleet management through Ansible and MCP"
 autobins = false
 license = "MIT"
 
 [[bin]]
-name = "mash-dev-probe"
-path = "src/probe.rs"
+name = "mash-fleet"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
