@@ -2,7 +2,7 @@
 use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::silver_store;
-use crate::views::materialize::Writer;
+use crate::views::bulk::{BulkPolicy, BulkViews};
 use crate::views::qdrant::{NodeViews, ProjectionEvidence};
 use std::path::Path;
 
@@ -48,72 +48,70 @@ impl Store {
     ) -> Result<Replayed, AppError> {
         let _node = self.lock(identity).await?;
         let _replay = self.replay_lock(&identity.group_id).await?;
-        self.views.begin_bulk(identity).await?;
-        let result = self.replay_bulk(identity, models).await;
-        // A replay failure must not leave the whole group with graph indexing deferred.
-        if result.is_err() {
-            let _ = self.views.end_bulk(identity).await;
-        }
-        result
-    }
-
-    async fn replay_bulk(&self, identity: &Identity, models: &Path) -> Result<Replayed, AppError> {
-        let fingerprints = self
-            .read(identity, |connection| {
-                silver_store::fingerprints(connection)
-            })
-            .await?;
-        // Metadata and documents live in separate collections. Persist stale
-        // certification before destructive writes so interruption fails closed.
-        let mut node = NodeViews::empty(&self.views, identity);
-        self.views.put_node_views_unwaited(identity, &node).await?;
-        #[cfg(test)]
-        self.interrupt_replay(ReplayFault::AfterInvalidation)?;
-        self.views.delete_node_documents_unwaited(identity).await?;
-        #[cfg(test)]
-        self.interrupt_replay(ReplayFault::AfterDeletion)?;
-        let mut replayed = Replayed {
-            group_id: identity.group_id.clone(),
-            node_id: identity.node_id.clone(),
-            chats: 0,
-            messages: 0,
-            embeddings: 0,
-        };
-        let mut writer = Writer::new(&self.views, identity, Some(models)).with_bulk();
-        for (id, fingerprint) in &fingerprints {
-            let chat = id.clone();
-            let (chat, messages) = self
-                .read(identity, move |connection| {
-                    Ok((
-                        silver_store::chat(connection, &chat)?
-                            .ok_or_else(|| AppError::internal("silver chat disappeared"))?,
-                        crate::storage::search_input::chat_messages(connection, &chat)?,
-                    ))
-                })
+        let bulk = BulkViews::begin(&self.views, identity, BulkPolicy::shared_replay()).await?;
+        bulk.run(
+            || async {
+                let fingerprints = self
+                    .read(identity, |connection| {
+                        silver_store::fingerprints(connection)
+                    })
+                    .await?;
+                // Metadata and documents live in separate collections. Persist
+                // stale certification before destructive writes so interruption
+                // fails closed.
+                let mut node = NodeViews::empty(&self.views, identity);
+                bulk.invalidate(&node).await?;
+                #[cfg(test)]
+                self.interrupt_replay(ReplayFault::AfterInvalidation)?;
+                bulk.delete_documents().await?;
+                #[cfg(test)]
+                self.interrupt_replay(ReplayFault::AfterDeletion)?;
+                let mut replayed = Replayed {
+                    group_id: identity.group_id.clone(),
+                    node_id: identity.node_id.clone(),
+                    chats: 0,
+                    messages: 0,
+                    embeddings: 0,
+                };
+                let mut writer = bulk.writer(models);
+                for (id, fingerprint) in &fingerprints {
+                    let chat = id.clone();
+                    let (chat, messages) = self
+                        .read(identity, move |connection| {
+                            Ok((
+                                silver_store::chat(connection, &chat)?
+                                    .ok_or_else(|| AppError::internal("silver chat disappeared"))?,
+                                crate::storage::search_input::chat_messages(connection, &chat)?,
+                            ))
+                        })
+                        .await?;
+                    let built = writer.write_chat(&chat, &messages).await?;
+                    node.projections.insert(
+                        id.clone(),
+                        ProjectionEvidence {
+                            fingerprint: fingerprint.clone(),
+                            embeddings: built.embeddings,
+                            complete: built.complete,
+                        },
+                    );
+                    replayed.chats += 1;
+                    replayed.embeddings += built.embeddings;
+                    replayed.messages += built.messages;
+                }
+                bulk.finish(writer).await?;
+                // Every chat was rebuilt from the silver read above, so these
+                // views reflect the head the lock protects.
+                node.input = Some(self.head_revision(identity).await?);
+                self.certify_bulk(
+                    identity,
+                    node,
+                    &crate::shared::activity::Progress::default(),
+                )
                 .await?;
-            let built = writer.write_chat(&chat, &messages).await?;
-            node.projections.insert(
-                id.clone(),
-                ProjectionEvidence {
-                    fingerprint: fingerprint.clone(),
-                    embeddings: built.embeddings,
-                    complete: built.complete,
-                },
-            );
-            replayed.chats += 1;
-            replayed.embeddings += built.embeddings;
-            replayed.messages += built.messages;
-        }
-        writer.finish().await?;
-        // Every chat was rebuilt from the silver read above, so these views
-        // reflect the head the lock protects.
-        node.input = Some(self.head_revision(identity).await?);
-        self.certify_bulk(
-            identity,
-            node,
-            &crate::shared::activity::Progress::default(),
+                Ok(replayed)
+            },
+            |_| {},
         )
-        .await?;
-        Ok(replayed)
+        .await
     }
 }
