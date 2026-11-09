@@ -358,6 +358,28 @@ impl Parameters {
         )
     }
 }
+/// Bounded lexical vocabulary request. Counts only order the vocabulary, so
+/// approximate (payload-index backed) counts are sufficient and avoid a cold
+/// exact scan of every on-disk payload on each search.
+#[derive(Serialize)]
+struct VocabularyRequest<'a> {
+    key: &'static str,
+    limit: usize,
+    exact: bool,
+    filter: &'a Filter,
+}
+
+impl<'a> VocabularyRequest<'a> {
+    fn new(filter: &'a Filter) -> Self {
+        Self {
+            key: "tokens",
+            limit: crate::views::matching::VOCABULARY_LIMIT + 1,
+            exact: false,
+            filter,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct PayloadIndex<'a> {
     field_name: &'a str,
@@ -1064,13 +1086,6 @@ impl Client {
     }
 
     pub(super) async fn terms(&self, name: &str, filter: &Filter) -> Result<Vec<String>, AppError> {
-        #[derive(Serialize)]
-        struct Request<'a> {
-            key: &'static str,
-            limit: usize,
-            exact: bool,
-            filter: &'a Filter,
-        }
         #[derive(Deserialize)]
         struct Reply {
             hits: Vec<Term>,
@@ -1084,12 +1099,7 @@ impl Client {
             .call(
                 Method::POST,
                 &format!("collections/{name}/facet?consistency=all"),
-                Some(&Request {
-                    key: "tokens",
-                    limit: crate::views::matching::VOCABULARY_LIMIT + 1,
-                    exact: true,
-                    filter,
-                }),
+                Some(&VocabularyRequest::new(filter)),
             )
             .await?;
         if reply.hits.len() > crate::views::matching::VOCABULARY_LIMIT {

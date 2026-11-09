@@ -281,3 +281,19 @@ fn physical_graph_topology_is_not_a_query_override_or_an_implicit_migration() {
         );
     }
 }
+
+#[test]
+fn lexical_vocabulary_uses_index_backed_approximate_counts() {
+    let filter = Filter::default();
+    let request = VocabularyRequest::new(&filter);
+    assert_eq!(request.key, "tokens");
+    assert_eq!(
+        request.limit,
+        crate::views::matching::VOCABULARY_LIMIT + 1,
+        "approximate facets must still request the whole bounded vocabulary"
+    );
+    assert!(
+        !request.exact,
+        "exact facets scan every on-disk payload and dominate search latency"
+    );
+}

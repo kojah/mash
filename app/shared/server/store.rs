@@ -19,6 +19,18 @@ mod sync;
 /// Serializes publications per node while other nodes proceed.
 type NodeLock = Arc<tokio::sync::Mutex<()>>;
 
+/// Runs independent per-node work concurrently. Input order is preserved and
+/// the first error cancels the rest, so one slow or unavailable node cannot
+/// serialize the remaining nodes.
+async fn fan_out<T, U, I, F, Fut>(items: I, work: F) -> Result<Vec<U>, AppError>
+where
+    I: IntoIterator<Item = T>,
+    F: FnMut(T) -> Fut,
+    Fut: std::future::Future<Output = Result<U, AppError>>,
+{
+    futures_util::future::try_join_all(items.into_iter().map(work)).await
+}
+
 #[derive(Clone)]
 pub(crate) struct Store {
     silver: SilverStore,
@@ -533,26 +545,31 @@ impl Store {
         // Replay can create empty views for configured nodes that have never
         // published. Only committed publication heads establish searchable
         // membership; Qdrant metadata alone must not add a node to the group.
-        let mut active = BTreeSet::new();
-        for node_id in self.heads(&identity.group_id).await?.into_keys() {
-            if exclude_self && node_id == identity.node_id {
-                continue;
-            }
+        let nodes = self
+            .heads(&identity.group_id)
+            .await?
+            .into_keys()
+            .filter(|node_id| !(exclude_self && node_id == &identity.node_id))
+            .collect::<Vec<_>>();
+        let checked = fan_out(nodes, |node_id| {
             let node = Identity {
                 node_id: node_id.clone(),
                 ..identity.clone()
             };
-            let Some(views) = self.views.node_views(&node).await? else {
-                continue;
-            };
-            if dense && !views.searchable(&self.views, &node) {
-                return Err(AppError::shared(
-                    "shared views are stale, incomplete or incompatible; republish from nodes or restart the API with --replay-views",
-                ));
+            async move {
+                let Some(views) = self.views.node_views(&node).await? else {
+                    return Ok(None);
+                };
+                if dense && !views.searchable(&self.views, &node) {
+                    return Err(AppError::shared(
+                        "shared views are stale, incomplete or incompatible; republish from nodes or restart the API with --replay-views",
+                    ));
+                }
+                Ok(Some(node_id))
             }
-            active.insert(node_id);
-        }
-        Ok(active)
+        })
+        .await?;
+        Ok(checked.into_iter().flatten().collect())
     }
 
     pub(crate) async fn search(
@@ -592,8 +609,7 @@ impl Store {
                 ));
             }
         }
-        let mut found = BTreeMap::new();
-        for (node, messages) in wanted {
+        let found = fan_out(wanted, |(node, messages)| async move {
             let scope = silver_store::node_identity(&identity.group_id, &node);
             let turns = self
                 .read(&scope, move |connection| {
@@ -608,10 +624,16 @@ impl Store {
                         .collect::<Result<BTreeMap<_, _>, AppError>>()
                 })
                 .await?;
-            for (id, turn) in turns {
-                found.insert((node.clone(), id), turn);
-            }
-        }
+            Ok::<_, AppError>((node, turns))
+        })
+        .await?
+        .into_iter()
+        .flat_map(|(node, turns)| {
+            turns
+                .into_iter()
+                .map(move |(id, turn)| ((node.clone(), id), turn))
+        })
+        .collect::<BTreeMap<_, _>>();
         for hit in candidates
             .lexical
             .iter_mut()
@@ -730,5 +752,57 @@ impl Store {
             )
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fan_out;
+    use crate::AppError;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    /// Every future must run to the rendezvous point before any may proceed.
+    /// Serialized execution would never reach the third arrival and time out.
+    #[tokio::test]
+    async fn fan_out_starts_every_node_before_any_finishes() {
+        let started = Arc::new(AtomicUsize::new(0));
+        let (release, _) = tokio::sync::broadcast::channel::<()>(4);
+        let release = Arc::new(release);
+        let work = {
+            let started = Arc::clone(&started);
+            let release = Arc::clone(&release);
+            move |node: u64| {
+                let started = Arc::clone(&started);
+                let sender = Arc::clone(&release);
+                let mut receiver = sender.subscribe();
+                async move {
+                    if started.fetch_add(1, Ordering::SeqCst) == 2 {
+                        sender.send(()).expect("broadcast receiver");
+                    }
+                    receiver.recv().await.expect("fan-out rendezvous");
+                    Ok::<_, AppError>(node * 10)
+                }
+            }
+        };
+        let output = tokio::time::timeout(Duration::from_secs(5), fan_out([1_u64, 2, 3], work))
+            .await
+            .expect("a slow node must not serialize the others")
+            .expect("fan-out succeeds");
+        assert_eq!(output, vec![10, 20, 30], "input order is preserved");
+    }
+
+    #[tokio::test]
+    async fn fan_out_fails_on_an_unavailable_node_without_losing_others() {
+        let output: Result<Vec<u64>, AppError> = fan_out([1_u64, 2, 3], |node| async move {
+            if node == 2 {
+                return Err(AppError::shared("node two is unavailable"));
+            }
+            Ok(node)
+        })
+        .await;
+        let error = output.expect_err("an unavailable node must fail the group");
+        assert!(error.error.message.contains("node two"));
     }
 }
