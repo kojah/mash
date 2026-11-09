@@ -4,6 +4,7 @@ These notes are for contributors and operators. They are kept out of the public
 documentation website and its search. User guides live in [docs](../README.md).
 
 - [History model](agent-history.md) and [code organization](architecture.md)
+- [Transcript rendering model](transcript-rendering.md) (proposed)
 - [Development](development.md) and [verification](verification.md)
 - [Indexing and models](indexing.md)
 - [Search behavior and tuning](search-reference.md)
