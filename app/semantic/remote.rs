@@ -191,12 +191,23 @@ fn http_client(timeout_seconds: u32) -> std::result::Result<reqwest::Client, App
         .map_err(|_| AppError::model("cannot create embedding service client"))
 }
 
+#[tracing::instrument(
+    name = "remote_embedding_request",
+    skip_all,
+    fields(
+        inputs = texts.len(),
+        roundtrip_ms = tracing::field::Empty,
+        inference_ms = tracing::field::Empty,
+        response_bytes = tracing::field::Empty
+    )
+)]
 async fn send(
     client: &reqwest::Client,
     url: &str,
     token: &str,
     texts: &[&str],
 ) -> std::result::Result<Result, AppError> {
+    let started = std::time::Instant::now();
     let request = request(texts)?;
     // No response bodies or transport errors enter diagnostics: they may echo
     // credentials or private input. A timeout can still have incurred GPU cost.
@@ -231,9 +242,18 @@ async fn send(
         }
         bytes.extend_from_slice(&chunk);
     }
+    let response_bytes = bytes.len();
     let response = serde_json::from_slice(&bytes)
         .map_err(|_| AppError::model("embedding service returned an invalid response"))?;
-    validate(response, &request)
+    let result = validate(response, &request)?;
+    let span = tracing::Span::current();
+    span.record(
+        "roundtrip_ms",
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+    );
+    span.record("inference_ms", result.inference_milliseconds);
+    span.record("response_bytes", response_bytes);
+    Ok(result)
 }
 
 #[cfg(test)]

@@ -25,6 +25,21 @@ pub(crate) struct ChatBuild {
     pub(crate) complete: bool,
 }
 
+#[derive(Clone, Default)]
+struct ChatStats {
+    messages: u64,
+    stored: u64,
+    expected: u64,
+}
+
+struct PendingChunk<'a> {
+    chat: &'a ChatRecord,
+    chat_index: usize,
+    rows: Vec<SearchMessage>,
+    texts: Vec<Option<String>>,
+    cached: Vec<Option<Vec<f64>>>,
+}
+
 struct Prepared {
     rows: Vec<SearchMessage>,
     texts: Vec<Option<String>>,
@@ -175,6 +190,129 @@ impl<'a> Writer<'a> {
             embeddings: stored,
             complete: stored == expected,
         })
+    }
+
+    /// Materialize a bounded window of chats together, so remote inference
+    /// fills whole batches across chat boundaries instead of one request per
+    /// chat. Documents are still written per chat and per message.
+    pub(crate) async fn write_chats(
+        &mut self,
+        chats: &[(ChatRecord, Vec<SearchMessage>)],
+    ) -> Result<Vec<(String, ChatBuild)>, AppError> {
+        let batch_rows = embedding::batch_rows(&self.execution);
+        let mut pending = Vec::new();
+        let mut pending_inputs = 0usize;
+        let mut stats = vec![ChatStats::default(); chats.len()];
+        for (chat_index, (chat, messages)) in chats.iter().enumerate() {
+            stats[chat_index].messages = messages.len() as u64;
+            let mut units = super::units::Stream::default();
+            for batch in messages.chunks(embedding::CACHE_ROWS) {
+                let (next_units, prepared) =
+                    Prepared::read(self.store, self.scope, chat, batch, units, self.reuse).await?;
+                units = next_units;
+                let Prepared {
+                    rows,
+                    texts,
+                    cached,
+                } = prepared;
+                let mut rows = rows.into_iter();
+                let mut texts = texts.into_iter();
+                let mut cached = cached.into_iter();
+                loop {
+                    let group_rows: Vec<_> = rows.by_ref().take(batch_rows).collect();
+                    if group_rows.is_empty() {
+                        break;
+                    }
+                    let group_texts: Vec<_> = texts.by_ref().take(group_rows.len()).collect();
+                    let input_count = group_texts.iter().filter(|text| text.is_some()).count();
+                    stats[chat_index].expected += input_count as u64;
+                    let group_cached: Vec<_> = cached.by_ref().take(input_count).collect();
+                    if !pending.is_empty() && pending_inputs + input_count > batch_rows {
+                        self.flush_pending(&mut pending, &mut stats).await?;
+                        pending_inputs = 0;
+                    }
+                    pending.push(PendingChunk {
+                        chat,
+                        chat_index,
+                        rows: group_rows,
+                        texts: group_texts,
+                        cached: group_cached,
+                    });
+                    pending_inputs += input_count;
+                    if pending_inputs >= batch_rows {
+                        self.flush_pending(&mut pending, &mut stats).await?;
+                        pending_inputs = 0;
+                    }
+                }
+            }
+        }
+        if !pending.is_empty() {
+            self.flush_pending(&mut pending, &mut stats).await?;
+        }
+        Ok(chats
+            .iter()
+            .zip(stats)
+            .map(|((chat, _), stats)| {
+                (
+                    chat.id.clone(),
+                    ChatBuild {
+                        messages: stats.messages,
+                        embeddings: stats.stored,
+                        complete: stats.stored == stats.expected,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    async fn flush_pending(
+        &mut self,
+        pending: &mut Vec<PendingChunk<'_>>,
+        stats: &mut [ChatStats],
+    ) -> Result<(), AppError> {
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let mut flat_inputs = Vec::new();
+        let mut flat_cached = Vec::new();
+        for chunk in pending.iter() {
+            flat_inputs.extend(inputs(chunk.chat, &chunk.rows, &chunk.texts));
+            flat_cached.extend(chunk.cached.iter().cloned());
+        }
+        let vectors = embedding::embed_units(
+            &flat_inputs,
+            (&self.scope.generation, self.scope.dimensions),
+            self.model,
+            &mut self.pool,
+            &mut self.build,
+            flat_cached,
+            &self.execution,
+        )
+        .await?;
+        drop(flat_inputs);
+        let mut vectors = vectors.into_iter();
+        for chunk in pending.drain(..) {
+            for (mut message, text) in chunk.rows.into_iter().zip(chunk.texts) {
+                let fingerprint = if text.is_some() {
+                    let (vector, fingerprint) = vectors
+                        .next()
+                        .ok_or_else(|| AppError::model("missing materialized embedding"))?;
+                    message.vector = Some(vector);
+                    message.generation = Some(self.scope.generation.clone());
+                    Some(fingerprint)
+                } else {
+                    message.vector = None;
+                    message.generation = None;
+                    None
+                };
+                let stored = self
+                    .documents
+                    .push_native(self.store, self.scope, chunk.chat, message, fingerprint)
+                    .await?;
+                stats[chunk.chat_index].stored += stored;
+            }
+        }
+        Ok(())
     }
 
     async fn write_prepared(

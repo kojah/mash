@@ -3,6 +3,7 @@ use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::silver_store;
 use crate::views::bulk::{BulkPolicy, BulkViews};
+use crate::views::documents::{ChatRecord, SearchMessage};
 use crate::views::qdrant::{NodeViews, ProjectionEvidence};
 use std::path::Path;
 use std::time::Instant;
@@ -53,6 +54,10 @@ fn millis(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
+/// Chats materialized together so remote inference fills whole batches across
+/// chat boundaries.
+const CHAT_WINDOW: usize = 32;
+
 /// Replay result for one node.
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct Replayed {
@@ -65,6 +70,29 @@ pub(crate) struct Replayed {
 }
 
 impl Store {
+    /// Read one materialization window of chats and their search inputs.
+    async fn read_chat_window(
+        &self,
+        identity: &Identity,
+        ids: &[String],
+    ) -> Result<Vec<(ChatRecord, Vec<SearchMessage>)>, AppError> {
+        let mut chats = Vec::with_capacity(ids.len());
+        for id in ids {
+            let chat = id.clone();
+            let (chat, messages) = self
+                .read(identity, move |connection| {
+                    Ok((
+                        silver_store::chat(connection, &chat)?
+                            .ok_or_else(|| AppError::internal("silver chat disappeared"))?,
+                        crate::storage::search_input::chat_messages(connection, &chat)?,
+                    ))
+                })
+                .await?;
+            chats.push((chat, messages));
+        }
+        Ok(chats)
+    }
+
     /// Re-embed every dense-eligible message and rewrite all of the node's views.
     pub(crate) async fn replay(
         &self,
@@ -117,30 +145,26 @@ impl Store {
                         .writer(models)
                         .with_execution(self.embeddings.clone())
                         .without_reuse();
-                    for (id, fingerprint) in &fingerprints {
-                        let chat = id.clone();
-                        let (chat, messages) = self
-                            .read(identity, move |connection| {
-                                Ok((
-                                    silver_store::chat(connection, &chat)?.ok_or_else(|| {
-                                        AppError::internal("silver chat disappeared")
-                                    })?,
-                                    crate::storage::search_input::chat_messages(connection, &chat)?,
-                                ))
-                            })
-                            .await?;
-                        let built = writer.write_chat(&chat, &messages).await?;
-                        node.projections.insert(
-                            id.clone(),
-                            ProjectionEvidence {
-                                fingerprint: fingerprint.clone(),
-                                embeddings: built.embeddings,
-                                complete: built.complete,
-                            },
-                        );
-                        replayed.chats += 1;
-                        replayed.embeddings += built.embeddings;
-                        replayed.messages += built.messages;
+                    let ids = fingerprints.keys().cloned().collect::<Vec<_>>();
+                    for window in ids.chunks(CHAT_WINDOW) {
+                        let chats = self.read_chat_window(identity, window).await?;
+                        let built = writer.write_chats(&chats).await?;
+                        for (id, build) in built {
+                            let fingerprint = fingerprints.get(&id).cloned().ok_or_else(|| {
+                                AppError::internal("replayed chat has no fingerprint")
+                            })?;
+                            node.projections.insert(
+                                id.clone(),
+                                ProjectionEvidence {
+                                    fingerprint,
+                                    embeddings: build.embeddings,
+                                    complete: build.complete,
+                                },
+                            );
+                            replayed.chats += 1;
+                            replayed.embeddings += build.embeddings;
+                            replayed.messages += build.messages;
+                        }
                     }
                     replayed.timings.materialize_ms = millis(materialize_started);
                     let phase = Instant::now();
