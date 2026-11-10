@@ -60,6 +60,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "loaded": false,
             "records": {"enabled": true, "backfill_since": null},
             "attachments": {"allowed_roots": [], "share_files": false},
+            "embeddings": {"backend": "local"},
             "redaction": {"output": true, "publication": true},
             "shared": null,
             "qdrant": {

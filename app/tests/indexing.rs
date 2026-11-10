@@ -101,9 +101,19 @@ fn index_without_models_fails_before_creating_the_database() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
+    // An explicit configuration keeps this from reading the developer's own,
+    // whose provider roots and embedding backend would start a real index.
+    let config = directory.path().join("config.toml");
+    let claude = directory.path().join("claude");
+    let codex = directory.path().join("codex");
+    std::fs::create_dir_all(&claude).expect("Claude root");
+    std::fs::create_dir_all(&codex).expect("Codex root");
+    write_config(&config, &claude, &codex);
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
         .args([
+            "--config",
+            config.to_str().unwrap(),
             "--db",
             database.to_str().unwrap(),
             "--models-dir",
