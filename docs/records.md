@@ -6,8 +6,9 @@ before recording a conclusion. Records are interpretations; a matching quote
 does not prove that an interpretation is correct.
 
 The plugin recalls existing memory at session start and before file reads.
-It also requests one automatic capture pass when the agent finishes a turn.
-The agent reviews new outcomes from that interaction, checks for duplicates and
+When the agent finishes a turn and the session has newly indexed messages, it
+also requests an automatic capture pass, at most once every ten minutes.
+The agent reviews new outcomes from that session, checks for duplicates and
 saves durable decisions, preferences, facts and open questions with quotes from indexed
 messages. Reading alone never creates or confirms records.
 

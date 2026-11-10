@@ -30,7 +30,8 @@ for line in sys.stdin:
         mode = os.environ.get('CAPTURE_MODE', 'ok')
         if mode == 'sleep': time.sleep(20)
         task = {'chat_id': 'current-chat', 'scope': {'kind': 'repository',
-            'identity': 'https://example.test/repo'}, 'source_fingerprint': 'a'*64}
+            'identity': 'https://example.test/repo'},
+            'source_fingerprint': os.environ.get('CAPTURE_FINGERPRINT', 'a')*64}
         packet = {'enabled': mode != 'disabled', 'current': task,
             'backfill': {**task, 'chat_id': 'older-chat'},
             'backfill_since': 1000, 'next_offset': 7}
@@ -92,12 +93,41 @@ class RecordCapture(unittest.TestCase):
         self.assertIsNone(
             record_capture.context({**self.payload, "stop_hook_active": True})
         )
-        self.assertIsNotNone(
-            record_capture.context({**self.payload, "turn_id": "turn-two"})
-        )
         self.assertEqual(
             json.loads(self.log.read_text()), {"session_id": "host-session"}
         )
+
+    def turn(self, name: str) -> str | None:
+        return record_capture.context({**self.payload, "turn_id": name})
+
+    def test_later_turns_stay_quiet_until_new_source_and_the_interval(self) -> None:
+        clock = patch.object(record_capture.time, "time", return_value=1000.0)
+        now = clock.start()
+        self.addCleanup(clock.stop)
+        self.assertIsNotNone(self.turn("one"))
+        now.return_value += record_capture.MIN_INTERVAL + 1
+        self.assertIsNone(self.turn("unchanged source"))
+        os.environ["CAPTURE_FINGERPRINT"] = "b"
+        now.return_value += 1
+        self.assertIsNotNone(self.turn("new source"))
+        os.environ["CAPTURE_FINGERPRINT"] = "c"
+        now.return_value += record_capture.MIN_INTERVAL - 1
+        self.assertIsNone(self.turn("too soon"))
+        now.return_value += 1
+        text = self.turn("interval passed")
+        self.assertIn("c" * 64, text or "")
+        self.assertIsNone(self.turn("already reviewed"))
+        now.return_value -= 10 * record_capture.MIN_INTERVAL
+        os.environ["CAPTURE_FINGERPRINT"] = "d"
+        self.assertIsNotNone(self.turn("clock moved backwards"))
+
+    def test_unindexed_session_is_asked_to_index_once(self) -> None:
+        os.environ.update(CAPTURE_MODE="empty", MASH_AUTO_INDEX="on")
+        self.assertIn("Run one incremental Mash index", self.turn("one") or "")
+        with patch.object(record_capture.time, "time", return_value=1e12):
+            self.assertIsNone(self.turn("two"))
+            os.environ["CAPTURE_MODE"] = "ok"
+            self.assertIn("current-chat", self.turn("indexed") or "")
 
     def test_legacy_host_response_fingerprint_and_explicit_opt_out(self) -> None:
         self.payload.pop("turn_id")
