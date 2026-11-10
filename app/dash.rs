@@ -93,6 +93,7 @@ fn router(state: Arc<Dash>) -> Router {
             "/api/services/action",
             axum::routing::post(services::action),
         )
+        .route("/api/status", axum::routing::get(status))
         .route("/api/chats", axum::routing::get(list_chats))
         .route("/api/search", axum::routing::get(search))
         .route("/api/view", axum::routing::get(view))
@@ -197,6 +198,19 @@ async fn guard(
 
 async fn health() -> Response {
     axum::Json(serde_json::json!({ "build": env!("MASH_BUILD_REVISION") })).into_response()
+}
+
+/// Local readiness and the resolved configuration, as `mash status` reports
+/// them. Read-only: it names credential variables but never their values.
+async fn status(State(state): State<Arc<Dash>>) -> Response {
+    let request = Request {
+        paths: state.paths.clone(),
+        operation: Operation::Status {
+            shared: false,
+            coverage: None,
+        },
+    };
+    json_result(core::execute(request).await)
 }
 
 async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
@@ -723,6 +737,26 @@ mod tests {
         let body: serde_json::Value = response.json().await.unwrap();
         assert_eq!(body["local_node"], "local");
         assert_eq!(body["chats"], serde_json::json!([]));
+        // Settings and readiness are a read of what `mash status` reports.
+        let response = client
+            .get(format!("http://{address}/api/status"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let status: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(status["configuration"]["loaded"], true);
+        assert_eq!(status["configuration"]["providers"], serde_json::json!({}));
+        assert_eq!(status["chats"], 0);
+        assert_eq!(
+            client
+                .post(format!("http://{address}/api/status"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            reqwest::StatusCode::METHOD_NOT_ALLOWED
+        );
         // Resolving the local node must not require shared configuration or a
         // catalogue request. Remote nodes must still fail rather than fall back.
         for node in ["", "local"] {

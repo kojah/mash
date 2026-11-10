@@ -44,7 +44,11 @@ fn main() {
 /// Embeds the built `mash dash` front end (`dashboard/dist`) when it exists;
 /// without it the command serves a page saying how to build it.
 fn embed_dashboard() {
-    let dist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dashboard/dist");
+    // Read at run time. `env!` would bake in the checkout that compiled this
+    // script, and a target directory shared between checkouts reuses that
+    // binary: the build would then embed another checkout's front end.
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let dist = std::path::Path::new(&manifest).join("dashboard/dist");
     println!("cargo:rerun-if-changed={}", dist.display());
     let mut files = Vec::new();
     collect(&dist, &dist, &mut files);
