@@ -1997,3 +1997,15 @@ button:disabled {
 .fold summary > svg {
   flex: none;
 }
+
+/* A tinted mark is a mask over its agent's colour, not an inverted image. */
+.mark.tint {
+  display: inline-block;
+  filter: none;
+  mask: center / contain no-repeat;
+  -webkit-mask: center / contain no-repeat;
+}
+#burger img {
+  width: 30px;
+  height: 28px;
+}

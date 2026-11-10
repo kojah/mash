@@ -1,5 +1,4 @@
 <script lang="ts">
-import Menu from "@lucide/svelte/icons/menu";
 import Search from "@lucide/svelte/icons/search";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
@@ -89,7 +88,7 @@ function submit(event: SubmitEvent): void {
 </script>
 
 <header id="top">
-  <button id="burger" type="button" aria-label="Open navigation" aria-expanded={railOpen} onclick={toggleRail}><Menu size={20} /></button>
+  <button id="burger" type="button" aria-label="Open navigation" aria-expanded={railOpen} onclick={toggleRail}><img src="/mash-logo.png" alt="" width="30" height="28" /></button>
   <div
     class="search"
     role="search"
