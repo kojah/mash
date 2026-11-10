@@ -110,8 +110,11 @@ fn finish_dashboard(
         // The dashboard needs display metadata, not provenance or entire prompts
         // used as fallback titles. Avoid serializing/redacting unused evidence.
         chat.metadata.enrichment = None;
-        // Redact before truncation: cutting a credential could prevent a pattern
-        // from recognizing it and expose its prefix in the title.
+        if let Some(title) = &mut chat.metadata.title {
+            crate::chat_catalog::headline(title);
+        }
+        // Redact before the final truncation: cutting a credential could prevent
+        // a pattern from recognizing it and expose its prefix in the title.
         for value in [
             &mut chat.metadata.title,
             &mut chat.metadata.project,

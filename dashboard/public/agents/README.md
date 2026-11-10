@@ -2,10 +2,9 @@
 
 Vendored SVG assets, fetched directly from pinned icon packages:
 
-- `claude-code.svg`, `codex.svg`, `opencode.svg`, `antigravity.svg`: Lobe Icons
+- `opencode.svg`, `antigravity.svg`: Lobe Icons
   `@lobehub/icons-static-svg@1.102.0`, MIT. Source:
-  `https://unpkg.com/@lobehub/icons-static-svg@1.102.0/icons/NAME.svg`
-  (`claudecode` is the upstream name for Claude Code).
+  `https://unpkg.com/@lobehub/icons-static-svg@1.102.0/icons/NAME.svg`.
 - `openai.svg`: Lobe Icons `@lobehub/icons-static-svg@1.102.0`, MIT. Shown for
   Codex, because the OpenAI mark is the one people recognise.
 - `claude.svg`: Simple Icons `16.36.0`, CC0. Shown for Claude Code.

@@ -150,6 +150,26 @@ pub(crate) struct Chat {
     pub(crate) metadata: ChatMetadata,
 }
 
+/// Cuts a title to the line a chat list shows, before secrets are masked.
+///
+/// A title is often the chat's entire first prompt. Lists show at most the
+/// first 240 characters of its first non-empty line, so masking the rest is
+/// wasted work. Every masking pattern that can hide text on that line matches
+/// within the line, and the 4096-character cap leaves a secret that starts in
+/// the shown part far more room than any pattern needs to recognise it.
+pub(crate) fn headline(title: &mut String) {
+    let Some(line) = title.lines().find(|line| !line.trim().is_empty()) else {
+        return;
+    };
+    let end = line
+        .char_indices()
+        .nth(4096)
+        .map_or(line.len(), |(at, _)| at);
+    if end != title.len() {
+        *title = line[..end].to_owned();
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Page {

@@ -140,6 +140,15 @@ async fn trace(request: axum::extract::Request, next: axum::middleware::Next) ->
     response
 }
 
+/// How long a browser may keep a response.
+#[derive(Clone, Copy)]
+enum Cache {
+    Api,
+    Hashed,
+    Image,
+    Page,
+}
+
 async fn guard(
     State(state): State<Arc<Dash>>,
     request: axum::extract::Request,
@@ -194,12 +203,34 @@ async fn guard(
     {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
-    let api = request.uri().path().starts_with("/api/");
+    let path = request.uri().path();
+    let cache = if path.starts_with("/api/") {
+        Cache::Api
+    } else if path.starts_with("/assets/") {
+        Cache::Hashed
+    } else if std::path::Path::new(path)
+        .extension()
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("svg") || extension.eq_ignore_ascii_case("png")
+        })
+    {
+        Cache::Image
+    } else {
+        Cache::Page
+    };
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    if api {
-        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    }
+    // Built assets carry a content hash in their name, so a browser may keep
+    // them for good. Logos change rarely. The page itself is always rechecked.
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(match cache {
+            Cache::Api => "no-store",
+            Cache::Hashed => "public, max-age=31536000, immutable",
+            Cache::Image => "public, max-age=86400",
+            Cache::Page => "no-cache",
+        }),
+    );
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
@@ -764,6 +795,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(compressed.headers()["content-encoding"], "gzip");
+        assert_eq!(compressed.headers()["cache-control"], "no-store");
+        // The page is rechecked on every visit; a logo may be kept for a day.
+        for (path, policy) in [
+            ("/", "no-cache"),
+            ("/mash-mark.png", "public, max-age=86400"),
+        ] {
+            let response = client
+                .get(format!("http://{address}{path}"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.headers()["cache-control"], policy, "{path}");
+        }
         server.abort();
     }
 

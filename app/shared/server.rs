@@ -392,6 +392,12 @@ async fn catalog(
     // One extra row lets the dashboard report an incomplete catalogue.
     chats.truncate(10_001);
     for chat in &mut chats {
+        // The dashboard is this endpoint's only reader and shows one line of
+        // each title and no provenance, so neither is masked or sent.
+        chat.metadata.enrichment = None;
+        if let Some(title) = &mut chat.metadata.title {
+            crate::chat_catalog::headline(title);
+        }
         app.store.responses().metadata(&mut chat.metadata);
     }
     Ok(Json(chats))

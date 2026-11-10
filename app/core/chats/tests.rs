@@ -94,6 +94,17 @@ fn dashboard_redaction_reuses_values_without_crossing_policy_or_source_changes()
         crate::redaction::Policy::ON,
     );
     assert_eq!(changed.chats[0].metadata.title.as_deref(), Some("benign"));
+    // Only the first line is shown, so a later line is never masked or sent.
+    let prompt = finish_dashboard(
+        vec![make("Rotate the key\npassword=\"sensitive-value\"")],
+        "local".into(),
+        None,
+        crate::redaction::Policy::ON,
+    );
+    assert_eq!(
+        prompt.chats[0].metadata.title.as_deref(),
+        Some("Rotate the key")
+    );
 }
 
 fn config(directory: &Path, url: &str) -> ResolvedConfig {

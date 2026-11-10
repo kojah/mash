@@ -135,3 +135,18 @@ fn thread_request_bounds_and_enums_reject_invalid_external_values() {
     }
     Request::default().validate().unwrap();
 }
+
+#[test]
+fn headline_keeps_the_first_non_empty_line_within_its_cap() {
+    let mut title = "\n  \nFix the watcher\npassword=\"later-line\"\n".to_owned();
+    headline(&mut title);
+    assert_eq!(title, "Fix the watcher");
+    let mut long = "é".repeat(5000);
+    headline(&mut long);
+    assert_eq!(long.chars().count(), 4096);
+    for unchanged in ["", " \n ", "one line"] {
+        let mut title = unchanged.to_owned();
+        headline(&mut title);
+        assert_eq!(title, unchanged);
+    }
+}

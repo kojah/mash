@@ -106,7 +106,7 @@ function toggle(id: Section): void {
 </script>
 
 <aside id="rail" class:open>
-  <a class="brand" href="#/" onclick={close}><img src="/mash-logo.png" alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
+  <a class="brand" href="#/" onclick={close}><img src="/mash-mark.png" alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
   <button id="xdrawer" type="button" aria-label="Close navigation" onclick={close}>×</button>
   <nav class="nav" aria-label="Main">
     {#each sections as section (section.id)}
