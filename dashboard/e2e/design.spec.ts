@@ -73,11 +73,16 @@ for (const width of [1440, 390]) {
     await expect(page).toHaveURL(/#\/machine\/local$/);
     await expect(page.getByRole("heading", { name: "local", exact: true })).toBeVisible();
     await page.goBack();
-    expect(
-      await recentChat
-        .locator("img")
-        .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
-    ).toBe(true);
+    // The agent's mark is its logo used as a mask over the agent's colour:
+    // the logo must load and the colour must not be transparent.
+    const mark = await recentChat.locator(".mark").evaluate(async (element) => {
+      const style = getComputedStyle(element);
+      const source = /url\("?([^")]+)"?\)/.exec(style.maskImage || style.webkitMaskImage)?.[1];
+      const logo = source ? await fetch(source) : null;
+      return { loaded: logo?.ok === true, colour: style.backgroundColor };
+    });
+    expect(mark.loaded).toBe(true);
+    expect(mark.colour).not.toBe("rgba(0, 0, 0, 0)");
     const open = page.getByRole("button", { name: "Open navigation" });
     if (width < 800) {
       // The rail is a drawer on a narrow screen: hidden until asked for.
