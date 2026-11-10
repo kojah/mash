@@ -1,13 +1,16 @@
 # Team product architecture
 
-Status: proposed, not implemented. This describes how Mash changes if it becomes
-a product for a team, where each person has their own machines and agents and
-their chats are shared with colleagues by default. The interface this supports
-is the team prototype tracked in Beads `mash-kzbm`.
+Status: deferred on 2026-11-10. Mash stays a single-user product, and nothing
+here is planned or implemented. This is kept as design notes for a possible
+separate team product, where each person has their own machines and agents and
+their chats are shared with colleagues by default.
 
-Today Mash is a single-user tool. Several of its rules assume one owner, and
-this document names each rule that would change. Nothing here is decided until
-those rules are changed in `AGENTS.md`.
+The single-user dashboard design is tracked in Beads `mash-kzbm`. The team
+prototype this document supported is archived outside the repository, and its
+issues are deferred under Beads `mash-1jux`.
+
+Several of Mash's rules assume one owner. This document names each rule a team
+product would change. None of those changes has been made to `AGENTS.md`.
 
 ## Chosen approach
 
