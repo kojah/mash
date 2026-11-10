@@ -167,6 +167,138 @@ async function request(path: string, signal?: AbortSignal, body?: unknown): Prom
   }
   return response.json();
 }
+const setupComponents = [
+  "configuration",
+  "plugin",
+  "skill",
+  "hooks",
+  "hook_trust",
+  "mcp",
+  "probe",
+  "index",
+  "runtime",
+] as const;
+const setupStates = [
+  "present",
+  "missing",
+  "disabled",
+  "invalid",
+  "outdated",
+  "unverified",
+  "not_configured",
+  "passed",
+  "failed",
+] as const;
+export type SetupComponent = (typeof setupComponents)[number];
+export type SetupState = (typeof setupStates)[number];
+export interface SetupStep {
+  component: SetupComponent;
+  state: SetupState;
+  message: string;
+  remediation: string | null;
+}
+export interface AgentSetup {
+  agent: "codex" | "claude-code";
+  expected: boolean;
+  connected: boolean;
+  steps: SetupStep[];
+}
+/** One machine's agent integrations, as its own Mash binary inspected them. */
+export interface Setup {
+  build: string;
+  agents: AgentSetup[];
+}
+export function parseSetup(value: unknown): Setup {
+  const row = object(value);
+  return {
+    build: text(row.build),
+    agents: list(row.agents).map((value) => {
+      const agent = object(value);
+      return {
+        agent: choice(agent.agent, ["codex", "claude-code"]),
+        expected: boolean(agent.expected),
+        connected: boolean(agent.connected),
+        steps: list(agent.steps).map((value) => {
+          const step = object(value);
+          return {
+            component: choice(step.component, setupComponents),
+            state: choice(step.state, setupStates),
+            message: text(step.message),
+            remediation: step.remediation === null ? null : text(step.remediation),
+          };
+        }),
+      };
+    }),
+  };
+}
+
+export type SetupPartState = "ok" | "attention" | "unverified";
+export interface SetupPart {
+  label: string;
+  state: SetupPartState;
+  /** What needs doing, shortest first, without repeats. */
+  notes: { message: string; remediation: string | null }[];
+}
+const attention: readonly SetupState[] = ["missing", "disabled", "invalid", "outdated", "failed"];
+const parts: readonly { component: SetupComponent; label: string }[] = [
+  { component: "mcp", label: "Connection" },
+  { component: "plugin", label: "Plugin" },
+  { component: "skill", label: "Skill" },
+  { component: "hooks", label: "Hooks" },
+  { component: "hook_trust", label: "Hook approval" },
+];
+/**
+ * An agent's integration in the order it is installed: each part depends on
+ * the ones before it. A part the agent has no concept of is left out.
+ */
+export function setupChain(agent: AgentSetup): SetupPart[] {
+  return parts.flatMap(({ component, label }) => {
+    const steps = agent.steps.filter((step) => step.component === component);
+    if (steps.length === 0) return [];
+    const failing = steps.filter((step) => attention.includes(step.state));
+    const state: SetupPartState =
+      failing.length > 0
+        ? "attention"
+        : steps.some((step) => step.state === "unverified")
+          ? "unverified"
+          : "ok";
+    const seen = new Set<string>();
+    const notes = (state === "ok" ? [] : state === "attention" ? failing : steps)
+      .filter((step) => state === "attention" || step.state === "unverified")
+      .filter((step) => !seen.has(step.message) && seen.add(step.message))
+      .map(({ message, remediation }) => ({ message, remediation }));
+    return [{ label, state, notes }];
+  });
+}
+const headlines: Record<string, string> = {
+  Connection: "Not connected to Mash",
+  Plugin: "Plugin missing or out of date",
+  Skill: "Skill missing or out of date",
+  Hooks: "Hooks missing or changed",
+  "Hook approval": "Hooks need approval",
+};
+/** The first thing standing between this agent and a working integration. */
+export function setupHeadline(agent: AgentSetup): { state: ServiceState; label: string } {
+  if (!agent.expected) return { state: "unknown", label: "Not set up on this machine" };
+  const chain = setupChain(agent);
+  const blocked = chain.find((part) => part.state === "attention");
+  if (blocked) return { state: "degraded", label: headlines[blocked.label] ?? blocked.label };
+  return chain.some((part) => part.label === "Hook approval" && part.state === "unverified")
+    ? { state: "healthy", label: "Ready · hook approval recorded" }
+    : { state: "healthy", label: "Ready" };
+}
+export function setupOptions(machine: string, enabled: boolean) {
+  return queryOptions({
+    ...stableRead,
+    queryKey: ["service-setup", machine],
+    enabled: enabled && !!machine,
+    queryFn: async ({ signal }) =>
+      parseSetup(
+        await request(`/api/services/installation?${new URLSearchParams({ machine })}`, signal),
+      ),
+  });
+}
+
 export const serviceAccessOptions = queryOptions({
   ...stableRead,
   queryKey: ["service-access"],

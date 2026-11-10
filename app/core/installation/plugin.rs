@@ -300,6 +300,8 @@ fn hooks(
     for (event, key, script) in [
         ("SessionStart", "session_start", "session_start.py"),
         ("UserPromptSubmit", "user_prompt_submit", "prompt_recall.py"),
+        ("PreToolUse", "pre_tool_use", "file_context.py"),
+        ("Stop", "stop", "record_capture.py"),
     ] {
         let entries: Vec<_> = definition
             .hooks
@@ -360,7 +362,7 @@ fn hooks(
 }
 
 fn hook_dependencies(client: &mut Client, root: &Path, environment: &Environment) {
-    for helper in ["recall_common.py", "python.sh"] {
+    for helper in ["recall_common.py", "record_recall.py", "python.sh"] {
         let helper = root.join("hooks").join(helper);
         if !readable_file(&helper) {
             client.add(

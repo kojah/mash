@@ -358,6 +358,48 @@ pub(super) struct MachineSelection {
     machine: String,
 }
 
+/// One machine's agent setup. A peer answers only for itself, and the
+/// inspection launches nothing: no agent command, MCP server or hook runs.
+pub(super) async fn installation(
+    State(state): State<Arc<super::Dash>>,
+    headers: HeaderMap,
+    Query(selection): Query<MachineSelection>,
+) -> Response {
+    use crate::core::installation::{Setup, setup};
+    if selection.machine != state.services.local_id() {
+        if headers.contains_key("x-mash-service-forwarded") {
+            return error(StatusCode::CONFLICT, "Remote machine identity mismatch");
+        }
+        let Some(peer) = state
+            .services
+            .peers
+            .iter()
+            .find(|p| p.id == selection.machine)
+        else {
+            return error(StatusCode::NOT_FOUND, "Unknown machine");
+        };
+        return match state
+            .services
+            .remote::<Setup>(
+                peer,
+                "/api/services/installation",
+                &[("machine", &selection.machine)],
+            )
+            .await
+        {
+            Ok(setup) => axum::Json(setup).into_response(),
+            Err(message) => error(StatusCode::BAD_GATEWAY, &message),
+        };
+    }
+    match tokio::task::spawn_blocking(setup).await {
+        Ok(setup) => axum::Json(setup).into_response(),
+        Err(_) => error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not inspect agent setup",
+        ),
+    }
+}
+
 pub(super) async fn history(
     State(state): State<Arc<super::Dash>>,
     headers: HeaderMap,

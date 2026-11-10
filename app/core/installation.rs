@@ -8,16 +8,16 @@ mod resources;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Agent {
     Codex,
     ClaudeCode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum State {
+pub(crate) enum State {
     Present,
     Missing,
     Disabled,
@@ -38,9 +38,9 @@ impl State {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum Component {
+pub(crate) enum Component {
     Configuration,
     Plugin,
     Skill,
@@ -287,6 +287,65 @@ impl Environment {
             cwd: std::env::current_dir().ok()?,
             path: std::env::var_os("PATH").unwrap_or_default(),
         })
+    }
+}
+
+/// One machine's agent integrations for a dashboard, step by step. A peer
+/// dashboard sends this to the one asking, so local paths are left out.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Setup {
+    /// The build of the Mash binary that inspected the machine.
+    pub(crate) build: String,
+    pub(crate) agents: Vec<AgentSetup>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct AgentSetup {
+    pub(crate) agent: Agent,
+    /// The machine has this agent's data or CLI, so an integration is expected.
+    pub(crate) expected: bool,
+    /// Expected, with nothing needing attention.
+    pub(crate) connected: bool,
+    pub(crate) steps: Vec<Step>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Step {
+    pub(crate) component: Component,
+    pub(crate) state: State,
+    pub(crate) message: String,
+    pub(crate) remediation: Option<String>,
+}
+
+/// Inspect this machine's agent integrations without launching anything.
+pub(crate) fn setup() -> Setup {
+    let report = collect(Environment::discover().as_ref(), &[]);
+    let agents = report
+        .clients
+        .iter()
+        .zip(&report.summary.clients)
+        .map(|(client, summary)| AgentSetup {
+            agent: client.agent,
+            expected: client.expected,
+            connected: summary.connected,
+            steps: client
+                .findings
+                .iter()
+                // Project overrides depend on the directory an agent starts
+                // in; a dashboard's own directory says nothing about them.
+                .filter(|finding| !matches!(finding.component, Component::Configuration))
+                .map(|finding| Step {
+                    component: finding.component,
+                    state: finding.state,
+                    message: finding.message.clone(),
+                    remediation: finding.remediation.clone(),
+                })
+                .collect(),
+        })
+        .collect();
+    Setup {
+        build: env!("MASH_BUILD_REVISION").to_owned(),
+        agents,
     }
 }
 

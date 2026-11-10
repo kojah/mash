@@ -82,6 +82,10 @@ fn router(state: Arc<Dash>) -> Router {
         )
         .route("/api/services/log", axum::routing::get(services::logs))
         .route(
+            "/api/services/installation",
+            axum::routing::get(services::installation),
+        )
+        .route(
             "/api/services/operations",
             axum::routing::get(services::history),
         )

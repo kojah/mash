@@ -366,6 +366,72 @@ async fn services_remote_failures_are_unknown_and_forwarding_cannot_loop() {
 }
 
 #[tokio::test]
+async fn services_installation_reports_local_setup_and_forwards_to_the_named_peer() {
+    let remote_root = tempfile::tempdir().unwrap();
+    let (remote_url, remote) = app_named(remote_root.path(), vec![], "remote-node").await;
+    let root = tempfile::tempdir().unwrap();
+    let peer = |id: &str, url: &str| Peer {
+        id: id.into(),
+        url: url.into(),
+        token: Some(TOKEN.into()),
+    };
+    let (url, server) = app(
+        root.path(),
+        vec![
+            peer("remote-node", &remote_url),
+            peer("offline", "http://127.0.0.1:1"),
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let get = |machine: &'static str, forwarded: bool| {
+        let mut request = client
+            .get(format!("{url}/api/services/installation?machine={machine}"))
+            .bearer_auth(TOKEN);
+        if forwarded {
+            request = request.header("x-mash-service-forwarded", "1");
+        }
+        request.send()
+    };
+    for machine in ["test-node", "remote-node"] {
+        let response = get(machine, false).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{machine}");
+        let body = response.text().await.unwrap();
+        let setup: crate::core::installation::Setup = serde_json::from_str(&body).unwrap();
+        assert_eq!(setup.agents.len(), 2, "{machine}");
+        assert_ne!(setup.build, "");
+        assert!(
+            !body.contains("\"path\""),
+            "local paths stay on their machine"
+        );
+    }
+    assert_eq!(
+        get("offline", false).await.unwrap().status(),
+        StatusCode::BAD_GATEWAY
+    );
+    assert_eq!(
+        get("nobody", false).await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+    // A peer answers only for itself, so a forwarded request cannot loop.
+    assert_eq!(
+        get("remote-node", true).await.unwrap().status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        client
+            .get(format!("{url}/api/services/installation?machine=test-node"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    server.abort();
+    remote.abort();
+}
+
+#[tokio::test]
 async fn services_remote_reports_keep_identity_and_private_credentials() {
     let remote_root = tempfile::tempdir().unwrap();
     let (remote_url, remote) = app_named(remote_root.path(), vec![], "remote-node").await;

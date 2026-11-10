@@ -18,6 +18,7 @@ import {
 import FleetControls from "./FleetControls.svelte";
 import IndexStatus from "./IndexStatus.svelte";
 import LoadError from "./LoadError.svelte";
+import MachineSetup from "./MachineSetup.svelte";
 import ServiceStatus from "./ServiceStatus.svelte";
 
 let { params }: { params: string } = $props();
@@ -56,6 +57,7 @@ $effect(() => {
 async function refresh(): Promise<void> {
   const refreshed = await fleet.refetch();
   if (!refreshed.error) actionError = "";
+  await queryClient.invalidateQueries({ queryKey: ["service-setup"] });
   if (machineId) await history.refetch();
   if (showLog && serviceId) await log.refetch();
 }
@@ -127,8 +129,10 @@ const consequences = $derived(
       <section class="service-machine"><div class="section-heading"><h2><a href={servicesHref(item.id)}>{item.id}</a></h2><span class="text-muted">{item.platform}</span></div><div class="service-machine-status"><ServiceStatus state={machineState(item)}/><span class="service-checked">Checked {checkedTime(item.checked_at)}</span></div>
       {#each item.warnings as warning (warning)}<p class="service-warning">{warning}</p>{/each}
       <ul class="service-list">{#each item.services as entry (entry.id)}<li><a href={servicesHref(item.id, entry.id)}><span><strong>{entry.name}</strong><small>{entry.kind}</small></span><ServiceStatus state={entry.state} label={entry.summary}/></a></li>{/each}</ul>
+      {#if item.reachable && !machineId}<MachineSetup machineId={item.id} {enabled} compact/>{/if}
     </section>
     {/each}
+    {#if machine && !serviceId}<MachineSetup machineId={machine.id} enabled={enabled && machine.reachable}/>{/if}
   {/if}
   {#if enabled && machineId}<section><h2>Recent activity</h2>{#if history.error}<p role="alert">{history.error.message}</p>{/if}{#if history.isPending}<p role="status">Loading activity…</p>{/if}<ul class="service-activity">{#each history.data?.filter(item => !serviceId || item.request.service === serviceId) ?? [] as item (item.request.request_id)}<li><strong>{actionLabel[item.request.action]} · {item.outcome}</strong><span>{checkedTime(item.requested_at)} · {item.request.service}</span><p>{item.message}</p></li>{:else}{#if history.data}<li>No recorded service actions.</li>{/if}{/each}</ul></section>{/if}
   {#if !machineId}<FleetControls {enabled}/><IndexStatus />{/if}

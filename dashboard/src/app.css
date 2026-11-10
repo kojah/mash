@@ -441,6 +441,72 @@ button:disabled {
   overflow-wrap: anywhere;
   font-size: 12px;
 }
+.setup-summary {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-summary li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  font-size: 13px;
+}
+.setup-summary .service-status {
+  margin-left: auto;
+}
+.setup-agent {
+  margin-top: 1rem;
+}
+.setup-agent-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+.setup-agent-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+.setup-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.setup-chain li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.setup-chain small {
+  color: var(--color-muted);
+}
+.setup-notes {
+  margin-top: 0.6rem;
+  font-size: 13px;
+}
+.setup-notes h4 {
+  margin: 0;
+  font-size: inherit;
+}
+.setup-notes p {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+.setup-fix {
+  display: block;
+  color: var(--color-muted);
+}
 .service-actions {
   display: flex;
   flex-wrap: wrap;

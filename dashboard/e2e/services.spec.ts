@@ -92,6 +92,38 @@ for (const width of [390, 1440]) {
             },
           });
         if (url.pathname === "/api/services/operations") return route.fulfill({ json: [] });
+        if (url.pathname === "/api/services/installation") {
+          expect(url.searchParams.get("machine")).toBe("xenia");
+          const present = (component: string) => ({
+            component,
+            state: "present",
+            message: `${component} found`,
+            remediation: null,
+          });
+          const installed = ["mcp", "plugin", "skill", "hooks"].map(present);
+          return route.fulfill({
+            json: {
+              build: "0123456789abcdef",
+              agents: [
+                {
+                  agent: "codex",
+                  expected: true,
+                  connected: false,
+                  steps: [
+                    ...installed,
+                    {
+                      component: "hook_trust",
+                      state: "missing",
+                      message: "No user-level Codex trust record found for this hook.",
+                      remediation: "Open /hooks in Codex and trust the current Mash hooks.",
+                    },
+                  ],
+                },
+                { agent: "claude-code", expected: true, connected: true, steps: installed },
+              ],
+            },
+          });
+        }
         if (url.pathname === "/api/services/action") {
           mutations++;
           const body = request.postDataJSON();
@@ -122,11 +154,19 @@ for (const width of [390, 1440]) {
     await page.goto("/#/services");
     await expect(page.getByLabel("Services access token")).toHaveCount(0);
     await expect(page.getByText("Running · schema mismatch", { exact: true })).toBeVisible();
+    // A deployed plugin whose hooks await approval is visible from the list.
+    const summary = page.getByRole("list", { name: "Agent setup on xenia" });
+    await expect(summary.getByText("Hooks need approval")).toBeVisible();
+    await expect(summary.getByText("Ready", { exact: true })).toBeVisible();
     await page.getByRole("link", { name: /Mash MCP · PID 10/ }).click();
     await expect(page.getByRole("heading", { name: "Schema compatibility" })).toBeVisible();
     await expect(page.getByText("65", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Restart", exact: true })).toHaveCount(0);
     await page.getByRole("link", { name: "xenia", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Agent setup" })).toBeVisible();
+    await expect(
+      page.getByText("Open /hooks in Codex and trust the current Mash hooks."),
+    ).toBeVisible();
     await page.getByRole("link", { name: /Index watcher/ }).click();
     await page.getByRole("button", { name: "Start", exact: true }).click();
     await expect(page.getByRole("group", { name: "Confirm service action" })).toContainText(

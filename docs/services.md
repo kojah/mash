@@ -12,6 +12,29 @@ Dates tell you when a check was made; an old green result is not a continuous
 health guarantee. Fleet job progress, when enabled below, updates automatically
 while an operation is running; it does not reload the page or the chat history.
 
+## Check each machine's agent setup
+
+Each machine on the Services page lists its agents with one line of status,
+such as **Ready** or **Hooks need approval**. Open the machine to see the
+integration part by part, in the order it is installed:
+
+- **Connection:** the agent has Mash registered as an MCP server.
+- **Plugin** and **Skill:** the Mash plugin is installed and matches the Mash
+  binary on that machine.
+- **Hooks:** the plugin's hook scripts are present and unmodified.
+- **Hook approval:** Codex only. Codex runs a plugin's hooks after you review
+  them in its `/hooks` screen, and asks again when they change.
+
+A part that needs attention shows what to do. This is how a machine where the
+plugin has been updated but its hooks still await approval shows up.
+
+Mash reads settings and files for this. It does not start an agent, an MCP
+server or a hook, so a part can read as present without having run. After
+approving Codex hooks the approval reads as recorded, because only Codex can
+confirm it matches the current hooks. A machine running an older Mash cannot
+report its setup: update it first. The same check is available on one machine
+with `mash status --installation`.
+
 ## Manage the fleet from one inventory
 
 Use a shared private TOML inventory to give `mash-fleet` and the dashboard the

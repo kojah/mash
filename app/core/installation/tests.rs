@@ -91,7 +91,13 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
         &plugin.join("hooks/hooks.json"),
         include_str!("../../../plugins/mash/hooks/hooks.json"),
     );
-    for script in ["session_start.py", "prompt_recall.py", "python.sh"] {
+    for script in [
+        "session_start.py",
+        "prompt_recall.py",
+        "file_context.py",
+        "record_capture.py",
+        "python.sh",
+    ] {
         write(&plugin.join("hooks").join(script), "# hook");
     }
     let report = collect(Some(&environment), &[]);
@@ -102,7 +108,8 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
             .filter(|finding| matches!(finding.component, Component::HookTrust)
                 && finding.state == State::Missing)
             .count(),
-        2
+        4,
+        "every bundled hook needs its own Codex approval"
     );
     assert!(
         findings
@@ -230,7 +237,10 @@ fn installation_complete_claude_user_setup_has_no_attention_findings() {
     for name in [
         "session_start.py",
         "prompt_recall.py",
+        "file_context.py",
+        "record_capture.py",
         "recall_common.py",
+        "record_recall.py",
         "python.sh",
     ] {
         write(&plugin.join("hooks").join(name), "# script");
@@ -260,7 +270,10 @@ fn write_claude_plugin(plugin: &Path) {
     for name in [
         "session_start.py",
         "prompt_recall.py",
+        "file_context.py",
+        "record_capture.py",
         "recall_common.py",
+        "record_recall.py",
         "python.sh",
     ] {
         write(&plugin.join("hooks").join(name), "# script");
