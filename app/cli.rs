@@ -340,6 +340,9 @@ pub(super) enum Response {
         version: &'static str,
         silver_schema: i64,
         silver_schema_min: i64,
+        /// How `record` evidence may name its source. The plugin hooks read
+        /// this before telling an agent to cite its own session.
+        record_citations: [&'static str; 2],
     },
     WatchStopped {
         watching: bool,
@@ -560,6 +563,7 @@ where
                     version: env!("CARGO_PKG_VERSION"),
                     silver_schema: crate::storage::schema::SCHEMA_VERSION,
                     silver_schema_min: crate::storage::schema::MIN_SCHEMA_VERSION,
+                    record_citations: ["message_id", "session_id"],
                 });
             }
             _ => return Err(AppError::usage(error.to_string())),

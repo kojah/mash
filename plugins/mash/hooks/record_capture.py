@@ -70,7 +70,7 @@ def context(payload: Any) -> str | None:
     if type(packet.get("enabled")) is not bool:
         raise ValueError("invalid capture policy")
     saving = packet["enabled"] and common.saving(
-        session, *common.resolve_project(cwd, 0.5)
+        binary, session, *common.resolve_project(cwd, 0.5)
     )
     common.write_state(path, {"turn": turn_key, "prompted_at": now if saving else last})
     if not saving:

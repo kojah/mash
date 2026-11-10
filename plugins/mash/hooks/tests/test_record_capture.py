@@ -18,6 +18,11 @@ import record_capture  # noqa: E402
 
 SERVER = """
 import json, os, sys, time
+if sys.argv[1:] == ['--version']:
+    old = os.environ.get('CAPTURE_MODE') == 'old-binary'
+    cites = ['message_id'] + ([] if old else ['session_id'])
+    print(json.dumps({'record_citations': cites}))
+    sys.exit(0)
 for line in sys.stdin:
     request = json.loads(line)
     if request['method'] == 'notifications/initialized':
@@ -142,6 +147,8 @@ class RecordCapture(unittest.TestCase):
         now.return_value += record_capture.MIN_INTERVAL
         os.environ["CAPTURE_MODE"] = "disabled"
         self.assertIsNone(self.turn("disabled"))
+        os.environ["CAPTURE_MODE"] = "old-binary"
+        self.assertIsNone(self.turn("a binary without session citations"))
         os.environ["CAPTURE_MODE"] = "empty"
         self.assertIsNotNone(self.turn("an unindexed session can still save"))
 

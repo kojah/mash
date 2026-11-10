@@ -21,6 +21,10 @@ path = os.environ["FAKE_MASH"]
 data = json.load(open(path))
 time.sleep(data.get("sleep", 0))
 command, arguments = sys.argv[1], sys.argv[1:]
+if command == "--version":
+    print(json.dumps({"version": "test", "record_citations": data.get(
+        "citations", ["message_id", "session_id"])}))
+    sys.exit(0)
 if data.get("fail", {}).get(command):
     sys.exit(data["fail"][command])
 if command == "list-chats":
@@ -123,6 +127,9 @@ class Recall(unittest.TestCase):
         self.assertNotIn("Mash memory", self.hook())
         del self.env["MASH_RECORD_CAPTURE"]
         self.assertNotIn("Mash memory", self.hook(session="not a plain id"))
+        # An older binary cannot cite a session, so the note would mislead.
+        self.fake(chats=[], citations=["message_id"])
+        self.assertEqual(self.hook(), "")
 
     def test_project_filtering_and_current_session(self) -> None:
         chats = [

@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -77,6 +78,18 @@ class Lasting(unittest.TestCase):
                 self.assertFalse(prompt_recall.lasting(prompt))
 
     def test_note_cites_the_session_and_joins_a_recall_nudge(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        binary = Path(directory.name) / "mash"
+        binary.write_text(
+            '#!/bin/sh\necho \'{"record_citations":["message_id"\'"$FAKE_CITES"\']}\'\n'
+        )
+        binary.chmod(0o755)
+        environment = unittest.mock.patch.dict(
+            os.environ, {"MASH_BIN": str(binary), "FAKE_CITES": ',"session_id"'}
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
         payload = {"prompt": LASTING[1], "cwd": str(HOOKS), "session_id": "abc-123"}
         text = prompt_recall.context(payload) or ""
         self.assertIn('"session_id":"abc-123"', text)
@@ -88,6 +101,8 @@ class Lasting(unittest.TestCase):
             self.assertIsNone(prompt_recall.context({**payload, **broken}))
         with unittest.mock.patch.dict(os.environ, {"MASH_RECORD_CAPTURE": "off"}):
             self.assertIsNone(prompt_recall.context(payload))
+        with unittest.mock.patch.dict(os.environ, {"FAKE_CITES": ""}):
+            self.assertIsNone(prompt_recall.context(payload), "older binary")
 
 
 class Classify(unittest.TestCase):

@@ -2,8 +2,8 @@
 looks back at earlier work or names something from outside the conversation.
 
 A prompt that states a lasting preference or decision also gets a note on how
-to save it. It reads only the prompt and never runs Mash, so it is fast and
-needs no index.
+to save it. It reads only the prompt and needs no index; the saving note alone
+asks the installed binary whether it supports session citations.
 Fails open: any error produces no output and exit status 0. Set
 `MASH_PROMPT_RECALL=off` to disable it.
 """
@@ -146,7 +146,12 @@ def memory(payload: dict[str, Any]) -> str | None:
     cwd = payload.get("cwd")
     if not isinstance(cwd, str):
         return None
-    saving = common.saving(payload.get("session_id"), *common.resolve_project(cwd, 0.5))
+    binary = common.resolve_binary()
+    if binary is None:
+        return None
+    saving = common.saving(
+        binary, payload.get("session_id"), *common.resolve_project(cwd, 0.5)
+    )
     return saving and (
         "Mash: this prompt may state a lasting preference or decision. If it"
         f" does, save it now: {saving}. Check find_record_matches for a"

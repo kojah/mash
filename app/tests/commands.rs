@@ -190,7 +190,11 @@ fn informational_flags_succeed_without_initializing_application_resources() {
             assert!(response["silver_schema"].as_i64().is_some_and(|v| v > 0));
             let minimum = response["silver_schema_min"].as_i64().unwrap();
             assert!(minimum > 0 && minimum <= response["silver_schema"].as_i64().unwrap());
-            assert_eq!(response.as_object().unwrap().len(), 3);
+            assert_eq!(
+                response["record_citations"],
+                serde_json::json!(["message_id", "session_id"])
+            );
+            assert_eq!(response.as_object().unwrap().len(), 4);
         } else {
             assert_eq!(response.as_object().unwrap().len(), 1);
             let help = response["help"].as_str().unwrap();

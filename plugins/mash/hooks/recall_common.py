@@ -68,10 +68,13 @@ def resolve_project(cwd: str, timeout: float) -> tuple[str, str | None]:
     return toplevel, origin
 
 
-def saving(session: Any, toplevel: str, repository: str | None) -> str | None:
+def saving(
+    binary: str, session: Any, toplevel: str, repository: str | None
+) -> str | None:
     """How an agent saves memory about its own session: the project's record
     scope and a citation by session ID, which needs no index. None when record
-    capture is off or the session ID is not a plain token."""
+    capture is off, the session ID is not a plain token, or the installed
+    binary predates session citations (a plugin can be newer than its binary)."""
     if os.environ.get("MASH_RECORD_CAPTURE", "").strip().lower() in (
         "0",
         "off",
@@ -83,6 +86,12 @@ def saving(session: Any, toplevel: str, repository: str | None) -> str | None:
         or not 0 < len(session) <= 128
         or not all(c.isascii() and (c.isalnum() or c in "-_") for c in session)
     ):
+        return None
+    try:
+        citations = run_mash(binary, ["--version"], 1.0).get("record_citations")
+    except (MashError, OSError, subprocess.SubprocessError, TimeoutError):
+        return None
+    if not isinstance(citations, list) or "session_id" not in citations:
         return None
     scope = (
         {"kind": "repository", "identity": repository}

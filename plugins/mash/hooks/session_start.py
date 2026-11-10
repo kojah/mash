@@ -172,7 +172,7 @@ def context(payload: Any, end: float) -> str:
         recent = scan(binary, toplevel, repository, payload["session_id"], end)
     except (common.MashError, subprocess.TimeoutExpired, TimeoutError, ValueError):
         recent, available = [], False
-    saving = common.saving(payload["session_id"], toplevel, repository)
+    saving = common.saving(binary, payload["session_id"], toplevel, repository)
     save = (
         [
             "Mash memory: when the person states a lasting preference, makes or"
