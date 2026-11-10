@@ -31,6 +31,8 @@ export type Details =
   | {
       kind: "decision";
       state: "proposed" | "accepted" | "superseded" | "withdrawn";
+      /** Who made the choice: the person, or the agent of its own accord. */
+      decidedBy: "user" | "agent";
       alternatives: readonly string[];
       consequences: readonly string[];
     }
@@ -149,6 +151,8 @@ function details(value: unknown): Details {
       return {
         kind: row.kind,
         state: member(row.state, ["proposed", "accepted", "superseded", "withdrawn"]),
+        decidedBy:
+          row.decided_by === undefined ? "user" : member(row.decided_by, ["user", "agent"]),
         alternatives: strings(row.alternatives),
         consequences: strings(row.consequences),
       };
@@ -282,4 +286,12 @@ export function scopeLabel(value: Scope): string {
     case "chat":
       return `Chat ${value.id}`;
   }
+}
+
+/** How settled a revision is, in the words lists and pages show. */
+export function standing(revision: { review: string; details: Details }): string {
+  if (revision.review === "candidate") return "unconfirmed";
+  return revision.details.kind === "decision" && revision.details.decidedBy === "agent"
+    ? "agent decided"
+    : "established";
 }

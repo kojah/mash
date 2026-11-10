@@ -10,7 +10,15 @@ import { untrack } from "svelte";
 import { whenLabel } from "../lib/browse";
 import { navigate } from "../lib/navigation";
 import { catalogOptions, stableRead } from "../lib/queries";
-import { kinds, label, recordPage, scopeLabel, states, timingLabel } from "../lib/records";
+import {
+  kinds,
+  label,
+  recordPage,
+  scopeLabel,
+  standing,
+  states,
+  timingLabel,
+} from "../lib/records";
 import { recordHref, recordsHref } from "../lib/route.svelte";
 import FilterMenu from "./FilterMenu.svelte";
 import QueryError from "./QueryError.svelte";
@@ -146,7 +154,7 @@ const dirty = $derived(
         {@const Icon = icons[revision.details.kind]}
         <article style:padding="14px 0" style:border-bottom="1px solid var(--hair)">
           <p style:color="var(--pink)" style:font-size="12px" style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="6px">
-            <Icon size={15} aria-hidden="true" />{label(revision.details.kind).toLowerCase()} / {label(revision.details.state).toLowerCase()}{revision.review === "candidate" ? " / unconfirmed" : ""}
+            <Icon size={15} aria-hidden="true" />{label(revision.details.kind).toLowerCase()} / {label(revision.details.state).toLowerCase()}{standing(revision) === "established" ? "" : ` / ${standing(revision)}`}
             {#if !revision.evidenceCurrent}<span class="warn">/ stale evidence</span>{/if}
             {#if record.conflicted}<span class="warn">/ conflicting records</span>{/if}
             {#if timingLabel(revision, now)}<span class="warn">/ {timingLabel(revision, now)?.toLowerCase()}</span>{/if}

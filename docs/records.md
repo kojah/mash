@@ -17,7 +17,11 @@ indexing and the record is recalled straight away. If a later index of that
 chat does not contain the quoted message, the evidence is marked stale and
 default recall leaves the record out. Decisions and
 preferences are established only by your own words; other conclusions are
-saved as candidates. Reading alone never creates or confirms records.
+saved as candidates. The exception is a choice the agent makes of its own
+accord, such as how to structure the code: it is saved as the agent's decision,
+citing the agent's message that made and explained it, and recall labels it an
+agent decision. An agent's decision never replaces one of yours; yours can
+replace it. Reading alone never creates or confirms records.
 
 Recall shows candidates after established records, labeled as unconfirmed. If
 one is wrong, ask the agent to correct, withdraw or forget it.
@@ -239,7 +243,9 @@ preceding proposal as `context` alongside the approval as `endorsement`.
 User-role messages sometimes contain automated reports: do not classify those
 as the person's endorsement. Keep uncertain interpretations as `candidate`
 (the default review state). Established decisions and preferences require a
-user-message endorsement citation. `recorded_by` is caller-supplied attribution,
+user-message endorsement citation. A decision with `"decided_by": "agent"` in
+its details instead requires a citation of the agent's own message, and cannot
+revise or supersede a decision made by the person. `recorded_by` is caller-supplied attribution,
 not authenticated human identity.
 
 Evidence `purpose` accepts `context`, `endorsement`, and `report`. Use `report`

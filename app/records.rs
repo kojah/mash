@@ -59,6 +59,26 @@ pub(crate) enum DecisionState {
     Superseded,
     Withdrawn,
 }
+/// Who made a decision. An agent may settle a choice of its own, such as how
+/// to structure code, by citing the message where it made and explained it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DecidedBy {
+    #[default]
+    User,
+    Agent,
+}
+
+impl DecidedBy {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde passes the field by reference"
+    )]
+    fn is_user(&self) -> bool {
+        *self == Self::User
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PreferenceState {
@@ -86,6 +106,9 @@ pub(crate) enum QuestionState {
 pub(crate) enum Details {
     Decision {
         state: DecisionState,
+        /// Omit for the person's decision; `agent` for a choice the agent made.
+        #[serde(default, skip_serializing_if = "DecidedBy::is_user")]
+        decided_by: DecidedBy,
         #[serde(default)]
         alternatives: Vec<String>,
         #[serde(default)]
@@ -149,6 +172,17 @@ impl Details {
             }
         }
         Ok(())
+    }
+
+    /// A choice the agent made itself, which the person has not endorsed.
+    pub(crate) const fn agent_decided(&self) -> bool {
+        matches!(
+            self,
+            Self::Decision {
+                decided_by: DecidedBy::Agent,
+                ..
+            }
+        )
     }
 
     pub(crate) const fn superseded(&self) -> bool {

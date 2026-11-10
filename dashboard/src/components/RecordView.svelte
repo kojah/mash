@@ -4,7 +4,7 @@ import FileText from "@lucide/svelte/icons/file-text";
 import Link2 from "@lucide/svelte/icons/link-2";
 import { createQuery } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
-import { type Evidence, getRecord, label, scopeLabel, timingLabel } from "../lib/records";
+import { type Evidence, getRecord, label, scopeLabel, standing, timingLabel } from "../lib/records";
 import { chatHref, recordHref } from "../lib/route.svelte";
 import LoadError from "./LoadError.svelte";
 import Skeleton from "./Skeleton.svelte";
@@ -57,7 +57,7 @@ function date(value: number | null): string {
 {#if page.error && !latest.error}<LoadError title="Couldn’t load memory history" message={page.error.message} retry={() => page.refetch()} busy={page.isFetching} retryLabel="Retry history"/>{/if}
 {#if record && current && !latest.error && !page.error}
   <header>
-    <p style:color="var(--pink)" style:font-size="12.5px">{label(current.details.kind).toLowerCase()} / {label(current.details.state).toLowerCase()} / {current.review === "candidate" ? "unconfirmed" : "established"}</p>
+    <p style:color="var(--pink)" style:font-size="12.5px">{label(current.details.kind).toLowerCase()} / {label(current.details.state).toLowerCase()} / {standing(current)}</p>
     <h1 class="h1" style:margin-top="6px" style:font-weight="500" style:white-space="pre-wrap" style:overflow-wrap="anywhere">{current.statement}</h1>
     <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere">{scopeLabel(record.scope)} / {record.node || "this machine"} / recorded by {current.recordedBy} / {date(current.recordedAt)}</p>
     {#if timingLabel(current, Date.now())}<p class="warn" role="status" style:margin-top="8px">{timingLabel(current, Date.now())}. Check the effective and expiry dates before relying on this.</p>{/if}
@@ -76,7 +76,7 @@ function date(value: number | null): string {
       {#if !page.data.revisions.length}<p class="meta">No revisions on this page.</p>{/if}
       {#each page.data.revisions as revision (revision.revision)}
         <div class="row">
-          <span style:display="block">Revision {revision.revision}{revision.revision === record.currentRevision ? " (current)" : ""}: {label(revision.details.state).toLowerCase()}, {revision.review === "candidate" ? "unconfirmed" : "established"}</span>
+          <span style:display="block">Revision {revision.revision}{revision.revision === record.currentRevision ? " (current)" : ""}: {label(revision.details.state).toLowerCase()}, {standing(revision)}</span>
           <span class="meta">{date(revision.recordedAt)} / {revision.recordedBy}{revision.effectiveAt === null ? "" : ` / applies from ${date(revision.effectiveAt)}`}</span>
           {#if revision.revision !== record.currentRevision}
             <p style:margin-top="6px" style:white-space="pre-wrap" style:overflow-wrap="anywhere">{revision.statement}</p>

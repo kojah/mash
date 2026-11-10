@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recordFixture } from "../../e2e/record-fixtures";
-import { kinds, parseRecord, parseRecordPage, timingLabel } from "./records";
+import { kinds, parseRecord, parseRecordPage, standing, timingLabel } from "./records";
 
 describe("record API boundary", () => {
   it("marks future and expired conclusions at their time boundaries", () => {
@@ -19,6 +19,25 @@ describe("record API boundary", () => {
         100,
       ),
     ).toBe("Expired");
+  });
+  it("tells a choice the agent made from the person's and from a candidate", () => {
+    const fixture = recordFixture("id", "decision");
+    const theirs = parseRecord(fixture).revisions[0];
+    if (!theirs) throw new Error("Missing fixture decision");
+    expect(standing(theirs)).toBe("established");
+    const revision = fixture.revisions[0];
+    if (!revision) throw new Error("Missing fixture revision");
+    const by = (decided_by: string) => ({
+      ...revision,
+      body: { ...revision.body, details: { ...revision.body.details, decided_by } },
+    });
+    const made = by("agent");
+    const agents = parseRecord({ ...fixture, revisions: [made] }).revisions[0];
+    if (!agents) throw new Error("Missing agent decision");
+    expect(standing(agents)).toBe("agent decided");
+    expect(standing({ ...agents, review: "candidate" })).toBe("unconfirmed");
+    const unknown = by("someone");
+    expect(() => parseRecord({ ...fixture, revisions: [unknown] })).toThrow();
   });
   it("decodes all four kinds without interpreting archived markup", () => {
     for (const kind of kinds) {

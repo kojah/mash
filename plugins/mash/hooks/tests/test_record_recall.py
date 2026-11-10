@@ -42,7 +42,8 @@ for line in sys.stdin:
             "conflicted": mode == "conflict",
             "body": {"review": "candidate" if mode == "candidate" else "established",
                      "statement": "Keep source evidence.",
-                     "details": {"kind": "decision"}}}]}
+                     "details": {"kind": "decision", **(
+                         {"decided_by": "agent"} if mode == "agent" else {})}}}]}
         result = {"structuredContent": packet}
     response = {"jsonrpc": "2.0", "id": request["id"], "result": result}
     print(json.dumps(response), flush=True)
@@ -95,6 +96,11 @@ class RecordRecall(unittest.TestCase):
         with patch.dict(os.environ, {"RECALL_TEST_MODE": "candidate"}):
             lines = record_recall.hints(str(self.binary), str(self.root), None, 1)
         self.assertTrue(lines[0].startswith("- unconfirmed decision: "), lines)
+
+    def test_a_choice_the_agent_made_is_labeled_as_the_agents(self) -> None:
+        with patch.dict(os.environ, {"RECALL_TEST_MODE": "agent"}):
+            lines = record_recall.hints(str(self.binary), str(self.root), None, 1)
+        self.assertTrue(lines[0].startswith("- agent decision: "), lines)
 
     def test_concurrent_file_claims_show_exactly_once_and_keep_projects_separate(
         self,

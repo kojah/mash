@@ -54,7 +54,11 @@ scope and `session_id` from the Mash session-start note and the person's exact
 words as the quote. The quote is checked against your session's transcript, so
 saving needs no index. Check `find_record_matches` for duplicates first. Review
 explicit user endorsements before establishing decisions or preferences; keep
-uncertainty as candidates. Recall lists candidates as unconfirmed; correct,
+uncertainty as candidates. A lasting choice you make yourself with a
+rationale, such as how to structure the code, is a decision with
+`details.decided_by: "agent"`: cite your own message making it (`purpose:
+"report"`) and it can be established without the person's endorsement. It
+cannot replace a decision the person made. Recall lists candidates as unconfirmed; correct,
 withdraw or forget one that is wrong. An occasional Stop check asks for
 anything missed (`MASH_RECORD_CAPTURE=off` disables the notes and the check).
 Never process older chats during

@@ -13,7 +13,7 @@ installed skill may describe another release; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"71b5520ba4ce38a97b2eac622850f82bfb6d4ba29f72be613685f355dff6fa2d","tool":"search","topic":"discovery"}
+{"expected_contract":"1f6e069b40092623ce6387aad0a322d852ef84e59876eb68cbd8e18062e619b7","tool":"search","topic":"discovery"}
 ```
 
 
@@ -59,7 +59,11 @@ scope and `session_id` from the Mash session-start note and the person's exact
 words as the quote. The quote is checked against your session's transcript, so
 saving needs no index. Check `find_record_matches` for duplicates first. Review
 explicit user endorsements before establishing decisions or preferences; keep
-uncertainty as candidates. Recall lists candidates as unconfirmed; correct,
+uncertainty as candidates. A lasting choice you make yourself with a
+rationale, such as how to structure the code, is a decision with
+`details.decided_by: "agent"`: cite your own message making it (`purpose:
+"report"`) and it can be established without the person's endorsement. It
+cannot replace a decision the person made. Recall lists candidates as unconfirmed; correct,
 withdraw or forget one that is wrong. An occasional Stop check asks for
 anything missed (`MASH_RECORD_CAPTURE=off` disables the notes and the check).
 Never process older chats during

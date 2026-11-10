@@ -4,7 +4,7 @@ import CircleHelp from "@lucide/svelte/icons/circle-help";
 import Gavel from "@lucide/svelte/icons/gavel";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import { whenLabel } from "../lib/browse";
-import { label, type NativeRecord } from "../lib/records";
+import { label, type NativeRecord, standing } from "../lib/records";
 import { recordHref } from "../lib/route.svelte";
 
 let { record, back = "#/records" }: { record: NativeRecord; back?: string } = $props();
@@ -26,7 +26,7 @@ const revision = $derived(
     <Icon size={18} aria-hidden="true" />
     <span style:min-width="0">
       <span class="clamp">{revision.statement}</span>
-      <span class="meta" style:display="block" style:margin-top="2px">{label(revision.details.kind).toLowerCase()}{revision.review === "candidate" ? " / unconfirmed" : ""} / {whenLabel(revision.recordedAt, Date.now())}</span>
+      <span class="meta" style:display="block" style:margin-top="2px">{label(revision.details.kind).toLowerCase()}{standing(revision) === "established" ? "" : ` / ${standing(revision)}`} / {whenLabel(revision.recordedAt, Date.now())}</span>
     </span>
   </a>
 {/if}

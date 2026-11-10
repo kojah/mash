@@ -26,6 +26,7 @@ class Hint:
     kind: str
     statement: str
     confirmed: bool
+    agent: bool = False
 
     @classmethod
     def parse(cls, value: Any) -> Hint:
@@ -53,14 +54,19 @@ class Hint:
             or not 0 < len(statement) <= 4096
         ):
             raise ValueError("invalid recall item")
-        return cls(record_id, revision, kind, statement, value["status"] == "current")
+        # A choice the agent made itself is settled, but not the person's word.
+        agent = kind == "decision" and details.get("decided_by") == "agent"
+        confirmed = value["status"] == "current"
+        return cls(record_id, revision, kind, statement, confirmed, agent)
 
     def line(self) -> str:
         statement = " ".join(self.statement.split())
         if len(statement) > 220:
             statement = statement[:219] + "…"
         lookup = json.dumps({"id": self.record_id}, separators=(",", ":"))
-        label = self.kind if self.confirmed else f"unconfirmed {self.kind}"
+        label = f"agent {self.kind}" if self.agent else self.kind
+        if not self.confirmed:
+            label = f"unconfirmed {label}"
         return f"- {label}: {statement} get_record={lookup}"
 
 

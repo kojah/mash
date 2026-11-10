@@ -103,6 +103,7 @@ fn native_records_similar_suggestions_never_merge_or_resurrect_retired_choices()
     let mut withdrawn = decision();
     withdrawn.details = Details::Decision {
         state: DecisionState::Withdrawn,
+        decided_by: DecidedBy::User,
         alternatives: vec![],
         consequences: vec![],
     };

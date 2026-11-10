@@ -193,10 +193,37 @@ fn evidence(
 
 fn requires_endorsement(body: &Body) -> bool {
     body.review == Review::Established
+        && !body.details.agent_decided()
         && matches!(
             body.details,
             Details::Decision { .. } | Details::Preference { .. }
         )
+}
+
+/// A settled agent decision rests on the agent's own message making it.
+fn agent_authored(body: &Body, sources: &[Evidence]) -> Result<(), AppError> {
+    let cited = sources
+        .iter()
+        .any(|source| source.source_role == Some(crate::role::Role::Assistant));
+    if body.review == Review::Established && body.details.agent_decided() && !cited {
+        return Err(AppError::usage(
+            "an established agent decision must cite the agent's own message where it made the choice",
+        ));
+    }
+    Ok(())
+}
+
+/// The person's decision stays theirs: an agent's choice cannot replace it.
+fn keeps_author(previous: &Body, body: &Body) -> Result<(), AppError> {
+    if matches!(previous.details, Details::Decision { .. })
+        && !previous.details.agent_decided()
+        && body.details.agent_decided()
+    {
+        return Err(AppError::usage(
+            "an agent decision cannot replace the person's decision; record the person's new choice with their endorsement",
+        ));
+    }
+    Ok(())
 }
 
 fn journal(connection: &Connection, id: &str) -> Result<(), AppError> {
@@ -284,6 +311,7 @@ fn create(
         requires_endorsement(body),
         live,
     )?;
+    agent_authored(body, &sources)?;
     connection
         .execute(
             "INSERT INTO records(id,owner,kind,scope,revision) VALUES(?1,?2,?3,?4,1)",
@@ -318,13 +346,14 @@ fn change(
         } => {
             validate_scope(scope)?;
             body.validate()?;
-            self::evidence(
+            let sources = self::evidence(
                 connection,
                 scope,
                 evidence,
                 requires_endorsement(body),
                 live,
             )?;
+            agent_authored(body, &sources)?;
             if let Some(receipt) = matches::duplicate(connection, scope, body, timestamp)? {
                 if matches!(on_duplicate, records::DuplicatePolicy::Report) {
                     return Err(conflict(&format!(
@@ -401,6 +430,7 @@ fn revise(
             "superseded records cannot be revived or edited; create a new choice",
         ));
     }
+    keeps_author(&previous, body)?;
     let sources = evidence(
         connection,
         &scope,
@@ -408,6 +438,7 @@ fn revise(
         requires_endorsement(body),
         live,
     )?;
+    agent_authored(body, &sources)?;
     insert_revision(
         connection,
         &expected.id,
@@ -451,6 +482,7 @@ fn supersede(
             "successor must be an established current record of the same kind",
         ));
     }
+    keeps_author(&previous, body)?;
     previous.details.supersede()?;
     create(connection, &id, &scope, body, citations, timestamp, live)?;
     insert_revision(

@@ -106,7 +106,10 @@ def saving(
         + json.dumps([{**citation, "purpose": "endorsement"}], separators=(",", ":"))
         + ". The quote is checked against this session's transcript, so no"
         " indexing is needed. Mark purpose endorsement only for the person's own"
-        " words; save an uncertain interpretation with review candidate"
+        " words; save an uncertain interpretation with review candidate. A lasting"
+        " choice you make yourself with a rationale, such as how to structure the"
+        " code, is a decision with details.decided_by agent: cite your own message"
+        " making it with purpose report and review established"
     )
 
 

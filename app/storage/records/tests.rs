@@ -1,5 +1,6 @@
 use super::*;
-use crate::records::{DecisionState, FactState, PreferenceState};
+use crate::records::{DecidedBy, DecisionState, FactState, PreferenceState};
+mod authorship;
 mod capture;
 mod dashboard;
 mod extraction;
@@ -44,6 +45,7 @@ fn body(details: Details) -> Body {
 fn decision() -> Body {
     body(Details::Decision {
         state: DecisionState::Accepted,
+        decided_by: DecidedBy::User,
         alternatives: vec!["SQLite".into()],
         consequences: vec![],
     })
