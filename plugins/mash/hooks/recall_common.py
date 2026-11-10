@@ -68,6 +68,39 @@ def resolve_project(cwd: str, timeout: float) -> tuple[str, str | None]:
     return toplevel, origin
 
 
+def saving(session: Any, toplevel: str, repository: str | None) -> str | None:
+    """How an agent saves memory about its own session: the project's record
+    scope and a citation by session ID, which needs no index. None when record
+    capture is off or the session ID is not a plain token."""
+    if os.environ.get("MASH_RECORD_CAPTURE", "").strip().lower() in (
+        "0",
+        "off",
+        "false",
+    ):
+        return None
+    if (
+        not isinstance(session, str)
+        or not 0 < len(session) <= 128
+        or not all(c.isascii() and (c.isalnum() or c in "-_") for c in session)
+    ):
+        return None
+    scope = (
+        {"kind": "repository", "identity": repository}
+        if repository
+        else {"kind": "local_project", "path": toplevel}
+    )
+    citation = {"session_id": session, "quote": "THEIR EXACT WORDS"}
+    return (
+        "use the Mash MCP record tool with scope "
+        + json.dumps(scope, separators=(",", ":"))
+        + " and evidence "
+        + json.dumps([{**citation, "purpose": "endorsement"}], separators=(",", ":"))
+        + ". The quote is checked against this session's transcript, so no"
+        " indexing is needed. Mark purpose endorsement only for the person's own"
+        " words; save an uncertain interpretation with review candidate"
+    )
+
+
 def path_key(path: str) -> str:
     """A path for comparison: forward slashes, no trailing slash, and for
     Windows drive paths (case-insensitive there) lowercase. Git reports

@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 HOOKS = Path(__file__).resolve().parent.parent
@@ -43,6 +44,50 @@ NEITHER = [
     "rename foo\n```\n# fixed yesterday\n```",
     "<pasted_content id='x'>what did we decide yesterday</pasted_content> summarize",
 ]
+
+
+LASTING = [
+    "from now on, run the linter before you commit",
+    "always use tabs in this repo",
+    "never push to main without asking",
+    "I prefer small commits",
+    "i'd rather keep the CLI surface small",
+    "let's go with Qdrant for local search",
+    "we'll stick with SQLite",
+    "I've decided to drop the TUI",
+    "keep in mind that the server is self-hosted",
+    "remember that deploys happen on Fridays",
+    "I've changed my mind about the package manager: this repo uses pnpm now",
+    "Plain exported functions only, that's how I want code in this repo.",
+    "Tests in this repo use Vitest.",
+    "we use Vitest for tests here",
+    "Tasks should live in SQLite. That's settled for this project.",
+]
+
+
+class Lasting(unittest.TestCase):
+    def test_standing_preferences_and_decisions(self) -> None:
+        for prompt in LASTING:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(prompt_recall.lasting(prompt))
+
+    def test_ordinary_recall_and_quoted_prompts_are_not_lasting(self) -> None:
+        for prompt in NEITHER + RECALL[:6] + ["/goal always use tabs"]:
+            with self.subTest(prompt=prompt):
+                self.assertFalse(prompt_recall.lasting(prompt))
+
+    def test_note_cites_the_session_and_joins_a_recall_nudge(self) -> None:
+        payload = {"prompt": LASTING[1], "cwd": str(HOOKS), "session_id": "abc-123"}
+        text = prompt_recall.context(payload) or ""
+        self.assertIn('"session_id":"abc-123"', text)
+        self.assertIn("find_record_matches", text)
+        both = prompt_recall.context({**payload, "prompt": LASTING[9]}) or ""
+        self.assertIn("search Mash history", both)
+        self.assertIn('"session_id":"abc-123"', both)
+        for broken in ({"session_id": "a b"}, {"cwd": "/no/such/dir"}, {"cwd": 1}):
+            self.assertIsNone(prompt_recall.context({**payload, **broken}))
+        with unittest.mock.patch.dict(os.environ, {"MASH_RECORD_CAPTURE": "off"}):
+            self.assertIsNone(prompt_recall.context(payload))
 
 
 class Classify(unittest.TestCase):

@@ -535,6 +535,7 @@ mod tests {
                     body,
                     evidence: vec![crate::records::Citation {
                         message_id: "source".into(),
+                        session_id: None,
                         quote: "port 8080".into(),
                         purpose: crate::records::EvidenceUse::Report,
                         expected_fingerprint: None,

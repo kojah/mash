@@ -43,7 +43,11 @@ impl Storage {
             } else {
                 Status::Current
             };
-            if (status != Status::Current || record.conflicted) && !request.include_review {
+            // Candidates are labeled and follow current records. Stale, inactive
+            // and contested records need a deliberate review request.
+            let review_only =
+                matches!(status, Status::StaleEvidence | Status::Inactive) || record.conflicted;
+            if review_only && !request.include_review {
                 continue;
             }
             let mut text = format!("{}\n{}", revision.body.statement, revision.body.rationale);

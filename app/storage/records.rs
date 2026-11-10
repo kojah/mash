@@ -49,11 +49,86 @@ fn validate_scope(scope: &Scope) -> Result<(), AppError> {
     }
 }
 
+/// Transcript messages cited before indexing has retained them, by message ID.
+type Live<'a> = std::collections::BTreeMap<&'a str, &'a records::live::Message>;
+
+/// Replace session citations with the message that contains each quote:
+/// the latest retained one, or else the one read from the live transcript.
+fn resolve_sessions<'a>(
+    connection: &Connection,
+    request: &Mutation,
+    transcript: &'a [records::live::Message],
+) -> Result<(Mutation, Live<'a>), AppError> {
+    let mut request = request.clone();
+    let mut live = Live::new();
+    for citation in request.change.citations_mut().into_iter().flatten() {
+        let Some(session) = citation.session_id.take() else {
+            if citation.message_id.is_empty() {
+                return Err(AppError::usage(
+                    "each citation needs a message_id or a session_id",
+                ));
+            }
+            continue;
+        };
+        if !citation.message_id.is_empty() {
+            return Err(AppError::usage(
+                "cite a message_id or a session_id, not both",
+            ));
+        }
+        bounded(&session, 512, "citation session ID")?;
+        bounded(&citation.quote, 8192, "quote")?;
+        let mut chats = connection
+            .prepare("SELECT id FROM chats WHERE id=?1 OR source_session=?1 ORDER BY id LIMIT 2")
+            .map_err(AppError::database)?;
+        let chats = chats
+            .query_map([&session], |row| row.get::<_, String>(0))
+            .map_err(AppError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::database)?;
+        if chats.len() > 1 {
+            return Err(AppError::usage(
+                "cited session matches multiple chats; use its chat ID",
+            ));
+        }
+        // An endorsement must be the person's own words, so only their messages match.
+        // It is also what they visibly said, not text a tool result repeats.
+        let role = (citation.purpose == EvidenceUse::Endorsement).then_some("user");
+        let retained: Option<String> = match chats.first() {
+            Some(chat) => connection
+                .query_row(
+                    "SELECT id FROM messages WHERE chat_id=?1 AND instr(CASE WHEN ?3 IS NULL THEN content ELSE COALESCE(search_projection,content) END,?2)>0 AND (?3 IS NULL OR role=?3) ORDER BY ordinal DESC LIMIT 1",
+                    params![chat, citation.quote, role],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(AppError::database)?,
+            None => None,
+        };
+        citation.message_id = if let Some(id) = retained {
+            id
+        } else if let Some(message) = transcript
+            .iter()
+            .find(|message| message.session_id == session && message.quote == citation.quote)
+        {
+            live.insert(&message.id, message);
+            message.id.clone()
+        } else {
+            return Err(conflict(if role.is_some() {
+                "endorsement quote was not found in the person's messages in that session; copy their exact words"
+            } else {
+                "quote was not found in that session; copy the exact words from a message"
+            }));
+        };
+    }
+    Ok((request, live))
+}
+
 fn evidence(
     connection: &Connection,
     scope: &Scope,
     citations: &[Citation],
     endorsement: bool,
+    live: &Live<'_>,
 ) -> Result<Vec<Evidence>, AppError> {
     if citations.is_empty() || citations.len() > 16 {
         return Err(AppError::usage("provide 1 to 16 source citations"));
@@ -69,7 +144,16 @@ fn evidence(
         let source = connection.query_row(
             "SELECT m.chat_id,m.content,m.role,c.repository,c.project FROM messages m JOIN chats c ON c.id=m.chat_id WHERE m.id=?1",
             [&citation.message_id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<String>>(4)?))
-        ).optional().map_err(AppError::database)?.ok_or_else(|| conflict("cited message is missing"))?;
+        ).optional().map_err(AppError::database)?
+        // A transcript message stands in until indexing retains it.
+        .or_else(|| live.get(citation.message_id.as_str()).map(|message| (
+            message.chat_id.clone(),
+            message.content.clone(),
+            message.role.as_str().to_owned(),
+            message.repository.clone(),
+            message.project.clone(),
+        )))
+        .ok_or_else(|| conflict("cited message is missing"))?;
         let (chat_id, content, role, repository, project) = source;
         let in_scope = match scope {
             Scope::Personal => true,
@@ -184,6 +268,7 @@ fn create(
     body: &Body,
     citations: &[Citation],
     timestamp: i64,
+    live: &Live<'_>,
 ) -> Result<(), AppError> {
     validate_scope(scope)?;
     body.validate()?;
@@ -192,7 +277,13 @@ fn create(
             "create a successor through supersede, not an already superseded record",
         ));
     }
-    let sources = evidence(connection, scope, citations, requires_endorsement(body))?;
+    let sources = evidence(
+        connection,
+        scope,
+        citations,
+        requires_endorsement(body),
+        live,
+    )?;
     connection
         .execute(
             "INSERT INTO records(id,owner,kind,scope,revision) VALUES(?1,?2,?3,?4,1)",
@@ -206,6 +297,7 @@ fn change(
     connection: &Connection,
     request: &Mutation,
     timestamp: i64,
+    live: &Live<'_>,
 ) -> Result<Receipt, AppError> {
     let id = format!(
         "record/{}/{}",
@@ -226,7 +318,13 @@ fn change(
         } => {
             validate_scope(scope)?;
             body.validate()?;
-            self::evidence(connection, scope, evidence, requires_endorsement(body))?;
+            self::evidence(
+                connection,
+                scope,
+                evidence,
+                requires_endorsement(body),
+                live,
+            )?;
             if let Some(receipt) = matches::duplicate(connection, scope, body, timestamp)? {
                 if matches!(on_duplicate, records::DuplicatePolicy::Report) {
                     return Err(conflict(&format!(
@@ -236,7 +334,7 @@ fn change(
                 }
                 return Ok(receipt);
             }
-            create(connection, &id, scope, body, evidence, timestamp)?;
+            create(connection, &id, scope, body, evidence, timestamp, live)?;
             Ok(Receipt {
                 record_id: id,
                 revision: 1,
@@ -248,16 +346,16 @@ fn change(
             expected,
             body,
             evidence: citations,
-        } => revise(connection, expected, body, citations, timestamp),
+        } => revise(connection, expected, body, citations, timestamp, live),
         Change::Supersede {
             expected,
             body,
             evidence: citations,
-        } => supersede(connection, id, expected, body, citations, timestamp),
+        } => supersede(connection, id, expected, body, citations, timestamp, live),
         Change::Confirm {
             expected,
             evidence: citations,
-        } => confirm(connection, expected, citations, timestamp),
+        } => confirm(connection, expected, citations, timestamp, live),
         Change::Resolve {
             expected,
             answer,
@@ -270,6 +368,7 @@ fn change(
             resolved_by.as_ref(),
             citations,
             timestamp,
+            live,
         ),
         Change::Forget { expected } => {
             current(connection, expected)?;
@@ -290,6 +389,7 @@ fn revise(
     body: &Body,
     citations: &[Citation],
     timestamp: i64,
+    live: &Live<'_>,
 ) -> Result<Receipt, AppError> {
     let (scope, previous, _) = current(connection, expected)?;
     body.validate()?;
@@ -301,7 +401,13 @@ fn revise(
             "superseded records cannot be revived or edited; create a new choice",
         ));
     }
-    let sources = evidence(connection, &scope, citations, requires_endorsement(body))?;
+    let sources = evidence(
+        connection,
+        &scope,
+        citations,
+        requires_endorsement(body),
+        live,
+    )?;
     insert_revision(
         connection,
         &expected.id,
@@ -325,6 +431,7 @@ fn supersede(
     body: &Body,
     citations: &[Citation],
     timestamp: i64,
+    live: &Live<'_>,
 ) -> Result<Receipt, AppError> {
     let (scope, mut previous, sources) = current(connection, expected)?;
     if body
@@ -345,7 +452,7 @@ fn supersede(
         ));
     }
     previous.details.supersede()?;
-    create(connection, &id, &scope, body, citations, timestamp)?;
+    create(connection, &id, &scope, body, citations, timestamp, live)?;
     insert_revision(
         connection,
         &expected.id,
@@ -376,6 +483,7 @@ fn confirm(
     expected: &Expected,
     citations: &[Citation],
     timestamp: i64,
+    live: &Live<'_>,
 ) -> Result<Receipt, AppError> {
     let (scope, body, _) = current(connection, expected)?;
     if body.review != Review::Established || !body.details.current() {
@@ -383,7 +491,13 @@ fn confirm(
             "only established current records can be confirmed; to establish a reviewed candidate, use revise with body.review=established and verified evidence",
         ));
     }
-    let sources = evidence(connection, &scope, citations, requires_endorsement(&body))?;
+    let sources = evidence(
+        connection,
+        &scope,
+        citations,
+        requires_endorsement(&body),
+        live,
+    )?;
     // Confirmation citations become retained dependencies for forget.
     let mut position: i64 = connection.query_row("SELECT COALESCE(MAX(position),-1)+1 FROM record_evidence WHERE record_id=?1 AND revision=?2",params![expected.id,expected.revision],|row| row.get(0)).map_err(AppError::database)?;
     if position + i64::try_from(sources.len()).unwrap_or(i64::MAX) > 256 {
@@ -396,13 +510,7 @@ fn confirm(
                     && citation.quote == source.quote
                     && citation.purpose == EvidenceUse::Endorsement
             });
-            let human: bool = connection
-                .query_row(
-                    "SELECT role='user' FROM messages WHERE id=?1",
-                    [&source.message_id],
-                    |row| row.get(0),
-                )
-                .map_err(AppError::database)?;
+            let human = source.source_role == Some(crate::role::Role::User);
             if !endorsed || !human {
                 continue;
             }
@@ -453,6 +561,7 @@ fn resolve(
     resolved_by: Option<&Expected>,
     citations: &[Citation],
     timestamp: i64,
+    live: &Live<'_>,
 ) -> Result<Receipt, AppError> {
     let (scope, mut body, _) = current(connection, expected)?;
     if let Some(resolver) = resolved_by {
@@ -487,7 +596,7 @@ fn resolve(
     *state = QuestionState::Resolved;
     *stored = Some(answer.to_owned());
     body.validate()?;
-    let sources = evidence(connection, &scope, citations, false)?;
+    let sources = evidence(connection, &scope, citations, false, live)?;
     insert_revision(
         connection,
         &expected.id,
@@ -582,7 +691,18 @@ fn confirmation_history(
 
 pub(crate) use reading::{read, read_page};
 impl Storage {
+    #[cfg(test)]
     pub(crate) fn mutate_record(&mut self, request: &Mutation) -> Result<Receipt, AppError> {
+        self.mutate_record_citing(request, &[])
+    }
+
+    /// Apply a record change. `transcript` holds quotes read from cited live
+    /// sessions, used only where retained history lacks the quoted message.
+    pub(crate) fn mutate_record_citing(
+        &mut self,
+        request: &Mutation,
+        transcript: &[records::live::Message],
+    ) -> Result<Receipt, AppError> {
         bounded(&request.operation_id, 256, "operation ID")?;
         let serialized = encode(request)?;
         if serialized.len() > 160_000 {
@@ -609,7 +729,8 @@ impl Storage {
             }
             return decode(&result);
         }
-        let result = change(&transaction, request, now()?)?;
+        let (resolved, live) = resolve_sessions(&transaction, request, transcript)?;
+        let result = change(&transaction, &resolved, now()?, &live)?;
         transaction
             .execute(
                 "INSERT INTO record_operations VALUES(?1,?2,?3)",

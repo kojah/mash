@@ -111,6 +111,19 @@ class Recall(unittest.TestCase):
         self.assertEqual(self.hook(), "")
         self.assertLess(time.monotonic() - started, 5)
 
+    def test_says_how_to_save_memory_even_without_history(self) -> None:
+        self.fake(chats=[])
+        text = self.hook()
+        self.assertTrue(text.startswith("Mash memory: "), text)
+        self.assertIn('"session_id":"current"', text)
+        self.assertIn(f'{{"kind":"repository","identity":"{ORIGIN}"}}', text)
+        self.fake(chats=[chat("subdir", str(self.repo / "sub"))])
+        self.assertIn("Mash memory: ", self.hook())
+        self.env["MASH_RECORD_CAPTURE"] = "off"
+        self.assertNotIn("Mash memory", self.hook())
+        del self.env["MASH_RECORD_CAPTURE"]
+        self.assertNotIn("Mash memory", self.hook(session="not a plain id"))
+
     def test_project_filtering_and_current_session(self) -> None:
         chats = [
             chat("current", str(self.repo)),
@@ -135,10 +148,10 @@ class Recall(unittest.TestCase):
         long_title = "x" * 500
         chats = [chat(f"c{n}", str(self.repo), title=long_title) for n in range(20)]
         self.fake(chats=chats)
-        self.assertLessEqual(len(self.hook()), 2000)
+        self.assertLessEqual(len(self.hook()), 2600)
         deep = self.root / ("d" * 200) / ("e" * 200) / ("f" * 200)
         deep.mkdir(parents=True)  # A huge header leaves no room for chat links.
         self.fake(chats=[chat(f"c{n}", str(deep)) for n in range(4)])
         text = self.hook(cwd=deep)
-        self.assertLessEqual(len(text), 2000)
+        self.assertLessEqual(len(text), 2600)
         self.assertIn("Mash recall for", text)

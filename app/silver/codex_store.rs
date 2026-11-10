@@ -120,28 +120,8 @@ pub(super) fn sources(physical: Vec<HistorySource>) -> Result<Vec<HistorySource>
             if meta.mode != Mode::Paginated {
                 continue;
             }
-            let activity = meta
-                .updated
-                .checked_mul(1_000_000)
-                .filter(|v| *v >= 0)
-                .ok_or_else(|| invalid("thread timestamp is out of range"))?;
+            sources.push(paginated(path, &state_file, id, bytes, &meta)?);
             replaced.insert(meta.rollout);
-            let mut wal = state_file.as_os_str().to_os_string();
-            wal.push("-wal");
-            sources.push(HistorySource {
-                identity: SourceIdentity {
-                    path: path.clone(),
-                    session: Some(id),
-                },
-                activity_ns: Some(activity),
-                estimated_bytes: Some(
-                    u64::try_from(bytes).map_err(|_| invalid("invalid thread byte count"))?,
-                ),
-                dependencies: vec![
-                    super::source::Dependency::Required(state_file.clone()),
-                    super::source::Dependency::Optional(wal.into()),
-                ],
-            });
         }
     }
     sources.extend(physical.into_iter().filter(|s| {
@@ -149,6 +129,73 @@ pub(super) fn sources(physical: Vec<HistorySource>) -> Result<Vec<HistorySource>
             && !replaced.contains(&s.identity.path)
     }));
     Ok(sources)
+}
+
+fn paginated(
+    path: &Path,
+    state_file: &Path,
+    id: String,
+    bytes: i64,
+    meta: &Metadata,
+) -> Result<HistorySource, AppError> {
+    let activity = meta
+        .updated
+        .checked_mul(1_000_000)
+        .filter(|v| *v >= 0)
+        .ok_or_else(|| invalid("thread timestamp is out of range"))?;
+    let mut wal = state_file.as_os_str().to_os_string();
+    wal.push("-wal");
+    Ok(HistorySource {
+        identity: SourceIdentity {
+            path: path.to_path_buf(),
+            session: Some(id),
+        },
+        activity_ns: Some(activity),
+        estimated_bytes: Some(
+            u64::try_from(bytes).map_err(|_| invalid("invalid thread byte count"))?,
+        ),
+        dependencies: vec![
+            super::source::Dependency::Required(state_file.to_path_buf()),
+            super::source::Dependency::Optional(wal.into()),
+        ],
+    })
+}
+
+/// One thread's source, selected as `sources` selects it but without scanning
+/// the store: its paginated history when it has stored items, otherwise the
+/// rollout file its metadata names. `None` when the store does not know it.
+pub(super) fn session_source(path: &Path, id: &str) -> Result<Option<HistorySource>, AppError> {
+    let state_file = state_path(path);
+    let state = sqlite_source::open(&state_file)?;
+    let known: bool = state
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM threads WHERE id=?1)",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(AppError::database)?;
+    if !known {
+        return Ok(None);
+    }
+    let meta = metadata(&state, id)?;
+    let bytes: Option<i64> = if meta.mode == Mode::Paginated {
+        sqlite_source::open(path)?
+            .query_row(
+                "WITH history AS (
+                SELECT length(CAST(item_json AS BLOB)) AS bytes FROM thread_items WHERE thread_id=?1
+                UNION ALL SELECT length(CAST(item_json AS BLOB)) FROM thread_realtime_items WHERE thread_id=?1)
+             SELECT SUM(bytes) FROM history",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(AppError::database)?
+    } else {
+        None
+    };
+    Ok(Some(match bytes {
+        Some(bytes) => paginated(path, &state_file, id.to_owned(), bytes, &meta)?,
+        None => HistorySource::file(meta.rollout),
+    }))
 }
 
 pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {

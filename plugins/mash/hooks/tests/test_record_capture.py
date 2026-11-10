@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -69,70 +70,65 @@ class RecordCapture(unittest.TestCase):
             "session_id": "host-session",
             "turn_id": "turn-one",
             "stop_hook_active": False,
+            "cwd": str(self.root),
             "last_assistant_message": "Done.",
         }
-
-    def test_capture_requests_review_then_suppresses_same_turn_and_reentry(
-        self,
-    ) -> None:
-        text = record_capture.context(self.payload)
-        self.assertIsNotNone(text)
-        assert text is not None
-        for expected in (
-            "exact quotes",
-            "find_record_matches",
-            "user's own explicit endorsement",
-            "current-chat",
-            "Work only on new outcomes",
-        ):
-            self.assertIn(expected, text)
-        self.assertLess(len(text), 5000)
-        self.assertNotIn("older-chat", text)
-        self.assertNotIn("extract_records", text)
-        self.assertIsNone(record_capture.context(self.payload))
-        self.assertIsNone(
-            record_capture.context({**self.payload, "stop_hook_active": True})
-        )
-        self.assertEqual(
-            json.loads(self.log.read_text()), {"session_id": "host-session"}
-        )
 
     def turn(self, name: str) -> str | None:
         return record_capture.context({**self.payload, "turn_id": name})
 
-    def test_later_turns_stay_quiet_until_new_source_and_the_interval(self) -> None:
+    def clock(self) -> unittest.mock.MagicMock:
         clock = patch.object(record_capture.time, "time", return_value=1000.0)
-        now = clock.start()
         self.addCleanup(clock.stop)
-        self.assertIsNotNone(self.turn("one"))
-        now.return_value += record_capture.MIN_INTERVAL + 1
-        self.assertIsNone(self.turn("unchanged source"))
-        os.environ["CAPTURE_FINGERPRINT"] = "b"
-        now.return_value += 1
-        self.assertIsNotNone(self.turn("new source"))
-        os.environ["CAPTURE_FINGERPRINT"] = "c"
+        return clock.start()
+
+    def test_first_interval_is_quiet_then_one_check_per_interval(self) -> None:
+        now = self.clock()
+        self.assertIsNone(self.turn("first"))
         now.return_value += record_capture.MIN_INTERVAL - 1
         self.assertIsNone(self.turn("too soon"))
+        self.assertFalse(self.log.exists(), "a quiet turn never starts Mash")
         now.return_value += 1
-        text = self.turn("interval passed")
-        self.assertIn("c" * 64, text or "")
-        self.assertIsNone(self.turn("already reviewed"))
+        text = self.turn("due") or ""
+        for expected in (
+            '"session_id":"host-session"',
+            '{"kind":"local_project","path":',
+            "find_record_matches",
+            "user's own explicit endorsement",
+            "never review older chats",
+            "do not mention this check",
+        ):
+            self.assertIn(expected, text)
+        self.assertLess(len(text), 2500)
+        self.assertNotIn("older-chat", text)
+        self.assertNotIn("extract_records", text)
+        self.assertEqual(
+            json.loads(self.log.read_text()), {"session_id": "host-session"}
+        )
+        self.assertIsNone(self.turn("due"), "the same turn is asked once")
+        self.assertIsNone(
+            record_capture.context(
+                {**self.payload, "turn_id": "reentry", "stop_hook_active": True}
+            )
+        )
+        now.return_value += record_capture.MIN_INTERVAL - 1
+        self.assertIsNone(self.turn("still within the interval"))
+        now.return_value += 1
+        self.assertIsNotNone(self.turn("next interval"))
         now.return_value -= 10 * record_capture.MIN_INTERVAL
-        os.environ["CAPTURE_FINGERPRINT"] = "d"
-        self.assertIsNotNone(self.turn("clock moved backwards"))
-
-    def test_unindexed_session_is_asked_to_index_once(self) -> None:
-        os.environ.update(CAPTURE_MODE="empty", MASH_AUTO_INDEX="on")
-        self.assertIn("Run one incremental Mash index", self.turn("one") or "")
-        with patch.object(record_capture.time, "time", return_value=1e12):
-            self.assertIsNone(self.turn("two"))
-            os.environ["CAPTURE_MODE"] = "ok"
-            self.assertIn("current-chat", self.turn("indexed") or "")
+        self.assertIsNone(self.turn("clock moved backwards restarts the interval"))
+        now.return_value += record_capture.MIN_INTERVAL
+        self.assertIsNotNone(self.turn("and resumes"))
 
     def test_legacy_host_response_fingerprint_and_explicit_opt_out(self) -> None:
+        now = self.clock()
         self.payload.pop("turn_id")
+        self.assertIsNone(record_capture.context(self.payload))
+        now.return_value += record_capture.MIN_INTERVAL
+        self.payload["last_assistant_message"] = "Later."
         self.assertIsNotNone(record_capture.context(self.payload))
         self.assertIsNone(record_capture.context(self.payload))
+        now.return_value += record_capture.MIN_INTERVAL
         os.environ["MASH_RECORD_CAPTURE"] = "off"
         self.assertIsNone(
             record_capture.context(
@@ -140,18 +136,24 @@ class RecordCapture(unittest.TestCase):
             )
         )
 
-    def test_disabled_policy_and_no_indexed_work_do_not_continue(self) -> None:
+    def test_disabled_policy_is_quiet_and_keeps_the_interval_open(self) -> None:
+        now = self.clock()
+        self.assertIsNone(self.turn("first"))
+        now.return_value += record_capture.MIN_INTERVAL
         os.environ["CAPTURE_MODE"] = "disabled"
-        self.assertIsNone(record_capture.context(self.payload))
+        self.assertIsNone(self.turn("disabled"))
         os.environ["CAPTURE_MODE"] = "empty"
-        self.assertIsNone(record_capture.context(self.payload))
-        os.environ["MASH_AUTO_INDEX"] = "on"
-        text = record_capture.context({**self.payload, "turn_id": "next"})
-        self.assertIn("Do not rebuild or install models", text or "")
+        self.assertIsNotNone(self.turn("an unindexed session can still save"))
 
     def test_entrypoint_fails_open_for_bad_transport_data_and_timeout(self) -> None:
         hook = Path(record_capture.__file__)
-        for mode in ("invalid", "error", "sleep"):
+        state = self.root / "state"
+        state.mkdir()
+        key = record_capture.hashlib.sha256(b"host-session").hexdigest()
+        (state / f"capture-{key}.json").write_text(
+            json.dumps({"version": 1, "turn": "", "prompted_at": 1})
+        )
+        for mode in ("error", "sleep"):
             os.environ["CAPTURE_MODE"] = mode
             started = time.monotonic()
             result = subprocess.run(

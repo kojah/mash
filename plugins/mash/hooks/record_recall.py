@@ -16,6 +16,7 @@ from typing import Any
 PROTOCOL = "2025-06-18"
 MAX_LINE = 65536
 KINDS = {"decision", "preference", "fact", "open_question"}
+REVIEWS = {"current": "established", "candidate": "candidate"}
 
 
 @dataclass(frozen=True)
@@ -24,18 +25,20 @@ class Hint:
     revision: int
     kind: str
     statement: str
+    confirmed: bool
 
     @classmethod
     def parse(cls, value: Any) -> Hint:
         if (
             not isinstance(value, dict)
-            or value.get("status") != "current"
+            or value.get("status") not in REVIEWS
             or value.get("conflicted", False) is not False
         ):
-            raise ValueError("recall returned a non-current record")
+            raise ValueError("recall returned a stale, inactive or contested record")
         body = value.get("body")
-        if not isinstance(body, dict) or body.get("review") != "established":
-            raise ValueError("recall returned an unreviewed record")
+        # The label shown to the agent must agree with the stored review state.
+        if not isinstance(body, dict) or body.get("review") != REVIEWS[value["status"]]:
+            raise ValueError("recall status disagrees with the record's review")
         details = body.get("details")
         kind = details.get("kind") if isinstance(details, dict) else None
         record_id, revision = value.get("id"), value.get("revision")
@@ -50,14 +53,15 @@ class Hint:
             or not 0 < len(statement) <= 4096
         ):
             raise ValueError("invalid recall item")
-        return cls(record_id, revision, kind, statement)
+        return cls(record_id, revision, kind, statement, value["status"] == "current")
 
     def line(self) -> str:
         statement = " ".join(self.statement.split())
         if len(statement) > 220:
             statement = statement[:219] + "…"
         lookup = json.dumps({"id": self.record_id}, separators=(",", ":"))
-        return f"- {self.kind}: {statement} get_record={lookup}"
+        label = self.kind if self.confirmed else f"unconfirmed {self.kind}"
+        return f"- {label}: {statement} get_record={lookup}"
 
 
 async def reply(process: asyncio.subprocess.Process, expected: int) -> dict[str, Any]:

@@ -118,6 +118,11 @@ impl Storage {
                 ));
             }
             for citation in &draft.evidence {
+                if citation.session_id.is_some() {
+                    return Err(AppError::usage(
+                        "extraction cites reviewed messages by message_id",
+                    ));
+                }
                 let in_chat: bool = transaction
                     .query_row(
                         "SELECT EXISTS(SELECT 1 FROM messages WHERE id=?1 AND chat_id=?2)",
@@ -140,7 +145,12 @@ impl Storage {
                     on_duplicate: draft.on_duplicate.clone(),
                 },
             };
-            records.push(change(&transaction, &mutation, timestamp)?);
+            records.push(change(
+                &transaction,
+                &mutation,
+                timestamp,
+                &super::Live::new(),
+            )?);
         }
         transaction.execute("INSERT INTO record_checkpoints(scope,chat_id,source_fingerprint) VALUES(?1,?2,?3) ON CONFLICT(scope,chat_id) DO UPDATE SET source_fingerprint=excluded.source_fingerprint", params![encode(&request.scope)?, request.chat_id, fingerprint]).map_err(AppError::database)?;
         let result = Receipt {

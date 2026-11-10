@@ -571,6 +571,25 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
     ))
 }
 
+/// Parse one provider source as it is now, without writing silver.
+/// `None` means the snapshot ended in an incomplete record.
+pub(crate) fn read_transcript(
+    provider: Provider,
+    source: &HistorySource,
+) -> Result<Option<Chat>, AppError> {
+    let mut stamp = source.stamp()?;
+    Ok(parse_source_with_retries(source, &mut stamp, provider.parser())?.chat)
+}
+
+/// A Codex session's source from the thread store at `store`, as indexing
+/// selects it, so message identities match what indexing will retain.
+pub(crate) fn codex_session_source(
+    store: &Path,
+    session: &str,
+) -> Result<Option<HistorySource>, AppError> {
+    codex_store::session_source(store, session)
+}
+
 #[tracing::instrument(name = "parse_source", skip_all, fields(attempts = tracing::field::Empty))]
 fn parse_source_with_retries(
     source: &HistorySource,

@@ -331,8 +331,13 @@ async fn dispatch(
         }
         Operation::RecordMutation(request) => {
             let database = database.to_path_buf();
+            let roots = configuration.providers.clone();
             crate::blocking(move || {
-                crate::storage::Storage::open_existing(&database)?.mutate_record(&request)
+                // Read cited live transcripts before taking the write transaction.
+                let transcript =
+                    crate::records::live::read(&roots, &request.change.session_quotes())?;
+                crate::storage::Storage::open_existing(&database)?
+                    .mutate_record_citing(&request, &transcript)
             })
             .await
             .map(Response::RecordMutation)

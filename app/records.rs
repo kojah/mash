@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppError;
 pub(crate) mod capture;
 pub(crate) mod extraction;
+pub(crate) mod live;
 pub(crate) mod matches;
 pub(crate) mod recall;
 pub(crate) mod transfer;
@@ -269,7 +270,13 @@ impl rusqlite::types::FromSql for EvidenceUse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Citation {
+    /// A retained message ID. Leave empty when citing by `session_id`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub message_id: String,
+    /// The citing agent's own session: its host session ID or chat ID. Mash
+    /// cites the latest retained message in that chat containing the quote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
     pub quote: String,
     #[serde(default)]
     pub purpose: EvidenceUse,
@@ -397,6 +404,36 @@ pub(crate) struct Record {
     pub conflicted: bool,
     pub next_before_revision: Option<i64>,
     pub next_link_offset: Option<usize>,
+}
+
+impl Change {
+    pub(crate) fn citations_mut(&mut self) -> Option<&mut Vec<Citation>> {
+        match self {
+            Self::Create { evidence, .. }
+            | Self::Revise { evidence, .. }
+            | Self::Supersede { evidence, .. }
+            | Self::Confirm { evidence, .. }
+            | Self::Resolve { evidence, .. } => Some(evidence),
+            Self::Link { .. } | Self::Forget { .. } => None,
+        }
+    }
+
+    /// Quotes cited by session, to look up in that session's live transcript.
+    pub(crate) fn session_quotes(&self) -> Vec<live::Quote> {
+        let mut change = self.clone();
+        change
+            .citations_mut()
+            .into_iter()
+            .flatten()
+            .filter_map(|citation| {
+                Some(live::Quote {
+                    session_id: citation.session_id.clone()?,
+                    text: citation.quote.clone(),
+                    user_only: citation.purpose == EvidenceUse::Endorsement,
+                })
+            })
+            .collect()
+    }
 }
 
 impl Record {

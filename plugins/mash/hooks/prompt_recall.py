@@ -1,7 +1,9 @@
 """UserPromptSubmit hook: nudge the agent to search Mash history when a prompt
 looks back at earlier work or names something from outside the conversation.
 
-It reads only the prompt and never runs Mash, so it is fast and needs no index.
+A prompt that states a lasting preference or decision also gets a note on how
+to save it. It reads only the prompt and never runs Mash, so it is fast and
+needs no index.
 Fails open: any error produces no output and exit status 0. Set
 `MASH_PROMPT_RECALL=off` to disable it.
 """
@@ -11,8 +13,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from typing import Any, Literal
+
+import recall_common as common
 
 Kind = Literal["recall", "reference"]
 
@@ -52,6 +57,38 @@ REFERENCE = re.compile(
     r"\b(?i:pr|pull request|issue|ticket)\s*#?\d+\b"
     r"|(?<![\w&])#\d+\b"
     r"|\b[A-Z][A-Z0-9]+-\d+\b"
+)
+# Prompts that state something lasting: a standing preference or a decision.
+MEMORY = re.compile(
+    "|".join(
+        [
+            r"\bfrom now on\b",
+            r"\bgoing forward\b",
+            r"\bin (?:the )?future\b",
+            r"\b(?:always|never) (?:use|do|run|write|add|put|commit|push|ask|make"
+            r"|include|keep|assume|create|open|touch|edit|delete|skip|prefer)\b",
+            r"\bi(?: would|'d)? (?:much |really |strongly )?prefer\b",
+            r"\bi(?:'d| would) rather\b",
+            r"\bmy preference\b",
+            r"\b(?:keep|bear) in mind\b",
+            r"\b(?:don'?t|do not|never) forget\b",
+            r"\bmake a note\b",
+            r"\bremember (?:that|this)\b",
+            r"\blet'?s (?:go with|use|stick (?:with|to)|settle on|standardi[sz]e on)\b",
+            r"\bwe(?:'ll| will| should) (?:go with|use|stick (?:with|to)"
+            r"|standardi[sz]e on)\b",
+            r"\b(?:i|we)(?:'ve| have)? decided\b",
+            r"\bthe decision is\b",
+            r"\bchanged? (?:my|our) mind\b",
+            r"\bthat'?s (?:settled|decided|final|the rule|how (?:i|we) (?:want|do))\b",
+            r"\b(?:this|the|our) (?:repo|repository|project|codebase|team) (?:now )?"
+            r"(?:uses?|should use|will use|is using)\b",
+            r"\bwe (?:now |always |only )?use\b",
+            r"\b(?:in|for) this (?:repo|repository|project|codebase) "
+            r"(?:use|uses|we|i)\b",
+        ]
+    ),
+    re.IGNORECASE,
 )
 POSSESSIVE = re.compile(r"\b([a-z][a-z\-]{2,})['’]s\b", re.IGNORECASE)
 # Possessive-looking words that rarely name an outside person or project.
@@ -98,8 +135,27 @@ def classify(prompt: str) -> Kind | None:
     return "reference" if any(name not in COMMON for name in names) else None
 
 
+def lasting(prompt: str) -> bool:
+    """Whether the person's own words state a standing preference or decision."""
+    text = QUOTED.sub(" ", prompt[:SCAN_LIMIT])
+    return not text.lstrip().startswith("/") and bool(MEMORY.search(text))
+
+
+def memory(payload: dict[str, Any]) -> str | None:
+    """How to save what this prompt states, citing the session it was said in."""
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str):
+        return None
+    saving = common.saving(payload.get("session_id"), *common.resolve_project(cwd, 0.5))
+    return saving and (
+        "Mash: this prompt may state a lasting preference or decision. If it"
+        f" does, save it now: {saving}. Check find_record_matches for a"
+        " duplicate first. Skip one-off instructions."
+    )
+
+
 def context(payload: Any) -> str | None:
-    """The nudge for this hook payload, or None when the prompt needs none."""
+    """The nudges for this hook payload, or None when the prompt needs none."""
     if os.environ.get("MASH_PROMPT_RECALL", "").strip().lower() in (
         "0",
         "off",
@@ -107,8 +163,16 @@ def context(payload: Any) -> str | None:
     ):
         return None
     prompt = payload.get("prompt") if isinstance(payload, dict) else None
-    kind = classify(prompt) if isinstance(prompt, str) else None
-    return NUDGES[kind] if kind else None
+    if not isinstance(prompt, str):
+        return None
+    kind = classify(prompt)
+    nudges = [NUDGES[kind]] if kind else []
+    if lasting(prompt):
+        try:
+            nudges += [text] if (text := memory(payload)) else []
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass  # The history nudge still stands without a project.
+    return "\n".join(nudges) or None
 
 
 def main() -> int:

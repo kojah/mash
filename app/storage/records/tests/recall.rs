@@ -69,13 +69,15 @@ fn native_records_recall_ranks_without_confirming_and_labels_review() {
         second.record_id
     );
     storage.connection.execute("UPDATE record_revisions SET body=json_set(body,'$.review','candidate') WHERE record_id=?1", [&second.record_id]).unwrap();
+    let default = storage.recall_records(&request(), Policy::ON).unwrap();
     assert_eq!(
-        storage
-            .recall_records(&request(), Policy::ON)
-            .unwrap()
+        default
             .records
-            .len(),
-        1
+            .iter()
+            .map(|item| item.status)
+            .collect::<Vec<_>>(),
+        [Status::Current, Status::Candidate],
+        "candidates are recalled by default, labeled, after current records"
     );
     let mut review = request();
     review.include_review = true;

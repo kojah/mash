@@ -6,25 +6,34 @@ before recording a conclusion. Records are interpretations; a matching quote
 does not prove that an interpretation is correct.
 
 The plugin recalls existing memory at session start and before file reads.
-When the agent finishes a turn and the session has newly indexed messages, it
-also requests an automatic capture pass, at most once every ten minutes.
-The agent reviews new outcomes from that session, checks for duplicates and
-saves durable decisions, preferences, facts and open questions with quotes from indexed
-messages. Reading alone never creates or confirms records.
+It also tells the agent how to save memory as it happens: when you state a
+lasting preference, make or confirm a decision, correct how the agent works, or
+settle a non-obvious fact. A prompt that reads like a standing preference or a
+decision gets a reminder to save it.
 
-Automatic capture uses the agent you are already running, including its normal
-permissions and token budget. It does not start another agent, download models or run an
-independent background model. Install the current Mash binary and plugin, then
-restart the agent. Codex also requires reviewing changed plugin hooks in
-`/hooks` before they run.
+The agent cites its own session and your exact words. Mash checks the quote
+against that session's transcript at once, so saving does not wait for
+indexing and the record is recalled straight away. If a later index of that
+chat does not contain the quoted message, the evidence is marked stale and
+default recall leaves the record out. Decisions and
+preferences are established only by your own words; other conclusions are
+saved as candidates. Reading alone never creates or confirms records.
 
-Set `MASH_RECORD_CAPTURE=off` to disable automatic capture while retaining
-recall. `[records] enabled = false` in the node configuration also disables
-capture and backfill. After failures or denied permissions, source history stays
-available for an explicit retry. The hook permits at most one continuation pass
-per turn and never loops waiting
-for a record to be saved. An agent can still miss or misinterpret a conclusion;
-inspect important memory and its supporting messages.
+Recall shows candidates after established records, labeled as unconfirmed. If
+one is wrong, ask the agent to correct, withdraw or forget it.
+
+As a safety net, the plugin occasionally asks the agent to save anything it
+missed: never in a session's first fifteen minutes, and at most once every
+fifteen minutes after that. Saving uses the agent you are already running,
+including its normal permissions and token budget. It does not start another
+agent, download models or run an independent background model. Install the
+current Mash binary and plugin, then restart the agent. Codex also requires
+reviewing changed plugin hooks in `/hooks` before they run.
+
+Set `MASH_RECORD_CAPTURE=off` to disable the saving notes and the safety net
+while retaining recall. `[records] enabled = false` in the node configuration
+also disables capture and backfill. An agent can still miss or misinterpret a
+conclusion; inspect important memory and its supporting messages.
 
 ## Backfill earlier memory
 
@@ -68,9 +77,9 @@ those limits. `truncated` means a relevant result did not fit; `scan_limited`
 means more than 256 recent records existed in the selected scope. Use
 `list_records` and its pagination for a complete inspection.
 
-`include_review` adds records labeled `candidate`, `stale_evidence` or `inactive`
-after current records. It also includes records with `conflicted: true`; default
-recall and automatic hooks omit these. Conflict is separate from evidence freshness,
+Candidates follow current records with `status: "candidate"`. `include_review`
+adds records labeled `stale_evidence` or `inactive`, and records with
+`conflicted: true`; default recall and automatic hooks omit these. Conflict is separate from evidence freshness,
 so a record can have both stale evidence and a known disagreement. These labels are not approval. Personal records are only
 included alongside another scope when explicitly requested with `include_personal`.
 For file context, supply `file: "src/main.rs"` with a repository or local-project
@@ -78,8 +87,8 @@ scope. It matches that exact relative path in the record text or retained quotes
 not `other/src/main.rs` or `src/main.rs.bak`; personal scope expansion is disabled
 for file requests.
 
-The plugin's session-start hook shows up to three current project records before
-recent chats. Its file-read hook can show matching records once per file/session,
+The plugin's session-start hook shows up to three project records before
+recent chats, marking candidates as unconfirmed. Its file-read hook can show matching records once per file/session,
 alongside earlier chats. Both call the same local recall API with a short deadline
 and continue without record context if it fails. `MASH_RECORD_RECALL=off` disables
 record context while retaining chat hints; `MASH_FILE_RECALL=off` disables the
@@ -217,7 +226,15 @@ supporting chat:
 }
 ```
 
-Replace IDs and the quote with actual evidence. A short approval may cite the
+Replace IDs and the quote with actual evidence. An agent recording something
+from its own running session can cite it without a message ID:
+
+```json
+{"session_id": "THE_AGENTS_SESSION_ID", "quote": "Yes, let's use Qdrant.", "purpose": "endorsement"}
+```
+
+Mash then cites the latest message in that session containing the quote. For an
+endorsement that is the latest message where the person visibly said it. A short approval may cite the
 preceding proposal as `context` alongside the approval as `endorsement`.
 User-role messages sometimes contain automated reports: do not classify those
 as the person's endorsement. Keep uncertain interpretations as `candidate`

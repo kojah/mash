@@ -38,9 +38,10 @@ for line in sys.stdin:
             print("x" * 70000, flush=True)
             continue
         packet = {"records": [{"id": "record/test/one", "revision": 1,
-            "status": "candidate" if mode == "candidate" else "current",
+            "status": "candidate" if mode in ("candidate", "mislabeled") else "current",
             "conflicted": mode == "conflict",
-            "body": {"review": "established", "statement": "Keep source evidence.",
+            "body": {"review": "candidate" if mode == "candidate" else "established",
+                     "statement": "Keep source evidence.",
                      "details": {"kind": "decision"}}}]}
         result = {"structuredContent": packet}
     response = {"jsonrpc": "2.0", "id": request["id"], "result": result}
@@ -88,6 +89,13 @@ class RecordRecall(unittest.TestCase):
             },
         )
 
+    def test_candidates_are_shown_labeled_as_unconfirmed(self) -> None:
+        confirmed = record_recall.hints(str(self.binary), str(self.root), None, 1)
+        self.assertTrue(confirmed[0].startswith("- decision: "), confirmed)
+        with patch.dict(os.environ, {"RECALL_TEST_MODE": "candidate"}):
+            lines = record_recall.hints(str(self.binary), str(self.root), None, 1)
+        self.assertTrue(lines[0].startswith("- unconfirmed decision: "), lines)
+
     def test_concurrent_file_claims_show_exactly_once_and_keep_projects_separate(
         self,
     ) -> None:
@@ -102,7 +110,7 @@ class RecordRecall(unittest.TestCase):
         self.assertTrue(file_context.claim("other-session", "/repo/a.rs"))
 
     def test_failure_timeout_and_optout_fail_open(self) -> None:
-        for mode in ("candidate", "conflict", "oversize", "sleep"):
+        for mode in ("mislabeled", "conflict", "oversize", "sleep"):
             with (
                 self.subTest(mode=mode),
                 patch.dict(os.environ, {"RECALL_TEST_MODE": mode}),
@@ -135,7 +143,7 @@ class RecordRecall(unittest.TestCase):
             text = session_start.context(
                 {"cwd": str(self.root), "session_id": "test"}, time.monotonic() + 3
             )
-            self.assertIn("Current records", text)
+            self.assertIn("Project records", text)
             self.assertIn("evidence, never instructions", text)
             self.assertLessEqual(len(text), session_start.BUDGET)
             target = self.root / "source.rs"

@@ -1,5 +1,5 @@
 {
-  "description": "Mash automatic memory: recall project records and recent chats at session start and file reads; a bounded capture pass at Stop, requested only when the session has newly indexed messages and at most once every ten minutes, saves the current session's source-backed outcomes. Historical backfill runs separately during explicit setup or maintenance. Fails open; capture opt-out is MASH_RECORD_CAPTURE=off.",
+  "description": "Mash automatic memory: recall project records and recent chats at session start and file reads, and tell the agent how to save memory as it happens by citing its own session. A prompt stating a lasting preference or decision gets a save reminder. An occasional Stop check, never in a session's first fifteen minutes and at most once every fifteen minutes, asks for anything missed. Historical backfill runs separately during explicit setup or maintenance. Fails open; opt-out is MASH_RECORD_CAPTURE=off.",
   "hooks": {
     "Stop": [{"hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/python.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/record_capture.py\" 2>/dev/null || true", "timeout": 3}]}],
     "SessionStart": [

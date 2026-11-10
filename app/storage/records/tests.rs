@@ -3,6 +3,7 @@ use crate::records::{DecisionState, FactState, PreferenceState};
 mod capture;
 mod dashboard;
 mod extraction;
+mod live;
 mod matches;
 mod projection;
 mod publication;
@@ -50,6 +51,7 @@ fn decision() -> Body {
 
 fn citation(message: &str, quote: &str) -> Citation {
     Citation {
+        session_id: None,
         message_id: message.into(),
         quote: quote.into(),
         purpose: EvidenceUse::Endorsement,

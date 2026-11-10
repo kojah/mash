@@ -114,7 +114,7 @@ fn revision(
     body: &str,
     recorded_at: i64,
 ) -> Result<records::RecordRevision, AppError> {
-    let mut statement = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content,e.purpose,e.source_role,m.role FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
+    let mut statement = connection.prepare("SELECT e.chat_id,e.message_id,e.fingerprint,e.quote,m.content,e.purpose,e.source_role,m.role,(SELECT COALESCE(c.updated_at,c.created_at,9223372036854775807) FROM chats c WHERE c.id=e.chat_id),EXISTS(SELECT 1 FROM tombstones t WHERE t.chat_id=e.chat_id) FROM record_evidence e LEFT JOIN messages m ON m.id=e.message_id AND m.chat_id=e.chat_id WHERE e.record_id=?1 AND e.revision=?2 ORDER BY e.position").map_err(AppError::database)?;
     let mut rows = statement
         .query(params![id, revision])
         .map_err(AppError::database)?;
@@ -131,7 +131,16 @@ fn revision(
         };
         let content: Option<String> = row.get(4).map_err(AppError::database)?;
         let role: Option<crate::role::Role> = row.get(7).map_err(AppError::database)?;
-        evidence_current &= source_current(&source, content.as_deref(), role.as_ref());
+        // A quote verified against a live transcript awaits indexing while
+        // retained history still ends before the record was written. Once
+        // history passes that point, a missing message is stale evidence.
+        let retained_until: Option<i64> = row.get(8).map_err(AppError::database)?;
+        let forgotten: bool = row.get(9).map_err(AppError::database)?;
+        let awaiting_index = content.is_none()
+            && !forgotten
+            && retained_until.is_none_or(|until| until < recorded_at);
+        evidence_current &=
+            awaiting_index || source_current(&source, content.as_deref(), role.as_ref());
         evidence.push(source);
     }
     evidence_current &= !evidence.is_empty();

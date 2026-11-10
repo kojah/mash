@@ -61,6 +61,23 @@ its presence, not semantic endorsement. User-role messages can contain injected
 agent reports; agents must distinguish these and uncertain interpretations remain
 candidates. Decisions/preferences presented as established need human support.
 
+A citation names a retained message, or a session plus a quote. A session
+citation resolves inside the mutation transaction to the latest retained
+message containing the quote; an endorsement matches only visible user dialogue
+(`COALESCE(search_projection, content)`). When retained history lacks the
+quote, `records::live` reads that session's provider source without writing
+silver, because a silver write for one chat would leave local views uncertified
+until the next index. It selects the source as indexing does (Claude Code
+`<session>.jsonl` under the configured roots; Codex through the thread store's
+own metadata), so the cited message ID and content fingerprint are the ones
+indexing will retain.
+
+Such evidence counts as current while retained history for its chat ends before
+the record was written, judged by the chat's `updated_at` against the
+revision's `recorded_at`, and while the chat is not tombstoned. Once history is
+retained past that point, the usual rule applies: a missing or changed message
+is stale evidence.
+
 Ordinary source replacement preserves records and exposes changed/missing
 evidence as stale. Evidence therefore has no cascading foreign key to messages.
 Explicitly forgetting any cited chat removes the entire dependent record's text,
