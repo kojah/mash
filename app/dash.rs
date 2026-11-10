@@ -102,6 +102,12 @@ fn router(state: Arc<Dash>) -> Router {
         .route("/api/record", axum::routing::get(record))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
+        // The chat catalogue is over a megabyte of JSON for a few thousand
+        // chats; a phone on a slow link should not have to carry all of it.
+        .layer(
+            tower_http::compression::CompressionLayer::new()
+                .quality(tower_http::CompressionLevel::Fastest),
+        )
         .with_state(state)
 }
 
@@ -702,6 +708,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dashboard_reports_status_read_only_and_compresses_responses() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.toml");
+        std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+        let database = directory.path().join("index.sqlite3");
+        let mut storage = crate::storage::Storage::open_writer(&database).unwrap();
+        storage.commit_writer().unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = super::router(std::sync::Arc::new(super::Dash {
+            paths: crate::core::Paths {
+                config: Some(config),
+                db: Some(database),
+                models_dir: None,
+            },
+            hosts: allowed_hosts(address),
+            model_work: tokio::sync::Semaphore::new(1),
+            services: super::services::Services::load(None).unwrap(),
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        // A client that leaves the body as sent shows the encoding on the wire.
+        let client = reqwest::Client::builder().no_gzip().build().unwrap();
+        let url = format!("http://{address}/api/status");
+        // Settings and readiness are a read of what `mash status` reports.
+        let response = client.get(&url).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let status: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(status["configuration"]["loaded"], true);
+        assert_eq!(status["configuration"]["providers"], serde_json::json!({}));
+        assert_eq!(status["chats"], 0);
+        assert_eq!(
+            client.post(&url).send().await.unwrap().status(),
+            reqwest::StatusCode::METHOD_NOT_ALLOWED
+        );
+        let compressed = client
+            .get(&url)
+            .header("accept-encoding", "gzip")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(compressed.headers()["content-encoding"], "gzip");
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn dashboard_http_guards_host_methods_and_serves_real_catalogue() {
         let directory = tempfile::tempdir().unwrap();
         let config = directory.path().join("config.toml");
@@ -737,26 +788,6 @@ mod tests {
         let body: serde_json::Value = response.json().await.unwrap();
         assert_eq!(body["local_node"], "local");
         assert_eq!(body["chats"], serde_json::json!([]));
-        // Settings and readiness are a read of what `mash status` reports.
-        let response = client
-            .get(format!("http://{address}/api/status"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::OK);
-        let status: serde_json::Value = response.json().await.unwrap();
-        assert_eq!(status["configuration"]["loaded"], true);
-        assert_eq!(status["configuration"]["providers"], serde_json::json!({}));
-        assert_eq!(status["chats"], 0);
-        assert_eq!(
-            client
-                .post(format!("http://{address}/api/status"))
-                .send()
-                .await
-                .unwrap()
-                .status(),
-            reqwest::StatusCode::METHOD_NOT_ALLOWED
-        );
         // Resolving the local node must not require shared configuration or a
         // catalogue request. Remote nodes must still fail rather than fall back.
         for node in ["", "local"] {
