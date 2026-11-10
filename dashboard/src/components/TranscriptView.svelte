@@ -1,11 +1,15 @@
 <script lang="ts">
+import BookOpen from "@lucide/svelte/icons/book-open";
+import Brain from "@lucide/svelte/icons/brain";
+import Copy from "@lucide/svelte/icons/copy";
 import Download from "@lucide/svelte/icons/download";
-import Layers from "@lucide/svelte/icons/layers";
-import List from "@lucide/svelte/icons/list";
+import PanelLeft from "@lucide/svelte/icons/panel-left";
+import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+import Terminal from "@lucide/svelte/icons/terminal";
 import { createQuery } from "@tanstack/svelte-query";
 import { tick, untrack } from "svelte";
-import { agents } from "../lib/agents";
 import { context, type MessagePage, PAGE_SIZE, transcript } from "../lib/api";
+import { projectLabel, whenLabel } from "../lib/browse";
 import {
   collectChat,
   downloadChat,
@@ -17,11 +21,12 @@ import {
 import { catalogOptions, stableRead } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
 import { label, recordPage } from "../lib/records";
-import { chatHref, recordHref, recordsHref } from "../lib/route.svelte";
+import { chatHref, projectHref, recordHref, recordsHref } from "../lib/route.svelte";
 import type { Message } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
-import LoadError from "./LoadError.svelte";
 import MessageBody from "./MessageBody.svelte";
+import MetaChips from "./MetaChips.svelte";
+import QueryError from "./QueryError.svelte";
 
 let {
   id,
@@ -36,8 +41,16 @@ const sessions = $derived(catalogue.data?.chats ?? []);
 const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine === displayMachine));
 let offset = $state(0);
 let anchor = $state(untrack(() => messageId));
-let outlineOpen = $state(false);
+let showSessions = $state(true);
+let exportOpen = $state(false);
 let currentMessage = $state("");
+// Other chats from the same project, with this one kept in view.
+const projectSessions = $derived.by(() => {
+  if (!chat) return [];
+  const same = sessions.filter((session) => session.project === chat.project).slice(0, 6);
+  return same.includes(chat) ? same : [chat, ...same.slice(0, 5)];
+});
+const now = Date.now();
 const memoryParams = $derived(
   new URLSearchParams({
     chat: id,
@@ -55,9 +68,10 @@ const memories = createQuery(() => ({
 function remember(): void {
   const pane = transcriptPane;
   if (!pane || !loaded) return;
-  const top = pane.getBoundingClientRect().top;
+  // The page scrolls under a sticky header; the first message below it is
+  // where the reader is.
   const elements = Array.from(pane.querySelectorAll<HTMLElement>("[data-message]"));
-  const first = elements.find((element) => element.getBoundingClientRect().bottom > top + 30);
+  const first = elements.find((element) => element.getBoundingClientRect().bottom > 90);
   if (first?.dataset.message) {
     currentMessage = first.dataset.message;
     reading.remember({ id, node: displayMachine, message: first.dataset.message, shared });
@@ -66,7 +80,6 @@ function remember(): void {
 function jump(message: string): void {
   currentMessage = message;
   document.getElementById(`message-${message}`)?.scrollIntoView({ block: "start" });
-  outlineOpen = false;
 }
 
 let transcriptPane: HTMLElement | undefined = $state();
@@ -81,8 +94,8 @@ $effect(() => {
   anchor = route[2];
   offset = 0;
   notice = "";
-  outlineOpen = false;
-  transcriptPane?.scrollTo({ top: 0, behavior: "instant" });
+  exportOpen = false;
+  window.scrollTo({ top: 0, behavior: "instant" });
   return () => exportController?.abort();
 });
 const key = $derived(JSON.stringify([id, machine, offset, anchor, shared]));
@@ -194,107 +207,167 @@ async function exportChat(format: ExportFormat): Promise<void> {
 function page(next: number): void {
   anchor = "";
   offset = next;
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
+async function copySession(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(id);
+    notice = "Session ID copied.";
+  } catch {
+    notice = `Copy failed. The session ID is ${id}.`;
+  }
+}
+// Consecutive tool calls, tool output and reasoning read as one run of
+// steps, folded so the conversation stays the main thing on the page.
+type Item =
+  | { readonly kind: "message"; readonly message: Message }
+  | { readonly kind: "steps"; readonly messages: readonly Message[] };
+const items = $derived.by(() => {
+  const list: Item[] = [];
+  let run: Message[] = [];
+  const flush = () => {
+    if (run.length) list.push({ kind: "steps", messages: run });
+    run = [];
+  };
+  for (const message of loaded?.messages ?? []) {
+    if (message.presentation && message.presentation !== "dialogue") run.push(message);
+    else {
+      flush();
+      list.push({ kind: "message", message });
+    }
+  }
+  flush();
+  return list;
+});
+function stepLabel(message: Message): string {
+  if (message.presentation === "reasoning") return "Thinking";
+  return message.presentation === "tool-result" ? "Tool output" : message.toolLabel || "Tool call";
+}
+function stepsSummary(messages: readonly Message[]): string {
+  const calls = messages.filter((message) => message.presentation === "tool-call");
+  const names = [...new Set(calls.map(stepLabel))];
+  const count = calls.length || messages.length;
+  const noun = calls.length ? "tool call" : "step";
+  return `${count} ${noun}${count === 1 ? "" : "s"}${names.length ? `: ${names.slice(0, 4).join(", ")}${names.length > 4 ? ", …" : ""}` : ""}`;
+}
+const prompts = $derived(
+  (loaded?.messages ?? []).filter(
+    (message) => message.role === "user" && message.presentation === "dialogue",
+  ),
+);
 </script>
 
-<svelte:window onkeydown={(event) => { if (event.key === "Escape") outlineOpen = false; }} />
-<div class="reader-layout">
-    <aside class="reader-outline" class:mobile-open={outlineOpen} aria-label="Conversation outline">
-      <h2>Outline <button type="button" class="mobile-only" onclick={() => outlineOpen = false}>Close</button></h2>
-      <p class="text-xs text-muted">Messages on this page</p>
-      {#each loaded?.messages.filter(message => message.role === "user") ?? [] as message (message.id)}
-        <button type="button" class="outline-item" aria-current={currentMessage === message.id ? "location" : undefined} onclick={() => jump(message.id)}><span>{message.ordinal ?? ""}</span><span>{plainText(message).slice(0, 110)}</span></button>
-      {/each}
-      <details class="recent-sidebar"><summary>Recent chats</summary>
-        {#each sessions.slice(0, 30) as session (JSON.stringify([session.machine, session.id]))}
-          <a href={chatHref(session.id, session.machine)} aria-current={session.id === id && session.machine === displayMachine ? "page" : undefined}>{session.title}</a>
+<svelte:window onscroll={remember} onkeydown={(event) => { if (event.key === "Escape") exportOpen = false; }} />
+<div class="chat" class:nosess={!showSessions}>
+  <nav class="sess" aria-label="Prompts and sessions">
+    {#if prompts.length >= 2}
+      <div class="outl">
+        <h2 class="h2">your prompts on this page</h2>
+        <div class="outl-l">
+          {#each prompts as message, index (message.id)}
+            <button type="button" class:on={currentMessage === message.id} aria-current={currentMessage === message.id ? "location" : undefined} onclick={() => jump(message.id)}><small>{index + 1}</small><span>{plainText(message).replace(/\s+/g, " ").slice(0, 80)}</span></button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+    {#if chat?.project}<h2 class="h2"><a href={projectHref(chat.project)}>{projectLabel(chat.project)} sessions</a></h2>{/if}
+    {#each projectSessions as session (session.machine + session.id)}
+      {@const current = session.id === id && session.machine === displayMachine}
+      <a class="ses" class:on={current} href={chatHref(session.id, session.machine)} aria-current={current ? "page" : undefined}><AgentMark agent={session.agent} /><span><span class="clamp">{session.title}</span><small>{whenLabel(session.updatedMs, now)}</small></span></a>
+    {/each}
+    <h2 class="h2" style:margin-top="10px"><a href={recordsHref(memoryParams)}><BookOpen size={15} aria-hidden="true" />memory from this chat</a></h2>
+    {#if memories.error}<p class="meta" role="alert">{memories.error.message}</p>{/if}
+    {#each memories.data?.records ?? [] as record (record.id)}
+      {@const revision = record.revisions.find((revision) => revision.revision === record.currentRevision)}
+      {#if revision}<a class="ses" href={recordHref(record.id, record.node, recordsHref(memoryParams))}><span><span class="clamp">{revision.statement}</span><small>{label(revision.details.kind).toLowerCase()} / {label(revision.details.state).toLowerCase()}</small></span></a>{/if}
+    {/each}
+    {#if memories.data && !memories.data.records.length}<p class="meta" style:padding="0 10px">Nothing saved from this chat.</p>{/if}
+  </nav>
+  <article class="log" bind:this={transcriptPane}>
+    <header class="hd" style:align-items="flex-start">
+      <div style:min-width="0">
+        <h1 class="h1">{chat?.title ?? `Chat ${id.slice(-8)}`}</h1>
+        <p class="meta" style:margin-top="8px">
+          {#if chat}<MetaChips {chat} />{:else}{displayMachine}{/if}
+          <span class="mtx">{anchor ? "around the selected match" : `messages ${offset.toLocaleString()}–${(offset + PAGE_SIZE - 1).toLocaleString()}`}</span>
+        </p>
+      </div>
+      <span class="acts" style:position="relative">
+        <button class="btn" type="button" aria-pressed={showSessions} aria-label="{showSessions ? 'Hide' : 'Show'} session list" title="{showSessions ? 'Hide' : 'Show'} session list" onclick={() => (showSessions = !showSessions)} style:padding="0 11px"><PanelLeft size={15} /></button>
+        <button class="btn" type="button" onclick={copySession}><Copy size={15} aria-hidden="true" />Copy session ID</button>
+        <button class="btn" type="button" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)}><Download size={15} aria-hidden="true" />Export</button>
+        {#if exportOpen}
+          <div class="menu">
+            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("pdf"); }}>Export to PDF</button>
+            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("html"); }}>Export to HTML</button>
+            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("markdown"); }}>Export to Markdown</button>
+          </div>
+        {/if}
+        <button class="btn" type="button" aria-label="Check for updates" title="Check for updates" disabled={live.isFetching} onclick={() => live.refetch()} style:padding="0 11px"><RefreshCw size={15} /></button>
+      </span>
+    </header>
+    {#if exporting}<p class="meta"><button class="a" type="button" onclick={() => exportController?.abort()}>Cancel export</button></p>{/if}
+    {#if anchor}<p class="meta">Showing the messages around a search match. <button class="a" type="button" onclick={() => page(0)}>Read from the beginning</button></p>{/if}
+    <QueryError title="Couldn’t load the chat list" query={catalogue} retryLabel="Retry catalogue" />
+    {#each catalogue.data?.warnings ?? [] as warning (warning)}<p role="status" class="meta">{warning}</p>{/each}
+    {#if live.isPending}
+      <div class="state-c" role="status">
+        <p style:display="flex" style:align-items="center" style:gap="10px"><Terminal size={18} color="var(--clay2)" aria-hidden="true" />Loading messages…</p>
+        <div class="skel" style:width="82%"></div><div class="skel" style:width="64%"></div><div class="skel" style:width="74%"></div>
+      </div>
+    {/if}
+    <QueryError title="Couldn’t load this conversation" query={live} />
+    {#if changed}<button type="button" class="btn" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}>This page has changed. Show updated messages</button>{/if}
+    {#if notice}<p role="status" class="meta">{notice}</p>{/if}
+    {#if loaded}
+      {#if !loaded.messages.length}<div class="state-c"><p>No messages at this position. The chat may have been removed, or this is the end.</p></div>{/if}
+      {#snippet saved(message: Message)}
+        {#each memories.data?.records ?? [] as record (record.id)}
+          {@const revision = record.revisions.find((revision) => revision.revision === record.currentRevision)}
+          {#if revision?.evidence.some((source) => source.messageId === message.id)}
+            <a class="meta a" href={recordHref(record.id, record.node, recordsHref(memoryParams))} style:align-self={message.role === "user" ? "flex-end" : "flex-start"} style:margin-top="12px">Saved as {label(revision.details.kind).toLowerCase()}: {revision.statement}</a>
+          {/if}
         {/each}
-      </details>
-    </aside>
-    <main bind:this={transcriptPane} onscroll={remember} class="transcript-pane">
-      <header class="flex flex-col gap-2">
-        <h1 class="reader-title">{chat?.title ?? `Chat ${id.slice(-8)}`}</h1>
-        <p class="reader-metadata">{#if chat}<AgentMark agent={chat.agent} size={13} />{agents[chat.agent].name} · {/if}{displayMachine} · {chat?.project ?? ""}</p>
-        <p class="m-0 text-xs text-muted">{anchor ? "Context around the selected search match" : `Message positions ${offset}–${offset + PAGE_SIZE - 1}`} · Browser Find searches this page. Branches are shown in recorded display order.</p>
-        <div class="reader-actions">
-          <details class="relative" id="reader-export">
-            <summary class="cursor-pointer">Export</summary>
-            <div class="absolute left-0 top-7 z-10 flex w-56 flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-lg">
-              <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('pdf')}>Export to PDF</button>
-              <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('html')}>Export to HTML</button>
-              <button type="button" disabled={exporting || !loaded} onclick={() => exportChat('markdown')}>Export to Markdown</button>
-              <span class="text-xs text-muted">Entire chat, including tool output. PDF uses your browser’s print dialog.</span>
+      {/snippet}
+      {#each items as item (item.kind === "message" ? item.message.id : item.messages[0]?.id)}
+        {#if item.kind === "steps"}
+          <details class="fold" open={item.messages.some((message) => message.id === messageId)}>
+            <summary><Terminal size={16} aria-hidden="true" />{stepsSummary(item.messages)}</summary>
+            <div>
+              {#each item.messages as message (message.id)}
+                <details class="fold" class:hit={message.id === messageId} id="message-{message.id}" data-message={message.id} open={message.id === messageId} style:scroll-margin-top="80px">
+                  <summary>{#if message.presentation === "reasoning"}<Brain size={15} aria-hidden="true" />{:else}<Terminal size={15} aria-hidden="true" />{/if}{stepLabel(message)}<span class="mtx">{message.at}</span></summary>
+                  <div><pre class="pre" style:max-height="32rem" style:overflow="auto">{plainText(message)}</pre></div>
+                </details>
+                {@render saved(message)}
+              {/each}
             </div>
           </details>
-          {#if exporting}<button type="button" onclick={() => exportController?.abort()}>Cancel export</button>{/if}
-          <button type="button" onclick={() => live.refetch()}>Check for updates</button>
-          {#if anchor}<button type="button" onclick={() => page(0)}>Read from the beginning</button>{/if}
-        </div>
-      </header>
-      {#if catalogue.error}<LoadError title="Couldn’t load the chat list" message={catalogue.error.message} retry={() => catalogue.refetch()} busy={catalogue.isFetching} retryLabel="Retry catalogue"/>{/if}
-      {#each catalogue.data?.warnings ?? [] as warning (warning)}<p role="status" class="text-sm text-muted">{warning}</p>{/each}
-      {#if live.isPending}
-        <div role="status" class="rounded-xl border border-line bg-surface p-5">
-          <p class="m-0 text-sm text-muted">Loading messages…</p>
-          <div aria-hidden="true" class="mt-5 flex flex-col gap-3"><div class="h-3 w-1/3 rounded bg-fill"></div><div class="h-3 w-full rounded bg-fill"></div><div class="h-3 w-4/5 rounded bg-fill"></div></div>
-        </div>
-      {/if}
-      {#if live.error}<LoadError title="Couldn’t load this conversation" message={live.error.message} retry={() => live.refetch()} busy={live.isFetching}/>{/if}
-      {#if changed}<button type="button" class="rounded-lg bg-accent-soft p-3 text-accent-ink" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}>This page has changed. Show updated messages</button>{/if}
-      {#if notice}<p role="status" class="text-sm text-muted">{notice}</p>{/if}
-      {#if loaded}
-        {#if !loaded.messages.length}<p>No messages at this position. The chat may have been removed or this is the end.</p>{/if}
-        <ol class="m-0 flex list-none flex-col gap-6 p-0">
-          {#each loaded.messages as message (message.id)}
-            <li id="message-{message.id}" data-message={message.id} class="flex min-w-0 flex-col gap-2 scroll-mt-8 {message.id === messageId ? 'rounded-lg ring-2 ring-accent p-3' : ''}">
-              {#if message.presentation && message.presentation !== "dialogue"}
-                <details class="rounded-lg border border-line bg-surface p-3">
-                  <summary class="cursor-pointer text-sm"><strong>{message.presentation === 'tool-result' ? 'Tool output' : message.presentation === 'reasoning' ? 'Reasoning' : message.toolLabel || 'Tool call'}</strong><span class="ml-2 text-xs text-muted">{message.at}</span></summary>
-                  <p class="text-xs text-muted">Recorded as {message.role} · message {message.ordinal}</p>
-                  <pre class="max-h-[32rem] overflow-auto rounded bg-ground p-3 text-xs whitespace-pre-wrap break-words">{plainText(message)}</pre>
-                </details>
-              {:else}
-              <span class="text-xs text-muted">{message.role === 'user' ? 'You' : message.role} · {message.at}</span>
-              <div class="min-w-0 {message.role === 'user' ? 'user-message' : ''}">
+        {:else}
+          {@const message = item.message}
+          {@const selected = message.id === messageId}
+          <div class="hitbox" class:hit={selected} id="message-{message.id}" data-message={message.id} style:scroll-margin-top="80px" style:padding={selected ? "10px 12px" : "0"}>
+            {#if message.role === "user"}
+              <div class="you pre"><span class="clip">{plainText(message)}</span><button class="cp" type="button" aria-label="Copy message" title="Copy message" onclick={() => copy(message)}><Copy size={14} /></button></div>
+            {:else}
+              <div class="msg">
                 {#each message.blocks as block, i (i)}
                   {#if block.type === "text"}<MessageBody text={block.markdown} />{/if}
                 {/each}
+                <button class="cp" type="button" aria-label="Copy message" title="Copy message" onclick={() => copy(message)}><Copy size={14} /></button>
               </div>
-              {#if message.activity}<details class="rounded-lg bg-fill p-3"><summary class="cursor-pointer text-sm">Recorded tool activity</summary><pre class="max-h-80 overflow-auto text-xs whitespace-pre-wrap">{message.activity}</pre></details>{/if}
-              {/if}
-              <button type="button" class="self-start text-xs text-muted" onclick={() => copy(message)}>Copy</button>
-              {#each memories.data?.records ?? [] as record (record.id)}
-                {@const revision = record.revisions.find(revision => revision.revision === record.currentRevision)}
-                {#if revision?.evidence.some(source => source.messageId === message.id)}
-                  <a class="citation-note" href={recordHref(record.id, record.node, recordsHref(memoryParams))}>Cited in {label(revision.details.kind).toLowerCase()}: {revision.statement}</a>
-                {/if}
-              {/each}
-            </li>
-          {/each}
-        </ol>
-        {#if !anchor}
-          <nav aria-label="Message pages" class="flex gap-5">
-            <button type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}>Previous messages</button>
-            <button type="button" disabled={!loaded.messages.length} onclick={() => page(offset + PAGE_SIZE)}>Next messages</button>
-          </nav>
+              {#if message.activity}<details class="fold"><summary><Terminal size={16} aria-hidden="true" />Recorded tool activity</summary><div><pre class="pre" style:max-height="20rem" style:overflow="auto">{message.activity}</pre></div></details>{/if}
+            {/if}
+            {@render saved(message)}
+          </div>
         {/if}
-      {/if}
-    </main>
-    <aside class="reader-memory" aria-label="Chat memory">
-      <h2><a href={recordsHref(memoryParams)}>Memory</a></h2>
-      {#if memories.isPending}<p>Loading memory…</p>{/if}
-      {#if memories.error}<LoadError title="Couldn’t load chat memory" message={memories.error.message} retry={() => memories.refetch()} busy={memories.isFetching}/>{/if}
-      {#each memories.data?.records ?? [] as record (record.id)}
-        {@const revision = record.revisions.find(revision => revision.revision === record.currentRevision)}
-        {#if revision}<a class="memory-aside-link" href={recordHref(record.id, record.node, recordsHref(memoryParams))}><span>{revision.statement}</span><small>{label(revision.details.kind)} · {label(revision.details.state)}</small></a>{/if}
       {/each}
-      {#if memories.data && !memories.data.records.length}<p>No memory cites this chat yet.</p>{/if}
-      <a class="text-xs" href={recordsHref(memoryParams)}>Browse chat memory</a>
-      <h2>Source</h2><p>{displayMachine}<br />{chat?.project ?? ""}</p>
-    </aside>
+      {#if !anchor}
+        <nav aria-label="Message pages" class="pager end">
+          <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}>Previous messages</button>
+          <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)}>Next messages</button>
+        </nav>
+      {/if}
+    {/if}
+  </article>
 </div>
-<nav class="reader-dock" aria-label="Reading tools">
-  <button type="button" onclick={() => outlineOpen = !outlineOpen}><List size={17} />Outline</button>
-  <a href={recordsHref(memoryParams)}><Layers size={17} />Memory</a>
-  <button type="button" onclick={() => { const element = document.getElementById("reader-export"); if (element instanceof HTMLDetailsElement) { element.open = !element.open; element.scrollIntoView({ block: "center" }); } }}><Download size={17} />Export</button>
-</nav>

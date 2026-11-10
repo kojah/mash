@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { chatHref, parseRoute, recordHref, recordsHref } from "./route.svelte";
+import {
+  agentHref,
+  chatHref,
+  fleetHref,
+  machineHref,
+  parseRoute,
+  projectHref,
+  recordHref,
+  recordsHref,
+  searchHref,
+} from "./route.svelte";
 
 describe("routes", () => {
   it("round-trips record identities and filtered return routes without external back links", () => {
@@ -28,7 +38,7 @@ describe("routes", () => {
       node: "",
       back: "#/records",
     });
-    expect(parseRoute("#/record/%ZZ")).toEqual({ page: "home" });
+    expect(parseRoute("#/record/%ZZ")).toEqual({ page: "missing" });
   });
   it("round-trips chat ids, including ones that need escaping", () => {
     for (const id of ["backfill", "a b/c?d"]) {
@@ -51,24 +61,37 @@ describe("routes", () => {
     });
   });
 
-  it("falls back to home for anything else", () => {
-    for (const hash of ["", "#", "#/", "#/chat/", "#/elsewhere", "#/chat/%ZZ"]) {
-      expect(parseRoute(hash)).toEqual({ page: "home" });
-    }
+  it("opens the overview with no route and reports unknown ones", () => {
+    for (const hash of ["", "#", "#/"]) expect(parseRoute(hash)).toEqual({ page: "overview" });
+    for (const hash of ["#/chat/", "#/elsewhere", "#/chat/%ZZ", "#/project", "#/agent/"])
+      expect(parseRoute(hash)).toEqual({ page: "missing" });
   });
 });
 
-describe("recent conversation pages", () => {
-  it("reads the page from the route and ignores invalid ones", () => {
-    expect(parseRoute("#/recent?page=3")).toEqual({
-      page: "browse",
-      section: "recent",
-      listPage: 3,
+describe("browse pages", () => {
+  it("round-trips names that need escaping", () => {
+    expect(parseRoute(projectHref("/home/me/a b & c"))).toEqual({
+      page: "project",
+      name: "/home/me/a b & c",
     });
-    for (const value of ["0", "-1", "1.5", "x"]) {
-      expect(parseRoute(`#/recent?page=${value}`)).toMatchObject({ listPage: 1 });
-    }
-    expect(parseRoute("#/recent")).toEqual({ page: "browse", section: "recent" });
+    expect(parseRoute(machineHref("dev mac/1"))).toEqual({ page: "machine", id: "dev mac/1" });
+    expect(parseRoute(agentHref("claude-code"))).toEqual({ page: "agent", agent: "claude-code" });
+    expect(parseRoute(fleetHref())).toEqual({ page: "fleet", action: "" });
+    expect(parseRoute(fleetHref("watch-start"))).toEqual({ page: "fleet", action: "watch-start" });
+  });
+  it("keeps a search in its address", () => {
+    expect(parseRoute(searchHref())).toEqual({ page: "search", params: "" });
+    expect(parseRoute(searchHref({ q: "port & timeout", machine: "xenia" }))).toEqual({
+      page: "search",
+      params: "q=port+%26+timeout&machine=xenia",
+    });
+  });
+  it("sends earlier dashboards' list routes to the pages that replaced them", () => {
+    expect(parseRoute("#/recent")).toEqual({ page: "search", params: "" });
+    expect(parseRoute("#/recent?page=3")).toEqual({ page: "search", params: "" });
+    expect(parseRoute("#/continue")).toEqual({ page: "history" });
+    for (const page of ["projects", "agents", "machines", "console", "settings", "history"])
+      expect(parseRoute(`#/${page}`)).toEqual({ page });
   });
 });
 

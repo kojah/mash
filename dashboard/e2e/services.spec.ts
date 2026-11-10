@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { fitsViewport } from "./shell";
 
 for (const width of [390, 1440]) {
   test(`services open directly, inspect schemas and manage explicit targets at ${width}px`, async ({
@@ -152,28 +153,43 @@ for (const width of [390, 1440]) {
     });
     await page.clock.install();
     await page.goto("/#/services");
+    await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
     await expect(page.getByLabel("Services access token")).toHaveCount(0);
+    // Without a machine in the address the local one is selected.
+    await expect(page.getByRole("link", { name: "xenia: needs attention" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await expect(page.getByRole("link", { name: "macbook: unreachable" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "services on xenia" })).toBeVisible();
     await expect(page.getByText("Running · schema mismatch", { exact: true })).toBeVisible();
     // A deployed plugin whose hooks await approval is visible from the list.
-    const summary = page.getByRole("list", { name: "Agent setup on xenia" });
-    await expect(summary.getByText("Hooks need approval")).toBeVisible();
-    await expect(summary.getByText("Ready", { exact: true })).toBeVisible();
+    const setup = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "agent setup", exact: true }) });
+    await expect(setup.getByText("Hooks need approval")).toBeVisible();
+    await expect(setup.getByText("Ready", { exact: true })).toBeVisible();
+    await expect(
+      setup.getByText("Open /hooks in Codex and trust the current Mash hooks."),
+    ).toBeVisible();
     await page.getByRole("link", { name: /Mash MCP · PID 10/ }).click();
     await expect(page.getByRole("heading", { name: "Schema compatibility" })).toBeVisible();
-    await expect(page.getByText("65", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Restart", exact: true })).toHaveCount(0);
-    await page.getByRole("link", { name: "xenia", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Agent setup" })).toBeVisible();
+    await expect(page.getByText("database 65 / supported 64", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Open /hooks in Codex and trust the current Mash hooks."),
+      page.getByText("Reconnect the MCP. Do not downgrade the database.", { exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restart", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start", exact: true })).toHaveCount(0);
+    await page.getByRole("link", { name: "< services" }).click();
+    await expect(page).toHaveURL(/#\/services\?machine=xenia$/);
+    await expect(setup.getByText("Hooks need approval")).toBeVisible();
     await page.getByRole("link", { name: /Index watcher/ }).click();
     await page.getByRole("button", { name: "Start", exact: true }).click();
-    await expect(page.getByRole("group", { name: "Confirm service action" })).toContainText(
-      "xenia",
-    );
+    const confirm = page.getByRole("group", { name: "Confirm service action" });
+    await expect(confirm).toContainText("Start Index watcher on xenia?");
     expect(mutations).toBe(0);
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(confirm).toHaveCount(0);
     expect(mutations).toBe(0);
     await page.getByRole("button", { name: "Start", exact: true }).click();
     await page.getByRole("button", { name: "Confirm start" }).click();
@@ -182,17 +198,20 @@ for (const width of [390, 1440]) {
     await page.getByRole("button", { name: "View log" }).click();
     await expect(page.locator(".service-log")).toContainText("<script>not executable</script>");
     await expect(page.locator(".service-log script")).toHaveCount(0);
+    await page.getByRole("button", { name: "Hide log" }).click();
+    await expect(page.locator(".service-log")).toHaveCount(0);
     await page.getByRole("button", { name: "Restart", exact: true }).click();
     await page.getByRole("button", { name: "Confirm restart" }).click();
     await expect(page.getByRole("alert")).toContainText("Outcome unknown");
+    // An unconfirmed outcome blocks further actions until status is checked again.
+    await expect(page.getByRole("button", { name: "Restart", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeDisabled();
     await page.waitForLoadState("networkidle");
     const reads = serviceReads;
     await page.clock.runFor(91_000);
     expect(serviceReads).toBe(reads);
     expect(mutations).toBe(2);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
+    expect(await fitsViewport(page)).toBe(true);
     expect(documents).toBe(1);
     expect(errors).toEqual([]);
   });

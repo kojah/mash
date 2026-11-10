@@ -1,5 +1,7 @@
 import { mount } from "svelte";
 import "./app.css";
+import "./terminal.css";
+
 import App from "./App.svelte";
 import { installNavigationBoundary } from "./lib/navigation";
 

@@ -24,10 +24,10 @@ const detail = $derived(
 );
 </script>
 
-<div class="load-error" role="alert" aria-busy={busy}>
-  <CircleAlert size={19} aria-hidden="true" />
-  <div class="load-error-copy"><strong>{title}</strong><p>{detail}</p></div>
-  <button type="button" class="plain-button load-error-retry" onclick={retry} disabled={busy}>
+<div class="state-c" role="alert" aria-busy={busy} style:display="flex" style:flex-wrap="wrap" style:align-items="flex-start" style:gap="12px">
+  <CircleAlert size={18} color="var(--warn)" aria-hidden="true" style="flex:none;margin-top:2px" />
+  <div style:flex="1 1 200px" style:min-width="0" style:overflow-wrap="anywhere"><strong style:font-weight="500">{title}</strong><p class="meta" style:margin-top="4px" style:font-size="12.5px">{detail}</p></div>
+  <button type="button" class="btn" onclick={retry} disabled={busy}>
     <RotateCw size={14} aria-hidden="true" />{busy ? "Trying again…" : retryLabel}
   </button>
 </div>

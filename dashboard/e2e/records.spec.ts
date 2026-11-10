@@ -1,7 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { recordFixture } from "./record-fixtures";
+import { followRail } from "./shell";
 
-test("front page record categories work even when chat history is unavailable", async ({
+const kindNav = (page: Page) => page.getByRole("navigation", { name: "Memory kind" });
+const records = (page: Page) => page.getByRole("main").getByRole("article");
+
+test("memory categories work from the rail even when chat history is unavailable", async ({
   page,
 }) => {
   await page.route("**/api/chats**", (route) => route.fulfill({ status: 503 }));
@@ -13,20 +17,24 @@ test("front page record categories work even when chat history is unavailable", 
     if (request.resourceType() === "document") documents++;
   });
   await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("Couldn’t load chats");
+  await expect(page.getByText(/Nothing saved yet/)).toBeVisible();
   for (const [label, kind] of [
-    ["Decisions", "decision"],
-    ["Preferences", "preference"],
-    ["Facts", "fact"],
-    ["Questions", "open_question"],
+    ["decisions", "decision"],
+    ["preferences", "preference"],
+    ["facts", "fact"],
+    ["open questions", "open_question"],
   ] as const) {
-    const section = page.getByRole("region", { name: "Memory", exact: true });
-    await section.getByRole("link", { name: label, exact: true }).click();
+    await followRail(page, label, "memory");
     await expect(page).toHaveURL(new RegExp(`kind=${kind}`));
-    await expect(
-      page.getByRole("navigation", { name: "Memory kind" }).getByRole("link", { name: label }),
-    ).toHaveAttribute("aria-current", "page");
-    await expect(page.getByText(/No records match these filters/)).toBeVisible();
-    await page.getByRole("link", { name: "Mash home", exact: true }).click();
+    await expect(kindNav(page).getByRole("link", { name: label, exact: true })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(page.getByText(/No memory matches these filters/)).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByRole("link", { name: "mash", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "recent memories" })).toBeVisible();
   }
   expect(documents).toBe(1);
 });
@@ -100,49 +108,62 @@ test("records filter on submission, expose history and safe citations, and navig
     });
   });
   await page.goto("/");
-  await page.getByRole("link", { name: "Memory", exact: true }).click();
+  await followRail(page, "memory");
   await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible();
-  await expect(page.locator("li h2")).toHaveCount(4);
-  await page
-    .getByRole("navigation", { name: "Memory kind" })
-    .getByRole("link", { name: "Facts", exact: true })
-    .click();
-  await expect(page.locator("li h2")).toHaveCount(1);
+  await expect(records(page)).toHaveCount(4);
+  await kindNav(page).getByRole("link", { name: "facts", exact: true }).click();
+  await expect(records(page)).toHaveCount(1);
+  const apply = page.getByRole("button", { name: "Apply filters" });
+  await expect(apply).toHaveCount(0);
+  const beforeDraft = requests.length;
   await page.getByLabel("Search statements").fill("port");
-  expect(requests).toHaveLength(2);
-  await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect(page.locator("li h2")).toHaveCount(1);
+  expect(requests).toHaveLength(beforeDraft);
+  await apply.click();
+  await expect(page).toHaveURL(/q=port/);
+  await expect(records(page)).toHaveCount(1);
+  expect(requests).toHaveLength(beforeDraft + 1);
   expect(requests.at(-1)?.searchParams.get("kind")).toBe("fact");
-  await expect.poll(() => requests.at(-1)?.searchParams.get("q")).toBe("port");
-  await page.getByRole("link", { name: /fact fixture on port/ }).click();
+  expect(requests.at(-1)?.searchParams.get("q")).toBe("port");
+  const factLink = page.getByRole("main").getByRole("link", { name: /fact fixture on port/ });
+  await factLink.click();
   await expect(page.getByRole("heading", { name: statement, exact: true })).toBeVisible();
   expect(await page.evaluate(() => "recordPwned" in window)).toBe(false);
+  for (const name of ["evidence", "revision history", "related records"])
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await expect(page.getByText(/^Revision 9 \(current\)/)).toBeVisible();
   await page.getByRole("button", { name: "Older revisions" }).click();
-  await expect(page.getByRole("heading", { name: "Revision 8" })).toBeVisible();
+  await expect(page.getByText(/^Revision 8:/)).toBeVisible();
   await expect(page.getByRole("heading", { name: statement, exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Newest revisions" }).click();
+  await expect(page.getByText(/^Revision 9 \(current\)/)).toBeVisible();
+  const related = page.getByRole("link", { name: /this record resolves.*question-1/ });
+  await expect(related).toBeVisible();
   await page.getByRole("button", { name: "More relationships" }).click();
-  await expect(page.getByText("No relationships on this page.")).toBeVisible();
+  // The second page of relationships is empty; the way back stays offered.
+  await expect(page.getByRole("button", { name: "First relationships" })).toBeVisible();
+  await expect(related).toHaveCount(0);
   await page.getByRole("button", { name: "First relationships" }).click();
-  await page.getByRole("link", { name: "question-1", exact: true }).click();
+  await related.click();
   await expect(page.getByText("The platform team owns the review.", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Back to memory" }).click();
-  await expect(
-    page.getByRole("navigation", { name: "Memory kind" }).getByRole("link", { name: "Facts" }),
-  ).toHaveAttribute("aria-current", "page");
-  await page.getByRole("link", { name: /fact fixture on port/ }).click();
-  await page.getByRole("link", { name: "Open source message" }).click();
+  await page.getByRole("link", { name: "< memory" }).click();
+  await expect(kindNav(page).getByRole("link", { name: "facts", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByLabel("Search statements")).toHaveValue("port");
+  await factLink.click();
+  await page.getByRole("link", { name: /open the message/ }).click();
   await expect(
     page.locator("#message-message-1").getByText("The service uses port 8080.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Browse chat memory" }).click();
+  await page.getByRole("link", { name: "memory from this chat" }).click();
   await expect(page.getByText(/Memory citing chat/)).toContainText("chat-1");
   expect(documents).toBe(1);
   expect(errors).toEqual([]);
 });
 
 for (const sourceNode of ["remote/one", "local"]) {
-  test(`shared records on ${sourceNode} continue empty pages, retain node identity, and refresh only on request`, async ({
+  test(`shared records on ${sourceNode} continue empty pages, retain node identity, and never refresh unasked`, async ({
     page,
   }) => {
     let calls = 0,
@@ -210,30 +231,32 @@ for (const sourceNode of ["remote/one", "local"]) {
     await page.goto("/#/records?shared=true");
     await expect(page.getByText(/No matching records on this page/)).toBeVisible();
     await page.getByRole("button", { name: "Next page" }).click();
-    await expect(page.getByRole("heading", { name: "Shared fact" })).toBeVisible();
+    const shared = records(page).getByRole("link", { name: "Shared fact" });
+    await expect(shared).toBeVisible();
     expect(requests.at(-1)?.searchParams.get("shared")).toBe("true");
     expect(requests.at(-1)?.searchParams.get("cursor_node")).toBe(sourceNode);
     title = "Changed remotely";
     const before = calls;
     await page.clock.fastForward(31_000);
     expect(calls).toBe(before);
-    await expect(page.getByRole("heading", { name: "Shared fact" })).toBeVisible();
-    await page.getByRole("button", { name: "Refresh memory" }).click();
-    await expect(page.getByRole("heading", { name: "Changed remotely" })).toBeVisible();
-    await page.getByRole("link", { name: /Changed remotely/ }).click();
+    await expect(shared).toBeVisible();
+    await expect(page.getByText("Changed remotely")).toHaveCount(0);
+    await shared.click();
     expect(new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("node")).toBe(
       sourceNode,
     );
-    await page.getByRole("link", { name: "Open source message" }).click();
+    await page.getByRole("link", { name: /open the message/ }).click();
     await expect(
-      page.locator("main .prose").getByText("Shared source reply", { exact: true }),
+      page.locator("#message-message-1").getByText("Shared source reply", { exact: true }),
     ).toBeVisible();
-    await page.locator("#reader-export summary").click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export to Markdown" }).click();
     expect((await download).suggestedFilename()).toContain(".md");
-    await expect(page.getByRole("status")).toContainText("Exported 1 messages");
-    await page.getByRole("link", { name: "Browse chat memory" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Exported" })).toContainText(
+      "Exported 1 messages",
+    );
+    await page.getByRole("link", { name: "memory from this chat" }).click();
     await expect(page.getByText(/No matching records on this page/)).toBeVisible();
     expect(requests.at(-1)?.searchParams.get("node")).toBe(sourceNode);
     expect(requests.at(-1)?.searchParams.get("shared")).toBe("true");
@@ -244,6 +267,9 @@ test("unavailable or forgotten records show an error instead of a cached conclus
   page,
 }) => {
   let forgotten = false;
+  await page.route("**/api/chats**", (route) =>
+    route.fulfill({ json: { local_node: "local", truncated: false, chats: [] } }),
+  );
   await page.route("**/api/record?**", (route) =>
     forgotten
       ? route.fulfill({
@@ -257,9 +283,47 @@ test("unavailable or forgotten records show an error instead of a cached conclus
     page.getByRole("heading", { name: "fact fixture on port 8080", exact: true }),
   ).toBeVisible();
   forgotten = true;
-  await page.getByRole("button", { name: "Refresh record" }).click();
+  await page.getByRole("button", { name: "check for updates" }).click();
   await expect(page.getByRole("alert")).toContainText("forgotten");
   await expect(
     page.getByRole("heading", { name: "fact fixture on port 8080", exact: true }),
   ).toHaveCount(0);
+});
+
+// The earlier Memory page had a "Refresh memory" button. The list is now read
+// once per address and cached for the life of the document (stableRead), and
+// RecordsView.svelte offers no control that refetches it, so a reader who
+// knows an agent has just saved something must reload the browser page to
+// see it. The same cache also serves the overview's "recent memories".
+test("the memory list can be refreshed on request without reloading", async ({ page }) => {
+  let statement = "First statement";
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") documents++;
+  });
+  await page.route("**/api/chats**", (route) =>
+    route.fulfill({ json: { local_node: "local", truncated: false, chats: [] } }),
+  );
+  await page.route("**/api/records?**", (route) => {
+    const fixture = recordFixture();
+    return route.fulfill({
+      json: {
+        records: [
+          {
+            ...fixture,
+            revisions: [
+              { ...fixture.revisions[0], body: { ...fixture.revisions[0]?.body, statement } },
+            ],
+          },
+        ],
+        next_offset: null,
+      },
+    });
+  });
+  await page.goto("/#/records?");
+  await expect(records(page).getByRole("link", { name: "First statement" })).toBeVisible();
+  statement = "Second statement";
+  await page.getByRole("button", { name: /refresh|check for updates/i }).click();
+  await expect(records(page).getByRole("link", { name: "Second statement" })).toBeVisible();
+  expect(documents).toBe(1);
 });

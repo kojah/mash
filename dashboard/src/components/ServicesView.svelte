@@ -1,13 +1,20 @@
 <script lang="ts">
-import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+import Check from "@lucide/svelte/icons/check";
+import Clock from "@lucide/svelte/icons/clock";
+import Info from "@lucide/svelte/icons/info";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+import ScrollText from "@lucide/svelte/icons/scroll-text";
+import Server from "@lucide/svelte/icons/server";
+import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
 import {
   checkedTime,
   machineState,
   type Operation,
+  type Service,
   type ServiceAction,
+  type ServiceState,
   serviceAccessOptions,
   serviceAction,
   serviceHistory,
@@ -15,11 +22,11 @@ import {
   serviceOptions,
   servicesHref,
 } from "../lib/services.svelte";
-import FleetControls from "./FleetControls.svelte";
-import IndexStatus from "./IndexStatus.svelte";
 import LoadError from "./LoadError.svelte";
 import MachineSetup from "./MachineSetup.svelte";
+import QueryError from "./QueryError.svelte";
 import ServiceStatus from "./ServiceStatus.svelte";
+import Skeleton from "./Skeleton.svelte";
 
 let { params }: { params: string } = $props();
 const queryClient = useQueryClient();
@@ -29,20 +36,41 @@ const serviceId = $derived(selection.get("service") ?? "");
 const access = createQuery(() => serviceAccessOptions);
 const enabled = $derived(access.data !== undefined);
 const fleet = createQuery(() => serviceOptions(enabled));
-const machine = $derived(fleet.data?.find((machine) => machine.id === machineId));
+// Without a machine in the address, the page shows the local one.
+const selectedId = $derived(machineId || access.data?.localNode || "");
+const machine = $derived(fleet.data?.find((machine) => machine.id === selectedId));
+const columns = [
+  { kind: "sqlite", label: "index" },
+  { kind: "qdrant", label: "search" },
+  { kind: "server", label: "API" },
+  { kind: "watcher", label: "watcher" },
+  { kind: "mcp", label: "MCP" },
+  { kind: "dashboard", label: "dash" },
+] as const;
+const severity: readonly ServiceState[] = ["failed", "unknown", "degraded", "stopped", "healthy"];
+/** The state a matrix cell shows: the worst among that machine's services of a kind. */
+function cell(services: readonly Service[], kind: Service["kind"]): ServiceState | null {
+  const states = services
+    .filter((service) => service.kind === kind)
+    .map((service) => service.state);
+  return severity.find((state) => states.includes(state)) ?? null;
+}
+const healthy = $derived(
+  (fleet.data ?? []).filter((machine) => machineState(machine) === "healthy").length,
+);
 const service = $derived(machine?.services.find((service) => service.id === serviceId));
 const history = createQuery(() => ({
   ...stableRead,
-  queryKey: ["service-history", machineId],
-  enabled: enabled && !!machineId,
-  queryFn: ({ signal }) => serviceHistory(machineId, signal),
+  queryKey: ["service-history", selectedId],
+  enabled: enabled && !!selectedId,
+  queryFn: ({ signal }) => serviceHistory(selectedId, signal),
 }));
 let showLog = $state(false);
 const log = createQuery(() => ({
   ...stableRead,
-  queryKey: ["service-log", machineId, serviceId],
+  queryKey: ["service-log", selectedId, serviceId],
   enabled: enabled && showLog && !!serviceId,
-  queryFn: ({ signal }) => serviceLog(machineId, serviceId, signal),
+  queryFn: ({ signal }) => serviceLog(selectedId, serviceId, signal),
 }));
 let confirm = $state<ServiceAction | null>(null);
 let pending = $state(false);
@@ -58,7 +86,7 @@ async function refresh(): Promise<void> {
   const refreshed = await fleet.refetch();
   if (!refreshed.error) actionError = "";
   await queryClient.invalidateQueries({ queryKey: ["service-setup"] });
-  if (machineId) await history.refetch();
+  if (selectedId) await history.refetch();
   if (showLog && serviceId) await log.refetch();
 }
 async function act(): Promise<void> {
@@ -97,43 +125,110 @@ const consequences = $derived(
 );
 </script>
 
-<main class="page-column services-page">
-  <a class="service-back" href={machineId ? servicesHref(serviceId ? machineId : "") : "#/"}><ArrowLeft size={14}/>{serviceId ? machineId : machineId ? "Services" : "Home"}</a>
-  <div class="service-heading"><h1>{service?.name ?? machine?.id ?? "Services"}</h1><button class="plain-button" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={14}/>{fleet.isFetching ? "Checking…" : "Check for updates"}</button></div>
-  <p class="text-muted">Statuses reflect the last check. This page does not refresh automatically.</p>
-  {#if access.error}<LoadError title="Couldn’t connect to services" message={access.error.message} retry={() => access.refetch()} busy={access.isFetching}/>{/if}
-  {#if enabled && fleet.isPending}<p role="status">Checking machines…</p>{/if}
-  {#if enabled && fleet.error}<LoadError title="Couldn’t check service status" message={fleet.error.message} retry={refresh} busy={fleet.isFetching}/><p class="service-warning">Previously displayed statuses have not been verified.</p>{/if}
-  {#if pending}<p role="status">Service action in progress. You can check recent activity if the connection is interrupted.</p>{/if}
-  {#if actionError}<p role="alert">{actionError}</p>{/if}
-  {#if result}<p role="status"><strong>{actionLabel[result.request.action]} on {result.request.machine}: {result.outcome}.</strong> {result.message}</p>{/if}
-  {#if enabled && service && machine}
-    <ServiceStatus state={machine.reachable ? service.state : "unknown"} label={machine.reachable ? service.summary : "Machine unreachable · current status unknown"}/>
-    <p class="service-checked">Checked {checkedTime(service.checked_at)}{service.pid ? ` · PID ${service.pid}` : ""}</p>
-    {#if service.compatibility}
-      {@const compatibility = service.compatibility}
-      <section><h2>Schema compatibility</h2><ServiceStatus state={compatibility.state}/><dl class="service-diagnostics"><div><dt>Database schema</dt><dd>{compatibility.database_schema ?? "Unknown"}</dd></div><div><dt>Supported schema</dt><dd>{compatibility.supported_schema ?? "Unknown"}</dd></div><div><dt>Running build</dt><dd>{compatibility.running_build}</dd></div><div><dt>Dashboard build</dt><dd>{compatibility.observer_build}</dd></div></dl><p>{compatibility.blocked}</p><h3>Next step</h3><p>{compatibility.next_step}</p></section>
+{#if serviceId}
+  <a class="back" href={servicesHref(selectedId)}>&lt; services</a>
+  <div class="hd">
+    <div><h1 class="h1">{service?.name ?? serviceId}</h1><p class="meta">{selectedId}{service ? ` / ${service.kind}` : ""}</p></div>
+    <span class="acts"><button class="btn" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={15} aria-hidden="true" />{fleet.isFetching ? "Checking…" : "Check again"}</button></span>
+  </div>
+{:else}
+  <div class="hd">
+    <h1 class="h1">Services</h1>
+    <span class="acts">
+      <span class="meta" style:font-size="12.5px" role="status">{fleet.data ? `${healthy} of ${fleet.data.length} machines healthy` : enabled ? "checking machines…" : ""}</span>
+      <button class="btn" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={15} aria-hidden="true" />{fleet.isFetching ? "Checking…" : "Check again"}</button>
+    </span>
+  </div>
+{/if}
+<p class="meta">Statuses are from the last check. This page does not refresh on its own.</p>
+<QueryError title="Couldn’t connect to services" query={access} />
+{#if enabled && fleet.isPending}<Skeleton rows={3} />{/if}
+{#if enabled && fleet.error}<LoadError title="Couldn’t check service status" message={fleet.error.message} retry={refresh} busy={fleet.isFetching}/><p class="meta warn">Statuses shown earlier have not been verified.</p>{/if}
+{#if pending}<p class="meta" role="status">Service action in progress. Check recent activity if the connection is interrupted.</p>{/if}
+{#if actionError}<p class="fail" role="alert">{actionError}</p>{/if}
+{#if result}<p class="ok" role="status" style:font-size="12.5px"><strong>{actionLabel[result.request.action]} on {result.request.machine}: {result.outcome}.</strong> {result.message}</p>{/if}
+
+{#if enabled && fleet.data && serviceId}
+  {#if !machine}<div class="state-c"><p role="alert">This machine is not in the configured inventory.</p></div>{/if}
+  {#if machine && !service}<div class="state-c"><p role="alert">This service was not reported by the latest check.</p></div>{/if}
+  {#if machine && service}
+    {@const compatibility = service.compatibility}
+    <dl class="stat">
+      <div><dt>status</dt><dd style:font-size="15px" style:display="flex" style:align-items="center" style:gap="9px"><i class="dot" class:warn={service.state !== "healthy"}></i>{machine.reachable ? service.summary : "Machine unreachable"}</dd><p class="meta">checked {checkedTime(service.checked_at)}{service.pid ? ` / PID ${service.pid}` : ""}</p></div>
+      {#if compatibility}
+        <div><dt>schema</dt><dd style:font-size="15px" style:display="flex" style:align-items="center" style:gap="9px"><i class="dot" class:warn={compatibility.state !== "healthy"}></i>{compatibility.state === "healthy" ? "Compatible" : "Needs attention"}</dd><p class="meta">database {compatibility.database_schema ?? "unknown"} / supported {compatibility.supported_schema ?? "unknown"}</p></div>
+        <div><dt>build</dt><dd style:font-size="15px" style:overflow-wrap="anywhere">{compatibility.running_build.slice(0, 12) || "unknown"}</dd><p class="meta">dashboard {compatibility.observer_build.slice(0, 12)}</p></div>
+      {/if}
+    </dl>
+    {#if compatibility && (compatibility.blocked || compatibility.next_step)}
+      <section><h2 class="h2"><Info size={15} aria-hidden="true" />Schema compatibility</h2><p>{compatibility.blocked}</p><p class="meta" style:margin-top="6px">Next step</p><p>{compatibility.next_step}</p></section>
     {/if}
-    <section><h2>Manage</h2><p class="text-muted">{service.control_note}</p><div class="service-actions">
-      {#each service.actions as action (action)}<button class="plain-button" type="button" disabled={pending || !machine.reachable || !!fleet.error || !!actionError} onclick={() => confirm = action}>{actionLabel[action]}</button>{/each}
-      {#if service.logs_available}<button class="plain-button" type="button" onclick={() => showLog = !showLog}>{showLog ? "Hide log" : "View log"}</button>{/if}
-    </div>
-    {#if confirm}<div class="service-confirm" role="group" aria-label="Confirm service action"><h3>{actionLabel[confirm]} {service.name} on {machine.id}?</h3><p>{consequences}</p><div class="service-actions"><button class="plain-button" type="button" onclick={act}>Confirm {confirm}</button><button class="plain-button" type="button" onclick={() => confirm = null}>Cancel</button></div></div>{/if}
+    <section>
+      <h2 class="h2"><Server size={15} aria-hidden="true" />manage</h2>
+      <p class="meta">{service.control_note}</p>
+      <div class="chips" style:gap="8px" style:margin-top="8px">
+        {#each service.actions as action (action)}<button class="btn" type="button" disabled={pending || !machine.reachable || !!fleet.error || !!actionError} onclick={() => (confirm = action)}>{actionLabel[action]}</button>{/each}
+        {#if service.logs_available}<button class="btn" type="button" aria-expanded={showLog} onclick={() => (showLog = !showLog)}><ScrollText size={15} aria-hidden="true" />{showLog ? "Hide log" : "View log"}</button>{/if}
+      </div>
+      {#if confirm}
+        <div class="confirm" role="group" aria-label="Confirm service action" style:margin-top="10px">
+          <span>{actionLabel[confirm]} {service.name} on {machine.id}? {consequences}</span>
+          <button class="btn p" type="button" onclick={act}>Confirm {confirm}</button>
+          <button class="btn" type="button" onclick={() => (confirm = null)}>Cancel</button>
+        </div>
+      {/if}
+      {#if showLog}
+        {#if log.isPending}<p class="meta" role="status">Loading log…</p>{/if}
+        {#if log.error}<p class="fail" role="alert">{log.error.message}</p>{/if}
+        {#if log.data !== undefined}<div class="blk"><div class="sc"><pre class="service-log" style:margin="0" style:white-space="pre">{log.data || "No recent log entries."}</pre></div></div>{/if}
+      {/if}
     </section>
-    <section><h2>Diagnostics</h2><dl class="service-diagnostics">{#each service.diagnostics as item (item.label)}<div><dt>{item.label}</dt><dd>{item.value}</dd></div>{/each}</dl></section>
-    {#if showLog}<section><h2>Service log</h2>{#if log.isPending}<p role="status">Loading log…</p>{/if}{#if log.error}<p role="alert">{log.error.message}</p>{/if}{#if log.data !== undefined}<pre class="service-log">{log.data || "No recent log entries."}</pre>{/if}</section>{/if}
-  {:else if enabled && fleet.data}
-    {#if machineId && !machine}<p role="alert">This machine is not in the configured inventory.</p>{/if}
-    {#if serviceId && machine}<p role="alert">This service was not reported by the latest check.</p>{/if}
-    {#each fleet.data.filter(item => !machineId || item.id === machineId) as item (item.id)}
-      <section class="service-machine"><div class="section-heading"><h2><a href={servicesHref(item.id)}>{item.id}</a></h2><span class="text-muted">{item.platform}</span></div><div class="service-machine-status"><ServiceStatus state={machineState(item)}/><span class="service-checked">Checked {checkedTime(item.checked_at)}</span></div>
-      {#each item.warnings as warning (warning)}<p class="service-warning">{warning}</p>{/each}
-      <ul class="service-list">{#each item.services as entry (entry.id)}<li><a href={servicesHref(item.id, entry.id)}><span><strong>{entry.name}</strong><small>{entry.kind}</small></span><ServiceStatus state={entry.state} label={entry.summary}/></a></li>{/each}</ul>
-      {#if item.reachable && !machineId}<MachineSetup machineId={item.id} {enabled} compact/>{/if}
+    <section>
+      <h2 class="h2"><Info size={15} aria-hidden="true" />Diagnostics</h2>
+      <dl>{#each service.diagnostics as item (item.label)}<div class="kv"><dt>{item.label}</dt><dd style:overflow-wrap="anywhere">{item.value}</dd></div>{/each}</dl>
+      {#if !service.diagnostics.length}<p class="meta">Nothing further was reported.</p>{/if}
     </section>
-    {/each}
-    {#if machine && !serviceId}<MachineSetup machineId={machine.id} enabled={enabled && machine.reachable}/>{/if}
   {/if}
-  {#if enabled && machineId}<section><h2>Recent activity</h2>{#if history.error}<p role="alert">{history.error.message}</p>{/if}{#if history.isPending}<p role="status">Loading activity…</p>{/if}<ul class="service-activity">{#each history.data?.filter(item => !serviceId || item.request.service === serviceId) ?? [] as item (item.request.request_id)}<li><strong>{actionLabel[item.request.action]} · {item.outcome}</strong><span>{checkedTime(item.requested_at)} · {item.request.service}</span><p>{item.message}</p></li>{:else}{#if history.data}<li>No recorded service actions.</li>{/if}{/each}</ul></section>{/if}
-  {#if !machineId}<FleetControls {enabled}/><IndexStatus />{/if}
-</main>
+{:else if enabled && fleet.data}
+  {#if machineId && !machine}<div class="state-c"><p role="alert">This machine is not in the configured inventory.</p></div>{/if}
+  <div class="matrix">
+    <div class="mx">
+      <div class="mx-r head"><span style:padding-left="14px">machine</span>{#each columns as column (column.kind)}<span>{column.label}</span>{/each}</div>
+      {#each fleet.data as item (item.id)}
+        {@const state = machineState(item)}
+        <a class="mx-r" class:on={item.id === selectedId} href={servicesHref(item.id)} aria-current={item.id === selectedId ? "true" : undefined} aria-label="{item.id}: {item.reachable ? (state === 'healthy' ? 'all services healthy' : 'needs attention') : 'unreachable'}">
+          <span class="mx-n"><i class="dot" class:warn={state !== "healthy"}></i>{item.id}</span>
+          {#each columns as column (column.kind)}
+            {@const status = item.reachable ? cell(item.services, column.kind) : "unknown"}
+            {#if status === null}<span class="cell none">–</span>
+            {:else if status === "healthy"}<span class="cell ok"><Check size={16} aria-label="healthy" /></span>
+            {:else}<span class="cell warn"><TriangleAlert size={16} aria-hidden="true" />{status}</span>{/if}
+          {/each}
+        </a>
+      {/each}
+    </div>
+  </div>
+  {#if machine}
+    {#each machine.warnings as warning (warning)}<p class="meta warn">{warning}</p>{/each}
+    <section>
+      <h2 class="h2"><Server size={15} aria-hidden="true" />services on {machine.id}</h2>
+      {#each machine.services as entry (entry.id)}
+        <a class="li" href={servicesHref(machine.id, entry.id)}><Server size={16} color="var(--teal)" aria-hidden="true" /><span class="g"><strong style:font-weight="500">{entry.name}</strong> <small class="meta">{entry.kind}</small></span><ServiceStatus state={entry.state} label={entry.summary}/></a>
+      {/each}
+      {#if !machine.services.length}<p class="meta">{machine.reachable ? "No services were reported." : "This machine's dashboard could not be reached."}</p>{/if}
+    </section>
+    {#if machine.reachable}<MachineSetup machineId={machine.id} {enabled} />{/if}
+  {/if}
+{/if}
+{#if enabled && selectedId}
+  <section>
+    <h2 class="h2"><Clock size={15} aria-hidden="true" />recent activity{serviceId ? "" : ` on ${selectedId}`}</h2>
+    {#if history.error}<p class="fail" role="alert">{history.error.message}</p>{/if}
+    {#if history.isPending}<p class="meta" role="status">Loading activity…</p>{/if}
+    {#each history.data?.filter((item) => !serviceId || item.request.service === serviceId) ?? [] as item (item.request.request_id)}
+      <div class="row"><span style:display="block"><strong style:font-weight="500">{actionLabel[item.request.action]} {item.request.service}: {item.outcome}</strong></span><span class="meta">{checkedTime(item.requested_at)}</span><p class="meta">{item.message}</p></div>
+    {:else}
+      {#if history.data}<p class="meta">No recorded service actions.</p>{/if}
+    {/each}
+  </section>
+{/if}

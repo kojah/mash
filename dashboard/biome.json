@@ -30,6 +30,19 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/terminal.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          },
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
     }
   ],
   "css": {

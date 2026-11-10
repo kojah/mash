@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { FleetRequest } from "../src/lib/services.svelte";
+import { fitsViewport } from "./shell";
 
 for (const width of [390, 1280]) {
   test(`fleet confirmation, progress and uncertain outcomes at ${width}px`, async ({ page }) => {
@@ -9,6 +10,8 @@ for (const width of [390, 1280]) {
     let submitted: FleetRequest | null = null;
     const action = width === 390 ? "status" : "watch-start";
     const label = width === 390 ? "Check machines" : "Set up and start watchers";
+    const group = width === 390 ? "check" : "watchers";
+    const readOnly = action === "status";
     page.on("request", (request) => {
       if (request.resourceType() === "document") documents++;
     });
@@ -63,28 +66,54 @@ for (const width of [390, 1280]) {
       }
       return route.fulfill({ json: { local_node: "xenia", chats: [], truncated: false } });
     });
-    await page.goto("/#/services");
-    await page.getByRole("button", { name: "Select all eligible machines" }).click();
-    await expect(page.getByLabel("macbook", { exact: true })).toBeChecked();
-    await page.getByLabel("xenia", { exact: true }).uncheck();
-    await page.getByRole("button", { name: "Review operation" }).click();
-    expect(submissions).toBe(0);
-    await expect(page.getByRole("group", { name: "Confirm fleet operation" })).toContainText(
-      "Machines: macbook",
-    );
-    await page.getByRole("button", { name: "Confirm operation" }).click();
-    await expect(page.getByText(`${label} · succeeded`, { exact: true })).toBeVisible();
+    await page.goto("/#/fleet");
+    await expect(page.getByRole("heading", { name: "Manage fleet", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
+    await page.getByRole("link", { name: label, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`#/fleet/${action}$`));
+    await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
+    const machine = (name: string) => page.getByRole("checkbox", { name, exact: true });
+    const start = page.getByRole("button", { name: `${label} on 1 machine`, exact: true });
+    const confirm = page.getByRole("group", { name: "Confirm", exact: true });
+    await expect(page.getByRole("button", { name: "Choose machines" })).toBeDisabled();
+    await page.getByRole("button", { name: "Select all" }).click();
+    await expect(machine("macbook")).toBeChecked();
+    await machine("xenia").uncheck();
+    await start.click();
+    if (readOnly) {
+      // A check that changes nothing starts without a second step.
+      await expect(confirm).toHaveCount(0);
+    } else {
+      expect(submissions).toBe(0);
+      await expect(confirm).toContainText(`${label} on macbook?`);
+      await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(confirm).toHaveCount(0);
+      expect(submissions).toBe(0);
+      await start.click();
+      await confirm.getByRole("button", { name: "Yes, start it" }).click();
+    }
+    const run = page.getByRole("article").filter({ hasText: label });
+    await expect(run).toHaveCount(1);
+    await expect(run).toContainText("macbook");
+    await expect(run.locator("p").last()).toHaveText("succeeded");
     expect(submissions).toBe(1);
     expect(documents).toBe(1);
-    await page.getByLabel("macbook", { exact: true }).check();
-    await page.getByRole("button", { name: "Review operation" }).click();
-    await page.getByRole("button", { name: "Confirm operation" }).click();
-    await expect(page.getByText(/Check job history and the affected machines/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Review operation" })).toBeDisabled();
+    await machine("macbook").check();
+    await start.click();
+    if (!readOnly) await confirm.getByRole("button", { name: "Yes, start it" }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      /Check the activity below and the affected machines before starting another operation/,
+    );
+    // An uncertain outcome blocks another submission until the reader says it was checked.
+    await expect(start).toBeDisabled();
+    await expect(machine("macbook")).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Select all" })).toBeDisabled();
     expect(submissions).toBe(2);
     expect(documents).toBe(1);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
+    await page.getByRole("button", { name: "I’ve checked the outcome" }).click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(start).toBeEnabled();
+    expect(submissions).toBe(2);
+    expect(await fitsViewport(page)).toBe(true);
   });
 }

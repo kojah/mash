@@ -1,22 +1,24 @@
 # Inspect and manage Mash services
 
-Open **Services** in the dashboard menu. With ordinary `mash dash`, you can
+Open **services** in the dashboard's rail. With ordinary `mash dash`, you can
 inspect the local SQLite schema, registered MCP and watcher processes, the
 dashboard process, and configured Qdrant/shared-server endpoints. Checks never
 start indexing, migrate SQLite or rebuild Qdrant.
 
-The front page shows a status dot for each reported machine. Open a machine,
-then a service, to see its diagnostics and schema compatibility. **Check for
-updates** refreshes the report. There is no timer-based polling or page reload.
+The page is a table of machines against kinds of service: index, search, API,
+watcher, MCP and dashboard. Choose a machine's row to list its services, then a
+service to see its diagnostics and schema compatibility. **Check again**
+refreshes the report. There is no timer-based polling or page reload.
 Dates tell you when a check was made; an old green result is not a continuous
 health guarantee. Fleet job progress, when enabled below, updates automatically
 while an operation is running; it does not reload the page or the chat history.
 
 ## Check each machine's agent setup
 
-Each machine on the Services page lists its agents with one line of status,
-such as **Ready** or **Hooks need approval**. Open the machine to see the
-integration part by part, in the order it is installed:
+Under the selected machine's services, **agent setup** shows each agent with
+one line of status, such as **Ready** or **Hooks need approval**, and the
+integration part by part, in the order it is installed. A machine's own page
+under **machines** shows the same.
 
 - **Connection:** the agent has Mash registered as an MCP server.
 - **Plugin** and **Skill:** the Mash plugin is installed and matches the Mash

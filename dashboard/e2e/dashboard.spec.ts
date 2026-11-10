@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { searchBox } from "./shell";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/records?**", (route) =>
@@ -51,8 +52,13 @@ test("direct chats load before the catalogue and tool output stays literal", asy
     await expect(page.getByRole("heading", { name: "A readable heading" })).toBeVisible();
     await expect(page.locator("main pre code")).toContainText('    println!("hello");');
     await expect(page.getByRole("heading", { name: "README" })).toHaveCount(0);
-    await page.getByText("Tool output", { exact: true }).click();
-    await expect(page.locator("details pre")).toContainText("<div>literal HTML</div>");
+    // Tool output is folded into a run of steps; both levels open on request.
+    const steps = page.getByRole("group").filter({ hasText: "1 step" }).first();
+    await steps.locator("summary").first().click();
+    await steps.locator("summary").filter({ hasText: "Tool output" }).click();
+    await expect(steps.locator("pre")).toContainText("# README");
+    await expect(steps.locator("pre")).toContainText("<div>literal HTML</div>");
+    await expect(steps.locator("pre *")).toHaveCount(0);
   } finally {
     release?.();
   }
@@ -96,12 +102,14 @@ test("real API shapes, explicit search, source identity, safe content and stable
   let content =
     "Initial **reply**\n\n<script>window.pwned = true</script><img src=https://evil.example/pixel onerror=alert(1)>[bad](javascript:alert(1))";
   let searchRequests = 0;
+  let catalogueRequests = 0;
   const chatRequests: URL[] = [];
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/chats") {
+      catalogueRequests++;
       await route.fulfill({
         json: {
           local_node: "local",
@@ -131,11 +139,19 @@ test("real API shapes, explicit search, source identity, safe content and stable
       await route.fulfill({ json: { records: [], next_offset: null } });
     } else {
       chatRequests.push(url);
+      // A full first page, so the reader can ask for the next one.
+      const full = url.pathname === "/api/chat" && url.searchParams.get("offset") === "0";
       await route.fulfill({
         json: {
           id: "same-id",
           messages: [
             { id: "match-id", ordinal: 0, role: "assistant", created_at: Date.now(), content },
+            ...Array.from({ length: full ? 99 : 0 }, (_, index) => ({
+              id: `later-${index}`,
+              ordinal: index + 1,
+              role: "assistant",
+              content: `Later reply ${index}`,
+            })),
           ],
         },
       });
@@ -143,34 +159,30 @@ test("real API shapes, explicit search, source identity, safe content and stable
   });
   await page.clock.install();
   await page.goto("/");
-  await expect(page.getByRole("link", { name: /Real fixture chat/ })).toHaveCount(2);
+  const main = page.getByRole("main");
+  await expect(main.getByRole("link", { name: /Real fixture chat/ })).toHaveCount(2);
   title = "Refreshed catalogue";
   await page.clock.runFor(31_000);
   await expect(page.getByRole("link", { name: /Refreshed catalogue/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /New or updated chats/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Check for updates" }).click();
-  await page.getByRole("button", { name: /New or updated chats/ }).click();
-  await expect(page.getByRole("link", { name: /Refreshed catalogue/ })).toBeVisible();
-  const homeInput = page.getByRole("searchbox");
-  await homeInput.fill("needle");
+  expect(catalogueRequests).toBe(1);
+  await searchBox(page).fill("needle");
   expect(searchRequests).toBe(0);
-  await homeInput.press("Enter");
-  const input = page.getByRole("searchbox");
+  await searchBox(page).press("Enter");
   await expect(page.getByText("matching snippet")).toBeVisible();
   expect(searchRequests).toBe(1);
-  await input.fill("unsubmitted draft");
+  await searchBox(page).fill("unsubmitted draft");
   await page.clock.runFor(31_000);
   expect(searchRequests).toBe(1);
-  await page
-    .getByRole("main")
-    .getByRole("link", { name: /Real fixture chat/ })
-    .click();
-  await expect(page.getByText("Initial", { exact: false }).last()).toBeVisible();
+  await expect(page.getByText("matching snippet")).toBeVisible();
+  await main.getByRole("link", { name: /Real fixture chat/ }).click();
+  const reply = page.locator("#message-match-id");
+  await expect(reply.getByText("Initial", { exact: false })).toBeVisible();
   expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
   expect(
     await page.locator(".prose script, .prose img, .prose a[href^='javascript:']").count(),
   ).toBe(0);
-  await expect(page.locator("main strong")).toHaveText("reply");
+  expect(await page.evaluate(() => "pwned" in window)).toBe(false);
+  await expect(reply.locator("strong")).toHaveText("reply");
   content = "Updated reply";
   await page.getByRole("button", { name: "Check for updates" }).click();
   await expect(page.getByRole("button", { name: /This page has changed/ })).toBeVisible();
@@ -182,7 +194,37 @@ test("real API shapes, explicit search, source identity, safe content and stable
   expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
   await page.getByRole("button", { name: "Next messages" }).click();
   await expect.poll(() => chatRequests.at(-1)?.searchParams.get("offset")).toBe("100");
+  expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
   expect(errors).toEqual([]);
+});
+
+// The redesign removed the overview's "Check for updates" control and its
+// "New or updated chats" notice. Every catalogue read is now cached for the
+// life of the document (catalogOptions: staleTime Infinity, and nothing calls
+// refetch() except the error retry), so new chats appear only after a browser
+// reload. Until the source offers a way to ask, this records the lost request.
+test("the reader can ask for new chats without reloading the document", async ({ page }) => {
+  let title = chat.title;
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") documents++;
+  });
+  await page.route("**/api/chats**", (route) =>
+    route.fulfill({
+      json: {
+        local_node: "local",
+        truncated: false,
+        chats: [{ ...chat, title, node_id: "local" }],
+      },
+    }),
+  );
+  await page.goto("/");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("link", { name: /Real fixture chat/ })).toBeVisible();
+  title = "Refreshed catalogue";
+  await main.getByRole("button", { name: "Check for updates" }).click();
+  await expect(main.getByRole("link", { name: /Refreshed catalogue/ })).toBeVisible();
+  expect(documents).toBe(1);
 });
 
 test("chat navigation retains the sidebar and refresh requires an explicit request", async ({
@@ -217,18 +259,22 @@ test("chat navigation retains the sidebar and refresh requires an explicit reque
   await page.clock.install();
   await page.goto("/#/chat/chat-0?node=local");
   await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
-  const sidebar = page.getByRole("complementary", { name: "Conversation outline" });
-  await sidebar.locator("summary").click();
-  await sidebar.evaluate((element) => {
-    element.scrollTop = 500;
-    element.setAttribute("data-retained", "yes");
-  });
+  const sidebar = page.getByRole("navigation", { name: "Prompts and sessions" });
+  await expect(sidebar.getByRole("link", { name: /Chat 0/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await sidebar.evaluate((element) => element.setAttribute("data-retained", "yes"));
   await page.evaluate(() => {
     location.hash = "#/chat/chat-1?node=local";
   });
   await expect(page.getByRole("heading", { name: "Chat 1", exact: true })).toBeVisible();
   await expect(sidebar).toHaveAttribute("data-retained", "yes");
-  expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
+  await expect(sidebar.getByRole("link", { name: /Chat 1/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
   content = "Background replacement";
   await page.waitForLoadState("networkidle");
   const beforeIdle = requests;
@@ -240,10 +286,10 @@ test("chat navigation retains the sidebar and refresh requires an explicit reque
   await expect(page.getByRole("button", { name: /This page has changed/ })).toBeVisible();
   await expect(page.getByText("Original answer", { exact: true })).toBeVisible();
   await expect(page.getByText("Background replacement", { exact: true })).toHaveCount(0);
-  expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(500);
+  await expect(sidebar).toHaveAttribute("data-retained", "yes");
 });
 
-test("switching a scrolled chat keeps the header and sidebar stationary", async ({ page }) => {
+test("switching a scrolled chat keeps the top bar and sidebar stationary", async ({ page }) => {
   let documents = 0;
   page.on("request", (request) => {
     if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++;
@@ -268,7 +314,7 @@ test("switching a scrolled chat keeps the header and sidebar stationary", async 
   );
   await page.route("**/api/chat?**", async (route) => {
     const id = new URL(route.request().url()).searchParams.get("id");
-    if (id === "chat-8") await ready;
+    if (id === "chat-4") await ready;
     await route.fulfill({
       json: {
         messages: [
@@ -283,32 +329,38 @@ test("switching a scrolled chat keeps the header and sidebar stationary", async 
     });
   });
   await page.goto("/#/chat/chat-0?node=local");
-  await page.locator("main ol li").first().waitFor();
-  const header = page.getByRole("link", { name: "Search chats", exact: true });
+  await page.locator("#message-message-chat-0").waitFor();
+  const header = searchBox(page);
+  const mainNav = page.getByRole("navigation", { name: "Main" });
+  const sidebar = page.getByRole("navigation", { name: "Prompts and sessions" });
+  // The sidebar lists the project's six newest sessions.
+  await expect(sidebar.getByRole("link", { name: /^Chat \d/ })).toHaveCount(6);
   const initialHeader = await header.boundingBox();
-  const sidebar = page.getByRole("complementary", { name: "Conversation outline" });
-  await sidebar.locator("summary").click();
-  await page.locator("main").evaluate((element) => {
-    element.scrollTop = 600;
-  });
-  expect(await page.locator("main").evaluate((element) => element.scrollTop)).toBe(600);
-  await sidebar.evaluate((element) => {
-    element.scrollTop = 400;
-  });
-  const sidebarScroll = await sidebar.evaluate((element) => element.scrollTop);
+  const initialNav = await mainNav.boundingBox();
+  const initialSidebar = await sidebar.boundingBox();
+  await sidebar.evaluate((element) => element.setAttribute("data-retained", "yes"));
+  await page.evaluate(() => window.scrollTo(0, 600));
+  expect(await page.evaluate(() => window.scrollY)).toBe(600);
+  // Sticky chrome stays where it was while the transcript scrolls under it.
+  expect(await header.boundingBox()).toEqual(initialHeader);
+  expect(await mainNav.boundingBox()).toEqual(initialNav);
   try {
-    await sidebar.getByRole("link", { name: "Chat 8", exact: true }).click();
+    await sidebar.getByRole("link", { name: /Chat 4/ }).click();
     await expect(page.getByText("Loading messages…", { exact: true })).toBeVisible();
     expect(await header.boundingBox()).toEqual(initialHeader);
-    expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(sidebarScroll);
+    expect(await mainNav.boundingBox()).toEqual(initialNav);
+    await expect(sidebar).toHaveAttribute("data-retained", "yes");
+    // A newly opened chat starts at its top, with the sidebar where it began.
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
-    expect(await page.locator("main").evaluate((element) => element.scrollTop)).toBe(0);
+    expect(await sidebar.boundingBox()).toEqual(initialSidebar);
     expect(documents).toBe(1);
   } finally {
     release?.();
   }
-  await page.locator("main ol li").first().waitFor();
+  await page.locator("#message-message-chat-4").waitFor();
   expect(await header.boundingBox()).toEqual(initialHeader);
+  expect(await mainNav.boundingBox()).toEqual(initialNav);
+  expect(documents).toBe(1);
 });
 
 test("Export downloads the entire chat as safe HTML and Markdown", async ({ page }) => {
@@ -340,11 +392,9 @@ test("Export downloads the entire chat as safe HTML and Markdown", async ({ page
   });
   await page.goto("/#/chat/same-id?node=local");
   await expect(page.getByRole("heading", { name: chat.title })).toBeVisible();
-  await page
-    .locator("summary")
-    .filter({ hasText: /^Export$/ })
-    .click();
+  const openExport = page.getByRole("button", { name: "Export", exact: true });
   for (const format of ["Markdown", "HTML"]) {
+    await openExport.click();
     const downloaded = page.waitForEvent("download");
     await page.getByRole("button", { name: `Export to ${format}`, exact: true }).click();
     const download = await downloaded;
@@ -358,7 +408,9 @@ test("Export downloads the entire chat as safe HTML and Markdown", async ({ page
       expect(content).not.toContain("<script>");
       expect(content).not.toContain("<img");
     }
+    await expect(page.getByRole("status").filter({ hasText: "Exported" })).toBeVisible();
   }
+  await openExport.click();
   await expect(page.getByRole("button", { name: "Export to PDF", exact: true })).toBeEnabled();
   await page.context().addInitScript(() => {
     window.print = () => {};
@@ -386,5 +438,6 @@ test("network errors are visible and recoverable", async ({ page }) => {
   );
   await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(page.getByText("No indexed chats yet.", { exact: false })).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("remote offline");
+  await expect(page.getByRole("status").filter({ hasText: "remote offline" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

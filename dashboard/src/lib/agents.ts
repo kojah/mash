@@ -7,8 +7,8 @@ export interface AgentInfo {
 }
 
 export const agents: Readonly<Record<Agent, AgentInfo>> = {
-  "claude-code": { name: "Claude Code", logo: "/agents/claude-code.svg" },
-  codex: { name: "Codex", logo: "/agents/codex.svg" },
+  "claude-code": { name: "Claude Code", logo: "/agents/claude.svg" },
+  codex: { name: "Codex", logo: "/agents/openai.svg" },
   opencode: { name: "OpenCode", logo: "/agents/opencode.svg" },
   copilot: { name: "GitHub Copilot", logo: "/agents/githubcopilot.svg" },
   cursor: { name: "Cursor", logo: "/agents/cursor.svg" },
