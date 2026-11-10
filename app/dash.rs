@@ -108,6 +108,7 @@ fn router(state: Arc<Dash>) -> Router {
             tower_http::compression::CompressionLayer::new()
                 .quality(tower_http::CompressionLevel::Fastest),
         )
+        .layer(axum::middleware::from_fn(trace))
         .with_state(state)
 }
 
@@ -123,6 +124,20 @@ fn allowed_hosts(address: SocketAddr) -> Vec<String> {
         ]);
     }
     hosts
+}
+
+/// One span per request when tracing is on (`MASH_TRACE=1`). It opens when
+/// the request arrives and closes when the response is ready or the browser
+/// goes away, so a span that closes without a status is a request the client
+/// abandoned. Only the path is recorded: queries can hold search text.
+#[tracing::instrument(name = "http_request", skip_all, fields(request_id = crate::observability::request_id(), process_id = std::process::id(), method = %request.method(), path = request.uri().path(), status = tracing::field::Empty, elapsed_ms = tracing::field::Empty))]
+async fn trace(request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let started = std::time::Instant::now();
+    let response = next.run(request).await;
+    let span = tracing::Span::current();
+    span.record("status", response.status().as_u16());
+    span.record("elapsed_ms", crate::progress::milliseconds(started));
+    response
 }
 
 async fn guard(
