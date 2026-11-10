@@ -57,6 +57,70 @@ struct Install {
     install_path: PathBuf,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Marketplace {
+    source: MarketplaceSource,
+    install_location: PathBuf,
+}
+
+#[derive(Deserialize)]
+struct MarketplaceSource {
+    source: String,
+}
+
+#[derive(Deserialize)]
+struct Catalog {
+    plugins: Vec<CatalogPlugin>,
+}
+
+#[derive(Deserialize)]
+struct CatalogPlugin {
+    name: String,
+    source: CatalogSource,
+}
+
+/// A catalog entry names a path inside its marketplace or a remote source.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CatalogSource {
+    Path(String),
+    Remote(serde::de::IgnoredAny),
+}
+
+/// Claude Code reads a plugin from a directory marketplace in place. Its
+/// registry's `installPath` then still names the cache copy made when the
+/// plugin was first installed, which no session loads.
+fn claude_directory_root(id: &str, environment: &Environment) -> Option<PathBuf> {
+    let (plugin, marketplace) = id.split_once('@')?;
+    let known = environment.claude.join("plugins/known_marketplaces.json");
+    let mut known = read::<BTreeMap<String, Marketplace>>(&known).ok()??;
+    let entry = known.remove(marketplace)?;
+    if entry.source.source != "directory" {
+        return None;
+    }
+    let catalog = entry
+        .install_location
+        .join(".claude-plugin/marketplace.json");
+    let listed = read::<Catalog>(&catalog)
+        .ok()??
+        .plugins
+        .into_iter()
+        .find(|listed| listed.name == plugin)?;
+    let CatalogSource::Path(source) = listed.source else {
+        return None;
+    };
+    let mut root = entry.install_location;
+    for part in Path::new(&source).components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(name) => root.push(name),
+            _ => return None,
+        }
+    }
+    Some(root)
+}
+
 pub(super) fn claude_install(client: &mut Client, id: &str, environment: &Environment) {
     let path = environment.claude.join("plugins/installed_plugins.json");
     match read::<Installed>(&path) {
@@ -69,7 +133,11 @@ pub(super) fn claude_install(client: &mut Client, id: &str, environment: &Enviro
                 .filter(|install| install.scope == "user")
                 .collect();
             match installs.as_slice() {
-                [install] => inspect(client, &install.install_path, environment, None),
+                [install] => {
+                    let root = claude_directory_root(id, environment)
+                        .unwrap_or_else(|| install.install_path.clone());
+                    inspect(client, &root, environment, None);
+                }
                 [] => missing(client, &path),
                 _ => client.add(
                     Component::Plugin,

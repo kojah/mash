@@ -241,6 +241,89 @@ fn installation_complete_claude_user_setup_has_no_attention_findings() {
     assert!(report.clients[0].expected);
 }
 
+/// A complete plugin tree like the one the passing user setup installs.
+#[cfg(unix)]
+fn write_claude_plugin(plugin: &Path) {
+    write(
+        &plugin.join(".claude-plugin/plugin.json"),
+        include_str!("../../../plugins/mash/.claude-plugin/plugin.json"),
+    );
+    write(
+        &plugin.join("skills/mash-history/contract.json"),
+        include_str!("../../../plugins/mash/skills/mash-history/contract.json"),
+    );
+    write(&plugin.join("skills/mash-history/SKILL.md"), "mash-history");
+    write(
+        &plugin.join("hooks/hooks.json"),
+        include_str!("../../../plugins/mash/hooks/hooks.json"),
+    );
+    for name in [
+        "session_start.py",
+        "prompt_recall.py",
+        "recall_common.py",
+        "python.sh",
+    ] {
+        write(&plugin.join("hooks").join(name), "# script");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn installation_claude_directory_marketplace_is_inspected_in_place() {
+    let root = tempfile::tempdir().unwrap();
+    let mut environment = environment(root.path());
+    environment.path = "/usr/bin:/bin".into();
+    write(
+        &environment.claude.join("settings.json"),
+        r#"{"enabledPlugins":{"mash@mash-local":true}}"#,
+    );
+    write(
+        &environment.home.join(".claude.json"),
+        r#"{"mcpServers":{"mash":{"command":"/bin/true"}}}"#,
+    );
+    // The registry still names the cache copy from the first installation.
+    let stale = root.path().join("cache/mash/0.1.15");
+    write(
+        &stale.join(".claude-plugin/plugin.json"),
+        r#"{"name":"mash","version":"0.1.15"}"#,
+    );
+    let registry =
+        serde_json::json!({"plugins":{"mash@mash-local":[{"scope":"user","installPath":stale}]}});
+    write(
+        &environment.claude.join("plugins/installed_plugins.json"),
+        &registry.to_string(),
+    );
+    let checkout = root.path().join("checkout");
+    write_claude_plugin(&checkout.join("plugins/mash"));
+    let marketplaces = environment.claude.join("plugins/known_marketplaces.json");
+    let known = |kind: &str, catalog_source: serde_json::Value| {
+        write(
+            &checkout.join(".claude-plugin/marketplace.json"),
+            &serde_json::json!({"name":"mash","plugins":[{"name":"mash","source":catalog_source}]})
+                .to_string(),
+        );
+        write(
+            &marketplaces,
+            &serde_json::json!({"mash-local":{"source":{"source":kind,"path":checkout},"installLocation":checkout}})
+                .to_string(),
+        );
+        collect(Some(&environment), &[Agent::ClaudeCode])
+            .summary
+            .attention
+    };
+    assert_eq!(known("directory", "./plugins/mash".into()), 0);
+    // Only a directory marketplace is read in place, and only a path inside it.
+    assert_ne!(known("github", "./plugins/mash".into()), 0);
+    assert_ne!(known("directory", "../plugins/mash".into()), 0);
+    assert_ne!(
+        known(
+            "directory",
+            serde_json::json!({"source":"github","repo":"kojah/mash"})
+        ),
+        0
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn installation_probe_skips_watch_and_preserves_disabled_registration() {
