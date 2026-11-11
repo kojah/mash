@@ -14,6 +14,7 @@ import {
   locked,
   parseAnswer,
   parseConsole,
+  sentences,
   summarize,
   type Tool,
 } from "../lib/console";
@@ -141,7 +142,7 @@ $effect(() => () => controller?.abort());
       <h2 class="op-g g-{section.name === locked ? 'locked' : section.name.toLowerCase()}">{section.name === locked ? "Changes data · locked" : section.name}</h2>
       {#each section.tools as entry (entry.name)}
         {@const expanded = open === entry.name}
-        <div class="op" class:open={expanded} class:locked={!entry.readOnly} id="tool-{entry.name}">
+        <div class="mop" class:open={expanded} class:locked={!entry.readOnly} id="tool-{entry.name}">
           <button class="op-h" type="button" aria-expanded={expanded} onclick={() => toggle(entry.name)}>
             <span class="badge {entry.readOnly ? 'read' : 'write'}">{entry.readOnly ? "READ" : "WRITE"}</span>
             <code class="op-n">{entry.name}</code>
@@ -151,7 +152,9 @@ $effect(() => () => controller?.abort());
           </button>
           {#if expanded}
             <form class="op-b" onsubmit={run}>
-              <p class="op-d">{entry.about}</p>
+              {#if sentences(entry.about).length > 1}
+                <ul class="op-d">{#each sentences(entry.about).slice(1) as point, index (index)}<li>{point}</li>{/each}</ul>
+              {/if}
               {#if !entry.readOnly}<p class="meta">This tool changes data, so it can be run by an agent or from the command line, not from the dashboard. Its parameters are listed for reference.</p>{/if}
               <div>
                 <h3 class="op-t">Parameters</h3>
@@ -160,7 +163,7 @@ $effect(() => () => controller?.abort());
                   {#each shownParams(entry) as param (param.name)}
                     {@const key = `${entry.name}.${param.name}`}
                     <label class="prm" class:bad={request && !request.ok && request.param === param.name && outcome.state !== "idle"}>
-                      <span class="prm-n"><code>{param.name}</code> <small>{param.type}</small>{#if param.required} <b>required</b>{/if}</span>
+                      <span class="prm-n"><code>{param.name}</code><small>{param.type}</small>{#if param.required}<b>required</b>{/if}</span>
                       <span class="prm-a">{param.about}{#if param.fallback} <small>Default {param.fallback}.</small>{/if}</span>
                       {#if !entry.readOnly}<span></span>
                       {:else if param.kind === "enum" || param.kind === "boolean"}

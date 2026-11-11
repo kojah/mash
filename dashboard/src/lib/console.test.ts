@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { argumentsFor, headline, locked, parseAnswer, parseConsole, summarize } from "./console";
+import {
+  argumentsFor,
+  headline,
+  locked,
+  parseAnswer,
+  parseConsole,
+  sentences,
+  summarize,
+} from "./console";
 
 const listing = {
   build_revision: "abc123",
@@ -65,6 +73,11 @@ describe("console tool listing", () => {
     ]);
     expect(headline(search.about)).toBe("Find chats by what was said.");
     expect(headline("no full stop")).toBe("no full stop");
+    expect(sentences("Use unit=messages; see e.g. lookup.view here. Omit filters. Done")).toEqual([
+      "Use unit=messages; see e.g. lookup.view here.",
+      "Omit filters.",
+      "Done",
+    ]);
   });
 
   it("turns a filled form into typed arguments, leaving blanks to the tool's defaults", () => {

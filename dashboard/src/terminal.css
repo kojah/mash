@@ -135,11 +135,14 @@ summary::-webkit-details-marker {
 /* The mark is sized from the lettering: its dome is as tall as the "h" (0.74em
    in this face) and the rule under it sits on the baseline, so only the butter
    rises above the letters. In the 64-unit drawing the dome top is at 24 and
-   the rule's lower edge at 55.5. */
+   the rule's lower edge at 55.5. A flex item's baseline is its box's lower
+   edge whatever its margin, so the drawing is moved down by the space under
+   its rule. */
 .brand img {
   width: 1.5em;
   height: 1.5em;
-  margin: 0 -0.1em -0.2em -0.14em;
+  margin: 0 -0.1em 0 -0.14em;
+  transform: translateY(0.2em);
 }
 .brand i {
   font-style: normal;
@@ -2209,7 +2212,8 @@ button:disabled {
   border-top: 1px solid var(--hair);
 }
 
-/* MCP console: tools listed like the operations of an API reference. */
+/* MCP console: tools listed like the operations of an API reference. A row is
+   .mop; .op is the fleet action tile above. */
 .op-find {
   flex: 1 1 240px;
   max-width: 380px;
@@ -2251,16 +2255,16 @@ button:disabled {
 .op-g.g-service {
   color: var(--teal);
 }
-.op {
+.mop {
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
   scroll-margin-top: 80px;
 }
-.op.locked {
+.mop.locked {
   border-style: dashed;
 }
-.op.open {
+.mop.open {
   border-color: var(--strong);
 }
 .op-h {
@@ -2269,11 +2273,11 @@ button:disabled {
   align-items: center;
   gap: 6px 12px;
   width: 100%;
-  min-height: 48px;
-  padding: 9px 14px;
+  min-height: 44px;
+  padding: 6px 12px;
   text-align: left;
 }
-.op.open > .op-h {
+.mop.open > .op-h {
   background: var(--raised);
 }
 .op-h:hover .op-n {
@@ -2304,8 +2308,8 @@ button:disabled {
   min-width: 0;
   color: var(--body);
 }
-.op.locked .op-a,
-.op.locked .op-h > svg {
+.mop.locked .op-a,
+.mop.locked .op-h > svg {
   color: var(--dim);
 }
 .op-h .op-c {
@@ -2313,7 +2317,7 @@ button:disabled {
   color: var(--dim);
   transition: transform 0.12s;
 }
-.op.open .op-c {
+.mop.open .op-c {
   transform: rotate(180deg);
 }
 .op-b {
@@ -2325,7 +2329,17 @@ button:disabled {
 }
 .op-d {
   max-width: 78ch;
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: disc;
   color: var(--body);
+  font-size: 14.5px;
+}
+.op-d li::marker {
+  color: var(--strong);
 }
 .op-t {
   font-size: 15px;
@@ -2367,6 +2381,12 @@ button:disabled {
 }
 .prm:first-child {
   border-top: 0;
+}
+.prm-n {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
 }
 .prm-n small {
   color: var(--teal);
@@ -2469,4 +2489,48 @@ button:disabled {
   font-size: 13px;
   font-weight: 500;
   min-height: 30px;
+}
+
+/* A machine's services as tiles: name, state, kind. */
+.svc-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
+  gap: 10px;
+}
+.svc-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.svc-tile:hover {
+  border-color: var(--strong);
+  color: inherit;
+}
+.svc-th {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  max-width: 100%;
+}
+.svc-th svg {
+  flex: none;
+  color: var(--teal);
+}
+.svc-th strong {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.svc-tile .svc-st {
+  align-items: flex-start;
+  font-size: 13.5px;
+}
+.svc-tile .svc-st .dot {
+  margin-top: 6px;
 }

@@ -137,9 +137,17 @@ export function parseConsole(value: unknown): Console {
   return { build: string(root.build_revision), contract: string(root.contract_fingerprint), tools };
 }
 
+/** A tool's description as separate sentences. Descriptions are written for
+ * agents as one dense paragraph; a person reads them more easily as points. */
+export function sentences(about: string): string[] {
+  return about
+    .replace(/([.!?])\s+(?=[A-Z])/g, "$1\n")
+    .split("\n")
+    .filter(Boolean);
+}
 /** The first sentence of a tool's description, for its row in the list. */
 export function headline(about: string): string {
-  return /^.*?[.!?](?=\s|$)/.exec(about)?.[0] ?? about;
+  return sentences(about)[0] ?? about;
 }
 
 export type Arguments =
