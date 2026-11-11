@@ -801,7 +801,7 @@ mod tests {
         // The page is rechecked on every visit; a logo may be kept for a day.
         for (path, policy) in [
             ("/", "no-cache"),
-            ("/mash-mark.png", "public, max-age=86400"),
+            ("/mash-mark.svg", "public, max-age=86400"),
         ] {
             let response = client
                 .get(format!("http://{address}{path}"))

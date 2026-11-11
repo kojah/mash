@@ -88,7 +88,7 @@ function submit(event: SubmitEvent): void {
 </script>
 
 <header id="top">
-  <button id="burger" type="button" aria-label="Open navigation" aria-expanded={railOpen} onclick={toggleRail}><img src="/mash-mark.png" alt="" width="30" height="28" /></button>
+  <button id="burger" type="button" aria-label="Open navigation" aria-expanded={railOpen} onclick={toggleRail}><img src="/mash-mark.svg" alt="" width="30" height="28" /></button>
   <div
     class="search"
     role="search"

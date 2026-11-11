@@ -134,7 +134,7 @@ summary::-webkit-details-marker {
 }
 .brand img {
   width: 28px;
-  height: 26px;
+  height: 28px;
 }
 .brand i {
   font-style: normal;
@@ -2067,7 +2067,7 @@ button:disabled {
 }
 #burger img {
   width: 30px;
-  height: 28px;
+  height: 30px;
 }
 
 /* Weights for a proportional face. At the same size it reads lighter than the
