@@ -1,172 +1,218 @@
 <script lang="ts">
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Copy from "@lucide/svelte/icons/copy";
+import Lock from "@lucide/svelte/icons/lock";
 import Play from "@lucide/svelte/icons/play";
+import SearchIcon from "@lucide/svelte/icons/search";
+import { createQuery } from "@tanstack/svelte-query";
 import { read } from "../lib/api";
+import {
+  type Answer,
+  argumentsFor,
+  groupOrder,
+  headline,
+  locked,
+  parseAnswer,
+  parseConsole,
+  summarize,
+  type Tool,
+} from "../lib/console";
+import { stableRead } from "../lib/queries";
+import JsonView from "./JsonView.svelte";
+import QueryError from "./QueryError.svelte";
+import Skeleton from "./Skeleton.svelte";
 
-// Runs the read-only lookups behind Mash's agent tools, through this
-// dashboard's own read routes, and shows exactly what came back. Nothing
-// here can change history, memory or services.
-interface Tool {
-  readonly name: string;
-  readonly about: string;
-  readonly path: string;
-  readonly fields: readonly { readonly name: string; readonly hint: string }[];
-}
-const tools: readonly Tool[] = [
-  {
-    name: "search",
-    about: "Find chats by what was said in them.",
-    path: "/api/search",
-    fields: [
-      { name: "q", hint: "words to look for" },
-      { name: "provider", hint: "claude-code, codex, … (optional)" },
-      { name: "machine", hint: "a machine name (optional)" },
-      { name: "days", hint: "only the last N days (optional)" },
-    ],
-  },
-  {
-    name: "list_chats",
-    about: "List indexed chats, newest first.",
-    path: "/api/chats",
-    fields: [],
-  },
-  {
-    name: "view",
-    about: "Read a message and the replies around it.",
-    path: "/api/view",
-    fields: [
-      { name: "id", hint: "a message ID from a search result" },
-      { name: "context", hint: "messages either side, e.g. 4" },
-    ],
-  },
-  {
-    name: "read_chat",
-    about: "Read a page of one chat's messages in order.",
-    path: "/api/chat",
-    fields: [
-      { name: "id", hint: "a chat ID" },
-      { name: "offset", hint: "first message position, e.g. 0" },
-      { name: "limit", hint: "how many, up to 100" },
-    ],
-  },
-  {
-    name: "list_records",
-    about: "List saved memory: decisions, preferences, facts and open questions.",
-    path: "/api/records",
-    fields: [
-      { name: "q", hint: "words in the statement (optional)" },
-      { name: "kind", hint: "decision, preference, fact or open_question (optional)" },
-    ],
-  },
-  {
-    name: "get_record",
-    about: "Read one memory record with its evidence and history.",
-    path: "/api/record",
-    fields: [{ name: "id", hint: "a record ID" }],
-  },
-  {
-    name: "status",
-    about: "Report index readiness and the resolved configuration.",
-    path: "/api/status",
-    fields: [],
-  },
-];
-let selected = $state(tools[0]?.name ?? "search");
-const tool = $derived(tools.find((entry) => entry.name === selected) ?? tools[0]);
+// The tools an agent can call on Mash, listed from the server's own
+// description of them, with a form to run the ones that only read. The server
+// refuses the rest, whatever this page sends.
+const listing = createQuery(() => ({
+  ...stableRead,
+  queryKey: ["console-tools"],
+  queryFn: async ({ signal }) =>
+    parseConsole(await read("/api/console/tools", new URLSearchParams(), signal)),
+}));
+let filter = $state("");
+let open = $state("");
+let allParams = $state(false);
 let values = $state<Record<string, string>>({});
 type Outcome =
   | { readonly state: "idle" }
   | { readonly state: "running" }
-  | { readonly state: "done"; readonly call: string; readonly json: string; readonly ms: number }
-  | { readonly state: "failed"; readonly call: string; readonly message: string };
+  | { readonly state: "done"; readonly answer: Answer; readonly ms: number; readonly bytes: number }
+  | { readonly state: "unreachable"; readonly message: string };
 let outcome = $state<Outcome>({ state: "idle" });
 let controller: AbortController | undefined;
 let notice = $state("");
-const shownLimit = 200_000;
 
-function choose(name: string): void {
+const tools = $derived(listing.data?.tools ?? []);
+const matching = $derived.by(() => {
+  const words = filter.trim().toLowerCase();
+  return words
+    ? tools.filter((tool) => `${tool.name} ${tool.about}`.toLowerCase().includes(words))
+    : tools;
+});
+const sections = $derived(
+  groupOrder
+    .map((name) => ({ name, tools: matching.filter((tool) => tool.group === name) }))
+    .filter((section) => section.tools.length),
+);
+const runnable = $derived(tools.filter((tool) => tool.readOnly).length);
+const tool = $derived(tools.find((entry) => entry.name === open));
+const request = $derived(tool ? argumentsFor(tool, values) : null);
+const summary = $derived(outcome.state === "done" ? summarize(outcome.answer) : null);
+const FEW = 6;
+
+function toggle(name: string): void {
   controller?.abort();
-  selected = name;
+  open = open === name ? "" : name;
+  allParams = false;
   outcome = { state: "idle" };
   notice = "";
 }
+function shownParams(entry: Tool) {
+  if (allParams || entry.params.length <= FEW) return entry.params;
+  return entry.params.filter(
+    (param) => param.required || (values[`${entry.name}.${param.name}`] ?? "").trim(),
+  );
+}
 async function run(event: SubmitEvent): Promise<void> {
   event.preventDefault();
-  if (!tool) return;
+  if (!tool || !request?.ok) return;
   controller?.abort();
   const current = new AbortController();
   controller = current;
-  const params = new URLSearchParams();
-  for (const field of tool.fields) {
-    const value = (values[`${tool.name}.${field.name}`] ?? "").trim();
-    if (value) params.set(field.name, value);
-  }
-  const call = `${tool.name}(${[...params].map(([name, value]) => `${name}: "${value}"`).join(", ")})`;
   outcome = { state: "running" };
   notice = "";
   const started = performance.now();
   try {
-    const body = await read(tool.path, params, current.signal);
+    const body = await read(
+      "/api/console/call",
+      new URLSearchParams({ name: tool.name, arguments: JSON.stringify(request.arguments) }),
+      current.signal,
+    );
+    const answer = parseAnswer(body);
     outcome = {
       state: "done",
-      call,
-      json: JSON.stringify(body, null, 2),
+      answer,
       ms: Math.round(performance.now() - started),
+      bytes: new Blob([JSON.stringify(answer.reply)]).size,
     };
   } catch (error) {
     if (current.signal.aborted) return;
     outcome = {
-      state: "failed",
-      call,
+      state: "unreachable",
       message: error instanceof Error ? error.message : "The request failed.",
     };
   }
 }
-async function copy(json: string): Promise<void> {
+async function copy(text: string, what: string): Promise<void> {
   try {
-    await navigator.clipboard.writeText(json);
-    notice = "JSON copied.";
+    await navigator.clipboard.writeText(text);
+    notice = `${what} copied.`;
   } catch {
     notice = "Copy failed. Select the text to copy it.";
   }
 }
+function size(bytes: number): string {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
+}
 $effect(() => () => controller?.abort());
 </script>
 
-<div><h1 class="h1">MCP console</h1><p class="meta" style:font-size="13.5px">Run the read-only lookups your agents use and see exactly what comes back. Nothing here changes history, memory or services.</p></div>
-<div class="cols">
-  <nav class="tl" aria-label="Tools">
-    {#each tools as entry (entry.name)}<button class:on={entry.name === selected} type="button" aria-current={entry.name === selected ? "true" : undefined} onclick={() => choose(entry.name)}>{entry.name}</button>{/each}
-  </nav>
-  {#if tool}
-    <form onsubmit={run} style:flex="999 1 420px" style:min-width="0" style:display="flex" style:flex-direction="column" style:gap="14px">
-      <div><h2 style:font-size="16px">{tool.name}</h2><p class="meta" style:font-size="13.5px">{tool.about}</p></div>
-      {#each tool.fields as field (field.name)}
-        <label style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="4px 14px">
-          <span class="meta" style:flex="0 0 90px" style:font-size="13.5px">{field.name}</span>
-          <input class="field" style:flex="1 1 220px" placeholder={field.hint} autocomplete="off" bind:value={values[`${tool.name}.${field.name}`]} />
-        </label>
-      {/each}
-      <div><button class="btn p" type="submit" disabled={outcome.state === "running"}><Play size={15} aria-hidden="true" />{outcome.state === "running" ? "Running…" : "Run"}</button></div>
-      {#if outcome.state === "running"}<p class="meta" role="status">Running…</p>{/if}
-      {#if outcome.state === "failed"}
-        <section aria-label="Tool response" class="tool">
-          <div class="hd2"><i class="dot bad"></i><span class="nm"><b>{outcome.call}</b></span></div>
-          <p class="fail" role="alert" style:font-size="13.5px">{outcome.message}</p>
-        </section>
-      {/if}
-      {#if outcome.state === "done"}
-        <section aria-label="Tool response" class="tool">
-          <div class="hd2"><i class="dot"></i><span class="nm"><b>{outcome.call}</b></span></div>
-          <div class="elb" style:font-size="13.5px"><span>{outcome.ms.toLocaleString()} ms / {outcome.json.length.toLocaleString()} characters of JSON</span></div>
-          <div class="blk indent">
-            <div class="tabs"><span class="meta" style:padding="0 12px">JSON</span><button class="r" type="button" onclick={() => { if (outcome.state === "done") void copy(outcome.json); }}><Copy size={13} aria-hidden="true" /> Copy JSON</button></div>
-            <div class="sc"><pre style:margin="0" style:white-space="pre">{outcome.json.slice(0, shownLimit)}</pre></div>
-            {#if outcome.json.length > shownLimit}<p class="meta" style:padding="8px 12px">Showing the first {shownLimit.toLocaleString()} characters. Copy JSON has all of it.</p>{/if}
-          </div>
-          {#if notice}<p class="meta" role="status">{notice}</p>{/if}
-        </section>
-      {/if}
-    </form>
+<div class="hd" style:align-items="flex-end">
+  <div style:min-width="0">
+    <h1 class="h1">MCP console</h1>
+    <p class="meta" style:max-width="64ch">Every tool your agents can call on Mash, with what it takes and what it returns. Run the read-only ones here and see exactly what comes back.</p>
+  </div>
+  {#if listing.data}
+    <span class="mts"><span class="mt">build <code>{listing.data.build.slice(0, 8)}</code></span><span class="mt">contract <code>{listing.data.contract.slice(0, 8)}</code></span></span>
   {/if}
 </div>
+<QueryError title="Couldn’t load the tool list" query={listing} />
+{#if listing.isPending}<Skeleton rows={5} />{/if}
+{#if listing.data}
+  <div class="pctl">
+    <label class="op-find"><SearchIcon size={16} aria-hidden="true" /><input type="search" aria-label="Filter tools" placeholder="Filter tools" autocomplete="off" bind:value={filter} /></label>
+    <span class="meta" role="status">{tools.length} tools · {runnable} can run here · {tools.length - runnable} change data and are locked</span>
+  </div>
+  {#if !sections.length}<div class="state-c"><p>No tool matches “{filter}”.</p></div>{/if}
+  {#each sections as section (section.name)}
+    <section class="ops" aria-label={section.name}>
+      <h2 class="op-g g-{section.name === locked ? 'locked' : section.name.toLowerCase()}">{section.name === locked ? "Changes data · locked" : section.name}</h2>
+      {#each section.tools as entry (entry.name)}
+        {@const expanded = open === entry.name}
+        <div class="op" class:open={expanded} class:locked={!entry.readOnly} id="tool-{entry.name}">
+          <button class="op-h" type="button" aria-expanded={expanded} onclick={() => toggle(entry.name)}>
+            <span class="badge {entry.readOnly ? 'read' : 'write'}">{entry.readOnly ? "READ" : "WRITE"}</span>
+            <code class="op-n">{entry.name}</code>
+            <span class="op-a">{headline(entry.about)}</span>
+            {#if !entry.readOnly}<Lock size={14} aria-hidden="true" />{/if}
+            <ChevronDown size={18} aria-hidden="true" class="op-c" />
+          </button>
+          {#if expanded}
+            <form class="op-b" onsubmit={run}>
+              <p class="op-d">{entry.about}</p>
+              {#if !entry.readOnly}<p class="meta">This tool changes data, so it can be run by an agent or from the command line, not from the dashboard. Its parameters are listed for reference.</p>{/if}
+              <div>
+                <h3 class="op-t">Parameters</h3>
+                {#if !entry.params.length}<p class="meta">This tool takes no parameters.</p>{/if}
+                <div class="prms">
+                  {#each shownParams(entry) as param (param.name)}
+                    {@const key = `${entry.name}.${param.name}`}
+                    <label class="prm" class:bad={request && !request.ok && request.param === param.name && outcome.state !== "idle"}>
+                      <span class="prm-n"><code>{param.name}</code> <small>{param.type}</small>{#if param.required} <b>required</b>{/if}</span>
+                      <span class="prm-a">{param.about}{#if param.fallback} <small>Default {param.fallback}.</small>{/if}</span>
+                      {#if !entry.readOnly}<span></span>
+                      {:else if param.kind === "enum" || param.kind === "boolean"}
+                        <select class="prm-i" bind:value={values[key]}>
+                          <option value="">{param.required ? "choose…" : "not set"}</option>
+                          {#each param.kind === "boolean" ? ["true", "false"] : param.choices as choice (choice)}<option value={choice}>{choice}</option>{/each}
+                        </select>
+                      {:else}
+                        <input class="prm-i" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode={param.kind === "integer" ? "numeric" : undefined} placeholder={param.kind === "json" ? "JSON" : param.required ? "" : "not set"} bind:value={values[key]} />
+                      {/if}
+                    </label>
+                  {/each}
+                </div>
+                {#if entry.params.length > FEW}
+                  <button class="a" type="button" style:min-height="36px" onclick={() => (allParams = !allParams)}>{allParams ? "Show fewer parameters" : `Show all ${entry.params.length} parameters`}</button>
+                {/if}
+              </div>
+              {#if entry.readOnly}
+                <div class="op-r">
+                  <button class="btn p" type="submit" disabled={outcome.state === "running" || !request?.ok}><Play size={15} aria-hidden="true" />{outcome.state === "running" ? "Running…" : "Run"}</button>
+                  <button class="btn" type="button" onclick={() => { for (const param of entry.params) delete values[`${entry.name}.${param.name}`]; }}>Clear values</button>
+                  {#if request && !request.ok}<span class="meta">{request.message}</span>{/if}
+                </div>
+                {#if request?.ok}
+                  {@const call = JSON.stringify({ name: entry.name, arguments: request.arguments }, null, 2)}
+                  <div>
+                    <div class="op-th"><h3 class="op-t">Request</h3><button class="btn" type="button" onclick={() => copy(call, "Request")}><Copy size={14} aria-hidden="true" />Copy</button></div>
+                    <div class="json"><JsonView value={{ name: entry.name, arguments: request.arguments }} /></div>
+                  </div>
+                {/if}
+                {#if outcome.state === "unreachable"}<p class="fail" role="alert">{outcome.message}</p>{/if}
+                {#if outcome.state === "done" && summary}
+                  {@const reply = JSON.stringify(outcome.answer.reply, null, 2)}
+                  <section aria-label="Response">
+                    <div class="op-th">
+                      <h3 class="op-t">Response</h3>
+                      <span class="pill {summary.state}"><i class="dot {summary.state === 'ok' ? '' : summary.state === 'busy' ? 'warn' : 'bad'}"></i>{summary.state === "ok" ? "OK" : summary.state === "busy" ? "Busy" : "Failed"}</span>
+                      <span class="meta">{[summary.items === null ? "" : `${summary.items.toLocaleString()} item${summary.items === 1 ? "" : "s"}`, `${outcome.ms.toLocaleString()} ms`, size(outcome.bytes)].filter(Boolean).join(" · ")}</span>
+                      <button class="btn" type="button" style:margin-left="auto" onclick={() => copy(reply, "JSON")}><Copy size={14} aria-hidden="true" />Copy JSON</button>
+                    </div>
+                    {#if summary.heading}<p class="op-e" role="alert">{summary.heading}</p>{/if}
+                    {#if outcome.answer.reply !== null}<div class="json"><JsonView value={outcome.answer.reply} /></div>
+                    {:else if outcome.answer.text}<div class="json"><pre>{outcome.answer.text}</pre></div>{/if}
+                    {#if summary.state === "busy"}<p class="meta">Another Mash operation is using the index. It usually clears within a minute; run it again.</p>{/if}
+                  </section>
+                {/if}
+                {#if notice}<p class="meta" role="status">{notice}</p>{/if}
+              {/if}
+            </form>
+          {/if}
+        </div>
+      {/each}
+    </section>
+  {/each}
+{/if}

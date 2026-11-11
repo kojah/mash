@@ -2208,3 +2208,265 @@ button:disabled {
   padding-top: 12px;
   border-top: 1px solid var(--hair);
 }
+
+/* MCP console: tools listed like the operations of an API reference. */
+.op-find {
+  flex: 1 1 240px;
+  max-width: 380px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--dim);
+}
+.op-find input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+.ops {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  container-type: inline-size;
+}
+.op-g {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.op-g.g-history {
+  color: var(--blue);
+}
+.op-g.g-memory {
+  color: var(--pink);
+}
+.op-g.g-service {
+  color: var(--teal);
+}
+.op {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  scroll-margin-top: 80px;
+}
+.op.locked {
+  border-style: dashed;
+}
+.op.open {
+  border-color: var(--strong);
+}
+.op-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 14px;
+  text-align: left;
+}
+.op.open > .op-h {
+  background: var(--raised);
+}
+.op-h:hover .op-n {
+  color: var(--clay2);
+}
+.badge {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.badge.read {
+  background: var(--blue);
+  color: #10202c;
+}
+.badge.write {
+  background: var(--tag);
+  color: var(--tagfg);
+}
+.op-n {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.op-a {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--body);
+}
+.op.locked .op-a,
+.op.locked .op-h > svg {
+  color: var(--dim);
+}
+.op-h .op-c {
+  flex: none;
+  color: var(--dim);
+  transition: transform 0.12s;
+}
+.op.open .op-c {
+  transform: rotate(180deg);
+}
+.op-b {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 14px 18px;
+  border-top: 1px solid var(--hair);
+}
+.op-d {
+  max-width: 78ch;
+  color: var(--body);
+}
+.op-t {
+  font-size: 15px;
+  font-weight: 600;
+}
+.op-th {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.op-th .btn {
+  min-height: 34px;
+}
+.op-r {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.op-e {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.prms {
+  margin-top: 8px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+}
+.prm {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(0, 2fr) minmax(190px, 1.2fr);
+  gap: 6px 16px;
+  align-items: start;
+  padding: 10px 12px;
+  border-top: 1px solid var(--hair);
+}
+.prm:first-child {
+  border-top: 0;
+}
+.prm-n small {
+  color: var(--teal);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.prm-n code {
+  font-weight: 500;
+}
+.prm-n b {
+  color: var(--clay2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.prm-a {
+  color: var(--body);
+  font-size: 14px;
+}
+.prm-a small {
+  color: var(--dim);
+  font-size: 13px;
+}
+.prm-i {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  font: 14px var(--mono);
+}
+.prm.bad .prm-i {
+  border-color: var(--bad);
+}
+@container (max-width: 640px) {
+  .prm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 11px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pill .dot {
+  box-shadow: none;
+}
+.pill.ok {
+  background: #17301f;
+  color: #b4f0c4;
+}
+.pill.failed {
+  background: #3d1f1c;
+  color: #ffc4bc;
+}
+.pill.busy {
+  background: #3a3320;
+  color: #f6e3a8;
+}
+.json {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--raised);
+  overflow-x: auto;
+  font: 13.5px / 1.6 var(--mono);
+  color: var(--body);
+  overflow-wrap: anywhere;
+}
+.json pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.j-in {
+  padding-left: 1.4em;
+}
+.j-k {
+  color: var(--blue);
+}
+.j-k::after {
+  content: ": ";
+  color: var(--body);
+}
+.j-s {
+  color: var(--cream);
+}
+.j-n,
+.j-b {
+  color: var(--warn);
+}
+.j-z {
+  color: var(--dim);
+}
+.j-more {
+  color: var(--clay2);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 30px;
+}

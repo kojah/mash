@@ -44,8 +44,11 @@ The left rail is the way around. On a phone it opens from the menu button.
 - **services** and **manage fleet:** process and database checks, each
   machine's agent setup, and fleet actions where they are configured. See
   [services](services.md).
-- **mcp console:** run the read-only lookups your agents use and see the JSON
-  that comes back.
+- **mcp console:** every tool your agents can call on Mash, listed from the
+  server's own description: what each does, its parameters and their types.
+  Fill in a read-only tool and run it to see the reply exactly as an agent
+  receives it. Tools that change data are listed for reference but cannot be
+  run from the dashboard.
 - **settings:** what the configuration file says, with index readiness. It is
   read-only: edit the file to change a setting.
 

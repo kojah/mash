@@ -24,6 +24,7 @@ struct Dash {
     hosts: Vec<String>,
     model_work: tokio::sync::Semaphore,
     services: services::Services,
+    console: crate::mcp::console::Console,
 }
 
 pub(crate) async fn run(
@@ -49,6 +50,7 @@ pub(crate) async fn run(
         .local_addr()
         .map_err(|_| AppError::internal("get dashboard address"))?;
     let state = Arc::new(Dash {
+        console: crate::mcp::console::Console::new(paths.clone()),
         paths,
         hosts: allowed_hosts(address),
         model_work: tokio::sync::Semaphore::new(1),
@@ -100,6 +102,8 @@ fn router(state: Arc<Dash>) -> Router {
         .route("/api/chat", axum::routing::get(chat))
         .route("/api/records", axum::routing::get(list_records))
         .route("/api/record", axum::routing::get(record))
+        .route("/api/console/tools", axum::routing::get(console_tools))
+        .route("/api/console/call", axum::routing::get(console_call))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         // The chat catalogue is over a megabyte of JSON for a few thousand
@@ -522,6 +526,45 @@ async fn chat(
     )
 }
 
+async fn console_tools() -> Response {
+    match crate::mcp::console::Console::catalogue() {
+        Ok(catalogue) => axum::Json(catalogue).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(error)).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ConsoleCall {
+    name: String,
+    /// The tool's arguments as a JSON object; absent means none.
+    arguments: Option<String>,
+}
+
+/// Runs one read-only tool. A GET like every other history route: the console
+/// refuses tools that change data, so nothing here writes.
+async fn console_call(
+    State(state): State<Arc<Dash>>,
+    axum::extract::Query(call): axum::extract::Query<ConsoleCall>,
+) -> Response {
+    let arguments = match call.arguments.as_deref().filter(|text| !text.is_empty()) {
+        None => serde_json::Map::new(),
+        Some(text) => match serde_json::from_str(text) {
+            Ok(serde_json::Value::Object(arguments)) => arguments,
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(AppError::usage("arguments must be a JSON object")),
+                )
+                    .into_response();
+            }
+        },
+    };
+    match state.console.call(&call.name, arguments).await {
+        Ok(reply) => axum::Json(reply).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(error)).into_response(),
+    }
+}
+
 fn json_result(result: Result<core::Response, AppError>) -> Response {
     match result {
         Ok(response) => axum::Json(response).into_response(),
@@ -633,6 +676,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let app = super::router(std::sync::Arc::new(super::Dash {
+            console: crate::mcp::console::Console::new(crate::core::Paths::default()),
             paths,
             hosts: allowed_hosts(address),
             model_work: tokio::sync::Semaphore::new(0),
@@ -680,6 +724,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let app = super::router(std::sync::Arc::new(super::Dash {
+            console: crate::mcp::console::Console::new(crate::core::Paths::default()),
             paths,
             hosts: allowed_hosts(address),
             model_work: tokio::sync::Semaphore::new(0),
@@ -766,6 +811,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let app = super::router(std::sync::Arc::new(super::Dash {
+            console: crate::mcp::console::Console::new(crate::core::Paths::default()),
             paths: crate::core::Paths {
                 config: Some(config),
                 db: Some(database),
@@ -790,6 +836,39 @@ mod tests {
             client.post(&url).send().await.unwrap().status(),
             reqwest::StatusCode::METHOD_NOT_ALLOWED
         );
+        // The console lists every tool an agent sees and runs only readers.
+        let tools: serde_json::Value = client
+            .get(format!("http://{address}/api/console/tools"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(
+            tools["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tool| tool["name"] == "search" && tool["inputSchema"].is_object())
+        );
+        let call = |query: &'static str| {
+            let request = client.get(format!("http://{address}/api/console/call?{query}"));
+            async move { request.send().await.unwrap() }
+        };
+        let refused: serde_json::Value =
+            call("name=forget&arguments=%7B%22chat_id%22%3A%22x%22%7D")
+                .await
+                .json()
+                .await
+                .unwrap();
+        assert_eq!(refused["reply"]["error"]["kind"], "not-read-only");
+        assert_eq!(
+            call("name=help&arguments=%5B%5D").await.status(),
+            reqwest::StatusCode::BAD_REQUEST
+        );
+        let help: serde_json::Value = call("name=help").await.json().await.unwrap();
+        assert_eq!(help["failed"], false);
         let compressed = client
             .get(&url)
             .header("accept-encoding", "gzip")
@@ -824,6 +903,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let app = super::router(std::sync::Arc::new(super::Dash {
+            console: crate::mcp::console::Console::new(crate::core::Paths::default()),
             paths: crate::core::Paths {
                 config: Some(config),
                 db: Some(database),

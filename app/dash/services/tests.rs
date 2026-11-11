@@ -32,6 +32,7 @@ async fn app_named(
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let state = Arc::new(super::super::Dash {
+        console: crate::mcp::console::Console::new(crate::core::Paths::default()),
         paths: Paths {
             db: Some(database),
             config: Some(node_config),
