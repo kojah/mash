@@ -24,6 +24,7 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
     let store = Store::open(path)?;
     let metadata = store.metadata()?;
     Ok(vec![HistorySource {
+        content: None,
         identity: SourceIdentity {
             path: path.into(),
             session: Some(metadata.agent_id),

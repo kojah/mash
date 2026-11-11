@@ -25,6 +25,7 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
     let root = store::Store::open(path)?.root()?;
     validate_filename(path, &root)?;
     Ok(vec![HistorySource {
+        content: None,
         identity: SourceIdentity {
             path: path.into(),
             session: Some(root.cascade),

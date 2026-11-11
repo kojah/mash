@@ -43,7 +43,7 @@ use discovery::source_stamp;
 use discovery::{
     Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
 };
-pub(crate) use discovery::{SourceStamp, source_stamp_for};
+pub(crate) use discovery::{SessionContent, SourceStamp, source_stamp_for};
 #[cfg(test)]
 pub(crate) use discovery::{discovered_sources, parse_test_source};
 pub(crate) use discovery::{validate_output_path, watch_roots};

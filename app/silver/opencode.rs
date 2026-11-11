@@ -59,7 +59,7 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
                 +(SELECT COALESCE(SUM(length(CAST(data AS BLOB))),0) FROM part WHERE session_id=?1)",
                 [&session], |row| row.get(0)).map_err(AppError::database)?
         };
-        Ok(HistorySource { identity: SourceIdentity {path:path.to_path_buf(),session:Some(session)},
+        Ok(HistorySource { content: None, identity: SourceIdentity {path:path.to_path_buf(),session:Some(session)},
             activity_ns:Some(activity_ns), dependencies:Vec::new(), estimated_bytes:Some(u64::try_from(bytes)
                 .map_err(|_| AppError::configuration("invalid OpenCode session byte count"))?) })
     }).collect()

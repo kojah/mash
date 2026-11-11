@@ -28,6 +28,9 @@ pub(crate) struct HistorySource {
     pub(crate) activity_ns: Option<i64>,
     pub(crate) estimated_bytes: Option<u64>,
     pub(crate) dependencies: Vec<Dependency>,
+    /// What the store itself records about this session's content, when that
+    /// identifies a change more narrowly than the files the session lives in.
+    pub(crate) content: Option<super::SessionContent>,
 }
 
 impl HistorySource {
@@ -37,6 +40,7 @@ impl HistorySource {
             activity_ns: None,
             estimated_bytes: None,
             dependencies: Vec::new(),
+            content: None,
         }
     }
 
@@ -48,6 +52,7 @@ impl HistorySource {
         });
         stamp.include_dependencies(&self.dependencies)?;
         stamp.activity_ns = activity;
+        stamp.content.clone_from(&self.content);
         Ok(stamp)
     }
 }

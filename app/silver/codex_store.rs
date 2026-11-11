@@ -80,6 +80,95 @@ fn metadata(connection: &Connection, id: &str) -> Result<Metadata, AppError> {
         })).map_err(AppError::database)
 }
 
+/// What the store records about one thread's rows.
+struct Stored {
+    bytes: i64,
+    /// Absent for a store that predates Codex's per-item update counter.
+    counters: Option<[i64; 5]>,
+}
+
+/// One row per thread with stored items, or only `thread` when given. Codex
+/// gives an item a new `updated_at_ordinal` whenever it rewrites it, so with
+/// the row count, byte total and highest ordinals a thread whose summary is
+/// unchanged has the rows that were read before.
+fn stored(history: &Connection, thread: Option<&str>) -> Result<Vec<(String, Stored)>, AppError> {
+    let tracked: bool = history
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('thread_items') WHERE name='updated_at_ordinal')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(AppError::database)?;
+    let updated = if tracked { "updated_at_ordinal" } else { "0" };
+    let filter = if thread.is_some() {
+        "WHERE thread_id=?1"
+    } else {
+        ""
+    };
+    let mut statement = history
+        .prepare(&format!(
+            "WITH history AS (
+                SELECT thread_id,length(CAST(item_json AS BLOB)) AS bytes,rollout_ordinal AS ordinal,{updated} AS updated,0 AS realtime
+                FROM thread_items {filter}
+                UNION ALL SELECT thread_id,length(CAST(item_json AS BLOB)),rollout_ordinal,0,1
+                FROM thread_realtime_items {filter})
+             SELECT thread_id,SUM(bytes),COUNT(*),SUM(realtime),MAX(ordinal),MAX(updated),SUM(updated)
+             FROM history GROUP BY thread_id ORDER BY thread_id"
+        ))
+        .map_err(AppError::database)?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(thread), |row| {
+            let counters = [
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+            ];
+            Ok((
+                row.get::<_, String>(0)?,
+                Stored {
+                    bytes: row.get(1)?,
+                    counters: tracked.then_some(counters),
+                },
+            ))
+        })
+        .map_err(AppError::database)?;
+    rows.collect::<Result<_, _>>().map_err(AppError::database)
+}
+
+/// Everything `parse` reads for a thread, reduced to a token: its stored rows
+/// as Codex counts them and the metadata row beside them.
+fn content(stored: &Stored, meta: &Metadata) -> Option<super::SessionContent> {
+    let counters = stored.counters?;
+    let mut hash = blake3::Hasher::new();
+    for value in [stored.bytes, meta.created, meta.updated]
+        .into_iter()
+        .chain(counters)
+    {
+        hash.update(&value.to_le_bytes());
+    }
+    hash.update(&[
+        u8::from(meta.created_field == super::enrichment::TimestampField::ThreadCreatedAtMs),
+        u8::from(meta.updated_field == super::enrichment::TimestampField::ThreadUpdatedAtMs),
+        u8::from(meta.repository.is_some()),
+    ]);
+    for text in [
+        meta.title.as_bytes(),
+        meta.cwd.as_bytes(),
+        meta.repository.as_deref().unwrap_or_default().as_bytes(),
+        meta.rollout.as_os_str().as_encoded_bytes(),
+    ] {
+        hash.update(&(text.len() as u64).to_le_bytes());
+        hash.update(text);
+    }
+    Some(super::SessionContent {
+        bytes: stored.bytes,
+        // The prefix keeps a thread token distinct from a fingerprint of files.
+        token: format!("thread:{}", hash.finalize().to_hex()),
+    })
+}
+
 /// Prefer the authoritative paginated source only for threads with stored items.
 /// JSONL paths come from state metadata, never filenames or text matching.
 pub(super) fn sources(physical: Vec<HistorySource>) -> Result<Vec<HistorySource>, AppError> {
@@ -98,21 +187,7 @@ pub(super) fn sources(physical: Vec<HistorySource>) -> Result<Vec<HistorySource>
         let history = sqlite_source::open(path)?;
         let state_file = state_path(path);
         let state = sqlite_source::open(&state_file)?;
-        let mut statement = history
-            .prepare(
-                "WITH history AS (
-                SELECT thread_id,length(CAST(item_json AS BLOB)) AS bytes FROM thread_items
-                UNION ALL SELECT thread_id,length(CAST(item_json AS BLOB)) FROM thread_realtime_items)
-             SELECT thread_id,SUM(bytes) FROM history GROUP BY thread_id ORDER BY thread_id",
-            )
-            .map_err(AppError::database)?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })
-            .map_err(AppError::database)?;
-        for row in rows {
-            let (id, bytes) = row.map_err(AppError::database)?;
+        for (id, stored) in stored(&history, None)? {
             if id.is_empty() {
                 return Err(invalid("empty thread identity"));
             }
@@ -120,7 +195,7 @@ pub(super) fn sources(physical: Vec<HistorySource>) -> Result<Vec<HistorySource>
             if meta.mode != Mode::Paginated {
                 continue;
             }
-            sources.push(paginated(path, &state_file, id, bytes, &meta)?);
+            sources.push(paginated(path, &state_file, id, &stored, &meta)?);
             replaced.insert(meta.rollout);
         }
     }
@@ -135,7 +210,7 @@ fn paginated(
     path: &Path,
     state_file: &Path,
     id: String,
-    bytes: i64,
+    stored: &Stored,
     meta: &Metadata,
 ) -> Result<HistorySource, AppError> {
     let activity = meta
@@ -152,8 +227,9 @@ fn paginated(
         },
         activity_ns: Some(activity),
         estimated_bytes: Some(
-            u64::try_from(bytes).map_err(|_| invalid("invalid thread byte count"))?,
+            u64::try_from(stored.bytes).map_err(|_| invalid("invalid thread byte count"))?,
         ),
+        content: content(stored, meta),
         dependencies: vec![
             super::source::Dependency::Required(state_file.to_path_buf()),
             super::source::Dependency::Optional(wal.into()),
@@ -178,22 +254,13 @@ pub(super) fn session_source(path: &Path, id: &str) -> Result<Option<HistorySour
         return Ok(None);
     }
     let meta = metadata(&state, id)?;
-    let bytes: Option<i64> = if meta.mode == Mode::Paginated {
-        sqlite_source::open(path)?
-            .query_row(
-                "WITH history AS (
-                SELECT length(CAST(item_json AS BLOB)) AS bytes FROM thread_items WHERE thread_id=?1
-                UNION ALL SELECT length(CAST(item_json AS BLOB)) FROM thread_realtime_items WHERE thread_id=?1)
-             SELECT SUM(bytes) FROM history",
-                [id],
-                |row| row.get(0),
-            )
-            .map_err(AppError::database)?
+    let stored = if meta.mode == Mode::Paginated {
+        stored(&sqlite_source::open(path)?, Some(id))?.pop()
     } else {
         None
     };
-    Ok(Some(match bytes {
-        Some(bytes) => paginated(path, &state_file, id.to_owned(), bytes, &meta)?,
+    Ok(Some(match stored {
+        Some((_, stored)) => paginated(path, &state_file, id.to_owned(), &stored, &meta)?,
         None => HistorySource::file(meta.rollout),
     }))
 }

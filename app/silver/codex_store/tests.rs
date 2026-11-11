@@ -375,3 +375,115 @@ fn codex_paginated_realtime_transcripts_interleave_without_repeating_promoted_it
     assert_eq!(messages[6].dialogue(), "");
     assert_eq!(messages[7].dialogue(), "");
 }
+
+fn has_text(writer: &Storage, text: &str) -> bool {
+    !crate::storage::test_support::projections_with_text(writer, text, Some(Provider::Codex))
+        .is_empty()
+}
+
+/// One pass over the store; returns how many threads its checkpoints skipped.
+fn pass(database: &Path, path: &Path) -> u64 {
+    let mut writer = Storage::open_writer(database).unwrap();
+    let skipped = index(&mut writer, &options(path))
+        .unwrap()
+        .checkpoint_skipped_sources;
+    writer.commit_writer().unwrap();
+    skipped
+}
+
+#[test]
+fn codex_paginated_thread_is_reread_only_when_its_own_rows_or_metadata_change() {
+    let directory = tempfile::tempdir().unwrap();
+    let (path, history, state) = fixture(directory.path());
+    // Current Codex stores give every rewritten item a new update ordinal.
+    history
+        .execute_batch(
+            "ALTER TABLE thread_items ADD COLUMN updated_at_ordinal INTEGER NOT NULL DEFAULT 0;
+             UPDATE thread_items SET updated_at_ordinal=rollout_ordinal;",
+        )
+        .unwrap();
+    let message = |id: &str, text: &str| {
+        serde_json::to_string(&serde_json::json!({"type":"agentMessage","id":id,"text":text}))
+            .unwrap()
+    };
+    state
+        .execute(
+            "INSERT INTO threads VALUES('beta','Second','/repo',NULL,1,2,1000,2000,?1,'paginated')",
+            [directory.path().join("beta.jsonl").to_str().unwrap()],
+        )
+        .unwrap();
+    history
+        .execute(
+            "INSERT INTO thread_items VALUES('beta','turn','b1',0,2000,?1,0)",
+            [message("b1", "betagarnet")],
+        )
+        .unwrap();
+    let database = directory.path().join("index.sqlite3");
+    assert_eq!(pass(&database, &path), 0);
+    assert_eq!(pass(&database, &path), 2);
+
+    // A write to one thread changes the store's files; the other thread's
+    // checkpoint still holds.
+    history
+        .execute(
+            "INSERT INTO thread_items VALUES('beta','turn','b2',1,2000,?1,1)",
+            [message("b2", "betaopal")],
+        )
+        .unwrap();
+    assert_eq!(pass(&database, &path), 1);
+    assert!(has_text(
+        &Storage::open_writer(&database).unwrap(),
+        "betaopal"
+    ));
+    assert_eq!(pass(&database, &path), 2);
+
+    // An item rewritten to the same length is seen through its update ordinal.
+    history
+        .execute(
+            "UPDATE thread_items SET item_json=?1,updated_at_ordinal=9 WHERE item_id='a'",
+            [message("a", "visiblejaspr")],
+        )
+        .unwrap();
+    assert_eq!(pass(&database, &path), 1);
+    let writer = Storage::open_writer(&database).unwrap();
+    assert!(has_text(&writer, "visiblejaspr"));
+    assert!(!has_text(&writer, "visibleamber"));
+    drop(writer);
+
+    // The metadata row beside the thread is part of what was read.
+    state
+        .execute("UPDATE threads SET title='Renamed' WHERE id='beta'", [])
+        .unwrap();
+    assert_eq!(pass(&database, &path), 1);
+    assert_eq!(pass(&database, &path), 2);
+}
+
+#[test]
+fn codex_paginated_store_without_update_ordinals_rereads_every_thread_on_any_write() {
+    let directory = tempfile::tempdir().unwrap();
+    let (path, history, state) = fixture(directory.path());
+    state
+        .execute(
+            "INSERT INTO threads VALUES('beta','Second','/repo',NULL,1,2,1000,2000,?1,'paginated')",
+            [directory.path().join("beta.jsonl").to_str().unwrap()],
+        )
+        .unwrap();
+    let item = serde_json::json!({"type":"agentMessage","id":"b1","text":"betagarnet"});
+    history
+        .execute(
+            "INSERT INTO thread_items VALUES('beta','turn','b1',0,2000,?1)",
+            [serde_json::to_string(&item).unwrap()],
+        )
+        .unwrap();
+    let database = directory.path().join("index.sqlite3");
+    assert_eq!(pass(&database, &path), 0);
+    assert_eq!(pass(&database, &path), 2);
+    // Nothing in an older store says which thread a rewrite touched.
+    history
+        .execute(
+            "UPDATE thread_items SET created_at_ms=2001 WHERE item_id='b1'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(pass(&database, &path), 0);
+}

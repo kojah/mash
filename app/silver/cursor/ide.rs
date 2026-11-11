@@ -23,6 +23,7 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
         .sessions()?
         .into_iter()
         .map(|id| HistorySource {
+            content: None,
             identity: SourceIdentity {
                 path: path.into(),
                 session: Some(format!("ide:{id}")),

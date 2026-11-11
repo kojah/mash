@@ -128,6 +128,7 @@ pub(super) fn sources(input: Vec<HistorySource>) -> Result<Vec<HistorySource>, A
                 db.parent().unwrap().join("workspace.json"),
             ));
             result.push(HistorySource {
+                content: None,
                 identity: SourceIdentity {
                     path: db.clone(),
                     session: Some(format!("chat:{id}")),

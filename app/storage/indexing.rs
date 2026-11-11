@@ -165,9 +165,9 @@ impl Storage {
                 params![
                     provider,
                     source.key(),
-                    stamp.size_bytes,
+                    stamp.checkpoint().0,
                     stamp.activity_ns.unwrap_or(stamp.modified_ns),
-                    stamp.fingerprint,
+                    stamp.checkpoint().1,
                     crate::silver::certificate::INTERPRETATION_VERSION
                 ],
                 |_| Ok(()),
@@ -193,7 +193,7 @@ impl Storage {
                     modified_ns = excluded.modified_ns,
                     source_path = excluded.source_path, fingerprint = excluded.fingerprint,
                     interpretation_version = excluded.interpretation_version",
-                params![provider, source.key(), stamp.size_bytes, stamp.activity_ns.unwrap_or(stamp.modified_ns), source.path.to_string_lossy(), stamp.fingerprint, crate::silver::certificate::INTERPRETATION_VERSION],
+                params![provider, source.key(), stamp.checkpoint().0, stamp.activity_ns.unwrap_or(stamp.modified_ns), source.path.to_string_lossy(), stamp.checkpoint().1, crate::silver::certificate::INTERPRETATION_VERSION],
             )
             .map_err(AppError::database)?;
         self.clear_silver_rejection(provider, &source.key())?;

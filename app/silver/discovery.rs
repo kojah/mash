@@ -50,6 +50,15 @@ pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
     roots
 }
 
+/// A session's own content summary inside a store shared with other sessions.
+/// The files' size and modification time change whenever any session is
+/// written, so they cannot say that this one is unchanged.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SessionContent {
+    pub(crate) bytes: i64,
+    pub(crate) token: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SourceStamp {
     pub(crate) size_bytes: i64,
@@ -58,9 +67,20 @@ pub(crate) struct SourceStamp {
     pub(crate) activity_ns: Option<i64>,
     dependencies: Vec<Dependency>,
     pub(super) prefix: Option<super::prefix::Prefix>,
+    pub(super) content: Option<SessionContent>,
 }
 
 impl SourceStamp {
+    /// The size and fingerprint a checkpoint stores and is matched against.
+    /// `verify` still compares the files themselves, so a store that changes
+    /// while a session is being read is noticed either way.
+    pub(crate) fn checkpoint(&self) -> (i64, &str) {
+        match &self.content {
+            Some(content) => (content.bytes, &content.token),
+            None => (self.size_bytes, &self.fingerprint),
+        }
+    }
+
     pub(crate) fn file(size_bytes: i64, modified_ns: i64) -> Self {
         Self {
             size_bytes,
@@ -69,6 +89,7 @@ impl SourceStamp {
             activity_ns: None,
             dependencies: Vec::new(),
             prefix: None,
+            content: None,
         }
     }
 
@@ -172,6 +193,7 @@ pub(crate) fn source_stamp_for(source: &SourceIdentity) -> Result<SourceStamp, A
         activity_ns: None,
         dependencies: Vec::new(),
         prefix: None,
+        content: None,
     })
 }
 
