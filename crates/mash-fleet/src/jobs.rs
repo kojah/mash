@@ -40,6 +40,10 @@ pub struct Target {
     pub id: String,
     pub state: TargetState,
     pub progress: Option<Progress>,
+    /// One line on what the operation found or why it failed. These are the
+    /// fixed sentences the probe and playbooks write, never command output.
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -141,6 +145,25 @@ fn directory(inventory: &Inventory, id: &str) -> Result<PathBuf, String> {
 struct TargetReport {
     state: TargetState,
     progress: Option<Progress>,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+    /// A watcher operation's supervisor state, such as `active`.
+    #[serde(default)]
+    process: Option<String>,
+}
+
+impl TargetReport {
+    fn detail(&self) -> Option<String> {
+        let detail = match (&self.error, &self.summary, &self.process) {
+            (Some(error), ..) => error.clone(),
+            (None, Some(summary), _) => summary.clone(),
+            (None, None, Some(process)) => format!("Watcher process is {process}"),
+            (None, None, None) => return None,
+        };
+        Some(detail.chars().take(300).collect())
+    }
 }
 
 fn targets(job: &Job, directory: &Path) -> Vec<Target> {
@@ -158,6 +181,7 @@ fn targets(job: &Job, directory: &Path) -> Vec<Target> {
             match report {
                 Ok(report) => Target {
                     id: id.clone(),
+                    detail: report.detail(),
                     state: report.state,
                     progress: report.progress,
                 },
@@ -169,6 +193,7 @@ fn targets(job: &Job, directory: &Path) -> Vec<Target> {
                         TargetState::Unknown
                     },
                     progress: None,
+                    detail: None,
                 },
             }
         })
@@ -282,6 +307,7 @@ impl Pending {
                 id: id.clone(),
                 state: TargetState::Waiting,
                 progress: None,
+                detail: None,
             })
             .collect();
         job
@@ -395,6 +421,26 @@ pub fn history(inventory: &Inventory) -> Result<Vec<Job>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn target_detail_prefers_the_failure_then_the_finding_then_the_watcher_state() {
+        let detail = |json: &str| serde_json::from_str::<TargetReport>(json).unwrap().detail();
+        assert_eq!(
+            detail(r#"{"state":"failed","error":"stale","summary":"ready"}"#).as_deref(),
+            Some("stale")
+        );
+        assert_eq!(
+            detail(r#"{"state":"succeeded","error":null,"summary":"ready"}"#).as_deref(),
+            Some("ready")
+        );
+        assert_eq!(
+            detail(r#"{"state":"succeeded","process":"active","results":[]}"#).as_deref(),
+            Some("Watcher process is active")
+        );
+        assert_eq!(detail(r#"{"state":"succeeded","results":[]}"#), None);
+        let long = format!(r#"{{"state":"failed","error":"{}"}}"#, "x".repeat(900));
+        assert_eq!(detail(&long).unwrap().len(), 300);
+    }
 
     fn setup() -> (tempfile::TempDir, Inventory, Request) {
         let root = tempfile::tempdir().unwrap();

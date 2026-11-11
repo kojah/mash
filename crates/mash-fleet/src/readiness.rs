@@ -109,6 +109,25 @@ enum PublicationState {
     Published,
 }
 
+impl Status {
+    /// What a passed check established about the release named by `stamp`.
+    #[must_use]
+    pub fn summary(&self, stamp: &Stamp, shared: bool) -> String {
+        let build = stamp
+            .build_revision
+            .get(..12)
+            .unwrap_or(&stamp.build_revision);
+        let mut summary = format!("Build {build} installed; local search ready");
+        if shared {
+            summary.push_str("; shared publication current");
+        }
+        if self.query_models == Models::Unavailable {
+            summary.push_str("; query models not installed, so search is by words only");
+        }
+        summary
+    }
+}
+
 pub fn status(result: &CallToolResult, shared: bool) -> Result<Status, String> {
     let status: Status = decode(result)?;
     if !status.ready || status.query_models == Models::Unavailable {

@@ -118,7 +118,10 @@ async fn record(report: &Arc<Mutex<report::Report>>, result: CallToolResult) -> 
     }
 }
 
-async fn check(arguments: &Arguments, report: Arc<Mutex<report::Report>>) -> Result<(), String> {
+async fn check(
+    arguments: &Arguments,
+    report: Arc<Mutex<report::Report>>,
+) -> Result<String, String> {
     if arguments.all_history && arguments.mode != Mode::Sync {
         return Err("--all-history requires --mode sync".into());
     }
@@ -149,7 +152,7 @@ async fn run(
     report: &Arc<Mutex<report::Report>>,
     expected: &readiness::Stamp,
     service: &rmcp::service::Peer<RoleClient>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let tools = service
         .list_all_tools()
         .await
@@ -227,7 +230,7 @@ async fn run(
         record(report, result).await?;
         check?;
     }
-    Ok(())
+    Ok(status.summary(expected, shared))
 }
 
 fn write_report(path: &std::path::Path, report: &Report) -> Result<(), String> {
@@ -256,7 +259,10 @@ pub(crate) async fn run_probe(arguments: Arguments) {
     } else {
         report::State::Failed
     };
-    report.error = outcome.err();
+    match outcome {
+        Ok(summary) => report.summary = Some(summary),
+        Err(error) => report.error = Some(error),
+    }
     if let Err(error) = write_report(&arguments.output, &report) {
         eprintln!("{error}");
         std::process::exit(1);

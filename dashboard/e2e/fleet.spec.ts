@@ -61,7 +61,14 @@ for (const width of [390, 1280]) {
                   requested_at: 1,
                   completed_at: 2,
                   outcome: "succeeded",
-                  targets: [{ id: "macbook", state: "succeeded", progress: null }],
+                  targets: [
+                    {
+                      id: "macbook",
+                      state: "succeeded",
+                      progress: null,
+                      detail: "Build 0123456789ab installed; local search ready",
+                    },
+                  ],
                 },
               ]
             : [],
@@ -112,6 +119,8 @@ for (const width of [390, 1280]) {
     const run = page.getByRole("article").filter({ hasText: label });
     await expect(run).toHaveCount(1);
     await expect(run).toContainText("macbook");
+    // A finished target says what the check found, not only that it passed.
+    await expect(run).toContainText("Build 0123456789ab installed; local search ready");
     await expect(run.locator("p").last()).toHaveText("succeeded");
     expect(submissions).toBe(1);
     expect(documents).toBe(1);

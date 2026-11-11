@@ -90,6 +90,9 @@ service controls, so unit names and plist paths do not need a second inventory.
 Fleet watcher operations require their action in `allow_actions`; the watcher's
 `allow_control` separately enables individual dashboard service buttons.
 
+Each target in a job shows one line on what the operation found, such as
+the installed build and whether search is ready, or why it failed.
+
 Jobs continue when you leave the page. Each submission has a saved request ID,
 and repeating that ID cannot launch it again. An **unknown** outcome means the
 controller could not confirm completion; check the affected machines before

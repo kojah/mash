@@ -86,7 +86,9 @@ impl Services {
         }
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(std::time::Duration::from_secs(3))
+            // Peers are on a private network where a live machine connects at
+            // once; a longer wait only delays the report for one that is away.
+            .connect_timeout(std::time::Duration::from_millis(1500))
             .timeout(std::time::Duration::from_secs(45))
             .build()
             .map_err(|_| crate::AppError::internal("build services HTTP client"))?;

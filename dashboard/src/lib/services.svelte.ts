@@ -501,6 +501,7 @@ export function parseFleetJob(value: unknown) {
           "skipped",
           "unknown",
         ]),
+        detail: typeof target.detail === "string" ? target.detail : null,
         progress:
           progress === null
             ? null

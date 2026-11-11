@@ -17,6 +17,9 @@ pub struct Report {
     pub progress: Option<ProgressNotificationParam>,
     #[serde(default)]
     pub error: Option<String>,
+    /// What a successful check established, in one line a reader can be shown.
+    #[serde(default)]
+    pub summary: Option<String>,
     #[serde(default)]
     pub results: Vec<CallToolResult>,
 }
@@ -27,6 +30,7 @@ impl Default for Report {
             state: State::Running,
             progress: None,
             error: None,
+            summary: None,
             results: vec![],
         }
     }

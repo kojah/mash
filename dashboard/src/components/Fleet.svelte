@@ -162,6 +162,7 @@ const outcomeClass = {
       <p style:display="flex" style:align-items="baseline" style:gap="10px"><i class="dot" class:run={job.outcome === "running"} class:bad={job.outcome === "failed"} class:warn={job.outcome === "partial" || job.outcome === "unknown"}></i><b style:flex="1" style:min-width="0">{fleetActionLabel[job.request.action]}</b><span class="meta">{checkedTime(job.requested_at)}</span></p>
       {#each job.targets as target (target.id)}
         <div class="elb" style:font-size="12.5px"><span style:flex="1">{targetName(target.id)}</span><span class={target.state === "succeeded" ? "ok" : target.state === "failed" ? "fail" : target.state === "running" ? "run" : "none"}>{target.state}{#if target.progress} {target.progress.progress}{target.progress.total === null ? "" : ` / ${target.progress.total}`}{/if}</span></div>
+        {#if target.detail}<p class="meta" style:font-size="12px" style:margin="0 0 6px">{target.detail}</p>{/if}
       {/each}
       <p class={outcomeClass[job.outcome]} style:margin="4px 0 0 21px" style:font-size="12px">{job.outcome}{job.outcome === "unknown" ? ": completion could not be confirmed. Inspect the affected machines before starting another operation." : ""}</p>
     </article>

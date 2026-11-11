@@ -28,6 +28,9 @@ describe("fleet response validation", () => {
 
   it("preserves uncertain outcomes and per-machine progress", () => {
     expect(parseFleetJob(job).targets[0]?.progress).toEqual({ progress: 2.5, total: 10 });
+    expect(parseFleetJob(job).targets[0]?.detail).toBeNull();
+    const found = { ...job.targets[0], detail: "Build 0123456789ab installed; local search ready" };
+    expect(parseFleetJob({ ...job, targets: [found] }).targets[0]?.detail).toBe(found.detail);
     expect(parseFleetJob({ ...job, outcome: "unknown" }).outcome).toBe("unknown");
   });
 
