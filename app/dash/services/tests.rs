@@ -67,7 +67,7 @@ fn fleet_fixture(root: &Path) -> mash_fleet::inventory::Inventory {
     let inventory: mash_fleet::inventory::Inventory = serde_json::from_value(serde_json::json!({
         "version": 1,
         "controller": { "node": "test-node", "repository": root, "binary": std::env::current_exe().unwrap(), "jobs": root.join("jobs"), "allow_actions": ["status"] },
-        "machines": [{ "id": "test-node", "platform": "linux", "roles": ["history"], "transport": {"kind": "local"} }]
+        "machines": [{ "id": "test-node", "platform": "linux", "transport": {"kind": "local"} }]
     })).unwrap();
     std::fs::write(
         root.join("fleet.toml"),

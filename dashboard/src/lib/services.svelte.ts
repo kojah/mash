@@ -420,6 +420,11 @@ export function parseFleetCatalog(value: unknown) {
         targets: list(action.targets).map(text),
       };
     }),
+    // Targets that are a shared server on a machine; every other target is a machine.
+    services: list(row.services).map((value) => {
+      const service = object(value);
+      return { id: text(service.id), name: text(service.name), machine: text(service.machine) };
+    }),
   };
 }
 export function parseFleetJob(value: unknown) {

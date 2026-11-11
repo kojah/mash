@@ -42,15 +42,28 @@ describe("fleet response validation", () => {
   });
 
   it("requires a configuration revision for enabled fleet controls", () => {
-    expect(parseFleetCatalog({ enabled: false, revision: null, actions: [] }).enabled).toBe(false);
-    expect(() => parseFleetCatalog({ enabled: true, revision: null, actions: [] })).toThrow();
+    expect(
+      parseFleetCatalog({ enabled: false, revision: null, actions: [], services: [] }).enabled,
+    ).toBe(false);
+    expect(() =>
+      parseFleetCatalog({ enabled: true, revision: null, actions: [], services: [] }),
+    ).toThrow();
     expect(
       parseFleetCatalog({
         enabled: true,
         revision: "revision",
-        actions: [{ action: "deploy", targets: ["xenia"] }],
-      }).actions[0]?.targets,
-    ).toEqual(["xenia"]);
+        actions: [{ action: "deploy", targets: ["shared", "xenia"] }],
+        services: [{ id: "shared", name: "Shared server", machine: "xenia" }],
+      }),
+    ).toEqual({
+      enabled: true,
+      revision: "revision",
+      actions: [{ action: "deploy", targets: ["shared", "xenia"] }],
+      services: [{ id: "shared", name: "Shared server", machine: "xenia" }],
+    });
+    expect(() =>
+      parseFleetCatalog({ enabled: true, revision: "revision", actions: [], services: [{}] }),
+    ).toThrow();
   });
 
   it("generates distinct UUIDs without relying on secure-context randomUUID", () => {

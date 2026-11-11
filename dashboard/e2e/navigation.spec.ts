@@ -9,7 +9,7 @@ async function mockEmptyDashboard(page: Page): Promise<void> {
     if (path === "/api/services") return route.fulfill({ json: { machines: [] } });
     if (path === "/api/services/operations") return route.fulfill({ json: [] });
     if (path === "/api/services/fleet")
-      return route.fulfill({ json: { enabled: false, revision: null, actions: [] } });
+      return route.fulfill({ json: { enabled: false, revision: null, actions: [], services: [] } });
     if (path === "/api/status") return route.fulfill({ json: statusFixture });
     return route.fulfill({ json: { local_node: "local", chats: [], truncated: false } });
   });

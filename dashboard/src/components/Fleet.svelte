@@ -5,6 +5,7 @@ import Laptop from "@lucide/svelte/icons/laptop";
 import ListChecks from "@lucide/svelte/icons/list-checks";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import ScrollText from "@lucide/svelte/icons/scroll-text";
+import Server from "@lucide/svelte/icons/server";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
@@ -78,6 +79,23 @@ const readOnly: readonly FleetAction[] = ["status", "preflight", "watch-status"]
 
 const allowed = $derived(catalog.data?.actions ?? []);
 const current = $derived(allowed.find((item) => item.action === action));
+// A target is a machine unless the inventory lists it as a shared server.
+const services = $derived(catalog.data?.services ?? []);
+const machineTargets = $derived(
+  (current?.targets ?? []).filter((id) => !services.some((service) => service.id === id)),
+);
+const serviceTargets = $derived(
+  services.filter((service) => current?.targets.includes(service.id)),
+);
+function targetName(id: string): string {
+  const service = services.find((item) => item.id === id);
+  return service ? `${service.name} (${service.machine})` : id;
+}
+function countLabel(ids: readonly string[]): string {
+  const onlyMachines = ids.every((id) => machineTargets.includes(id));
+  const noun = onlyMachines ? "machine" : "target";
+  return `${ids.length} ${noun}${ids.length === 1 ? "" : "s"}`;
+}
 let selected = $state<string[]>([]);
 let confirmation = $state<FleetRequest | null>(null);
 let pending = $state(false);
@@ -143,7 +161,7 @@ const outcomeClass = {
     <article>
       <p style:display="flex" style:align-items="baseline" style:gap="10px"><i class="dot" class:run={job.outcome === "running"} class:bad={job.outcome === "failed"} class:warn={job.outcome === "partial" || job.outcome === "unknown"}></i><b style:flex="1" style:min-width="0">{fleetActionLabel[job.request.action]}</b><span class="meta">{checkedTime(job.requested_at)}</span></p>
       {#each job.targets as target (target.id)}
-        <div class="elb" style:font-size="12.5px"><span style:flex="1">{target.id}</span><span class={target.state === "succeeded" ? "ok" : target.state === "failed" ? "fail" : target.state === "running" ? "run" : "none"}>{target.state}{#if target.progress} {target.progress.progress}{target.progress.total === null ? "" : ` / ${target.progress.total}`}{/if}</span></div>
+        <div class="elb" style:font-size="12.5px"><span style:flex="1">{targetName(target.id)}</span><span class={target.state === "succeeded" ? "ok" : target.state === "failed" ? "fail" : target.state === "running" ? "run" : "none"}>{target.state}{#if target.progress} {target.progress.progress}{target.progress.total === null ? "" : ` / ${target.progress.total}`}{/if}</span></div>
       {/each}
       <p class={outcomeClass[job.outcome]} style:margin="4px 0 0 21px" style:font-size="12px">{job.outcome}{job.outcome === "unknown" ? ": completion could not be confirmed. Inspect the affected machines before starting another operation." : ""}</p>
     </article>
@@ -192,21 +210,31 @@ const outcomeClass = {
     <section>
       <div class="hd" style:align-items="center"><h2 class="h2"><Laptop size={15} aria-hidden="true" />machines</h2><button class="a" type="button" disabled={pending || !!error} onclick={() => { selected = [...current.targets]; confirmation = null; }} style:min-height="44px" style:font-size="13px">Select all</button></div>
       <div class="grid-sm">
-        {#each current.targets as machine (machine)}
+        {#each machineTargets as machine (machine)}
           <button class="chk mtile" type="button" role="checkbox" aria-checked={selected.includes(machine)} disabled={pending || !!error} onclick={() => toggle(machine)}><i></i><span class="g">{machine}</span></button>
         {/each}
       </div>
-      {#if !current.targets.length}<p class="meta">No machine in the inventory is eligible for this action.</p>{/if}
+      {#if !current.targets.length}<p class="meta">Nothing in the inventory is eligible for this action.</p>{/if}
     </section>
+    {#if serviceTargets.length}
+      <section>
+        <div class="hd" style:align-items="center"><h2 class="h2"><Server size={15} aria-hidden="true" />services</h2></div>
+        <div class="grid-sm">
+          {#each serviceTargets as service (service.id)}
+            <button class="chk mtile" type="button" role="checkbox" aria-label={service.name} aria-checked={selected.includes(service.id)} disabled={pending || !!error} onclick={() => toggle(service.id)}><i></i><span class="g">{service.name}</span><span class="meta">on {service.machine}</span></button>
+          {/each}
+        </div>
+      </section>
+    {/if}
     {#if running}<p class="meta" style:font-size="13px" role="status">{fleetActionLabel[running.request.action]} is running. Only one fleet operation can run at a time.</p>{/if}
     {#if confirmation}
       <div class="armed" role="group" aria-label="Confirm">
-        <p>{fleetActionLabel[confirmation.action]} on {confirmation.targets.join(", ")}? {blurb[confirmation.action]}</p>
+        <p>{fleetActionLabel[confirmation.action]} on {confirmation.targets.map(targetName).join(", ")}? {blurb[confirmation.action]}</p>
         <button class="btn p" type="button" disabled={pending} onclick={() => { if (confirmation) void submit(confirmation); }}>Yes, start it</button>
         <button class="btn" type="button" onclick={() => (confirmation = null)}>Cancel</button>
       </div>
     {:else}
-      <div><button class="btn p" type="button" disabled={!selected.length || pending || !!error || !!running} onclick={prepare}><SlidersHorizontal size={15} aria-hidden="true" />{running ? "Unavailable while another job runs" : selected.length ? `${fleetActionLabel[current.action]} on ${selected.length} machine${selected.length === 1 ? "" : "s"}` : "Choose machines"}</button></div>
+      <div><button class="btn p" type="button" disabled={!selected.length || pending || !!error || !!running} onclick={prepare}><SlidersHorizontal size={15} aria-hidden="true" />{running ? "Unavailable while another job runs" : selected.length ? `${fleetActionLabel[current.action]} on ${countLabel(selected)}` : serviceTargets.length ? "Choose targets" : "Choose machines"}</button></div>
     {/if}
     {#if pending}<p class="meta" role="status">Recording the fleet operation…</p>{/if}
     {#if error}<p class="fail" role="alert">{error}</p><div><button class="btn" type="button" onclick={() => (error = "")}>I’ve checked the outcome</button></div>{/if}

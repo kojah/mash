@@ -13,11 +13,21 @@ struct AvailableAction {
     targets: Vec<String>,
 }
 
+/// A target that is a shared server rather than a machine.
+#[derive(Serialize)]
+struct ServerTarget {
+    id: String,
+    name: String,
+    machine: String,
+}
+
 #[derive(Serialize)]
 struct Catalog {
     enabled: bool,
     revision: Option<String>,
     actions: Vec<AvailableAction>,
+    /// Targets not listed here are machines.
+    services: Vec<ServerTarget>,
 }
 
 async fn inventory(state: &super::super::Dash) -> Result<Option<Inventory>, String> {
@@ -51,10 +61,19 @@ pub(in crate::dash) async fn catalog(State(state): State<Arc<super::super::Dash>
                         })
                 })
                 .collect();
+            let services = inventory
+                .servers()
+                .map(|(machine, service, _)| ServerTarget {
+                    id: service.id.clone(),
+                    name: service.name.clone(),
+                    machine: machine.id.clone(),
+                })
+                .collect();
             axum::Json(Catalog {
                 enabled: true,
                 revision: Some(revision),
                 actions,
+                services,
             })
             .into_response()
         }
@@ -62,6 +81,7 @@ pub(in crate::dash) async fn catalog(State(state): State<Arc<super::super::Dash>
             enabled: false,
             revision: None,
             actions: vec![],
+            services: vec![],
         })
         .into_response(),
         Err(message) => super::error(StatusCode::INTERNAL_SERVER_ERROR, &message),

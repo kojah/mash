@@ -12,7 +12,6 @@ allow_actions = ["status", "watch-start", "watch-stop", "watch-status"]
 [[machines]]
 id = "workstation"
 platform = "linux"
-roles = ["history"]
 dashboard_url = "http://127.0.0.1:8790"
 token_env = "MASH_WORKSTATION_SERVICES_TOKEN"
 
@@ -28,6 +27,24 @@ home = "/home/operator"
 launcher = "/home/operator/bin/mash-watch"
 allow_control = true
 
+# A shared server is a service of the machine that runs it. With a
+# `deployment` table it is also a fleet target named by its id, so
+# `mash-fleet deploy shared-server workstation` installs it before the
+# machines that require it. Without one it is only shown and controlled.
+[[machines.services]]
+id = "shared-server"
+name = "Shared Mash server"
+kind = "server"
+manager = "systemd_user"
+unit = "mash-shared.service"
+allow_control = true
+
+[machines.services.deployment]
+preflight = [["/home/operator/bin/mash-server-release", "preflight"]]
+install = [["/home/operator/bin/mash-server-release", "install"]]
+verify = [["/home/operator/bin/mash-server-release", "check"]]
+replay_views = [["/home/operator/bin/mash-server-release", "replay-views"]]
+
 [[machines.databases]]
 id = "history"
 name = "Agent history"
@@ -36,7 +53,6 @@ path = "/home/operator/.local/share/mash/silver.sqlite3"
 [[machines]]
 id = "macbook"
 platform = "darwin"
-roles = ["history"]
 dashboard_url = "http://100.64.0.12:8790"
 token_env = "MASH_MACBOOK_SERVICES_TOKEN"
 

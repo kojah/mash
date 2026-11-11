@@ -14,8 +14,10 @@ fn canonical_inventory_drives_real_cli_and_ansible() {
     let inventory: mash_fleet::inventory::Inventory = serde_json::from_value(serde_json::json!({
         "version": 1,
         "controller": {"node": "fixture", "repository": repository, "binary": binary, "jobs": root.path().join("jobs"), "allow_actions": ["status"]},
-        "machines": [{"id": "fixture", "platform": "linux", "roles": ["api"], "transport": {"kind": "local"},
-            "deployment": {"connection_check": ["/usr/bin/true"], "verify": [["/usr/bin/touch", marker]]}}]
+        "machines": [{"id": "fixture", "platform": "linux", "history": false, "transport": {"kind": "local"},
+            "deployment": {"connection_check": ["/usr/bin/true"]},
+            "services": [{"id": "shared", "name": "Shared server", "kind": "server", "manager": "systemd_user",
+                "unit": "mash-shared.service", "deployment": {"verify": [["/usr/bin/touch", marker]]}}]}]
     })).unwrap();
     let config = root.path().join("fleet.toml");
     std::fs::write(&config, toml::to_string(&inventory).unwrap()).unwrap();
@@ -39,10 +41,9 @@ fn canonical_inventory_drives_real_cli_and_ansible() {
         .filter(|entry| entry.file_type().unwrap().is_dir())
         .collect();
     assert_eq!(requests.len(), 1);
-    let report: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(requests[0].path().join("run/fixture.json")).unwrap(),
-    )
-    .unwrap();
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(requests[0].path().join("run/shared.json")).unwrap())
+            .unwrap();
     assert_eq!(report["state"], "succeeded");
     std::fs::remove_file(&marker).unwrap();
     let rejected = Command::new(binary)

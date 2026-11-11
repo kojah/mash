@@ -67,8 +67,13 @@ Open **Services → Fleet operations** on the controller. Choose an allowed
 operation, select machines, and review the named targets before confirming.
 The controller's `allow_actions` selects which operations appear. Deployment
 requires configured build/install/preflight commands; adding `deploy` to the
-allowlist alone does not provide an installer. Include required API machines
-when selecting their dependent history machines.
+allowlist alone does not provide an installer.
+
+A shared server is a service of the machine that runs it, not a machine of its
+own. Give its entry under that machine a `deployment` table and it appears
+under **services** in the picker, named by its `id`. Machines that publish to
+it list that `id` in `requires`; select the server along with them when
+deploying.
 
 Watcher start installs the configured systemd user unit or macOS LaunchAgent
 and starts `mash index --watch` through your existing launcher. Stop disables

@@ -1,5 +1,5 @@
 //! Project the private fleet inventory into Ansible's existing host variables.
-use crate::inventory::{Commands, Inventory, Machine, Platform, Role, Transport};
+use crate::inventory::{Commands, Inventory, Machine, Platform, ServerDeployment, Transport};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -43,10 +43,10 @@ struct Host<'a> {
     mash_shared: bool,
     #[serde(skip_serializing_if = "<[String]>::is_empty")]
     mash_preflight: &'a [String],
-    mash_deploy_preflight: &'a Commands,
-    mash_install: &'a Commands,
-    mash_verify: &'a Commands,
-    mash_replay_views: &'a Commands,
+    mash_deploy_preflight: &'a [Vec<String>],
+    mash_install: &'a [Vec<String>],
+    mash_verify: &'a [Vec<String>],
+    mash_replay_views: &'a [Vec<String>],
     mash_mcp: &'a [String],
     mash_node_configs: &'a [std::path::PathBuf],
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,8 +88,8 @@ impl<'a> From<&'a Machine> for Host<'a> {
             mash_preflight: &machine.deployment.connection_check,
             mash_deploy_preflight: &machine.deployment.preflight,
             mash_install: &machine.deployment.install,
-            mash_verify: &machine.deployment.verify,
-            mash_replay_views: &machine.deployment.replay_views,
+            mash_verify: &[],
+            mash_replay_views: &[],
             mash_mcp: &machine.deployment.mcp,
             mash_node_configs: &machine.deployment.node_configs,
             mash_build_root: machine.deployment.build_root.as_deref(),
@@ -107,30 +107,55 @@ impl<'a> From<&'a Machine> for Host<'a> {
     }
 }
 
+impl<'a> Host<'a> {
+    /// A shared server is its own Ansible host, reached like the machine that declares it.
+    fn server(machine: &'a Machine, deployment: &'a ServerDeployment) -> Self {
+        Self {
+            mash_requires: &[],
+            mash_shared: false,
+            mash_deploy_preflight: &deployment.preflight,
+            mash_install: &deployment.install,
+            mash_verify: &deployment.verify,
+            mash_replay_views: &deployment.replay_views,
+            mash_mcp: &[],
+            mash_node_configs: &[],
+            mash_refresh_all_history: false,
+            mash_watch_enabled: false,
+            mash_watch_launcher: None,
+            mash_watch_home: None,
+            ..Self::from(machine)
+        }
+    }
+}
+
 /// Generate Ansible input without dashboard endpoints, tokens or service-log paths.
 ///
 /// # Errors
 /// Rejects invalid inventory and reports serialization failures.
-pub fn encode(inventory: &Inventory) -> Result<Vec<u8>, String> {
+pub fn encode<'a>(inventory: &'a Inventory) -> Result<Vec<u8>, String> {
     inventory.validate()?;
     let mut children = BTreeMap::from([
         ("mash_history", Group::default()),
         ("mash_api", Group::default()),
         ("mash_darwin", Group::default()),
     ]);
-    for machine in &inventory.machines {
-        for (group, selected) in [
-            ("mash_history", machine.roles.contains(&Role::History)),
-            ("mash_api", machine.roles.contains(&Role::Api)),
-            ("mash_darwin", machine.platform == Platform::Darwin),
-        ] {
-            if selected {
-                children
-                    .entry(group)
-                    .or_default()
-                    .hosts
-                    .insert(&machine.id, Host::from(machine));
-            }
+    let mut add = |group, id: &'a str, host| {
+        children.entry(group).or_default().hosts.insert(id, host);
+    };
+    for machine in inventory.machines.iter().filter(|machine| machine.history) {
+        add("mash_history", &machine.id, Host::from(machine));
+        if machine.platform == Platform::Darwin {
+            add("mash_darwin", &machine.id, Host::from(machine));
+        }
+    }
+    for (machine, service, deployment) in inventory.servers() {
+        add("mash_api", &service.id, Host::server(machine, deployment));
+        if machine.platform == Platform::Darwin {
+            add(
+                "mash_darwin",
+                &service.id,
+                Host::server(machine, deployment),
+            );
         }
     }
     serde_json::to_vec(&Document {

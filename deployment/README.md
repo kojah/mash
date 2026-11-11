@@ -14,6 +14,15 @@ for the same setup. The legacy YAML workflow below remains available separately.
 See [dashboard fleet management](../docs/services.md#manage-the-fleet-from-one-inventory)
 for peer setup, authentication, confirmations, and job recovery.
 
+In the TOML inventory every `[[machines]]` entry is a computer. A shared server
+is declared as one of its machine's `[[machines.services]]` (`kind = "server"`);
+adding a `deployment` table with its `preflight`, `install`, `verify` and
+`replay_views` commands makes it a fleet target named by the service `id`.
+Machines that publish to it name that `id` in `deployment.requires`. A machine
+that only hosts the server sets `history = false`. The generated Ansible
+inventory still places each server in `mash_api` under its service `id`, with
+its machine's connection, so the playbooks and target names are unchanged.
+
 Build the controller with `cargo build --release -p mash-fleet`. Run it from a
 Mash checkout, or pass `--repository /path/to/mash` after the subcommand. It
 requires Bash, Git, jq, flock, timeout and uv on the controller; uv installs the locked Ansible

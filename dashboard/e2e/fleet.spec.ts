@@ -26,7 +26,10 @@ for (const width of [390, 1280]) {
           json: {
             enabled: true,
             revision: "revision-one",
-            actions: [{ action, targets: ["xenia", "macbook"] }],
+            // The shared server is a service of xenia, not a machine; only
+            // some actions can target it.
+            actions: [{ action, targets: [...(readOnly ? ["shared"] : []), "xenia", "macbook"] }],
+            services: [{ id: "shared", name: "Shared server", machine: "xenia" }],
           },
         });
       if (path === "/api/services/fleet/jobs") {
@@ -75,10 +78,24 @@ for (const width of [390, 1280]) {
     const machine = (name: string) => page.getByRole("checkbox", { name, exact: true });
     const start = page.getByRole("button", { name: `${label} on 1 machine`, exact: true });
     const confirm = page.getByRole("group", { name: "Confirm", exact: true });
-    await expect(page.getByRole("button", { name: "Choose machines" })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: readOnly ? "Choose targets" : "Choose machines" }),
+    ).toBeDisabled();
     await page.getByRole("button", { name: "Select all" }).click();
     await expect(machine("macbook")).toBeChecked();
     await machine("xenia").uncheck();
+    const server = page.getByRole("checkbox", { name: "Shared server", exact: true });
+    if (readOnly) {
+      await expect(page.getByRole("heading", { name: "services", exact: true })).toBeVisible();
+      await expect(server).toContainText("on xenia");
+      await expect(server).toBeChecked();
+      await expect(
+        page.getByRole("button", { name: `${label} on 2 targets`, exact: true }),
+      ).toBeVisible();
+      await server.uncheck();
+    } else {
+      await expect(server).toHaveCount(0);
+    }
     await start.click();
     if (readOnly) {
       // A check that changes nothing starts without a second step.

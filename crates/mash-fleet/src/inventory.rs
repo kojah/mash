@@ -85,19 +85,15 @@ pub enum Platform {
     Darwin,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    History,
-    Api,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Machine {
     pub id: String,
     pub platform: Platform,
-    pub roles: Vec<Role>,
+    /// Whether this machine indexes agent history. A machine that only hosts
+    /// a shared server sets this to false.
+    #[serde(default = "enabled")]
+    pub history: bool,
     pub dashboard_url: Option<String>,
     pub token_env: Option<String>,
     #[serde(default)]
@@ -108,6 +104,10 @@ pub struct Machine {
     #[serde(default)]
     pub deployment: Deployment,
     pub watcher: Option<Watcher>,
+}
+
+const fn enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -130,8 +130,6 @@ pub struct Deployment {
     pub connection_check: Vec<String>,
     pub preflight: Commands,
     pub install: Commands,
-    pub verify: Commands,
-    pub replay_views: Commands,
     pub mcp: Vec<String>,
     pub node_configs: Vec<PathBuf>,
     pub build_root: Option<PathBuf>,
@@ -175,6 +173,7 @@ impl Machine {
                 plist,
                 log,
                 allow_control: watcher.allow_control,
+                deployment: None,
             });
         }
         services
@@ -201,6 +200,20 @@ pub struct Service {
     pub log: Option<PathBuf>,
     #[serde(default)]
     pub allow_control: bool,
+    /// Present only on a shared server the fleet deploys; see [`ServerDeployment`].
+    pub deployment: Option<ServerDeployment>,
+}
+
+/// Trusted commands that install and check a shared server. A server service
+/// with these is a fleet target named by the service's `id`, reached through
+/// the machine that declares it.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ServerDeployment {
+    pub preflight: Commands,
+    pub install: Commands,
+    pub verify: Commands,
+    pub replay_views: Commands,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -233,29 +246,51 @@ pub fn identifier(value: &str) -> bool {
 }
 
 impl Inventory {
-    /// Resolve explicit hosts or all eligible hosts against the same allowlist.
+    /// Shared servers the fleet deploys, each with the machine that hosts it.
+    pub fn servers(&self) -> impl Iterator<Item = (&Machine, &Service, &ServerDeployment)> {
+        self.machines.iter().flat_map(|machine| {
+            machine.services.iter().filter_map(move |service| {
+                service
+                    .deployment
+                    .as_ref()
+                    .map(|deployment| (machine, service, deployment))
+            })
+        })
+    }
+
+    /// Resolve explicit targets or all eligible targets against the same allowlist.
+    /// A target is a history machine or a deployable shared server.
     ///
     /// # Errors
-    /// Rejects disabled actions, unknown/duplicate hosts and invalid action scopes.
+    /// Rejects disabled actions, unknown/duplicate targets and invalid action scopes.
     pub fn targets(&self, action: Action, requested: &[String]) -> Result<Vec<String>, String> {
         self.validate()?;
         if !self.controller.allow_actions.contains(&action) {
             return Err("fleet action is not enabled in the controller inventory".into());
         }
-        let eligible = |machine: &Machine| match action {
-            Action::Status | Action::Preflight | Action::Deploy => true,
-            Action::Sync | Action::LocalViews => machine.roles.contains(&Role::History),
-            Action::ReplayViews => machine.roles.contains(&Role::Api),
+        let history = self.machines.iter().filter(|machine| machine.history);
+        let eligible: Vec<&str> = match action {
+            Action::Status | Action::Preflight | Action::Deploy => self
+                .servers()
+                .map(|(_, service, _)| service.id.as_str())
+                .chain(history.map(|machine| machine.id.as_str()))
+                .collect(),
+            Action::Sync | Action::LocalViews => {
+                history.map(|machine| machine.id.as_str()).collect()
+            }
+            Action::ReplayViews => self
+                .servers()
+                .map(|(_, service, _)| service.id.as_str())
+                .collect(),
             Action::WatchStart | Action::WatchStop | Action::WatchStatus | Action::WatchLogs => {
-                machine.roles.contains(&Role::History) && machine.watcher.is_some()
+                history
+                    .filter(|machine| machine.watcher.is_some())
+                    .map(|machine| machine.id.as_str())
+                    .collect()
             }
         };
         let selected: Vec<String> = if requested.is_empty() {
-            self.machines
-                .iter()
-                .filter(|machine| eligible(machine))
-                .map(|machine| machine.id.clone())
-                .collect()
+            eligible.iter().map(|&id| id.to_owned()).collect()
         } else {
             requested.to_vec()
         };
@@ -263,14 +298,9 @@ impl Inventory {
         if selected.is_empty()
             || unique.len() != selected.len()
             || selected.len() > 32
-            || selected.iter().any(|id| {
-                !self
-                    .machines
-                    .iter()
-                    .any(|machine| machine.id == *id && eligible(machine))
-            })
+            || selected.iter().any(|id| !eligible.contains(&id.as_str()))
         {
-            return Err("fleet action requires unique eligible machine IDs".into());
+            return Err("fleet action requires unique eligible target IDs".into());
         }
         if matches!(action, Action::Deploy | Action::Preflight)
             && self
@@ -285,7 +315,7 @@ impl Inventory {
                         .any(|id| !selected.contains(id))
                 })
         {
-            return Err("include required API machines in the deployment selection".into());
+            return Err("include required shared servers in the deployment selection".into());
         }
         Ok(selected)
     }
@@ -333,16 +363,8 @@ impl Inventory {
         }
         let mut ids = HashSet::new();
         for machine in &self.machines {
-            if !identifier(&machine.id)
-                || !ids.insert(machine.id.as_str())
-                || machine.roles.is_empty()
-                || machine
-                    .roles
-                    .iter()
-                    .enumerate()
-                    .any(|(index, role)| machine.roles[..index].contains(role))
-            {
-                return Err("fleet machines require unique identifiers and explicit roles".into());
+            if !identifier(&machine.id) || !ids.insert(machine.id.as_str()) {
+                return Err("fleet machines require unique identifiers".into());
             }
             validate_machine_inputs(machine)?;
             if machine.managed_services().len() > 16 || machine.databases.len() > 64 {
@@ -351,14 +373,14 @@ impl Inventory {
             if let Some(watcher) = &machine.watcher
                 && (!watcher.home.is_absolute()
                     || !watcher.launcher.is_absolute()
-                    || !machine.roles.contains(&Role::History)
+                    || !machine.history
                     || !watcher
                         .launcher
                         .to_string_lossy()
                         .bytes()
                         .all(|byte| byte.is_ascii_alphanumeric() || b"/_.-".contains(&byte)))
             {
-                return Err("invalid watcher home, launcher or machine role".into());
+                return Err("invalid watcher home, launcher or non-history machine".into());
             }
             let mut services = HashSet::new();
             let managed = machine.managed_services();
@@ -369,34 +391,24 @@ impl Inventory {
                 }
             }
         }
-        self.validate_dependencies(&ids)
-    }
-
-    fn validate_dependencies(&self, ids: &HashSet<&str>) -> Result<(), String> {
-        if !ids.contains(self.controller.node.as_str())
-            || self.machines.iter().any(|machine| {
-                machine
-                    .deployment
-                    .requires
-                    .iter()
-                    .any(|id| !ids.contains(id.as_str()))
-            })
-        {
-            return Err("fleet controller or dependency names an unknown machine".into());
+        if !ids.contains(self.controller.node.as_str()) {
+            return Err("fleet controller names an unknown machine".into());
         }
-        for machine in &self.machines {
-            let mut pending = machine.deployment.requires.clone();
-            let mut visited = HashSet::new();
-            while let Some(id) = pending.pop() {
-                if id == machine.id {
-                    return Err("cyclic fleet deployment dependencies".into());
-                }
-                if visited.insert(id.clone())
-                    && let Some(dependency) = self.machines.iter().find(|entry| entry.id == id)
-                {
-                    pending.extend(dependency.deployment.requires.iter().cloned());
-                }
+        // Server IDs share the target namespace with machine IDs.
+        let mut servers = HashSet::new();
+        for (_, service, _) in self.servers() {
+            if ids.contains(service.id.as_str()) || !servers.insert(service.id.as_str()) {
+                return Err("fleet shared servers require IDs unique among all targets".into());
             }
+        }
+        if self.machines.iter().any(|machine| {
+            machine
+                .deployment
+                .requires
+                .iter()
+                .any(|id| !servers.contains(id.as_str()))
+        }) {
+            return Err("fleet dependency names an unknown shared server".into());
         }
         Ok(())
     }
@@ -433,12 +445,7 @@ fn validate_machine_inputs(machine: &Machine) -> Result<(), String> {
             return Err("invalid fleet database identity or path".into());
         }
     }
-    for commands in [
-        &machine.deployment.preflight,
-        &machine.deployment.install,
-        &machine.deployment.verify,
-        &machine.deployment.replay_views,
-    ] {
+    for commands in [&machine.deployment.preflight, &machine.deployment.install] {
         validate_commands(commands)?;
     }
     for command in [
@@ -465,6 +472,19 @@ fn validate_service(service: &Service) -> Result<(), String> {
         || (service.manager == Manager::Launchd && service.allow_control && service.plist.is_none())
     {
         return Err("invalid fleet service identity or supervisor configuration".into());
+    }
+    if let Some(deployment) = &service.deployment {
+        if service.kind != ServiceKind::Server {
+            return Err("only a server service can carry fleet deployment commands".into());
+        }
+        for commands in [
+            &deployment.preflight,
+            &deployment.install,
+            &deployment.verify,
+            &deployment.replay_views,
+        ] {
+            validate_commands(commands)?;
+        }
     }
     Ok(())
 }
@@ -502,7 +522,6 @@ allow_actions = ["status", "watch-start"]
 [[machines]]
 id = "xenia"
 platform = "linux"
-roles = ["history"]
 dashboard_url = "http://127.0.0.1:8790"
 [machines.transport]
 kind = "local"
@@ -547,7 +566,7 @@ allow_control = true
     }
 
     #[test]
-    fn inventory_rejects_cycles_invalid_commands_and_database_paths() {
+    fn inventory_rejects_machine_dependencies_invalid_commands_and_database_paths() {
         let mut inventory = fixture();
         inventory.machines[0].deployment.requires = vec!["xenia".into()];
         assert!(inventory.validate().is_err());
@@ -564,6 +583,79 @@ allow_control = true
         inventory.machines[0].databases.clear();
         inventory.machines[0].token_env = Some("TOKEN=secret".into());
         assert!(inventory.validate().is_err());
+    }
+
+    #[test]
+    fn shared_server_is_a_service_target_of_its_machine() {
+        let mut inventory = fixture();
+        inventory.controller.allow_actions =
+            vec![Action::Deploy, Action::Sync, Action::ReplayViews];
+        let deployment = ServerDeployment {
+            install: vec![vec!["/srv/install-server".into()]],
+            verify: vec![vec!["/srv/check-server".into()]],
+            ..ServerDeployment::default()
+        };
+        // Only a server may be deployed, and its ID may not shadow a machine.
+        inventory.machines[0].services[0].deployment = Some(deployment.clone());
+        assert!(inventory.validate().is_err());
+        inventory.machines[0].services[0].deployment = None;
+        inventory.machines[0].services.push(Service {
+            id: "xenia".into(),
+            name: "Shared server".into(),
+            kind: ServiceKind::Server,
+            manager: Manager::SystemdUser,
+            unit: "mash-shared.service".into(),
+            plist: None,
+            log: None,
+            allow_control: false,
+            deployment: Some(deployment),
+        });
+        assert!(inventory.validate().is_err());
+        inventory.machines[0].services[1].id = "shared".into();
+        inventory.machines[0].deployment.requires = vec!["shared".into()];
+        inventory.validate().unwrap();
+
+        assert_eq!(
+            inventory.targets(Action::Deploy, &[]).unwrap(),
+            ["shared", "xenia"]
+        );
+        assert_eq!(inventory.targets(Action::Sync, &[]).unwrap(), ["xenia"]);
+        assert_eq!(
+            inventory.targets(Action::ReplayViews, &[]).unwrap(),
+            ["shared"]
+        );
+        assert!(inventory.targets(Action::Sync, &["shared".into()]).is_err());
+        // A machine cannot be deployed without the server it depends on.
+        assert!(
+            inventory
+                .targets(Action::Deploy, &["xenia".into()])
+                .is_err()
+        );
+        inventory
+            .targets(Action::Deploy, &["shared".into()])
+            .unwrap();
+
+        // Ansible still sees the server as its own host in the API group,
+        // reached the same way as the machine that declares it.
+        let document: serde_json::Value =
+            serde_json::from_slice(&crate::ansible::encode(&inventory).unwrap()).unwrap();
+        let children = &document["all"]["children"];
+        let server = &children["mash_api"]["hosts"]["shared"];
+        assert_eq!(server["ansible_connection"], "local");
+        assert_eq!(server["mash_install"][0][0], "/srv/install-server");
+        assert_eq!(server["mash_verify"][0][0], "/srv/check-server");
+        assert!(children["mash_api"]["hosts"].get("xenia").is_none());
+        assert!(children["mash_history"]["hosts"].get("shared").is_none());
+        assert_eq!(
+            children["mash_history"]["hosts"]["xenia"]["mash_requires"][0],
+            "shared"
+        );
+
+        // A machine that only hosts the server is not a history target.
+        inventory.machines[0].deployment.requires.clear();
+        inventory.machines[0].history = false;
+        assert_eq!(inventory.targets(Action::Deploy, &[]).unwrap(), ["shared"]);
+        assert!(inventory.targets(Action::Sync, &[]).is_err());
     }
 
     #[test]

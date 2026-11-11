@@ -283,7 +283,9 @@ fn fleet_projection_shares_watcher_identity_and_limits_peer_credentials() {
     assert_eq!(controller.node, "workstation");
     assert_eq!(controller.machines.len(), 1);
     assert_eq!(controller.machines[0].id, "macbook");
-    assert_eq!(controller.services[0].unit, "mash-index-watch.service");
+    // The shared server is one of the controller's services, beside its watcher.
+    assert_eq!(controller.services[0].unit, "mash-shared.service");
+    assert_eq!(controller.services[1].unit, "mash-index-watch.service");
     let peer = Configuration::from_fleet(&inventory, Some("macbook")).unwrap();
     assert!(peer.machines.is_empty());
     assert_eq!(
