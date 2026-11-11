@@ -77,7 +77,16 @@ pub struct Status {
     configuration: Configuration,
     shared_index: Option<Freshness>,
     shared: Option<Publication>,
+    /// The shared copy trails the local index while a publisher works through
+    /// recent changes; set when that is why publication is still pending.
+    #[serde(skip)]
+    catching_up: bool,
 }
+
+/// A node that published this recently has a publisher at work: a watcher
+/// publishes after every pass that changed something, so on a busy machine
+/// its publication is pending for a minute at a time without being stale.
+const CATCHING_UP: i64 = 10 * 60;
 
 #[derive(Deserialize)]
 struct Configuration {
@@ -96,11 +105,15 @@ struct Member {
     node_id: String,
     lexical_current: bool,
     views_current: bool,
+    #[serde(default)]
+    last_synced_at: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct Publication {
     state: PublicationState,
+    #[serde(default)]
+    error: Option<String>,
 }
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -119,7 +132,11 @@ impl Status {
             .unwrap_or(&stamp.build_revision);
         let mut summary = format!("Build {build} installed; local search ready");
         if shared {
-            summary.push_str("; shared publication current");
+            summary.push_str(if self.catching_up {
+                "; shared copy is catching up with recent changes"
+            } else {
+                "; shared publication current"
+            });
         }
         if self.query_models == Models::Unavailable {
             summary.push_str("; query models not installed, so search is by words only");
@@ -129,7 +146,18 @@ impl Status {
 }
 
 pub fn status(result: &CallToolResult, shared: bool) -> Result<Status, String> {
-    let status: Status = decode(result)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "controller clock predates the Unix epoch")?;
+    status_at(
+        result,
+        shared,
+        i64::try_from(now.as_secs()).unwrap_or(i64::MAX),
+    )
+}
+
+fn status_at(result: &CallToolResult, shared: bool, now: i64) -> Result<Status, String> {
+    let mut status: Status = decode(result)?;
     if !status.ready || status.query_models == Models::Unavailable {
         return Err("installed node is not query-ready; inspect status and refresh or install models explicitly".into());
     }
@@ -145,18 +173,23 @@ pub fn status(result: &CallToolResult, shared: bool) -> Result<Status, String> {
                 .iter()
                 .find(|member| member.node_id == node.node_id)
         });
-        if status.shared_error.is_some()
-            || !status
-                .shared
-                .as_ref()
-                .is_some_and(|publication| publication.state == PublicationState::Published)
-            || !member.is_some_and(|member| {
-                member.lexical_current
-                    && (status.query_models != Models::Available || member.views_current)
-            })
-        {
+        let current = member.is_some_and(|member| {
+            member.lexical_current
+                && (status.query_models != Models::Available || member.views_current)
+        });
+        let published_recently = member
+            .and_then(|member| member.last_synced_at.as_deref())
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .is_some_and(|at| (0..=CATCHING_UP).contains(&(now - at.timestamp())));
+        let publication = status.shared.as_ref();
+        let published = publication.is_some_and(|p| p.state == PublicationState::Published);
+        let catching_up = publication.is_some_and(|p| {
+            p.state == PublicationState::Pending && p.error.is_none() && published_recently
+        });
+        if status.shared_error.is_some() || !current || !(published || catching_up) {
             return Err("this node's shared publication is missing or stale; refresh explicitly before declaring it ready".into());
         }
+        status.catching_up = !published;
     }
     Ok(status)
 }
@@ -238,6 +271,41 @@ mod tests {
         let mut changed = fixture.clone();
         changed["shared_index"]["nodes"][0]["views_current"] = json!(false);
         assert!(status(&CallToolResult::structured(changed), true).is_err());
+        // Pending publication is stale unless the node published moments ago
+        // and nothing went wrong: then a publisher is working through changes.
+        let at = |seconds: i64| {
+            chrono::DateTime::parse_from_rfc3339("2026-11-11T16:00:00.5Z")
+                .unwrap()
+                .timestamp()
+                + seconds
+        };
+        let mut pending = fixture.clone();
+        pending["shared"] = json!({"state":"pending"});
+        let check = |value: &serde_json::Value, now| {
+            status_at(&CallToolResult::structured(value.clone()), true, now)
+        };
+        assert!(check(&pending, at(30)).is_err());
+        pending["shared_index"]["nodes"][0]["last_synced_at"] = json!("2026-11-11T16:00:00.5Z");
+        let stamp = Stamp {
+            contract_fingerprint: "current".into(),
+            build_revision: "0123456789abcdef".into(),
+        };
+        assert_eq!(
+            check(&pending, at(30)).unwrap().summary(&stamp, true),
+            "Build 0123456789ab installed; local search ready; shared copy is catching up with recent changes"
+        );
+        assert!(check(&pending, at(CATCHING_UP + 1)).is_err());
+        assert!(check(&pending, at(-5)).is_err());
+        let mut failed = pending.clone();
+        failed["shared"]["error"] = json!("attachment upload failed");
+        assert!(check(&failed, at(30)).is_err());
+        let mut inconsistent = pending.clone();
+        inconsistent["shared_index"]["nodes"][0]["lexical_current"] = json!(false);
+        assert!(check(&inconsistent, at(30)).is_err());
+        assert_eq!(
+            check(&fixture, at(30)).unwrap().summary(&stamp, true),
+            "Build 0123456789ab installed; local search ready; shared publication current"
+        );
         let mut changed = fixture.clone();
         changed["runtime"]["build_revision"] = json!("old");
         assert!(help(&CallToolResult::structured(changed), &expected).is_err());

@@ -65,7 +65,11 @@ These operations do not install Mash, download models, or change indexing
 configuration. Starting the watcher does trigger its normal initial indexing.
 
 `watch status` reports supervisor state with readiness marked `unchecked`.
-Use `status` to check schema, build and search readiness over MCP. `logs` returns
+Use `status` to check schema, build and search readiness over MCP. A node
+whose shared publication is pending still passes when it published within the
+last ten minutes without an error: a watcher publishes after each pass, so its
+shared copy trails by a minute at a time. The result then says the shared copy
+is catching up. `logs` returns
 the last 100 log lines; output and private reports may contain sensitive history
 or paths. macOS logs use `~/Library/Logs/mash-index-watch.log`; configure rotation
 locally for long-running installations. Watcher commands never retry failed
