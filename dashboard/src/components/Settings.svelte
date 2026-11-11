@@ -33,9 +33,9 @@ const destinations: Record<string, string> = {
 {/snippet}
 
 <div class="hd">
-  <div><h1 class="h1">Settings</h1><p class="meta" style:font-size="12.5px" style:overflow-wrap="anywhere">{config?.path ?? "Mash configuration"}</p></div>
+  <div><h1 class="h1">Settings</h1><p class="meta" style:font-size="13.5px" style:overflow-wrap="anywhere">{config?.path ?? "Mash configuration"}</p></div>
   {#if status.data}
-    <span class={status.data.ready ? "ok" : "warn"} style:display="inline-flex" style:align-items="center" style:gap="7px" style:font-size="12.5px">
+    <span class={status.data.ready ? "ok" : "warn"} style:display="inline-flex" style:align-items="center" style:gap="7px" style:font-size="13.5px">
       {#if status.data.ready}<Check size={16} aria-hidden="true" />Ready{:else}<TriangleAlert size={16} aria-hidden="true" />Needs attention{/if}
     </span>
   {/if}

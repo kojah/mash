@@ -161,10 +161,10 @@ const outcomeClass = {
     <article>
       <p style:display="flex" style:align-items="baseline" style:gap="10px"><i class="dot" class:run={job.outcome === "running"} class:bad={job.outcome === "failed"} class:warn={job.outcome === "partial" || job.outcome === "unknown"}></i><b style:flex="1" style:min-width="0">{fleetActionLabel[job.request.action]}</b><span class="meta">{checkedTime(job.requested_at)}</span></p>
       {#each job.targets as target (target.id)}
-        <div class="elb" style:font-size="12.5px"><span style:flex="1">{targetName(target.id)}</span><span class={target.state === "succeeded" ? "ok" : target.state === "failed" ? "fail" : target.state === "running" ? "run" : "none"}>{target.state}{#if target.progress} {target.progress.progress}{target.progress.total === null ? "" : ` / ${target.progress.total}`}{/if}</span></div>
-        {#if target.detail}<p class="meta" style:font-size="12px" style:margin="0 0 6px">{target.detail}</p>{/if}
+        <div class="elb" style:font-size="13.5px"><span style:flex="1">{targetName(target.id)}</span><span class={target.state === "succeeded" ? "ok" : target.state === "failed" ? "fail" : target.state === "running" ? "run" : "none"}>{target.state}{#if target.progress} {target.progress.progress}{target.progress.total === null ? "" : ` / ${target.progress.total}`}{/if}</span></div>
+        {#if target.detail}<p class="meta" style:font-size="13px" style:margin="0 0 6px">{target.detail}</p>{/if}
       {/each}
-      <p class={outcomeClass[job.outcome]} style:margin="4px 0 0 21px" style:font-size="12px">{job.outcome}{job.outcome === "unknown" ? ": completion could not be confirmed. Inspect the affected machines before starting another operation." : ""}</p>
+      <p class={outcomeClass[job.outcome]} style:margin="4px 0 0 21px" style:font-size="13px">{job.outcome}{job.outcome === "unknown" ? ": completion could not be confirmed. Inspect the affected machines before starting another operation." : ""}</p>
     </article>
   {/each}
 {/snippet}
@@ -209,7 +209,7 @@ const outcomeClass = {
     <div style:display="flex" style:align-items="center" style:gap="12px"><Icon size={26} color="var(--teal)" aria-hidden="true" /><div><h1 class="h1">{fleetActionLabel[current.action]}</h1><p class="meta">{groups.find((group) => group.actions.includes(current.action))?.name}</p></div></div>
     <p>{blurb[current.action]}{readOnly.includes(current.action) ? "" : " It keeps running if you leave this page."}</p>
     <section>
-      <div class="hd" style:align-items="center"><h2 class="h2"><Laptop size={15} aria-hidden="true" />machines</h2><button class="a" type="button" disabled={pending || !!error} onclick={() => { selected = [...current.targets]; confirmation = null; }} style:min-height="44px" style:font-size="13px">Select all</button></div>
+      <div class="hd" style:align-items="center"><h2 class="h2"><Laptop size={15} aria-hidden="true" />machines</h2><button class="a" type="button" disabled={pending || !!error} onclick={() => { selected = [...current.targets]; confirmation = null; }} style:min-height="44px" style:font-size="14px">Select all</button></div>
       <div class="grid-sm">
         {#each machineTargets as machine (machine)}
           <button class="chk mtile" type="button" role="checkbox" aria-checked={selected.includes(machine)} disabled={pending || !!error} onclick={() => toggle(machine)}><i></i><span class="g">{machine}</span></button>
@@ -227,7 +227,7 @@ const outcomeClass = {
         </div>
       </section>
     {/if}
-    {#if running}<p class="meta" style:font-size="13px" role="status">{fleetActionLabel[running.request.action]} is running. Only one fleet operation can run at a time.</p>{/if}
+    {#if running}<p class="meta" style:font-size="14px" role="status">{fleetActionLabel[running.request.action]} is running. Only one fleet operation can run at a time.</p>{/if}
     {#if confirmation}
       <div class="armed" role="group" aria-label="Confirm">
         <p>{fleetActionLabel[confirmation.action]} on {confirmation.targets.map(targetName).join(", ")}? {blurb[confirmation.action]}</p>

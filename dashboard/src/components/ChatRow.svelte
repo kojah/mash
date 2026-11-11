@@ -1,4 +1,5 @@
 <script lang="ts">
+import { plainTitle } from "../lib/markdown";
 import { reading } from "../lib/reading.svelte";
 import { chatHref } from "../lib/route.svelte";
 import type { ChatSummary } from "../lib/types";
@@ -16,6 +17,6 @@ const href = $derived.by(() => {
 </script>
 
 <a class="row" {href}>
-  <span class="row-t"><AgentMark agent={chat.agent} /><span>{chat.title}</span></span>
+  <span class="row-t"><AgentMark agent={chat.agent} /><span>{plainTitle(chat.title)}</span></span>
   <span class="elb" style:margin-top="2px"><MetaChips {chat} /></span>
 </a>

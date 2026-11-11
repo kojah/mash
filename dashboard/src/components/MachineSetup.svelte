@@ -23,7 +23,7 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
         {@const headline = setupHeadline(agent)}
         {@const chain = setupChain(agent)}
         <div style:margin-bottom="14px">
-          <div class="hd" style:align-items="center"><h3 style:display="flex" style:align-items="center" style:gap="8px" style:font-size="14px" style:font-weight="500"><AgentMark agent={agent.agent} size={17} />{agents[agent.agent].name}</h3><span class={headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"} style:font-size="12.5px">{headline.label}</span></div>
+          <div class="hd" style:align-items="center"><h3 style:display="flex" style:align-items="center" style:gap="8px" style:font-size="15px" style:font-weight="500"><AgentMark agent={agent.agent} size={17} />{agents[agent.agent].name}</h3><span class={headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"} style:font-size="13.5px">{headline.label}</span></div>
           {#if agent.expected}
             <div class="set">
               {#each chain as part (part.label)}
@@ -32,7 +32,7 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
                     {#if part.state === "ok"}<Check size={16} aria-hidden="true" />{:else if part.state === "attention"}<TriangleAlert size={16} aria-hidden="true" />{:else}<CircleHelp size={16} aria-hidden="true" />{/if}
                   </span>
                   <span class="g">{part.label}</span>
-                  <span class={part.state === "attention" ? "warn" : "n"} style:font-size="12px">{partWord[part.state]}</span>
+                  <span class={part.state === "attention" ? "warn" : "n"} style:font-size="13px">{partWord[part.state]}</span>
                 </div>
               {/each}
             </div>

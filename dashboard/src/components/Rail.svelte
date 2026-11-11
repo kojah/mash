@@ -1,6 +1,6 @@
 <script lang="ts">
-import BookOpen from "@lucide/svelte/icons/book-open";
 import Bot from "@lucide/svelte/icons/bot";
+import Brain from "@lucide/svelte/icons/brain";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Clock from "@lucide/svelte/icons/clock";
 import Folder from "@lucide/svelte/icons/folder";
@@ -38,7 +38,7 @@ const sections = [
   { id: "agents", label: "agents", href: "#/agents", icon: Bot, tint: "var(--lilac)" },
   { id: "machines", label: "machines", href: "#/machines", icon: Laptop, tint: "var(--blue)" },
   { id: "projects", label: "projects", href: "#/projects", icon: Folder, tint: "var(--warn)" },
-  { id: "memory", label: "memory", href: "#/records?", icon: BookOpen, tint: "var(--pink)" },
+  { id: "memory", label: "memory", href: "#/records?", icon: Brain, tint: "var(--pink)" },
   { id: "services", label: "services", href: "#/services", icon: Server, tint: "var(--teal)" },
   {
     id: "fleet",
@@ -137,7 +137,7 @@ function toggle(id: Section): void {
           {/each}
         {:else if section.id === "memory"}
           {#each kinds as kind (kind)}
-            <a class="sub" class:on={child === kind} href={recordsHref(new URLSearchParams({ kind }))} onclick={close}><BookOpen size={16} color="var(--pink)" aria-hidden="true" /><span>{kindLabel(kind).toLowerCase()}s</span></a>
+            <a class="sub" class:on={child === kind} href={recordsHref(new URLSearchParams({ kind }))} onclick={close}><Brain size={16} color="var(--pink)" aria-hidden="true" /><span>{kindLabel(kind).toLowerCase()}s</span></a>
           {/each}
         {/if}
       {/if}

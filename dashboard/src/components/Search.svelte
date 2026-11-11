@@ -171,7 +171,7 @@ const rangeLabel = $derived.by(() => {
   {:else}
     <span class="meta">sorted by best match</span>
   {/if}
-  {#if dirty}<button class="a" id="applyf" type="button" onclick={apply} style:min-height="30px" style:padding="0 6px" style:margin-left="6px" style:font-size="12.5px">Apply filters</button>{/if}
+  {#if dirty}<button class="a" id="applyf" type="button" onclick={apply} style:min-height="30px" style:padding="0 6px" style:margin-left="6px" style:font-size="13.5px">Apply filters</button>{/if}
 </div>
 
 <QueryError title="Couldn’t load chats" query={catalogue} />
@@ -186,13 +186,13 @@ const rangeLabel = $derived.by(() => {
   {#each result.data.warnings as warning (warning)}<p class="meta" role="status">{warning}</p>{/each}
   {#if !hits.length}
     <div class="state-c">
-      <h2 style:font-size="14px" style:display="flex" style:align-items="center" style:gap="8px"><SearchIcon size={17} aria-hidden="true" />No results</h2>
-      <p class="meta" style:margin="4px 0 12px" style:font-size="12.5px">{applied.query ? `Nothing matched “${applied.query}” with these filters.` : "Nothing matched these filters."}</p>
+      <h2 style:font-size="15px" style:display="flex" style:align-items="center" style:gap="8px"><SearchIcon size={17} aria-hidden="true" />No results</h2>
+      <p class="meta" style:margin="4px 0 12px" style:font-size="13.5px">{applied.query ? `Nothing matched “${applied.query}” with these filters.` : "Nothing matched these filters."}</p>
       <a class="btn" href="#/search">Clear filters</a>
     </div>
   {:else}
     <section id="reslist">
-      <p class="meta" style:font-size="12.5px" role="status">{rangeLabel}</p>
+      <p class="meta" style:font-size="13.5px" role="status">{rangeLabel}</p>
       {#each hits as hit (JSON.stringify([hit.chat.machine, hit.chat.id, hit.messageId]))}
         <a class="res" href={chatHref(hit.chat.id, hit.chat.machine, hit.messageId)}>
           <span class="res-t"><AgentMark agent={hit.chat.agent} /><span style:min-width="0"><Highlight text={hit.chat.title} query={applied.query} /></span></span>

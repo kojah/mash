@@ -1,8 +1,8 @@
 <script lang="ts">
-import BookOpen from "@lucide/svelte/icons/book-open";
 import Brain from "@lucide/svelte/icons/brain";
 import Copy from "@lucide/svelte/icons/copy";
 import Download from "@lucide/svelte/icons/download";
+import Lightbulb from "@lucide/svelte/icons/lightbulb";
 import PanelLeft from "@lucide/svelte/icons/panel-left";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import Terminal from "@lucide/svelte/icons/terminal";
@@ -18,6 +18,7 @@ import {
   markdownExport,
   messageText,
 } from "../lib/export";
+import { plainTitle } from "../lib/markdown";
 import { catalogOptions, stableRead } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
 import { label, recordPage } from "../lib/records";
@@ -275,7 +276,7 @@ const prompts = $derived(
       {@const current = session.id === id && session.machine === displayMachine}
       <a class="ses" class:on={current} href={chatHref(session.id, session.machine)} aria-current={current ? "page" : undefined}><AgentMark agent={session.agent} /><span><span class="clamp">{session.title}</span><small>{whenLabel(session.updatedMs, now)}</small></span></a>
     {/each}
-    <h2 class="h2" style:margin-top="10px"><a href={recordsHref(memoryParams)}><BookOpen size={15} aria-hidden="true" />memory from this chat</a></h2>
+    <h2 class="h2" style:margin-top="10px"><a href={recordsHref(memoryParams)}><Brain size={15} aria-hidden="true" />memory from this chat</a></h2>
     {#if memories.error}<p class="meta" role="alert">{memories.error.message}</p>{/if}
     {#each memories.data?.records ?? [] as record (record.id)}
       {@const revision = record.revisions.find((revision) => revision.revision === record.currentRevision)}
@@ -286,7 +287,7 @@ const prompts = $derived(
   <article class="log" bind:this={transcriptPane}>
     <header class="hd" style:align-items="flex-start">
       <div style:min-width="0">
-        <h1 class="h1">{chat?.title ?? `Chat ${id.slice(-8)}`}</h1>
+        <h1 class="h1">{chat ? plainTitle(chat.title) : `Chat ${id.slice(-8)}`}</h1>
         <p class="meta" style:margin-top="8px">
           {#if chat}<MetaChips {chat} />{:else}{displayMachine}{/if}
           <span class="mtx">{anchor ? "around the selected match" : `messages ${offset.toLocaleString()}–${(offset + PAGE_SIZE - 1).toLocaleString()}`}</span>
@@ -336,7 +337,7 @@ const prompts = $derived(
             <div>
               {#each item.messages as message (message.id)}
                 <details class="fold" class:hit={message.id === messageId} id="message-{message.id}" data-message={message.id} open={message.id === messageId} style:scroll-margin-top="80px">
-                  <summary>{#if message.presentation === "reasoning"}<Brain size={15} aria-hidden="true" />{:else}<Terminal size={15} aria-hidden="true" />{/if}{stepLabel(message)}<span class="mtx">{message.at}</span></summary>
+                  <summary>{#if message.presentation === "reasoning"}<Lightbulb size={15} aria-hidden="true" />{:else}<Terminal size={15} aria-hidden="true" />{/if}{stepLabel(message)}<span class="mtx">{message.at}</span></summary>
                   <div><pre class="pre" style:max-height="32rem" style:overflow="auto">{plainText(message)}</pre></div>
                 </details>
                 {@render saved(message)}
@@ -348,7 +349,7 @@ const prompts = $derived(
           {@const selected = message.id === messageId}
           <div class="hitbox" class:hit={selected} id="message-{message.id}" data-message={message.id} style:scroll-margin-top="80px" style:padding={selected ? "10px 12px" : "0"}>
             {#if message.role === "user"}
-              <div class="you pre"><span class="clip">{plainText(message)}</span><button class="cp" type="button" aria-label="Copy message" title="Copy message" onclick={() => copy(message)}><Copy size={14} /></button></div>
+              <div class="you"><MessageBody text={plainText(message)} own /><button class="cp" type="button" aria-label="Copy message" title="Copy message" onclick={() => copy(message)}><Copy size={14} /></button></div>
             {:else}
               <div class="msg">
                 {#each message.blocks as block, i (i)}

@@ -1,6 +1,6 @@
 <script lang="ts">
-import BookOpen from "@lucide/svelte/icons/book-open";
 import Bot from "@lucide/svelte/icons/bot";
+import Brain from "@lucide/svelte/icons/brain";
 import Clock from "@lucide/svelte/icons/clock";
 import Laptop from "@lucide/svelte/icons/laptop";
 import { createQuery } from "@tanstack/svelte-query";
@@ -49,7 +49,7 @@ const providers = $derived(groupChats(chats, (chat) => chat.agent));
   </section>
   <div class="c-side">
     <section>
-      <h2 class="h2"><a href="#/records?"><BookOpen size={15} aria-hidden="true" />recent memories</a></h2>
+      <h2 class="h2"><a href="#/records?"><Brain size={15} aria-hidden="true" />recent memories</a></h2>
       {#if memories.isPending}<Skeleton rows={3} />{/if}
       {#each (memories.data?.records ?? []).slice(0, 4) as record (record.node + record.id)}<MemoryRow {record} />{/each}
       {#if memories.data && !memories.data.records.length}<p class="meta">Nothing saved yet. Agents save decisions and preferences as you state them.</p>{/if}

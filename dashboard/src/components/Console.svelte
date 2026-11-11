@@ -133,17 +133,17 @@ async function copy(json: string): Promise<void> {
 $effect(() => () => controller?.abort());
 </script>
 
-<div><h1 class="h1">MCP console</h1><p class="meta" style:font-size="12.5px">Run the read-only lookups your agents use and see exactly what comes back. Nothing here changes history, memory or services.</p></div>
+<div><h1 class="h1">MCP console</h1><p class="meta" style:font-size="13.5px">Run the read-only lookups your agents use and see exactly what comes back. Nothing here changes history, memory or services.</p></div>
 <div class="cols">
   <nav class="tl" aria-label="Tools">
     {#each tools as entry (entry.name)}<button class:on={entry.name === selected} type="button" aria-current={entry.name === selected ? "true" : undefined} onclick={() => choose(entry.name)}>{entry.name}</button>{/each}
   </nav>
   {#if tool}
     <form onsubmit={run} style:flex="999 1 420px" style:min-width="0" style:display="flex" style:flex-direction="column" style:gap="14px">
-      <div><h2 style:font-size="16px">{tool.name}</h2><p class="meta" style:font-size="12.5px">{tool.about}</p></div>
+      <div><h2 style:font-size="16px">{tool.name}</h2><p class="meta" style:font-size="13.5px">{tool.about}</p></div>
       {#each tool.fields as field (field.name)}
         <label style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="4px 14px">
-          <span class="meta" style:flex="0 0 90px" style:font-size="12.5px">{field.name}</span>
+          <span class="meta" style:flex="0 0 90px" style:font-size="13.5px">{field.name}</span>
           <input class="field" style:flex="1 1 220px" placeholder={field.hint} autocomplete="off" bind:value={values[`${tool.name}.${field.name}`]} />
         </label>
       {/each}
@@ -152,13 +152,13 @@ $effect(() => () => controller?.abort());
       {#if outcome.state === "failed"}
         <section aria-label="Tool response" class="tool">
           <div class="hd2"><i class="dot bad"></i><span class="nm"><b>{outcome.call}</b></span></div>
-          <p class="fail" role="alert" style:font-size="12.5px">{outcome.message}</p>
+          <p class="fail" role="alert" style:font-size="13.5px">{outcome.message}</p>
         </section>
       {/if}
       {#if outcome.state === "done"}
         <section aria-label="Tool response" class="tool">
           <div class="hd2"><i class="dot"></i><span class="nm"><b>{outcome.call}</b></span></div>
-          <div class="elb" style:font-size="12.5px"><span>{outcome.ms.toLocaleString()} ms / {outcome.json.length.toLocaleString()} characters of JSON</span></div>
+          <div class="elb" style:font-size="13.5px"><span>{outcome.ms.toLocaleString()} ms / {outcome.json.length.toLocaleString()} characters of JSON</span></div>
           <div class="blk indent">
             <div class="tabs"><span class="meta" style:padding="0 12px">JSON</span><button class="r" type="button" onclick={() => { if (outcome.state === "done") void copy(outcome.json); }}><Copy size={13} aria-hidden="true" /> Copy JSON</button></div>
             <div class="sc"><pre style:margin="0" style:white-space="pre">{outcome.json.slice(0, shownLimit)}</pre></div>

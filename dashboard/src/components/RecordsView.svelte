@@ -137,7 +137,7 @@ const dirty = $derived(
   <FilterMenu label={source === "" ? "this machine" : source === "shared" ? "all shared" : source.slice(5)} active={!!source} options={[{ value: "", label: "this machine" }, { value: "shared", label: "all shared machines" }, ...nodes.map((node) => ({ value: `node:${node}`, label: `${node} (shared)` }))]} selected={[source]} choose={(value) => (source = value)}>
     {#snippet icon()}<Database size={15} aria-hidden="true" />{/snippet}
   </FilterMenu>
-  {#if dirty}<button class="a" id="applyf" type="submit" style:min-height="30px" style:padding="0 6px" style:font-size="12.5px">Apply filters</button>{/if}
+  {#if dirty}<button class="a" id="applyf" type="submit" style:min-height="30px" style:padding="0 6px" style:font-size="13.5px">Apply filters</button>{/if}
   <button class="a meta" type="button" disabled={page.isFetching} onclick={() => page.refetch()} style:min-height="30px" style:margin-left="auto">{page.isFetching ? "checking…" : "check for updates"}</button>
 </form>
 {#if chat}<p class="meta">Memory citing chat <span style:overflow-wrap="anywhere">{chat}</span>. <a class="a" href="#/records?">Show all memory</a></p>{/if}
@@ -153,7 +153,7 @@ const dirty = $derived(
       {#if revision}
         {@const Icon = icons[revision.details.kind]}
         <article style:padding="14px 0" style:border-bottom="1px solid var(--hair)">
-          <p style:color="var(--pink)" style:font-size="12px" style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="6px">
+          <p style:color="var(--pink)" style:font-size="13px" style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="6px">
             <Icon size={15} aria-hidden="true" />{label(revision.details.kind).toLowerCase()} / {label(revision.details.state).toLowerCase()}{standing(revision) === "established" ? "" : ` / ${standing(revision)}`}
             {#if !revision.evidenceCurrent}<span class="warn">/ stale evidence</span>{/if}
             {#if record.conflicted}<span class="warn">/ conflicting records</span>{/if}

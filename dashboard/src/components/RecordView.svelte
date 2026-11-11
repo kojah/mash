@@ -43,7 +43,7 @@ function date(value: number | null): string {
     <figure style:padding="12px 14px" style:border-radius="6px" style:background="var(--raised)" style:margin-top={index ? "8px" : "0"}>
       <blockquote style:border="0" style:padding="0" style:white-space="pre-wrap" style:overflow-wrap="anywhere">{source.quote}</blockquote>
       <figcaption>
-        <a href={chatHref(source.chatId, node, source.messageId, Boolean(node))} style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="2px 10px" style:min-height="44px" style:font-size="12px">
+        <a href={chatHref(source.chatId, node, source.messageId, Boolean(node))} style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="2px 10px" style:min-height="44px" style:font-size="13px">
           <span class="a">{source.sourceRole === "user" ? "you said this" : `${source.sourceRole || "someone"} said this`}{source.purpose ? ` (${label(source.purpose).toLowerCase()})` : ""}</span><span>open the message</span>
         </a>
       </figcaption>
@@ -57,7 +57,7 @@ function date(value: number | null): string {
 {#if page.error && !latest.error}<LoadError title="Couldn’t load memory history" message={page.error.message} retry={() => page.refetch()} busy={page.isFetching} retryLabel="Retry history"/>{/if}
 {#if record && current && !latest.error && !page.error}
   <header>
-    <p style:color="var(--pink)" style:font-size="12.5px">{label(current.details.kind).toLowerCase()} / {label(current.details.state).toLowerCase()} / {standing(current)}</p>
+    <p style:color="var(--pink)" style:font-size="13.5px">{label(current.details.kind).toLowerCase()} / {label(current.details.state).toLowerCase()} / {standing(current)}</p>
     <h1 class="h1" style:margin-top="6px" style:font-weight="500" style:white-space="pre-wrap" style:overflow-wrap="anywhere">{current.statement}</h1>
     <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere">{scopeLabel(record.scope)} / {record.node || "this machine"} / recorded by {current.recordedBy} / {date(current.recordedAt)}</p>
     {#if timingLabel(current, Date.now())}<p class="warn" role="status" style:margin-top="8px">{timingLabel(current, Date.now())}. Check the effective and expiry dates before relying on this.</p>{/if}

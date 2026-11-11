@@ -37,7 +37,7 @@ async function mockHistory(page: Page, searched: () => void): Promise<void> {
             id: "message-1",
             ordinal: 0,
             role: "user",
-            content: `Investigate the watcher\n\n${"More context.\n\n".repeat(80)}`,
+            content: `Investigate the watcher\n\n**Agreed** <plan> first\nthen deploy\n\n${"More context.\n\n".repeat(80)}`,
           },
         ],
       },
@@ -110,6 +110,11 @@ for (const width of [1440, 390]) {
     await expect(main.getByText("watcher result")).toBeVisible();
     await main.getByRole("link", { name: /Investigate the watcher/ }).click();
     await expect(page.locator("#message-message-1")).toContainText("Investigate the watcher");
+    // The reader's own message is formatted, keeps its line breaks, and shows
+    // a tag they typed as text.
+    await expect(page.locator("#message-message-1 strong")).toHaveText("Agreed");
+    await expect(page.locator("#message-message-1")).toContainText("<plan> first");
+    await expect(page.locator("#message-message-1 p br")).toHaveCount(1);
     const sessions = page.getByRole("navigation", { name: "Prompts and sessions" });
     await expect(sessions).toBeVisible();
     await page.getByRole("button", { name: "Hide session list" }).click();

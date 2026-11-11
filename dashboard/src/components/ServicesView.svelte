@@ -164,7 +164,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
   <div class="hd">
     <h1 class="h1">Services</h1>
     <span class="acts">
-      <span class="meta" style:font-size="12.5px" role="status">{fleet.data ? `${healthy} of ${fleet.data.length} machines healthy` : enabled ? "checking machines…" : ""}</span>
+      <span class="meta" style:font-size="13.5px" role="status">{fleet.data ? `${healthy} of ${fleet.data.length} machines healthy` : enabled ? "checking machines…" : ""}</span>
       <button class="btn" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={15} aria-hidden="true" />{fleet.isFetching ? "Checking…" : "Check again"}</button>
     </span>
   </div>
@@ -175,7 +175,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
 {#if enabled && fleet.error}<LoadError title="Couldn’t check service status" message={fleet.error.message} retry={refresh} busy={fleet.isFetching}/><p class="meta warn">Statuses shown earlier have not been verified.</p>{/if}
 {#if pending}<p class="meta" role="status">Service action in progress. Check recent activity if the connection is interrupted.</p>{/if}
 {#if actionError}<p class="fail" role="alert">{actionError}</p>{/if}
-{#if result}<p class="ok" role="status" style:font-size="12.5px"><strong>{actionLabel[result.request.action]} on {result.request.machine}: {result.outcome}.</strong> {result.message}</p>{/if}
+{#if result}<p class="ok" role="status" style:font-size="13.5px"><strong>{actionLabel[result.request.action]} on {result.request.machine}: {result.outcome}.</strong> {result.message}</p>{/if}
 
 {#if enabled && fleet.data && serviceId}
   {#if !machine}<div class="state-c"><p role="alert">This machine is not in the configured inventory.</p></div>{/if}

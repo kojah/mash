@@ -1,13 +1,14 @@
 <script lang="ts">
 import { markdown } from "../lib/markdown";
 
-let { text }: { text: string } = $props();
+// `own` marks a message the reader typed: its line breaks and tags are kept.
+let { text, own = false }: { text: string; own?: boolean } = $props();
 let expanded = $state(false);
 </script>
 
-<div class="prose min-w-0 break-words" class:collapsed={!expanded && text.length > 16_384}>{@html markdown(text)}</div>
+<div class="prose min-w-0 break-words" class:collapsed={!expanded && text.length > 16_384}>{@html markdown(text, own)}</div>
 {#if text.length > 16_384}
-  <button type="button" class="a" style:align-self="flex-start" style:font-size="12.5px" onclick={() => expanded = !expanded}>{expanded ? "Collapse" : `Show full message (${text.length.toLocaleString()} characters)`}</button>
+  <button type="button" class="a" style:align-self="flex-start" style:font-size="13.5px" onclick={() => expanded = !expanded}>{expanded ? "Collapse" : `Show full message (${text.length.toLocaleString()} characters)`}</button>
 {/if}
 
 <style>
