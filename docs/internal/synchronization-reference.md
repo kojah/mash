@@ -12,7 +12,10 @@ running. It indexes once at startup, then waits for one second of quiet after
 history changes before refreshing. Set `--debounce-ms 500` to change that delay
 (50–60000 ms). Continuous writes trigger a pass within ten seconds, or the
 configured delay if longer. Passes run sequentially; changes during indexing
-queue another pass. Existing provider, age and destination settings still apply. `--full` cannot be combined with `--watch`.
+queue another pass. After each pass the watcher rests before changes can start
+the next one: four times as long as the pass took, at least 30 seconds and at
+most five minutes. Agent histories change for as long as an agent is working,
+so without the rest a busy machine would index without pause. Existing provider, age and destination settings still apply. `--full` cannot be combined with `--watch`.
 
 Only one watcher indexes each database at a time, across all processes. Every
 watching process (`index --watch`) first takes

@@ -13,6 +13,11 @@ use crate::AppError;
 const RETRY: Duration = Duration::from_secs(30);
 const RECONCILE: Duration = Duration::from_secs(300);
 const STANDBY_POLL: Duration = Duration::from_secs(1);
+/// The shortest pause after a pass before changes may start another.
+const REST: Duration = Duration::from_secs(30);
+/// A pass is followed by a pause this many times its own length, so a machine
+/// whose histories never stop changing spends at most a fifth of its time indexing.
+const REST_FACTOR: u32 = 4;
 
 /// Observe the leader lock without creating files or registering a watcher.
 /// A held lock is evidence of leadership, not successful indexing or freshness.
@@ -253,6 +258,7 @@ where
             retry: RETRY,
             reconcile: RECONCILE,
             standby: STANDBY_POLL,
+            rest: REST,
         },
     ))
     .await
@@ -263,6 +269,7 @@ struct Intervals {
     retry: Duration,
     reconcile: Duration,
     standby: Duration,
+    rest: Duration,
 }
 
 // A standby neither attaches filesystem watches nor indexes. Once it acquires
@@ -307,15 +314,7 @@ where
         }
     };
     role(Role::Leader);
-    let result = run_with_intervals(
-        request,
-        debounce_ms,
-        shutdown,
-        refresh,
-        intervals.retry,
-        intervals.reconcile,
-    )
-    .await;
+    let result = run_with_intervals(request, debounce_ms, shutdown, refresh, intervals).await;
     drop(lease);
     result
 }
@@ -325,8 +324,7 @@ async fn run_with_intervals<F, Fut>(
     debounce_ms: u64,
     mut shutdown: watch::Receiver<bool>,
     mut refresh: F,
-    retry_interval: Duration,
-    reconcile_interval: Duration,
+    intervals: Intervals,
 ) -> Result<(), AppError>
 where
     F: FnMut() -> Fut,
@@ -340,11 +338,16 @@ where
         crate::blocking(move || attach(crate::core::watch_targets(&initial_request)?, tx)).await?;
     let mut dirty = Dirty::default();
     let mut due = Instant::now(); // Attach before the initial scan to avoid a startup gap.
+    // Agent histories change for as long as an agent works, so events alone
+    // would start each pass as the last one ends.
+    let mut rested = due;
     loop {
         if *shutdown.borrow() {
             break;
         }
-        let deadline = dirty.deadline(debounce).map_or(due, |event| event.min(due));
+        let deadline = dirty
+            .deadline(debounce)
+            .map_or(due, |event| event.max(rested).min(due));
         tokio::select! {
             biased;
             result = shutdown.changed() => {
@@ -352,6 +355,7 @@ where
             }
             () = tokio::time::sleep_until(deadline) => {
                 dirty = Dirty::default();
+                let started = Instant::now();
                 let request = request.clone();
                 let tx = sender.clone();
                 let replacement = crate::blocking(move || attach(crate::core::watch_targets(&request)?, tx)).await;
@@ -370,7 +374,12 @@ where
                         true
                     }
                 };
-                due = Instant::now() + if retry { retry_interval } else { reconcile_interval };
+                let finished = Instant::now();
+                let rest = ((finished - started) * REST_FACTOR)
+                    .max(intervals.rest)
+                    .min(intervals.reconcile);
+                rested = finished + rest;
+                due = finished + if retry { intervals.retry.max(rest) } else { intervals.reconcile };
             }
             event = receiver.recv() => {
                 if event.is_none() { break; }
@@ -547,8 +556,12 @@ mod tests {
                     Ok(current == 1)
                 }
             },
-            Duration::from_millis(50),
-            Duration::from_secs(60),
+            Intervals {
+                retry: Duration::from_millis(50),
+                reconcile: Duration::from_secs(60),
+                standby: STANDBY_POLL,
+                rest: Duration::ZERO,
+            },
         );
         tokio::time::timeout(Duration::from_secs(3), task)
             .await
@@ -583,6 +596,7 @@ mod tests {
         };
         let (stop, shutdown) = watch::channel(false);
         let mut passes = 0;
+        let finished = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let task = run_with_intervals(
             request,
             50,
@@ -592,24 +606,38 @@ mod tests {
                 let stop = stop.clone();
                 let source = root.join("new.jsonl");
                 let current = passes;
+                let finished = finished.clone();
                 async move {
                     if current == 1 {
                         std::fs::write(source, "changed while indexing").unwrap();
                         tokio::time::sleep(Duration::from_millis(200)).await;
+                        finished.lock().unwrap().push(Instant::now());
                     } else {
+                        // The second entry is when the follow-up began.
+                        finished.lock().unwrap().push(Instant::now());
                         stop.send(true).unwrap();
                     }
                     Ok(false)
                 }
             },
-            Duration::from_secs(60),
-            Duration::from_secs(60),
+            Intervals {
+                retry: Duration::from_secs(60),
+                reconcile: Duration::from_secs(60),
+                standby: STANDBY_POLL,
+                rest: Duration::from_millis(900),
+            },
         );
-        tokio::time::timeout(Duration::from_secs(3), task)
+        tokio::time::timeout(Duration::from_secs(5), task)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(passes, 2);
+        // The follow-up waits out the rest after the first pass, although the
+        // change that asked for it arrived while that pass was still running.
+        let [first, second] = finished.lock().unwrap()[..] else {
+            panic!("two passes");
+        };
+        assert!(second - first >= Duration::from_millis(900));
     }
 
     fn election_request(dir: &Path, db: &str) -> Request {
@@ -650,6 +678,7 @@ mod tests {
                 retry: Duration::from_secs(600),
                 reconcile: Duration::from_secs(600),
                 standby: Duration::from_millis(20),
+                rest: Duration::ZERO,
             },
         ));
         (stop, task)
