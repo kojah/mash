@@ -48,7 +48,7 @@ const sections = [
     tint: "var(--indigo)",
   },
   { id: "console", label: "mcp console", href: "#/console", icon: Terminal, tint: "var(--sky)" },
-  { id: "settings", label: "settings", href: "#/settings", icon: Settings, tint: "var(--stone)" },
+  { id: "settings", label: "settings", href: "#/settings", icon: Settings, tint: "var(--ok)" },
 ] as const;
 type Section = (typeof sections)[number]["id"];
 const expandable: readonly Section[] = ["chats", "agents", "machines", "projects", "memory"];
@@ -120,7 +120,7 @@ function toggle(id: Section): void {
       </div>
       {#if isOpen}
         {#if section.id === "chats"}
-          <a class="sub" class:on={child === "recent"} href="#/search" aria-current={child === "recent" ? "page" : undefined} onclick={close}><Clock size={16} color="var(--sky)" aria-hidden="true" /><span>recent</span></a>
+          <a class="sub" class:on={child === "recent"} href="#/search" aria-current={child === "recent" ? "page" : undefined} onclick={close}><Clock size={16} color="var(--sky)" aria-hidden="true" /><span>recent chats</span></a>
           <a class="sub" class:on={child === "history"} href="#/history" aria-current={child === "history" ? "page" : undefined} onclick={close}><History size={16} color="var(--sky)" aria-hidden="true" /><span>viewing history</span></a>
         {:else if section.id === "agents"}
           {#each providers as provider (provider.key)}

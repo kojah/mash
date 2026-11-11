@@ -68,3 +68,30 @@ export function groupChats(
     }))
     .sort((a, b) => b.chats.length - a.chats.length || a.key.localeCompare(b.key));
 }
+
+export const projectSorts = ["chats", "recent", "name"] as const;
+export type ProjectSort = (typeof projectSorts)[number];
+/** What the Projects page is asked to show: a name to find, an agent and a
+ * machine to keep, and an order. An empty string means no restriction. */
+export interface ProjectView {
+  find: string;
+  agent: string;
+  machine: string;
+  sort: ProjectSort;
+}
+
+/** The projects a view asks for, in its order. Projects that tie keep the
+ * order they came in, which is largest first. */
+export function arrangeProjects(projects: readonly Group[], view: ProjectView): Group[] {
+  const find = view.find.trim().toLowerCase();
+  const kept = projects.filter(
+    (project) =>
+      (!find || projectLabel(project.key).toLowerCase().includes(find)) &&
+      (!view.agent || project.agents.some(([agent]) => agent === view.agent)) &&
+      (!view.machine || project.machines.some(([machine]) => machine === view.machine)),
+  );
+  if (view.sort === "recent") return kept.sort((a, b) => (b.latestMs ?? 0) - (a.latestMs ?? 0));
+  if (view.sort === "name")
+    return kept.sort((a, b) => projectLabel(a.key).localeCompare(projectLabel(b.key)));
+  return kept;
+}

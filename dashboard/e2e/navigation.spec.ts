@@ -70,7 +70,7 @@ for (const width of [390, 1280]) {
       ["projects", "", "#/projects", "Projects"],
       ["chats", "", "#/search", "Chats"],
       ["viewing history", "chats", "#/history", "Viewing history"],
-      ["recent", "chats", "#/search", "Chats"],
+      ["recent chats", "chats", "#/search", "Chats"],
       ["memory", "", "#/records?", "Memory"],
       ["decisions", "memory", "#/records?kind=decision", "Memory"],
       ["manage fleet", "", "#/fleet", "Manage fleet"],

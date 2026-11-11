@@ -125,22 +125,46 @@ summary::-webkit-details-marker {
 }
 .brand {
   display: flex;
-  align-items: center;
-  gap: 15px;
+  align-items: baseline;
+  gap: 0.28em;
   min-height: 50px;
-  padding: 0 6px;
-  font-size: 21px;
-  font-weight: 700;
+  padding: 14px 6px 0;
+  font-size: 23px;
+  font-weight: 600;
 }
+/* The mark is sized from the lettering: its dome is as tall as the "h" (0.74em
+   in this face) and the rule under it sits on the baseline, so only the butter
+   rises above the letters. In the 64-unit drawing the dome top is at 24 and
+   the rule's lower edge at 55.5. */
 .brand img {
-  width: 28px;
-  height: 28px;
+  width: 1.5em;
+  height: 1.5em;
+  margin: 0 -0.1em -0.2em -0.14em;
 }
 .brand i {
   font-style: normal;
-  font-weight: 700;
-  color: #6f6b63;
+  font-weight: 600;
+  color: #8a857c;
   margin-left: 2px;
+  animation: cursor 1.6s ease-in-out infinite;
+}
+@keyframes cursor {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  60%,
+  90% {
+    opacity: 0.15;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand i {
+    animation: none;
+  }
 }
 .nav {
   display: flex;
@@ -494,28 +518,34 @@ summary::-webkit-details-marker {
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
+/* Indicator dots are brighter than the status text beside them and carry a
+   faint halo, so a state reads at a glance on the dark ground. */
 .dot {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--ok);
+  color: #4ade80;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
 }
 .dot.warn {
-  background: var(--warn);
+  color: #fbbf24;
 }
 .dot.bad {
-  background: var(--bad);
+  color: #f87171;
 }
 .dot.run {
-  background: var(--clay2);
+  color: #ff9a70;
 }
 .dot.none {
   background: transparent;
-  border: 1px solid var(--dim);
+  border: 1.5px solid var(--dim);
+  box-shadow: none;
 }
 .dot.waiting {
-  background: var(--dim);
+  color: var(--dim);
+  box-shadow: none;
 }
 .mem {
   display: flex;
@@ -2104,4 +2134,77 @@ button:disabled {
 .drop h4,
 .fld-l {
   font-weight: 600;
+}
+
+/* Everything in the navigation is bold. */
+#rail .nav-link,
+#rail .sub,
+#rail .status,
+#rail .status button {
+  font-weight: 600;
+}
+#rail .nav-row.on .nav-link,
+#rail .sub.on {
+  font-weight: 700;
+}
+
+/* An icon keeps its section's colour wherever it appears: in headings, on
+   chips and beside folded steps, as it does in the navigation. */
+:is(.h2, .mt, .fold summary, .tile-h) .lucide-clock,
+:is(.h2, .mt) .lucide-messages-square {
+  color: var(--sky);
+}
+:is(.h2, .mt) .lucide-brain {
+  color: var(--pink);
+}
+:is(.h2, .mt) .lucide-bot {
+  color: var(--lilac);
+}
+:is(.h2, .mt) .lucide-laptop {
+  color: var(--blue);
+}
+:is(.h2, .mt) .lucide-folder {
+  color: var(--warn);
+}
+:is(.h2, .mt) .lucide-server {
+  color: var(--teal);
+}
+.h2 .lucide-triangle-alert,
+.fold summary .lucide-lightbulb {
+  color: var(--warn);
+}
+.h2 .lucide-info,
+.h2 .lucide-link-2 {
+  color: var(--indigo);
+}
+.h2 .lucide-file-text {
+  color: var(--stone);
+}
+.fold summary .lucide-terminal {
+  color: var(--sky);
+}
+
+/* Projects: what to show and in what order. */
+.pctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.pctl .field {
+  flex: 1 1 200px;
+  max-width: 340px;
+}
+.pctl select {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+}
+.tile .mts {
+  padding-top: 12px;
+  border-top: 1px solid var(--hair);
 }

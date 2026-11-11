@@ -64,7 +64,7 @@ const now = Date.now();
     <div class="c-main stack">
       {#if extra}{@render extra()}{/if}
       <section>
-        <div class="hd"><h2 class="h2"><Clock size={15} aria-hidden="true" />recent</h2><a class="meta" href={searchHref({ [field]: value })} style:display="inline-flex" style:align-items="center" style:min-height="44px">all {chats.length.toLocaleString()}</a></div>
+        <div class="hd"><h2 class="h2"><Clock size={15} aria-hidden="true" />recent chats</h2><a class="meta" href={searchHref({ [field]: value })} style:display="inline-flex" style:align-items="center" style:min-height="44px">all {chats.length.toLocaleString()}</a></div>
         {#each chats.slice(0, 6) as chat (chat.machine + chat.id)}<ChatRow {chat} />{/each}
       </section>
     </div>
