@@ -1,5 +1,6 @@
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Clock from "@lucide/svelte/icons/clock";
 import Info from "@lucide/svelte/icons/info";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
@@ -10,6 +11,7 @@ import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
 import {
   checkedTime,
+  incidental,
   machineState,
   type Operation,
   type Service,
@@ -48,12 +50,18 @@ const columns = [
   { kind: "dashboard", label: "dash" },
 ] as const;
 const severity: readonly ServiceState[] = ["failed", "unknown", "degraded", "stopped", "healthy"];
-/** The state a matrix cell shows: the worst among that machine's services of a kind. */
-function cell(services: readonly Service[], kind: Service["kind"]): ServiceState | null {
-  const states = services
-    .filter((service) => service.kind === kind)
-    .map((service) => service.state);
-  return severity.find((state) => states.includes(state)) ?? null;
+/** The state a matrix cell shows: the worst among that machine's services of a
+ * kind, or a plain note when the only thing to say is not a fault. */
+function cell(
+  services: readonly Service[],
+  kind: Service["kind"],
+): ServiceState | "reconnect" | "off" | null {
+  const ofKind = services.filter((service) => service.kind === kind);
+  const states = ofKind.filter((service) => !incidental(service)).map((service) => service.state);
+  const worst = severity.find((state) => states.includes(state)) ?? null;
+  if ((worst === null || worst === "healthy") && ofKind.some(incidental))
+    return kind === "mcp" ? "reconnect" : "off";
+  return worst;
 }
 const healthy = $derived(
   (fleet.data ?? []).filter((machine) => machineState(machine) === "healthy").length,
@@ -202,6 +210,7 @@ const consequences = $derived(
             {@const status = item.reachable ? cell(item.services, column.kind) : "unknown"}
             {#if status === null}<span class="cell none">–</span>
             {:else if status === "healthy"}<span class="cell ok"><Check size={16} aria-label="healthy" /></span>
+            {:else if status === "reconnect" || status === "off"}<span class="cell none">{status}</span>
             {:else}<span class="cell warn"><TriangleAlert size={16} aria-hidden="true" />{status}</span>{/if}
           {/each}
         </a>
@@ -213,7 +222,7 @@ const consequences = $derived(
     <section>
       <h2 class="h2"><Server size={15} aria-hidden="true" />services on {machine.id}</h2>
       {#each machine.services as entry (entry.id)}
-        <a class="li" href={servicesHref(machine.id, entry.id)}><Server size={16} color="var(--teal)" aria-hidden="true" /><span class="g"><strong style:font-weight="500">{entry.name}</strong> <small class="meta">{entry.kind}</small></span><ServiceStatus state={entry.state} label={entry.summary}/></a>
+        <a class="li" href={servicesHref(machine.id, entry.id)}><Server size={16} color="var(--teal)" aria-hidden="true" /><span class="g"><strong style:font-weight="500">{entry.name}</strong> <small class="meta">{entry.kind}</small></span><ServiceStatus state={entry.state} label={entry.summary}/><ChevronRight size={15} color="var(--dim)" aria-hidden="true" /></a>
       {/each}
       {#if !machine.services.length}<p class="meta">{machine.reachable ? "No services were reported." : "This machine's dashboard could not be reached."}</p>{/if}
     </section>

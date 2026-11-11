@@ -85,7 +85,10 @@ pub(super) fn local_files(paths: &Paths) -> (Vec<Service>, Vec<String>) {
         let summary = match state {
             State::Failed => "Running · schema mismatch",
             State::Unknown => "Running · compatibility unknown",
-            State::Degraded => "Running · compatible, build differs or cannot be verified",
+            State::Degraded if kind == Kind::Mcp => {
+                "Running · older build; reconnect Mash in the agent to update"
+            }
+            State::Degraded => "Running · older build; restart it to update",
             _ => "Running · compatible",
         };
         services.push(Service {
@@ -117,6 +120,7 @@ pub(super) async fn local(config: Option<&Configuration>, paths: &Paths) -> Mach
         diagnostics: vec![Diagnostic { label: "Build".into(), value: env!("MASH_BUILD_REVISION").into() }],
         compatibility: None, control_revision: None, logs_available: false,
     });
+    let mut running: Vec<String> = vec![];
     if let Some(config) = config {
         let databases = config.databases.clone();
         match tokio::task::spawn_blocking(move || {
@@ -165,13 +169,18 @@ pub(super) async fn local(config: Option<&Configuration>, paths: &Paths) -> Mach
             Ok(databases) => services.extend(databases),
             Err(_) => warnings.push("Additional database checks failed.".into()),
         }
-        services.extend(
-            stream::iter(config.services.clone())
-                .map(managed)
-                .buffered(4)
-                .collect::<Vec<_>>()
-                .await,
-        );
+        running = stream::iter(config.services.clone())
+            .map(managed)
+            .buffered(4)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|(service, running)| {
+                let id = running.then(|| service.id.clone());
+                services.push(service);
+                id
+            })
+            .collect();
     } else {
         warnings.push("Service management and remote machines are not configured.".into());
     }
@@ -183,6 +192,7 @@ pub(super) async fn local(config: Option<&Configuration>, paths: &Paths) -> Mach
         _ => warnings
             .push("Could not load node configuration to check Qdrant or the shared server.".into()),
     }
+    fold_health(&mut services, &running);
     Machine {
         id: config.map_or("local", |config| config.node.as_str()).into(),
         platform: std::env::consts::OS.into(),
@@ -193,7 +203,61 @@ pub(super) async fn local(config: Option<&Configuration>, paths: &Paths) -> Mach
     }
 }
 
-async fn managed(configured: super::config::Service) -> Service {
+/// Show one row for a supervised process and the health check of the same
+/// thing. The supervisor only knows the process is running; the check says
+/// whether it works. Both observations stay in the row's diagnostics.
+///
+/// Only an unambiguous pair is joined: one supervised service of that kind.
+/// A stopped process whose check still passes keeps both rows, because
+/// something else is then answering.
+fn fold_health(services: &mut Vec<Service>, running: &[String]) {
+    for (kind, check, ready) in [
+        (Kind::Server, "shared-server", "Running · ready"),
+        (Kind::Qdrant, "qdrant", "Running · ready"),
+        (
+            Kind::Watcher,
+            "watcher-leadership",
+            "Running · watching this index",
+        ),
+    ] {
+        let supervised: Vec<usize> = services
+            .iter()
+            .enumerate()
+            .filter(|(_, service)| service.kind == kind && service.id.starts_with("managed-"))
+            .map(|(index, _)| index)
+            .collect();
+        let (&[process], Some(at)) = (
+            supervised.as_slice(),
+            services.iter().position(|service| service.id == check),
+        ) else {
+            continue;
+        };
+        let up = running.contains(&services[process].id);
+        if !up && services[at].state == State::Healthy {
+            continue;
+        }
+        let health = services.remove(at);
+        let process = &mut services[process - usize::from(at < process)];
+        if up && health.state == State::Healthy {
+            process.state = State::Healthy;
+            process.summary = ready.into();
+        } else if up {
+            process.state = State::Degraded;
+            process.summary = if kind == Kind::Watcher {
+                "Process running · not holding this index yet".into()
+            } else {
+                format!("Process running · {}", health.summary)
+            };
+        }
+        process.diagnostics.push(Diagnostic {
+            label: health.name,
+            value: health.summary,
+        });
+        process.diagnostics.extend(health.diagnostics);
+    }
+}
+
+async fn managed(configured: super::config::Service) -> (Service, bool) {
     let (state, detail) = match super::manager::status(&configured).await {
         Ok(value) => value,
         Err(message) => (State::Unknown, message),
@@ -211,7 +275,7 @@ async fn managed(configured: super::config::Service) -> Service {
     } else {
         vec![]
     };
-    Service {
+    let service = Service {
         id: format!("managed-{}", configured.id),
         name: configured.name.clone(),
         kind: configured.kind,
@@ -247,7 +311,8 @@ async fn managed(configured: super::config::Service) -> Service {
                 configured.manager,
                 Manager::SystemdUser | Manager::SystemdSystem
             ),
-    }
+    };
+    (service, state == State::Healthy)
 }
 
 async fn endpoints(configuration: &crate::config::ResolvedConfig) -> Vec<Service> {
@@ -311,6 +376,68 @@ async fn endpoints(configuration: &crate::config::ResolvedConfig) -> Vec<Service
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn row(id: &str, kind: Kind, state: State, summary: &str) -> Service {
+        Service {
+            id: id.into(),
+            name: id.into(),
+            kind,
+            state,
+            summary: summary.into(),
+            checked_at: 0,
+            pid: None,
+            actions: vec![],
+            control_note: String::new(),
+            diagnostics: vec![],
+            compatibility: None,
+            control_revision: None,
+            logs_available: false,
+        }
+    }
+
+    #[test]
+    fn services_probe_joins_a_running_process_with_its_health_check() {
+        let supervised = |id| row(id, Kind::Server, State::Degraded, "Process running");
+        let check = |state| row("shared-server", Kind::Server, state, "Endpoint said so");
+        let running = ["managed-api".to_owned()];
+
+        // A running process whose check passes is one healthy row.
+        let mut services = vec![check(State::Healthy), supervised("managed-api")];
+        fold_health(&mut services, &running);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].id, "managed-api");
+        assert_eq!(services[0].state, State::Healthy);
+        assert_eq!(services[0].summary, "Running · ready");
+        assert_eq!(services[0].diagnostics[0].value, "Endpoint said so");
+
+        // A running process whose check fails still needs attention.
+        let mut services = vec![supervised("managed-api"), check(State::Unknown)];
+        fold_health(&mut services, &running);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].state, State::Degraded);
+        assert_eq!(services[0].summary, "Process running · Endpoint said so");
+
+        // A stopped process and its failing check are one fact.
+        let stopped = || row("managed-api", Kind::Server, State::Stopped, "Stopped");
+        let mut services = vec![stopped(), check(State::Unknown)];
+        fold_health(&mut services, &[]);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].state, State::Stopped);
+        assert_eq!(services[0].summary, "Stopped");
+
+        // A stopped process whose check passes means something else answers,
+        // and two supervised servers cannot both own one check: keep every row.
+        let mut services = vec![stopped(), check(State::Healthy)];
+        fold_health(&mut services, &[]);
+        assert_eq!(services.len(), 2);
+        let mut services = vec![
+            supervised("managed-api"),
+            supervised("managed-other"),
+            check(State::Healthy),
+        ];
+        fold_health(&mut services, &running);
+        assert_eq!(services.len(), 3);
+    }
 
     #[test]
     fn services_probe_reads_newer_schema_without_migrating_or_creating_files() {

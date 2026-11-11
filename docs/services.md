@@ -7,8 +7,12 @@ start indexing, migrate SQLite or rebuild Qdrant.
 
 The page is a table of machines against kinds of service: index, search, API,
 watcher, MCP and dashboard. Choose a machine's row to list its services, then a
-service to see its diagnostics and schema compatibility. **Check again**
-refreshes the report. There is no timer-based polling or page reload.
+service to see its diagnostics, schema compatibility and any controls.
+A supervised service and the health check of the same thing share one row:
+it is healthy only when the process is running and its check passes.
+Agent sessions on an older build show as **reconnect**, and a watcher that
+nothing supervises shows as **off**; neither counts against the machine.
+**Check again** refreshes the report. There is no timer-based polling or page reload.
 Dates tell you when a check was made; an old green result is not a continuous
 health guarantee. Fleet job progress, when enabled below, updates automatically
 while an operation is running; it does not reload the page or the chat history.

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  type Machine,
+  machineState,
   parseFleetCatalog,
   parseFleetJob,
   parseSetup,
@@ -145,5 +147,45 @@ describe("agent setup", () => {
     expect(() => parseSetup(body(agent("shell", [])))).toThrow();
     expect(() => parseSetup(body(agent("codex", [step("backdoor", "present")])))).toThrow();
     expect(() => parseSetup(body(agent("codex", [step("plugin", "probably")])))).toThrow();
+  });
+});
+
+describe("machine health", () => {
+  const service = (kind: Machine["services"][number]["kind"], state: "healthy" | "degraded") => ({
+    id: `${kind}-${state}`,
+    name: kind,
+    kind,
+    state,
+    summary: "",
+    checked_at: 1,
+    pid: null,
+    actions: [],
+    control_note: "",
+    diagnostics: [],
+    compatibility: null,
+    control_revision: null,
+    logs_available: false,
+  });
+  const machine = (services: Machine["services"]): Machine => ({
+    id: "xenia",
+    platform: "linux",
+    checked_at: 1,
+    reachable: true,
+    services,
+    warnings: [],
+  });
+
+  it("does not count outdated agent sessions or an unsupervised idle watcher against the machine", () => {
+    expect(machineState(machine([service("sqlite", "healthy"), service("mcp", "degraded")]))).toBe(
+      "healthy",
+    );
+    expect(machineState(machine([service("server", "degraded"), service("mcp", "degraded")]))).toBe(
+      "degraded",
+    );
+    // Nothing supervises a watcher here, so one not running is a choice.
+    const idle = { ...service("watcher", "healthy"), state: "stopped" as const };
+    const unwatched = { ...idle, id: "watcher-leadership" };
+    expect(machineState(machine([service("sqlite", "healthy"), unwatched]))).toBe("healthy");
+    expect(machineState(machine([{ ...idle, id: "managed-watcher" }]))).toBe("stopped");
   });
 });

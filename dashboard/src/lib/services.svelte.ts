@@ -318,10 +318,20 @@ export function serviceOptions(enabled: boolean) {
 export function servicesHref(machine = "", service = ""): string {
   return `#/services?${new URLSearchParams({ ...(machine ? { machine } : {}), ...(service ? { service } : {}) })}`;
 }
+/** A row worth showing that is not a fault of the machine: an agent's own Mash
+ * session that predates the installed build (the agent reconnects it), or the
+ * opt-in watcher not running where nothing supervises one. */
+export function incidental(service: Service): boolean {
+  return (
+    (service.kind === "mcp" && service.state === "degraded") ||
+    (service.id === "watcher-leadership" && service.state === "stopped")
+  );
+}
 export function machineState(machine: Machine): ServiceState {
   if (!machine.reachable || machine.services.length === 0) return "unknown";
+  const services = machine.services.filter((service) => !incidental(service));
   for (const state of ["failed", "unknown", "degraded", "stopped"] as const)
-    if (machine.services.some((s) => s.state === state)) return state;
+    if (services.some((s) => s.state === state)) return state;
   return "healthy";
 }
 export const stateLabel: Record<ServiceState, string> = {
