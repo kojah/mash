@@ -345,13 +345,13 @@ export interface Problem {
 }
 function remedy(service: Service, actions: readonly ServiceAction[]): string {
   if (service.compatibility?.next_step) return service.compatibility.next_step;
-  if (actions.includes("start")) return "Start it here.";
-  if (actions.includes("restart")) return "Restart it here, then check again.";
+  if (actions.includes("start")) return "Start it to bring it back.";
+  if (actions.includes("restart")) return "Restart it, then check again.";
   if (service.kind === "mcp") return "Reconnect Mash in the agent that owns this session.";
   return service.control_note || "Open it for the details of the last check.";
 }
-/** Everything the page counts against a machine, in machine order: the list a
- * reader works through to get back to all healthy. */
+/** Everything counted against these machines, in order: what a reader works
+ * through to get a machine back to healthy. */
 export function problems(machines: readonly Machine[]): Problem[] {
   return machines.flatMap((machine): Problem[] => {
     if (!machine.reachable)

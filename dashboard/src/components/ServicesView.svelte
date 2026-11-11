@@ -88,7 +88,9 @@ interface Target {
   action: ServiceAction;
 }
 let confirm = $state<Target | null>(null);
-const issues = $derived(problems(fleet.data ?? []));
+// Faults are shown with the machine they belong to, not across the fleet.
+const issues = $derived(problems(machine ? [machine] : []));
+const issue = $derived(issues.find((found) => found.service?.id === serviceId));
 let pending = $state(false);
 let actionError = $state("");
 let result = $state<Operation | null>(null);
@@ -192,9 +194,10 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
     {/if}
     <section>
       <h2 class="h2"><Server size={15} aria-hidden="true" />manage</h2>
+      {#if issue}<p><span class="warn">Needs attention.</span> {issue.fix}</p>{/if}
       <p class="meta">{service.control_note}</p>
       <div class="chips" style:gap="8px" style:margin-top="8px">
-        {#each service.actions as action (action)}<button class="btn" type="button" disabled={blocked || !machine.reachable} onclick={() => (confirm = { machine, service, action })}>{actionLabel[action]}</button>{/each}
+        {#each service.actions as action (action)}<button class="btn" class:p={issue?.actions.includes(action)} type="button" disabled={blocked || !machine.reachable} onclick={() => (confirm = { machine, service, action })}>{actionLabel[action]}</button>{/each}
         {#if service.logs_available}<button class="btn" type="button" aria-expanded={showLog} onclick={() => (showLog = !showLog)}><ScrollText size={15} aria-hidden="true" />{showLog ? "Hide log" : "View log"}</button>{/if}
       </div>
       {#if confirm}{@render confirmation(confirm)}{/if}
@@ -212,29 +215,6 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
   {/if}
 {:else if enabled && fleet.data}
   {#if machineId && !machine}<div class="state-c"><p role="alert">This machine is not in the configured inventory.</p></div>{/if}
-  {#if issues.length}
-    <section aria-label="Needs attention">
-      <h2 class="h2"><TriangleAlert size={15} aria-hidden="true" />needs attention</h2>
-      {#each issues as issue (`${issue.machine.id}/${issue.service?.id ?? ""}`)}
-        {@const entry = issue.service}
-        <div class="fixit">
-          <div class="g">
-            <p><strong style:font-weight="500">{entry ? `${entry.name} on ${issue.machine.id}` : issue.machine.id}</strong> <span class="warn">{entry ? entry.summary : "Could not be reached"}</span></p>
-            <p class="meta">{issue.fix}</p>
-          </div>
-          <span class="acts">
-            {#if entry}
-              {#each issue.actions as action (action)}<button class="btn p" type="button" disabled={blocked} onclick={() => (confirm = { machine: issue.machine, service: entry, action })}>{actionLabel[action]}</button>{/each}
-              <a class="btn" href={servicesHref(issue.machine.id, entry.id)}>Details</a>
-            {:else}
-              <button class="btn" type="button" disabled={fleet.isFetching || pending} onclick={refresh}>Check again</button>
-            {/if}
-          </span>
-          {#if entry && confirm?.service.id === entry.id && confirm.machine.id === issue.machine.id}{@render confirmation(confirm)}{/if}
-        </div>
-      {/each}
-    </section>
-  {/if}
   <div class="matrix">
     <div class="mx">
       <div class="mx-r head"><span style:padding-left="14px">machine</span>{#each columns as column (column.kind)}<span>{column.label}</span>{/each}</div>
@@ -254,6 +234,29 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
     </div>
   </div>
   {#if machine}
+    {#if issues.length}
+      <section aria-label="Needs attention on {machine.id}">
+        <h2 class="h2"><TriangleAlert size={15} aria-hidden="true" />needs attention on {machine.id}</h2>
+        {#each issues as issue (`${issue.machine.id}/${issue.service?.id ?? ""}`)}
+          {@const entry = issue.service}
+          <div class="fixit">
+            <div class="g">
+              <p><strong style:font-weight="500">{entry ? entry.name : issue.machine.id}</strong> <span class="warn">{entry ? entry.summary : "Could not be reached"}</span></p>
+              <p class="meta">{issue.fix}</p>
+            </div>
+            <span class="acts">
+              {#if entry}
+                {#each issue.actions as action (action)}<button class="btn p" type="button" disabled={blocked} onclick={() => (confirm = { machine: issue.machine, service: entry, action })}>{actionLabel[action]}</button>{/each}
+                <a class="btn" href={servicesHref(issue.machine.id, entry.id)}>Details</a>
+              {:else}
+                <button class="btn" type="button" disabled={fleet.isFetching || pending} onclick={refresh}>Check again</button>
+              {/if}
+            </span>
+            {#if entry && confirm?.service.id === entry.id && confirm.machine.id === issue.machine.id}{@render confirmation(confirm)}{/if}
+          </div>
+        {/each}
+      </section>
+    {/if}
     <section>
       <h2 class="h2"><Server size={15} aria-hidden="true" />services on {machine.id}</h2>
       {#each machine.services as entry (entry.id)}

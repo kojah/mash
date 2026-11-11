@@ -163,12 +163,11 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("link", { name: "macbook: unreachable" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "services on xenia" })).toBeVisible();
     // Each fault is listed with what to do about it and, where one exists, its control.
-    const attention = page.getByRole("region", { name: "Needs attention" });
+    const attention = page.getByRole("region", { name: "Needs attention on xenia" });
     await expect(attention.getByText("Running · schema mismatch", { exact: true })).toBeVisible();
     await expect(
       attention.getByText("Reconnect the MCP. Do not downgrade the database."),
     ).toBeVisible();
-    await expect(attention.getByText("Could not be reached")).toBeVisible();
     await attention.getByRole("button", { name: "Start", exact: true }).click();
     const inline = attention.getByRole("group", { name: "Confirm service action" });
     await expect(inline).toContainText("Start Index watcher on xenia?");
@@ -194,7 +193,14 @@ for (const width of [390, 1440]) {
     await page.getByRole("link", { name: "< services" }).click();
     await expect(page).toHaveURL(/#\/services\?machine=xenia$/);
     await expect(setup.getByText("Hooks need approval")).toBeVisible();
+    // Another machine's faults appear once that machine is chosen.
+    await page.getByRole("link", { name: "macbook: unreachable" }).click();
+    await expect(page.getByRole("region", { name: "Needs attention on macbook" })).toContainText(
+      "Could not be reached",
+    );
+    await page.getByRole("link", { name: "xenia: needs attention" }).click();
     await page.getByRole("link", { name: /Index watcher/ }).click();
+    await expect(page.getByText("Start it to bring it back.")).toBeVisible();
     await page.getByRole("button", { name: "Start", exact: true }).click();
     const confirm = page.getByRole("group", { name: "Confirm service action" });
     await expect(confirm).toContainText("Start Index watcher on xenia?");

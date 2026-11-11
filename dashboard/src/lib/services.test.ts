@@ -211,7 +211,7 @@ describe("machine health", () => {
       ["xenia", "server-degraded", []],
       ["macbook", undefined, []],
     ]);
-    expect(found[0]?.fix).toBe("Start it here.");
+    expect(found[0]?.fix).toBe("Start it to bring it back.");
     expect(found[2]?.fix).toContain("check again");
   });
 });
