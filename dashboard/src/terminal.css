@@ -1,6 +1,7 @@
 /*
  * The Terminal design: a fixed navigation rail, a search header and one
- * scrolling column, in a dark monospace palette. Ported from the approved
+ * scrolling column, in a dark palette. Text is a sans; monospace is kept for
+ * code, paths and IDs. Ported from the approved
  * prototype; class names match it so the two can be compared.
  */
 /* Terminal-style app: fixed sidebar drawer, search header, one scrolling column. */
@@ -29,7 +30,8 @@
   --indigo: #8fa0f5;
   --sky: #a7d8f0;
   --stone: #c9c4b8;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;
 }
 * {
@@ -42,8 +44,15 @@ body {
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 14px / 1.55 var(--mono);
+  font: 14px / 1.55 var(--sans);
+  font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
+}
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--mono);
 }
 a {
   color: inherit;
@@ -754,6 +763,7 @@ mark {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  font-size: 15.5px;
   line-height: 1.6;
 }
 .you {

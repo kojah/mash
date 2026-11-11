@@ -2,10 +2,10 @@
 
 /* Tokens for the Terminal design; terminal.css holds its components. */
 @theme {
-  /* The Terminal design is monospace throughout. No web font is fetched: a
-     local dashboard should not call out to a font service. */
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --font-sans: var(--font-mono);
+  /* Reading text is a sans; monospace marks what could be copied: code, paths
+     and IDs. Both faces are bundled (see main.ts), never fetched. */
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --color-ground: #1b1a18;
   --color-surface: #24221f;
   --color-ink: #f0ece4;
