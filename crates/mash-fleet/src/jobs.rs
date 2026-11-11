@@ -261,6 +261,8 @@ pub fn admit(inventory: Inventory, request: Request) -> Result<Admission, String
     inventory.targets(request.action, &request.targets)?;
     let parent = directory.parent().ok_or("missing fleet job parent")?;
     std::fs::create_dir_all(parent).map_err(|_| "cannot create fleet job storage")?;
+    // Only Unix has a mode to restrict; elsewhere the builder is used as made.
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
