@@ -1947,10 +1947,34 @@ h1:focus {
 
 /* The services matrix has a column per service kind. */
 .mx-r {
-  grid-template-columns: minmax(128px, 1.5fr) repeat(6, minmax(54px, 1fr));
+  grid-template-columns: minmax(168px, 1.5fr) repeat(6, minmax(54px, 1fr));
 }
 .mx {
-  min-width: 620px;
+  min-width: 660px;
+}
+.mx-n > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* One thing that needs attention: what it is, what to do, and the control. */
+.fixit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.fixit:last-child {
+  border-bottom: 0;
+}
+.fixit .g {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.fixit .confirm {
+  flex: 1 1 100%;
 }
 a.mx-r:hover {
   color: inherit;

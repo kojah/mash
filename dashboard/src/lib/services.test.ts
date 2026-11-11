@@ -5,6 +5,7 @@ import {
   parseFleetCatalog,
   parseFleetJob,
   parseSetup,
+  problems,
   serviceRequestId,
   setupChain,
   setupHeadline,
@@ -187,5 +188,30 @@ describe("machine health", () => {
     const unwatched = { ...idle, id: "watcher-leadership" };
     expect(machineState(machine([service("sqlite", "healthy"), unwatched]))).toBe("healthy");
     expect(machineState(machine([{ ...idle, id: "managed-watcher" }]))).toBe("stopped");
+  });
+
+  it("lists each fault with a way to put it right", () => {
+    const stopped = {
+      ...service("watcher", "healthy"),
+      id: "managed-watcher",
+      state: "stopped" as const,
+      actions: ["start" as const],
+    };
+    const running = { ...service("server", "degraded"), actions: ["stop" as const] };
+    const away = { ...machine([]), id: "macbook", reachable: false };
+    const found = problems([
+      machine([service("sqlite", "healthy"), service("mcp", "degraded"), stopped, running]),
+      away,
+    ]);
+    expect(
+      found.map((problem) => [problem.machine.id, problem.service?.id, problem.actions]),
+    ).toEqual([
+      ["xenia", "managed-watcher", ["start"]],
+      // Stopping a degraded service does not repair it, so it is not offered.
+      ["xenia", "server-degraded", []],
+      ["macbook", undefined, []],
+    ]);
+    expect(found[0]?.fix).toBe("Start it here.");
+    expect(found[2]?.fix).toContain("check again");
   });
 });

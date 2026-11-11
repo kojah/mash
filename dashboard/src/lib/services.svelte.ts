@@ -334,6 +334,43 @@ export function machineState(machine: Machine): ServiceState {
     if (services.some((s) => s.state === state)) return state;
   return "healthy";
 }
+/** Something on a machine that is not healthy, with what to do about it. */
+export interface Problem {
+  machine: Machine;
+  /** Absent when the machine itself could not be reached. */
+  service: Service | null;
+  fix: string;
+  /** The controls that could put it right; stopping never does. */
+  actions: ServiceAction[];
+}
+function remedy(service: Service, actions: readonly ServiceAction[]): string {
+  if (service.compatibility?.next_step) return service.compatibility.next_step;
+  if (actions.includes("start")) return "Start it here.";
+  if (actions.includes("restart")) return "Restart it here, then check again.";
+  if (service.kind === "mcp") return "Reconnect Mash in the agent that owns this session.";
+  return service.control_note || "Open it for the details of the last check.";
+}
+/** Everything the page counts against a machine, in machine order: the list a
+ * reader works through to get back to all healthy. */
+export function problems(machines: readonly Machine[]): Problem[] {
+  return machines.flatMap((machine): Problem[] => {
+    if (!machine.reachable)
+      return [
+        {
+          machine,
+          service: null,
+          fix: "It may be asleep or off the network. Wake it, then check again; it cannot be managed from here until it answers.",
+          actions: [],
+        },
+      ];
+    return machine.services
+      .filter((service) => service.state !== "healthy" && !incidental(service))
+      .map((service) => {
+        const actions = service.actions.filter((action) => action !== "stop");
+        return { machine, service, fix: remedy(service, actions), actions };
+      });
+  });
+}
 export const stateLabel: Record<ServiceState, string> = {
   healthy: "Healthy",
   degraded: "Needs attention",

@@ -12,8 +12,10 @@ import { stableRead } from "../lib/queries";
 import {
   checkedTime,
   incidental,
+  type Machine,
   machineState,
   type Operation,
+  problems,
   type Service,
   type ServiceAction,
   type ServiceState,
@@ -80,7 +82,13 @@ const log = createQuery(() => ({
   enabled: enabled && showLog && !!serviceId,
   queryFn: ({ signal }) => serviceLog(selectedId, serviceId, signal),
 }));
-let confirm = $state<ServiceAction | null>(null);
+interface Target {
+  machine: Machine;
+  service: Service;
+  action: ServiceAction;
+}
+let confirm = $state<Target | null>(null);
+const issues = $derived(problems(fleet.data ?? []));
 let pending = $state(false);
 let actionError = $state("");
 let result = $state<Operation | null>(null);
@@ -98,16 +106,17 @@ async function refresh(): Promise<void> {
   if (showLog && serviceId) await log.refetch();
 }
 async function act(): Promise<void> {
-  if (!confirm || !machine || !service?.control_revision || pending) return;
-  const action = confirm,
-    target = machine.id,
-    id = service.id;
+  const revision = confirm?.service.control_revision;
+  if (!confirm || !revision || pending) return;
+  const action = confirm.action,
+    target = confirm.machine.id,
+    id = confirm.service.id;
   confirm = null;
   pending = true;
   actionError = "";
   result = null;
   try {
-    result = await serviceAction(target, id, action, service.control_revision);
+    result = await serviceAction(target, id, action, revision);
     await queryClient.invalidateQueries({ queryKey: ["services"] });
     await queryClient.invalidateQueries({ queryKey: ["service-history"] });
   } catch (error) {
@@ -124,14 +133,24 @@ const actionLabel: Record<ServiceAction, string> = {
   stop: "Stop",
   restart: "Restart",
 };
-const consequences = $derived(
-  service?.kind === "watcher"
+function consequences({ service, action }: Target): string {
+  if (action === "start") return "";
+  return service.kind === "watcher"
     ? "New chats may stop appearing until the watcher is running again. Existing indexed history is retained."
-    : service?.kind === "qdrant"
+    : service.kind === "qdrant"
       ? "Search that uses this database may be unavailable while it is stopped or restarting."
-      : "Clients using this service may lose access while it is stopped or restarting.",
-);
+      : "Clients using this service may lose access while it is stopped or restarting.";
+}
+const blocked = $derived(pending || !!fleet.error || !!actionError);
 </script>
+
+{#snippet confirmation(target: Target)}
+  <div class="confirm" role="group" aria-label="Confirm service action" style:margin-top="10px">
+    <span>{actionLabel[target.action]} {target.service.name} on {target.machine.id}? {consequences(target)}</span>
+    <button class="btn p" type="button" onclick={act}>Confirm {target.action}</button>
+    <button class="btn" type="button" onclick={() => (confirm = null)}>Cancel</button>
+  </div>
+{/snippet}
 
 {#if serviceId}
   <a class="back" href={servicesHref(selectedId)}>&lt; services</a>
@@ -175,16 +194,10 @@ const consequences = $derived(
       <h2 class="h2"><Server size={15} aria-hidden="true" />manage</h2>
       <p class="meta">{service.control_note}</p>
       <div class="chips" style:gap="8px" style:margin-top="8px">
-        {#each service.actions as action (action)}<button class="btn" type="button" disabled={pending || !machine.reachable || !!fleet.error || !!actionError} onclick={() => (confirm = action)}>{actionLabel[action]}</button>{/each}
+        {#each service.actions as action (action)}<button class="btn" type="button" disabled={blocked || !machine.reachable} onclick={() => (confirm = { machine, service, action })}>{actionLabel[action]}</button>{/each}
         {#if service.logs_available}<button class="btn" type="button" aria-expanded={showLog} onclick={() => (showLog = !showLog)}><ScrollText size={15} aria-hidden="true" />{showLog ? "Hide log" : "View log"}</button>{/if}
       </div>
-      {#if confirm}
-        <div class="confirm" role="group" aria-label="Confirm service action" style:margin-top="10px">
-          <span>{actionLabel[confirm]} {service.name} on {machine.id}? {consequences}</span>
-          <button class="btn p" type="button" onclick={act}>Confirm {confirm}</button>
-          <button class="btn" type="button" onclick={() => (confirm = null)}>Cancel</button>
-        </div>
-      {/if}
+      {#if confirm}{@render confirmation(confirm)}{/if}
       {#if showLog}
         {#if log.isPending}<p class="meta" role="status">Loading log…</p>{/if}
         {#if log.error}<p class="fail" role="alert">{log.error.message}</p>{/if}
@@ -199,13 +212,36 @@ const consequences = $derived(
   {/if}
 {:else if enabled && fleet.data}
   {#if machineId && !machine}<div class="state-c"><p role="alert">This machine is not in the configured inventory.</p></div>{/if}
+  {#if issues.length}
+    <section aria-label="Needs attention">
+      <h2 class="h2"><TriangleAlert size={15} aria-hidden="true" />needs attention</h2>
+      {#each issues as issue (`${issue.machine.id}/${issue.service?.id ?? ""}`)}
+        {@const entry = issue.service}
+        <div class="fixit">
+          <div class="g">
+            <p><strong style:font-weight="500">{entry ? `${entry.name} on ${issue.machine.id}` : issue.machine.id}</strong> <span class="warn">{entry ? entry.summary : "Could not be reached"}</span></p>
+            <p class="meta">{issue.fix}</p>
+          </div>
+          <span class="acts">
+            {#if entry}
+              {#each issue.actions as action (action)}<button class="btn p" type="button" disabled={blocked} onclick={() => (confirm = { machine: issue.machine, service: entry, action })}>{actionLabel[action]}</button>{/each}
+              <a class="btn" href={servicesHref(issue.machine.id, entry.id)}>Details</a>
+            {:else}
+              <button class="btn" type="button" disabled={fleet.isFetching || pending} onclick={refresh}>Check again</button>
+            {/if}
+          </span>
+          {#if entry && confirm?.service.id === entry.id && confirm.machine.id === issue.machine.id}{@render confirmation(confirm)}{/if}
+        </div>
+      {/each}
+    </section>
+  {/if}
   <div class="matrix">
     <div class="mx">
       <div class="mx-r head"><span style:padding-left="14px">machine</span>{#each columns as column (column.kind)}<span>{column.label}</span>{/each}</div>
       {#each fleet.data as item (item.id)}
         {@const state = machineState(item)}
         <a class="mx-r" class:on={item.id === selectedId} href={servicesHref(item.id)} aria-current={item.id === selectedId ? "true" : undefined} aria-label="{item.id}: {item.reachable ? (state === 'healthy' ? 'all services healthy' : 'needs attention') : 'unreachable'}">
-          <span class="mx-n"><i class="dot" class:warn={state !== "healthy"}></i>{item.id}</span>
+          <span class="mx-n"><i class="dot" class:warn={state !== "healthy"}></i><span>{item.id}</span></span>
           {#each columns as column (column.kind)}
             {@const status = item.reachable ? cell(item.services, column.kind) : "unknown"}
             {#if status === null}<span class="cell none">–</span>
@@ -218,13 +254,13 @@ const consequences = $derived(
     </div>
   </div>
   {#if machine}
-    {#each machine.warnings as warning (warning)}<p class="meta warn">{warning}</p>{/each}
     <section>
       <h2 class="h2"><Server size={15} aria-hidden="true" />services on {machine.id}</h2>
       {#each machine.services as entry (entry.id)}
         <a class="li" href={servicesHref(machine.id, entry.id)}><Server size={16} color="var(--teal)" aria-hidden="true" /><span class="g"><strong style:font-weight="500">{entry.name}</strong> <small class="meta">{entry.kind}</small></span><ServiceStatus state={entry.state} label={entry.summary}/><ChevronRight size={15} color="var(--dim)" aria-hidden="true" /></a>
       {/each}
       {#if !machine.services.length}<p class="meta">{machine.reachable ? "No services were reported." : "This machine's dashboard could not be reached."}</p>{/if}
+      {#if machine.reachable}{#each machine.warnings as warning (warning)}<p class="meta" style:margin-top="8px">{warning}</p>{/each}{/if}
     </section>
     {#if machine.reachable}<MachineSetup machineId={machine.id} {enabled} />{/if}
   {/if}

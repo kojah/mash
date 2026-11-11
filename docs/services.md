@@ -12,6 +12,9 @@ A supervised service and the health check of the same thing share one row:
 it is healthy only when the process is running and its check passes.
 Agent sessions on an older build show as **reconnect**, and a watcher that
 nothing supervises shows as **off**; neither counts against the machine.
+Anything counted against a machine is listed first under **needs attention**,
+with what to do about it. Where the service has a control that would put it
+right, such as **Start** for a stopped watcher, the button is there too.
 **Check again** refreshes the report. There is no timer-based polling or page reload.
 Dates tell you when a check was made; an old green result is not a continuous
 health guarantee. Fleet job progress, when enabled below, updates automatically
