@@ -1166,6 +1166,7 @@ blockquote {
 .op {
   min-height: 84px;
   width: 100%;
+  font-weight: 600;
 }
 .op.on,
 .op.on:hover {
@@ -1174,6 +1175,8 @@ blockquote {
   font-weight: 700;
 }
 .op svg {
+  /* Never squeezed away when a long label wraps to two lines. */
+  flex: none;
   color: var(--teal);
 }
 .mtile {
