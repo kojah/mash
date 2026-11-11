@@ -155,12 +155,13 @@ for (const width of [390, 1440]) {
     await page.goto("/#/services");
     await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
     await expect(page.getByLabel("Services access token")).toHaveCount(0);
-    // Without a machine in the address the local one is selected.
-    await expect(page.getByRole("link", { name: "xenia: needs attention" })).toHaveAttribute(
+    // Without a machine in the address every machine is listed and none is picked.
+    await expect(page.getByRole("link", { name: "xenia: needs attention" })).not.toHaveAttribute(
       "aria-current",
-      "true",
     );
     await expect(page.getByRole("link", { name: "macbook: unreachable" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "services on macbook" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Needs attention on macbook" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "services on xenia" })).toBeVisible();
     // Each fault is listed with what to do about it and, where one exists, its control.
     const attention = page.getByRole("region", { name: "Needs attention on xenia" });
@@ -193,11 +194,14 @@ for (const width of [390, 1440]) {
     await page.getByRole("link", { name: "< services" }).click();
     await expect(page).toHaveURL(/#\/services\?machine=xenia$/);
     await expect(setup.getByText("Hooks need approval")).toBeVisible();
-    // Another machine's faults appear once that machine is chosen.
+    // Choosing a machine in the table narrows the page to it; a link widens it again.
     await page.getByRole("link", { name: "macbook: unreachable" }).click();
     await expect(page.getByRole("region", { name: "Needs attention on macbook" })).toContainText(
       "Could not be reached",
     );
+    await expect(page.getByRole("heading", { name: "services on xenia" })).toHaveCount(0);
+    await page.getByRole("link", { name: "Show every machine" }).click();
+    await expect(page.getByRole("heading", { name: "services on xenia" })).toBeVisible();
     await page.getByRole("link", { name: "xenia: needs attention" }).click();
     await page.getByRole("link", { name: /Index watcher/ }).click();
     await expect(page.getByText("Start it to bring it back.")).toBeVisible();

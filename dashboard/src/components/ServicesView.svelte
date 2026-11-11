@@ -101,8 +101,13 @@ interface Target {
 }
 let confirm = $state<Target | null>(null);
 // Faults are shown with the machine they belong to, not across the fleet.
-const issues = $derived(problems(machine ? [machine] : []));
-const issue = $derived(issues.find((found) => found.service?.id === serviceId));
+// The list shows every machine; choosing one in the table narrows it to that one.
+const shown = $derived(
+  (fleet.data ?? []).filter((candidate) => !machineId || candidate.id === machineId),
+);
+const issue = $derived(
+  problems(machine ? [machine] : []).find((found) => found.service?.id === serviceId),
+);
 let pending = $state(false);
 let actionError = $state("");
 let result = $state<Operation | null>(null);
@@ -232,7 +237,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
       <div class="mx-r head"><span style:padding-left="14px">machine</span>{#each columns as column (column.kind)}<span>{column.label}</span>{/each}</div>
       {#each fleet.data as item (item.id)}
         {@const state = machineState(item)}
-        <a class="mx-r" class:on={item.id === selectedId} href={servicesHref(item.id)} aria-current={item.id === selectedId ? "true" : undefined} aria-label="{item.id}: {item.reachable ? (state === 'healthy' ? 'all services healthy' : 'needs attention') : 'unreachable'}">
+        <a class="mx-r" class:on={item.id === machineId} href={servicesHref(item.id)} aria-current={item.id === machineId ? "true" : undefined} aria-label="{item.id}: {item.reachable ? (state === 'healthy' ? 'all services healthy' : 'needs attention') : 'unreachable'}">
           <span class="mx-n"><i class="dot" class:warn={state !== "healthy"}></i><span>{item.id}</span></span>
           {#each columns as column (column.kind)}
             {@const status = item.reachable ? cell(item.services, column.kind) : "unknown"}
@@ -245,7 +250,9 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
       {/each}
     </div>
   </div>
-  {#if machine}
+  {#if machineId && machine}<p class="meta"><a class="a" href={servicesHref()}>Show every machine</a></p>{/if}
+  {#each shown as machine (machine.id)}
+    {@const issues = problems([machine])}
     {#if issues.length}
       <section aria-label="Needs attention on {machine.id}">
         <h2 class="h2"><TriangleAlert size={15} aria-hidden="true" />needs attention on {machine.id}</h2>
@@ -285,7 +292,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
       {#if machine.reachable}{#each machine.warnings as warning (warning)}<p class="meta" style:margin-top="8px">{warning}</p>{/each}{/if}
     </section>
     {#if machine.reachable}<MachineSetup machineId={machine.id} {enabled} />{/if}
-  {/if}
+  {/each}
 {/if}
 {#if enabled && selectedId}
   <section>

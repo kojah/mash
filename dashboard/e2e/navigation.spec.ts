@@ -221,15 +221,12 @@ test("the old index status address opens services, which reports the local index
   });
   await page.goto("/#/status");
   await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
-  // The local machine is selected without being named in the address.
+  // Every machine's services are listed without one being named in the address.
   await expect(page.getByRole("heading", { name: "services on xenia", exact: true })).toBeVisible();
   const index = page.getByRole("link", { name: /Local index/ });
   await expect(index).toContainText("sqlite");
   await expect(index).toContainText("Schema 65 · current");
-  await expect(page.getByRole("link", { name: "xenia: all services healthy" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(page.getByRole("link", { name: "xenia: all services healthy" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main" })).toContainText("xenia / 0 chats");
   await expect(page.getByRole("link", { name: "Index status" })).toHaveCount(0);
 });
