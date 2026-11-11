@@ -92,6 +92,12 @@ if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml stale-api
 fi
 ! grep -q '^build$' "$scratch/actions"
 [[ $(jq -r .state "$scratch/deploy-stale-api/api.json") == failed ]]
+# A machine whose shared server fails its check is reported as failed with the
+# reason, not left without a report.
+if run_playbook check '["one"]' deployment/playbooks/check.yml dependency-down; then
+    echo 'A check behind a failing required API was accepted.' >&2; exit 1
+fi
+jq -e '.state == "failed" and (.error | test("depends on \\(api\\)"))' "$scratch/check-dependency-down/one.json" >/dev/null
 rm -f "$scratch/fail-api"
 touch "$scratch/deny-install"
 if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml denied-access; then

@@ -1,8 +1,21 @@
 - name: Verify a required API before node work
-  ansible.builtin.command:
-    argv: "{{ item }}"
-    chdir: "{{ mash_repository }}"
-  loop: "{{ hostvars[mash_required_api].mash_verify }}"
-  changed_when: false
-  delegate_to: localhost
-  no_log: true
+  block:
+    - name: Run the required API's own checks
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: "{{ mash_repository }}"
+      loop: "{{ hostvars[mash_required_api].mash_verify }}"
+      changed_when: false
+      delegate_to: localhost
+      no_log: true
+  rescue:
+    # Without a report the job's outcome for this machine would read unknown.
+    - name: Record that the machine was not checked
+      ansible.builtin.copy:
+        dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+        content: "{{ {'state': 'failed', 'error': 'The shared server this machine depends on (' ~ mash_required_api ~ ') did not pass its check, so the machine was not checked or changed. Check the server, then try again.', 'results': []} | to_json }}"
+      delegate_to: localhost
+    - name: Stop before node work
+      ansible.builtin.fail:
+        msg: A required API did not pass its check; nothing was changed on this machine.
