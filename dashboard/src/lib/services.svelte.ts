@@ -287,6 +287,59 @@ export function setupHeadline(agent: AgentSetup): { state: ServiceState; label: 
     ? { state: "healthy", label: "Ready · hook approval recorded" }
     : { state: "healthy", label: "Ready" };
 }
+/** The one thing to do about an agent's setup, however many checks failed. */
+export interface SetupFix {
+  /** What is wrong, in a sentence. */
+  cause: string;
+  /** What to do, in order. */
+  steps: string[];
+  /** A command to run on that machine, when one does the job. */
+  command: string | null;
+  /** Whether updating Mash on the machine is part of the fix. */
+  deploy: boolean;
+  /** How many separate checks this one fix answers. */
+  checks: number;
+}
+/**
+ * Failing checks share a cause far more often than not: a plugin that does not
+ * match the installed Mash fails its version, its skill and every hook at
+ * once. This names the earliest broken part and the one remedy for it.
+ */
+export function setupFix(agent: AgentSetup, name: string): SetupFix | null {
+  if (!agent.expected) return null;
+  const chain = setupChain(agent);
+  const failing = chain.filter((part) => part.state === "attention");
+  const first = failing[0];
+  if (!first) return null;
+  const checks = failing.reduce((total, part) => total + part.notes.length, 0);
+  if (first.label === "Hook approval")
+    return {
+      cause: `${name} has not approved the Mash plugin's hooks, so they do not run.`,
+      steps: [`Open /hooks in ${name}, trust the Mash hooks, then start a new session.`],
+      command: null,
+      deploy: false,
+      checks,
+    };
+  if (first.label === "Connection")
+    return {
+      cause: `${name} does not have Mash registered on this machine.`,
+      steps: ["Run this on the machine.", `Restart ${name}.`],
+      command: "mash init --yes --no-index",
+      deploy: false,
+      checks,
+    };
+  return {
+    cause: `The Mash plugin in ${name} does not match the Mash installed on this machine. They have to be the same release.`,
+    steps: [
+      "Update Mash on the machine.",
+      "Then run this there to reinstall the plugin.",
+      `Restart ${name}.`,
+    ],
+    command: "mash init --yes --no-index",
+    deploy: true,
+    checks,
+  };
+}
 export function setupOptions(machine: string, enabled: boolean) {
   return queryOptions({
     ...stableRead,

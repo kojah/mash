@@ -4,13 +4,23 @@ import CircleHelp from "@lucide/svelte/icons/circle-help";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents } from "../lib/agents";
-import { setupChain, setupHeadline, setupOptions } from "../lib/services.svelte";
+import { fleetHref } from "../lib/route.svelte";
+import { setupChain, setupFix, setupHeadline, setupOptions } from "../lib/services.svelte";
 import AgentMark from "./AgentMark.svelte";
 
 // Each agent's integration on one machine, part by part, with what to do
 // about any part that needs attention.
 let { machineId, enabled }: { machineId: string; enabled: boolean } = $props();
 const setup = createQuery(() => setupOptions(machineId, enabled));
+let copied = $state("");
+async function copy(agent: string, command: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(command);
+    copied = agent;
+  } catch {
+    copied = "";
+  }
+}
 const partWord = { ok: "ok", attention: "needs attention", unverified: "not verifiable" } as const;
 </script>
 
@@ -23,6 +33,7 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
       {#each setup.data.agents as agent (agent.agent)}
         {@const headline = setupHeadline(agent)}
         {@const chain = setupChain(agent)}
+        {@const fix = setupFix(agent, agents[agent.agent].name)}
         <div class="svc-tile agent">
           <div class="hd" style:align-items="center"><h3 style:display="flex" style:align-items="center" style:gap="8px" style:font-size="15px" style:font-weight="600"><AgentMark agent={agent.agent} size={17} />{agents[agent.agent].name}</h3><span class={headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"} style:font-size="13.5px">{headline.label}</span></div>
           {#if agent.expected}
@@ -37,11 +48,35 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
                 </div>
               {/each}
             </div>
+            {#if fix}
+              <div class="fix">
+                <p>{fix.cause}</p>
+                <ol>
+                  {#each fix.steps as step, index (step)}
+                    <li>{step}{#if fix.deploy && index === 0} <a class="a" href={fleetHref("deploy")}>Deploy Mash from Manage fleet</a>, or install it there directly.{/if}</li>
+                  {/each}
+                </ol>
+                {#if fix.command}
+                  <div class="cmd"><code>{fix.command}</code><button class="btn" type="button" onclick={() => copy(agent.agent, fix.command ?? "")}>{copied === agent.agent ? "Copied" : "Copy"}</button></div>
+                {/if}
+              </div>
+              <details class="fold" style:margin-top="8px">
+                <summary>{fix.checks === 1 ? "The check behind this" : `The ${fix.checks} checks behind this`}</summary>
+                <div>
+                        {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
+                          {#each part.notes as note (note.message)}
+                      <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere"><span class={part.state === "attention" ? "warn" : ""}>{part.label}:</span> {note.message}{#if note.remediation && part.state === "attention"} <span style:display="block" style:color="var(--body)">{note.remediation}</span>{/if}</p>
+                    {/each}
+                  {/each}
+                </div>
+              </details>
+            {:else}
             {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
               {#each part.notes as note (note.message)}
                 <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere"><span class={part.state === "attention" ? "warn" : ""}>{part.label}:</span> {note.message}{#if note.remediation && part.state === "attention"} <span style:display="block" style:color="var(--body)">{note.remediation}</span>{/if}</p>
               {/each}
             {/each}
+            {/if}
           {/if}
         </div>
       {/each}

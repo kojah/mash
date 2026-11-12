@@ -8,6 +8,7 @@ import {
   problems,
   serviceRequestId,
   setupChain,
+  setupFix,
   setupHeadline,
 } from "./services.svelte";
 
@@ -131,6 +132,34 @@ describe("agent setup", () => {
     if (!stale) throw new Error("missing agent");
     expect(setupHeadline(stale).label).toBe("Plugin missing or out of date");
     expect(setupChain(stale).map((part) => part.label)).toEqual(["Connection", "Plugin", "Skill"]);
+  });
+
+  it("answers many failing checks with one cause and one fix", () => {
+    const stale = setup(
+      [
+        step("mcp", "present"),
+        step("plugin", "outdated", "version differs"),
+        step("skill", "missing", "skill file missing"),
+        step("skill", "invalid", "stamp differs"),
+        step("hooks", "missing", "SessionStart missing"),
+        step("hooks", "missing", "Stop missing"),
+      ],
+      "claude-code",
+    );
+    if (!stale) throw new Error("missing agent");
+    const fix = setupFix(stale, "Claude Code");
+    expect(fix).toMatchObject({ deploy: true, command: "mash init --yes --no-index", checks: 5 });
+    expect(fix?.cause).toContain("does not match the Mash installed");
+
+    const pending = setup([...installed, step("hook_trust", "missing", "No trust record")]);
+    if (!pending) throw new Error("missing agent");
+    expect(setupFix(pending, "Codex")).toMatchObject({ deploy: false, command: null, checks: 1 });
+    const absent = setup([step("mcp", "missing", "not registered")]);
+    if (!absent) throw new Error("missing agent");
+    expect(setupFix(absent, "Codex")).toMatchObject({ deploy: false, checks: 1 });
+    const ready = setup(installed);
+    if (!ready) throw new Error("missing agent");
+    expect(setupFix(ready, "Codex")).toBeNull();
   });
 
   it("does not present an approval it cannot verify as a failure", () => {

@@ -2569,3 +2569,39 @@ button:disabled {
   flex-wrap: wrap;
   gap: 4px 12px;
 }
+
+/* The one fix for an agent's setup: the cause, the steps, and a command to copy. */
+.fix {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warn);
+  border-radius: 0 6px 6px 0;
+  background: var(--raised);
+  font-size: 14px;
+}
+.fix ol {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--body);
+}
+.fix .cmd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fix .cmd code {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}

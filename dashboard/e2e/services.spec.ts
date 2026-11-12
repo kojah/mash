@@ -181,7 +181,7 @@ for (const width of [390, 1440]) {
     await expect(setup.getByText("Hooks need approval")).toBeVisible();
     await expect(setup.getByText("Ready", { exact: true })).toBeVisible();
     await expect(
-      setup.getByText("Open /hooks in Codex and trust the current Mash hooks."),
+      setup.getByText("Open /hooks in Codex, trust the Mash hooks, then start a new session."),
     ).toBeVisible();
     await page.getByRole("link", { name: /Mash MCP · PID 10/ }).click();
     await expect(page.getByRole("heading", { name: "Schema compatibility" })).toBeVisible();
