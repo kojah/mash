@@ -127,12 +127,13 @@ fn absolute(path: &Path) -> bool {
 }
 
 impl Machine {
-    /// Whether fleet operations can run on this machine. They go through
-    /// Ansible over SSH with a POSIX shell, which a Windows machine does not
-    /// offer. One still appears in the dashboard through its own peer, with
-    /// the services listed for it.
+    /// Whether the fleet can install on this machine: deploy to it, check
+    /// that a deploy could proceed, and install or remove its watcher. Those
+    /// steps run commands on the machine through a POSIX shell, which Windows
+    /// does not offer. Checking, indexing and rebuilding search need only the
+    /// machine's own `mash mcp`, so they work on any platform.
     #[must_use]
-    pub fn operated(&self) -> bool {
+    pub fn installable(&self) -> bool {
         self.history && self.platform != Platform::Windows
     }
 }
@@ -298,12 +299,18 @@ impl Inventory {
         if !self.controller.allow_actions.contains(&action) {
             return Err("fleet action is not enabled in the controller inventory".into());
         }
-        let history = self.machines.iter().filter(|machine| machine.operated());
+        let history = self.machines.iter().filter(|machine| machine.history);
+        let installable = self.machines.iter().filter(|machine| machine.installable());
         let eligible: Vec<&str> = match action {
-            Action::Status | Action::Preflight | Action::Deploy => self
+            Action::Status => self
                 .servers()
                 .map(|(_, service, _)| service.id.as_str())
                 .chain(history.map(|machine| machine.id.as_str()))
+                .collect(),
+            Action::Preflight | Action::Deploy => self
+                .servers()
+                .map(|(_, service, _)| service.id.as_str())
+                .chain(installable.map(|machine| machine.id.as_str()))
                 .collect(),
             Action::Sync | Action::LocalViews => {
                 history.map(|machine| machine.id.as_str()).collect()
@@ -313,7 +320,7 @@ impl Inventory {
                 .map(|(_, service, _)| service.id.as_str())
                 .collect(),
             Action::WatchStart | Action::WatchStop | Action::WatchStatus | Action::WatchLogs => {
-                history
+                installable
                     .filter(|machine| machine.watcher.is_some())
                     .map(|machine| machine.id.as_str())
                     .collect()
@@ -403,7 +410,7 @@ impl Inventory {
             if let Some(watcher) = &machine.watcher
                 && (!absolute(&watcher.home)
                     || !absolute(&watcher.launcher)
-                    || !machine.operated()
+                    || !machine.installable()
                     || !watcher
                         .launcher
                         .to_string_lossy()
@@ -411,7 +418,7 @@ impl Inventory {
                         .all(|byte| byte.is_ascii_alphanumeric() || b"/_.-".contains(&byte)))
             {
                 return Err(
-                    "invalid watcher home or launcher, or a machine fleet operations cannot reach"
+                    "invalid watcher home or launcher, or a machine the fleet cannot install on"
                         .into(),
                 );
             }
@@ -616,10 +623,10 @@ allow_control = true
     }
 
     #[test]
-    fn windows_machine_is_listed_but_is_not_a_fleet_operation_target() {
+    fn windows_machine_can_be_checked_and_indexed_but_not_installed_on() {
         let mut inventory = fixture();
-        inventory.controller.allow_actions = vec![Action::Status, Action::Sync];
-        let before = inventory.targets(Action::Status, &[]).unwrap();
+        inventory.controller.allow_actions = vec![Action::Status, Action::Sync, Action::Deploy];
+        let before = inventory.targets(Action::Deploy, &[]).unwrap();
         let mut windows = inventory.machines[0].clone();
         windows.id = "ares".into();
         windows.platform = Platform::Windows;
@@ -644,13 +651,24 @@ allow_control = true
             assert!(!absolute(Path::new(path)), "{path}");
         }
 
-        // Fleet operations run through Ansible, which cannot drive it.
-        assert_eq!(inventory.targets(Action::Status, &[]).unwrap(), before);
-        assert!(inventory.targets(Action::Sync, &["ares".into()]).is_err());
+        // Checks and indexing go through its own `mash mcp`; installing needs
+        // a POSIX shell on the machine.
+        assert!(
+            inventory
+                .targets(Action::Status, &[])
+                .unwrap()
+                .contains(&"ares".to_owned())
+        );
+        assert_eq!(
+            inventory.targets(Action::Sync, &["ares".into()]).unwrap(),
+            ["ares"]
+        );
+        assert_eq!(inventory.targets(Action::Deploy, &[]).unwrap(), before);
+        assert!(inventory.targets(Action::Deploy, &["ares".into()]).is_err());
         let ansible = String::from_utf8(crate::ansible::encode(&inventory).unwrap()).unwrap();
-        assert!(!ansible.contains("ares"));
+        assert!(ansible.contains("ares"));
 
-        // A fleet watcher is installed by those operations, so it is refused.
+        // A fleet watcher is installed on the machine, so it is refused.
         let watcher = inventory.machines[0].watcher.clone().or_else(|| {
             Some(Watcher {
                 launcher: "/usr/local/bin/mash-watch".into(),

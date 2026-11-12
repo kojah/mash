@@ -142,11 +142,7 @@ pub fn encode<'a>(inventory: &'a Inventory) -> Result<Vec<u8>, String> {
     let mut add = |group, id: &'a str, host| {
         children.entry(group).or_default().hosts.insert(id, host);
     };
-    for machine in inventory
-        .machines
-        .iter()
-        .filter(|machine| machine.operated())
-    {
+    for machine in inventory.machines.iter().filter(|machine| machine.history) {
         add("mash_history", &machine.id, Host::from(machine));
         if machine.platform == Platform::Darwin {
             add("mash_darwin", &machine.id, Host::from(machine));
