@@ -122,7 +122,7 @@ $effect(() => () => controller?.abort());
 
 <div class="hd" style:align-items="flex-end">
   <div style:min-width="0">
-    <h1 class="h1">Tools</h1>
+    <h1 class="h1">Tool explorer</h1>
     <p class="meta" style:max-width="64ch">Every tool your agents can call on Mash, with what it takes and what it returns. Run the read-only ones here and see exactly what comes back.</p>
   </div>
   {#if listing.data}

@@ -75,7 +75,7 @@ for (const width of [390, 1280]) {
       return route.fulfill({ json: { local_node: "xenia", chats: [], truncated: false } });
     });
     await page.goto("/#/console");
-    await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tool explorer", exact: true })).toBeVisible();
     await expect(
       page.getByText("2 tools · 1 can run here · 1 change data and are locked"),
     ).toBeVisible();

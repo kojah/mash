@@ -14,6 +14,7 @@ import {
   label,
   recordPage,
   scopeLabel,
+  scopeName,
   standing,
   states,
   timingLabel,
@@ -157,8 +158,8 @@ const dirty = $derived(
           </p>
           <a href={recordHref(record.id, record.node, recordsHref(new URLSearchParams(params)))} style:display="block" style:margin-top="6px" style:font-size="15px" style:overflow-wrap="anywhere" style:white-space="pre-wrap">{revision.statement}</a>
           <p class="mts" style:margin-top="7px">
-            <span class="mt" style:overflow-wrap="anywhere"><ScopeIcon size={12} aria-hidden="true" />{scopeLabel(record.scope)}</span>
-            <span class="mt"><Laptop size={12} aria-hidden="true" />{record.node || "this machine"}</span>
+            <span class="mt" style:overflow-wrap="anywhere" title={scopeLabel(record.scope)}><ScopeIcon size={12} aria-hidden="true" />{scopeName(record.scope)}</span>
+            <span class="mt"><Laptop size={12} aria-hidden="true" />{record.node || catalogue.data?.localNode || "this machine"}</span>
             <span class="mtx">{whenLabel(revision.recordedAt, now)}</span>
           </p>
         </article>

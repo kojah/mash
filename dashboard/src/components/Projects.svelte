@@ -33,6 +33,22 @@ const agentChoices = $derived([...new Set(chats.map((chat) => chat.agent))].sort
 const machineChoices = $derived([...new Set(chats.map((chat) => chat.machine))].sort());
 const narrowed = $derived(!!(view.find.trim() || view.agent || view.machine));
 const chosenAgent = $derived(agentChoices.find((agent) => agent === view.agent));
+// Drawing every tile at once makes the page slow to open, so tiles are added
+// as the reader nears the end of those drawn so far.
+const STEP = 60;
+let limit = $state(STEP);
+let more = $state<HTMLElement>();
+$effect(() => {
+  if (!more) return;
+  const watcher = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) limit += STEP;
+    },
+    { rootMargin: "600px" },
+  );
+  watcher.observe(more);
+  return () => watcher.disconnect();
+});
 const sorts = [
   { value: "chats", label: "most chats" },
   { value: "recent", label: "most recent" },
@@ -61,7 +77,7 @@ const now = Date.now();
 {/if}
 {#if projects.length && !shown.length}<div class="state-c"><p>No project matches. Change the name, agent or machine above.</p></div>{/if}
 <div class="grid-tiles">
-  {#each shown as project (project.key)}
+  {#each shown.slice(0, limit) as project (project.key)}
     <a class="tile" href={projectHref(project.key)} title={project.key}>
       <span class="tile-h"><Folder size={24} color="var(--warn)" aria-hidden="true" /><b style:min-width="0" style:overflow="hidden" style:text-overflow="ellipsis" style:white-space="nowrap">{projectLabel(project.key)}</b></span>
       <span class="big"><b>{project.chats.length.toLocaleString()}</b><span>chat{project.chats.length === 1 ? "" : "s"}</span></span>
@@ -74,3 +90,4 @@ const now = Date.now();
     </a>
   {/each}
 </div>
+{#if shown.length > limit}{#key limit}<div bind:this={more} aria-hidden="true" style:height="1px"></div>{/key}{/if}

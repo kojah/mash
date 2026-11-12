@@ -275,6 +275,17 @@ export async function getRecord(
 export function label(value: string): string {
   return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
+/** A scope's short name for a chip: a repository as owner/name, a folder as
+ * its last part. `scopeLabel` gives the full identity. */
+export function scopeName(value: Scope): string {
+  if (value.kind === "repository")
+    return (
+      value.identity.replace(/^[a-z+]+:\/\/[^/]+\//, "").replace(/\.git$/, "") || value.identity
+    );
+  if (value.kind === "local_project")
+    return value.path.split(/[\\/]/).filter(Boolean).pop() ?? value.path;
+  return scopeLabel(value);
+}
 export function scopeLabel(value: Scope): string {
   switch (value.kind) {
     case "personal":

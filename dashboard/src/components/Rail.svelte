@@ -29,7 +29,9 @@ const projects = $derived(
   groupChats(
     chats.filter((chat) => chat.project),
     (chat) => chat.project,
-  ).slice(0, 6),
+  )
+    .sort((a, b) => (b.latestMs ?? 0) - (a.latestMs ?? 0))
+    .slice(0, 6),
 );
 const providers = $derived(groupChats(chats, (chat) => chat.agent));
 const machines = $derived(groupChats(chats, (chat) => chat.machine));
@@ -49,7 +51,7 @@ const sections = [
     icon: SlidersHorizontal,
     tint: "var(--indigo)",
   },
-  { id: "console", label: "tools", href: "#/console", icon: Wrench, tint: "var(--sky)" },
+  { id: "console", label: "tool explorer", href: "#/console", icon: Wrench, tint: "var(--sky)" },
   { id: "settings", label: "settings", href: "#/settings", icon: Settings, tint: "var(--ok)" },
 ] as const;
 type Section = (typeof sections)[number]["id"];
@@ -187,7 +189,7 @@ function toggle(id: Section): void {
           {/each}
         {:else if section.id === "projects"}
           {#each projects as project (project.key)}
-            <a class="sub" class:on={child === project.key} href={projectHref(project.key)} onclick={close}><Folder size={15} color="var(--warn)" aria-hidden="true" /><span>{projectLabel(project.key)}</span></a>
+            <a class="sub" class:on={child === project.key} href={projectHref(project.key)} title={project.key} onclick={close}><Folder size={15} color="var(--warn)" aria-hidden="true" /><span>{projectLabel(project.key)}</span></a>
           {/each}
         {:else if section.id === "memory"}
           {#each kinds as kind (kind)}

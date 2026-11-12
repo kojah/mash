@@ -74,7 +74,7 @@ for (const width of [390, 1280]) {
       ["memory", "", "#/records?", "Memory"],
       ["decisions", "memory", "#/records?kind=decision", "Memory"],
       ["fleet manager", "", "#/fleet", "Fleet manager"],
-      ["tools", "", "#/console", "Tools"],
+      ["tool explorer", "", "#/console", "Tool explorer"],
       ["settings", "", "#/settings", "Settings"],
       ["services", "", "#/services", "Services"],
       ["overview", "", "#/", "Overview"],

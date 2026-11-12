@@ -100,7 +100,10 @@ for (const width of [1440, 390]) {
     if (width < 800) await expect(rail(page)).toBeHidden();
     await expect(page.getByRole("heading", { name: "Machines", exact: true })).toBeVisible();
     await main.getByRole("link", { name: /local/ }).click();
-    await main.getByRole("link", { name: "Search these chats" }).click();
+    await main
+      .getByRole("navigation", { name: "Summary" })
+      .getByRole("link", { name: /^chats/ })
+      .click();
     await expect(page).toHaveURL(/#\/search\?machine=local$/);
     await expect(page.getByRole("link", { name: "Remove filter local" })).toBeVisible();
     await expect(recentChat).toBeVisible();

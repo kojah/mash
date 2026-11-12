@@ -3,7 +3,7 @@ import Bot from "@lucide/svelte/icons/bot";
 import Clock from "@lucide/svelte/icons/clock";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
-import Search from "@lucide/svelte/icons/search";
+import MessagesSquare from "@lucide/svelte/icons/messages-square";
 import { createQuery } from "@tanstack/svelte-query";
 import type { Snippet } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
@@ -55,18 +55,17 @@ const now = Date.now();
     {@render icon()}
     <div style:min-width="0"><h1 class="h1">{title}</h1><p class="meta">{chats.length.toLocaleString()} chats</p></div>
   </div>
-  <span class="acts"><a class="btn" href={searchHref({ [field]: value })}><Search size={16} aria-hidden="true" />Search these chats</a></span>
 </div>
 <QueryError title="Couldn’t load chats" query={catalogue} />
 {#if catalogue.isPending}<Skeleton rows={5} />{/if}
 {#if catalogue.data && !group}<div class="state-c"><p>No indexed chats here.</p></div>{/if}
 {#if group}
   <nav class="stat" aria-label="Summary">
-    <a href={searchHref({ [field]: value })}><span class="k">chats</span><span class="v">{chats.length.toLocaleString()}</span></a>
-    {#if field !== "agent"}<a href={group.agents.length === 1 ? agentHref(group.agents[0]?.[0] ?? "") : "#/agents"}><span class="k">agents</span><span class="v">{group.agents.length}</span></a>{/if}
-    {#if field !== "project"}<a href={named.length === 1 ? projectHref(named[0]?.[0] ?? "") : "#/projects"}><span class="k">projects</span><span class="v">{named.length}</span></a>{/if}
-    {#if field !== "machine"}<a href={group.machines.length === 1 ? machineHref(group.machines[0]?.[0] ?? "") : "#/machines"}><span class="k">machines</span><span class="v">{group.machines.length}</span></a>{/if}
-    {#if latest}<a href={chatHref(latest.id, latest.machine)} title={plainTitle(latest.title)}><span class="k">last active</span><span class="v">{whenLabel(group.latestMs, now)}</span></a>{/if}
+    <a href={searchHref({ [field]: value })}><span class="k"><MessagesSquare size={14} aria-hidden="true" />chats</span><span class="v">{chats.length.toLocaleString()}</span></a>
+    {#if field !== "agent"}<a href={group.agents.length === 1 ? agentHref(group.agents[0]?.[0] ?? "") : "#/agents"}><span class="k"><Bot size={14} aria-hidden="true" />agents</span><span class="v">{group.agents.length}</span></a>{/if}
+    {#if field !== "project"}<a href={named.length === 1 ? projectHref(named[0]?.[0] ?? "") : "#/projects"}><span class="k"><Folder size={14} aria-hidden="true" />projects</span><span class="v">{named.length}</span></a>{/if}
+    {#if field !== "machine"}<a href={group.machines.length === 1 ? machineHref(group.machines[0]?.[0] ?? "") : "#/machines"}><span class="k"><Laptop size={14} aria-hidden="true" />machines</span><span class="v">{group.machines.length}</span></a>{/if}
+    {#if latest}<a href={chatHref(latest.id, latest.machine)} title={plainTitle(latest.title)}><span class="k"><Clock size={14} aria-hidden="true" />last active</span><span class="v">{whenLabel(group.latestMs, now)}</span></a>{/if}
   </nav>
   <div class="cols">
     <div class="c-main stack">

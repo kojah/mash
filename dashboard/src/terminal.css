@@ -1166,9 +1166,28 @@ blockquote {
   border-color: var(--clay2);
   background: var(--soft);
 }
+.stat .k {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stat .k .lucide-messages-square {
+  color: var(--sky);
+}
+.stat .k .lucide-bot {
+  color: var(--lilac);
+}
+.stat .k .lucide-folder {
+  color: var(--warn);
+}
+.stat .k .lucide-laptop {
+  color: var(--blue);
+}
+.stat .k .lucide-clock {
+  color: var(--teal);
+}
 .stat dt,
 .stat .k {
-  display: block;
   font-size: 13px;
   font-weight: 600;
   color: var(--dim);
@@ -1439,6 +1458,7 @@ h1:focus {
   color: var(--warn);
 }
 .mtx {
+  white-space: nowrap;
   font-size: 12.5px;
   color: var(--dim);
   margin: 0 2px;
@@ -1817,6 +1837,15 @@ h1:focus {
   background: var(--raised);
   font-size: 0.94em;
   overflow-wrap: anywhere;
+}
+/* Inside a block the block draws the box; the inline chip would paint each
+   line separately. */
+.log pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+  overflow-wrap: normal;
 }
 .lnk {
   text-decoration: underline;
