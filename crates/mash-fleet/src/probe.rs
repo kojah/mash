@@ -108,6 +108,21 @@ impl ClientHandler for Progress {
     }
 }
 
+/// How long an index request waits for another Mash operation to finish.
+const BUSY_WAITS: u32 = 60;
+const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Whether Mash refused the call because another operation holds the index.
+fn busy(result: &CallToolResult) -> bool {
+    result.is_error == Some(true)
+        && result
+            .structured_content
+            .as_ref()
+            .and_then(|content| content.pointer("/error/kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some("index-busy")
+}
+
 async fn record(report: &Arc<Mutex<report::Report>>, result: CallToolResult) -> Result<(), String> {
     let failed = result.is_error == Some(true);
     report.lock().await.results.push(result);
@@ -188,10 +203,21 @@ async fn run(
         let mut meta = RequestMetaObject::new();
         meta.insert("progressToken".into(), serde_json::json!("ansible-refresh"));
         request.meta = Some(meta);
-        let result = service
-            .call_tool(request)
-            .await
-            .map_err(|_| "Mash index request failed")?;
+        // A machine's own watcher may be indexing, most often right after an
+        // installation restarted it. Mash then refuses this request without
+        // starting anything, so asking again later repeats no work.
+        let mut waits = 0;
+        let result = loop {
+            let result = service
+                .call_tool(request.clone())
+                .await
+                .map_err(|_| "Mash index request failed")?;
+            if !busy(&result) || waits == BUSY_WAITS {
+                break result;
+            }
+            waits += 1;
+            tokio::time::sleep(BUSY_WAIT).await;
+        };
         record(report, result).await?;
     }
     let shared = arguments.shared && arguments.mode != Mode::LocalViews;
@@ -276,6 +302,18 @@ pub(crate) async fn run_probe(arguments: Arguments) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_busy_index_is_worth_asking_again() {
+        let refused = |kind: &str| {
+            let mut result = CallToolResult::error(vec![]);
+            result.structured_content = Some(serde_json::json!({ "error": { "kind": kind } }));
+            result
+        };
+        assert!(busy(&refused("index-busy")));
+        assert!(!busy(&refused("configuration")));
+        assert!(!busy(&CallToolResult::success(vec![])));
+    }
 
     #[tokio::test]
     async fn probe_all_history_requires_explicit_sync() {
