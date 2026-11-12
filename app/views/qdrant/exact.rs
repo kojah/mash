@@ -47,11 +47,9 @@ impl Store {
             || active.is_empty()
             || literal.mode() == crate::views::matching::Mode::Strict
         {
-            Vec::new()
+            std::sync::Arc::default()
         } else {
-            self.api
-                .terms(&collection(&identity.group_id, false), &filter)
-                .await?
+            self.vocabulary(identity, &active, &filter).await?
         };
         let plan = crate::views::matching::Plan::new(&input.query, literal.mode(), &vocabulary)?;
         for group in plan.groups {
@@ -128,6 +126,10 @@ mod budget_tests {
                 .route(&format!("/collections/{name}/facet"), post(move || async move {
                     tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                     r#"{"status":"ok","result":{"hits":[{"value":"bun","count":1},{"value":"mcp","count":1}]}}"#
+                }))
+                // No certified node: the vocabulary is read for this search alone.
+                .route(&format!("/collections/{}/points", collection(&identity.group_id, true)), post(|| async {
+                    r#"{"status":"ok","result":[]}"#
                 }))
                 .route(&format!("/collections/{name}/points/scroll"), post(|| async {
                     r#"{"status":"ok","result":{"points":[],"next_page_offset":null}}"#

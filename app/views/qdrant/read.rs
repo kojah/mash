@@ -168,7 +168,7 @@ impl Store {
             {
                 return Ok((original, Vec::new()));
             }
-            let vocabulary = self.api.terms(&name, filter).await?;
+            let vocabulary = self.vocabulary(identity, active, filter).await?;
             let plan =
                 crate::views::matching::Plan::new(&input.query, input.match_mode, &vocabulary)?;
             let points = self.api.query::<Document>(&name, &request(&plan)).await?;

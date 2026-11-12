@@ -75,7 +75,7 @@ impl NodeViews {
     }
 }
 
-fn views_id(node: &str) -> String {
+pub(super) fn views_id(node: &str) -> String {
     point_id(&["node-views", node])
 }
 

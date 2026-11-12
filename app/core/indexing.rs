@@ -200,10 +200,7 @@ async fn index(
     let database = database_path.to_path_buf();
     let root = models_dir.to_path_buf();
     let build = configuration.views.build.clone();
-    let local_inference = matches!(
-        configuration.embeddings,
-        crate::config::Embeddings::Local {}
-    );
+    let local_inference = configuration.embeddings.uses_local_model();
     let (summary, certificate, storage_setup_milliseconds, ingestion_milliseconds) =
         crate::blocking(move || {
             let database_path = database.as_path();

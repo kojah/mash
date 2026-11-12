@@ -11,6 +11,11 @@ pub(crate) enum Embeddings {
         token_env: String,
         #[serde(default = "default_timeout")]
         timeout_seconds: u32,
+        /// Batches with fewer new texts than this use the local model, so a
+        /// routine refresh does not wait for a remote worker to start. Zero
+        /// sends every batch to the worker.
+        #[serde(default)]
+        local_below: u32,
     },
 }
 
@@ -24,12 +29,34 @@ const fn default_timeout() -> u32 {
     120
 }
 
+/// The most new texts one flushed group can hold, so a larger threshold could
+/// never select the worker.
+const MAX_LOCAL_BELOW: u32 = 1024;
+const _: () = assert!(
+    MAX_LOCAL_BELOW as usize
+        == crate::semantic::remote::MAX_INPUTS * crate::semantic::remote::REQUEST_CONCURRENCY
+);
+
 impl Embeddings {
+    /// Whether a batch of this many new texts is embedded by the local model.
+    pub(crate) const fn runs_locally(&self, inputs: usize) -> bool {
+        match self {
+            Self::Local {} => true,
+            Self::Remote { local_below, .. } => inputs < *local_below as usize,
+        }
+    }
+
+    /// Whether indexing can need the local model at all.
+    pub(crate) const fn uses_local_model(&self) -> bool {
+        self.runs_locally(0)
+    }
+
     pub(crate) fn validate(&self) -> Result<(), AppError> {
         let Self::Remote {
             url,
             token_env,
             timeout_seconds,
+            local_below,
         } = self
         else {
             return Ok(());
@@ -59,6 +86,11 @@ impl Embeddings {
         if !(1..=120).contains(timeout_seconds) {
             return Err(AppError::configuration(
                 "embedding timeout_seconds must be between 1 and 120",
+            ));
+        }
+        if *local_below > MAX_LOCAL_BELOW {
+            return Err(AppError::configuration(
+                "embedding local_below must be at most 1024; use backend = \"local\" to embed everything locally",
             ));
         }
         Ok(())

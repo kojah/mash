@@ -10,6 +10,7 @@ mod read;
 #[cfg(test)]
 mod tests;
 mod views;
+mod vocabulary;
 
 use crate::AppError;
 use crate::views::scope::Scope;
@@ -82,6 +83,7 @@ pub(crate) struct Store {
     vector_index: VectorIndex,
     /// Match evidence follows the server's response masking.
     responses: crate::redaction::Policy,
+    vocabulary: vocabulary::Vocabulary,
 }
 
 /// The same searchable evidence shape for every source. Filter fields are
@@ -265,6 +267,7 @@ impl Store {
             api: api::Client::new("http://127.0.0.1:9", None, 64 * 1024 * 1024).unwrap(),
             vector_index: VectorIndex::default(),
             responses: crate::redaction::Policy::ON,
+            vocabulary: vocabulary::Vocabulary::default(),
         }
     }
     pub(crate) fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
@@ -340,6 +343,7 @@ impl Store {
             api,
             vector_index,
             responses: crate::redaction::Policy::ON,
+            vocabulary: vocabulary::Vocabulary::default(),
         })
     }
     fn dense_name(&self, identity: &Scope) -> &str {

@@ -212,6 +212,7 @@ impl Client {
             url,
             token_env,
             timeout_seconds,
+            ..
         } = configuration
         else {
             return Err(AppError::internal(
@@ -594,6 +595,7 @@ mod tests {
             url: std::env::var("MASH_TEST_EMBEDDING_URL").expect("set MASH_TEST_EMBEDDING_URL"),
             token_env: "MASH_EMBEDDING_TOKEN".into(),
             timeout_seconds: 120,
+            local_below: 0,
         };
         let client = Client::new(&configuration).unwrap();
         let texts = [
@@ -744,6 +746,7 @@ mod tests {
             url: std::env::var("MASH_TEST_EMBEDDING_URL").expect("set MASH_TEST_EMBEDDING_URL"),
             token_env: "MASH_EMBEDDING_TOKEN".into(),
             timeout_seconds: 120,
+            local_below: 0,
         };
         let client = Client::new(&configuration).unwrap();
         let texts: Vec<String> = (0..MAX_INPUTS)

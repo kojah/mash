@@ -63,6 +63,19 @@ sensitive conversation content. It does not grant the worker database access.
 Search-query embeddings and reranking remain local; install local models with
 `mash models install` for offline semantic searches.
 
+A worker that shuts down when idle can take minutes to start, and search waits
+for new messages to be embedded. To keep routine refreshes quick, add
+`local_below` to the table:
+
+```toml
+local_below = 256
+```
+
+A batch with fewer new texts than this is embedded by the local model, which
+needs `mash models install`; larger batches, such as a first index or a
+backfill, still go to the worker. Both produce the same vectors. The value can
+be at most 1024, and leaving it out sends every batch to the worker.
+
 Existing matching vectors are reused. Failed remote requests return an error;
 Mash does not automatically retry the request or silently switch to local
 inference. A timed-out request may still have incurred GPU cost. Check the worker

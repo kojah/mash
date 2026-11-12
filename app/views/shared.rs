@@ -49,23 +49,22 @@ pub(crate) async fn embed_units(
     let vectors = if texts.is_empty() {
         Vec::new()
     } else {
-        match execution {
-            crate::config::Embeddings::Local {} => {
-                let models = model.ok_or_else(AppError::models_missing)?;
-                embed_texts(models, pool, &texts, result).await?
+        // A configured threshold is an explicit placement, not a fallback: a
+        // failed remote request still fails the batch.
+        if execution.runs_locally(texts.len()) {
+            let models = model.ok_or_else(AppError::models_missing)?;
+            embed_texts(models, pool, &texts, result).await?
+        } else {
+            if result.remote.is_none() {
+                result.remote = Some(crate::semantic::remote::Client::new(execution)?);
             }
-            crate::config::Embeddings::Remote { .. } => {
-                if result.remote.is_none() {
-                    result.remote = Some(crate::semantic::remote::Client::new(execution)?);
-                }
-                let client = result
-                    .remote
-                    .as_ref()
-                    .ok_or_else(|| AppError::internal("missing embedding client"))?;
-                let embedded = client.embed(&texts).await?;
-                result.embedding_milliseconds += embedded.inference_milliseconds;
-                embedded.vectors
-            }
+            let client = result
+                .remote
+                .as_ref()
+                .ok_or_else(|| AppError::internal("missing embedding client"))?;
+            let embedded = client.embed(&texts).await?;
+            result.embedding_milliseconds += embedded.inference_milliseconds;
+            embedded.vectors
         }
     };
     if vectors.len() != texts.len()
@@ -131,4 +130,53 @@ pub(crate) async fn embed_texts(
     result.model_load_milliseconds += load_ms;
     result.embedding_milliseconds += embed_ms;
     Ok(vectors)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Embeddings;
+    use crate::views::documents::EmbeddingInput;
+
+    /// Neither a local model nor a worker token exists here, so the error says
+    /// which side a batch was placed on without running any inference.
+    async fn placement(execution: &Embeddings, texts: usize) -> String {
+        let inputs = (0..texts)
+            .map(|_| EmbeddingInput {
+                provider: crate::provider::Provider::ClaudeCode,
+                anchor: "message",
+                text: "text",
+            })
+            .collect::<Vec<_>>();
+        embed_units(
+            &inputs,
+            ("generation", 384),
+            None,
+            &mut None,
+            &mut Build::default(),
+            vec![None; texts],
+            execution,
+        )
+        .await
+        .unwrap_err()
+        .error
+        .message
+    }
+
+    #[tokio::test]
+    async fn small_batches_embed_locally_only_below_the_configured_threshold() {
+        let remote = |local_below| Embeddings::Remote {
+            url: "https://example.com/embed".into(),
+            token_env: "MASH_TEST_NOT_PRESENT".into(),
+            timeout_seconds: 1,
+            local_below,
+        };
+        let local = AppError::models_missing().error.message;
+        let worker = "embedding service token environment variable is missing";
+        assert_eq!(placement(&remote(4), 3).await, local);
+        assert_eq!(placement(&remote(4), 4).await, worker);
+        // Without a threshold even one text goes to the worker.
+        assert_eq!(placement(&remote(0), 1).await, worker);
+        assert_eq!(placement(&Embeddings::Local {}, 9).await, local);
+    }
 }
