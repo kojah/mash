@@ -2,7 +2,10 @@ name: Release
 
 # Tagging vX.Y.Z publishes prebuilt binaries for the commit CI validated, then
 # updates this repository's Scoop bucket (no extra credential required).
-# It also updates the Homebrew tap when HOMEBREW_TAP_TOKEN is configured.
+# Each other package channel is updated when its credential is configured, and
+# skipped otherwise: the Homebrew tap (HOMEBREW_TAP_TOKEN), winget
+# (WINGET_TOKEN), Chocolatey (CHOCOLATEY_API_KEY) and the signed apt repository
+# on GitHub Pages (APT_GPG_PRIVATE_KEY).
 # mise and cargo-binstall read the release assets directly. Releases build on
 # stable Rust so they need no nightly features.
 on:
@@ -119,6 +122,12 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+      # The package jobs below fill their manifests from these checksums.
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+          retention-days: 7
       - name: Update the Scoop bucket
         run: |
           python3 packaging/render.py "$GITHUB_REF_NAME" dist/SHA256SUMS \
@@ -147,3 +156,78 @@ jobs:
           git add Formula/mash.rb
           git commit -m "mash ${GITHUB_REF_NAME}"
           git push
+
+  apt:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish .deb packages and the apt repository
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$APT_GPG_PRIVATE_KEY" ]; then
+            echo "APT_GPG_PRIVATE_KEY is not set; skipping apt."
+            exit 0
+          fi
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          command -v apt-ftparchive >/dev/null || sudo apt-get install -y apt-utils
+          if git ls-remote --exit-code origin gh-pages >/dev/null; then
+            git clone --branch gh-pages --depth 1 \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+          else
+            git init -b gh-pages site
+            git -C site remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            touch site/.nojekyll
+          fi
+          packaging/apt/build-repo.sh "$GITHUB_REF_NAME" dist site/apt
+          gh release upload "$GITHUB_REF_NAME" dist/mash_*.deb --repo "$GITHUB_REPOSITORY"
+          cd site
+          git config user.name "mash release"
+          git config user.email "mash-release@users.noreply.github.com"
+          git add -A
+          git commit -m "apt: mash ${GITHUB_REF_NAME}"
+          git push origin gh-pages
+
+  windows-packages:
+    needs: publish
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: SHA256SUMS
+          path: dist
+      - name: Render manifests
+        run: |
+          $version = "$env:GITHUB_REF_NAME".TrimStart('v')
+          foreach ($name in 'kojah.mash.yaml', 'kojah.mash.installer.yaml', 'kojah.mash.locale.en-US.yaml') {
+            python packaging/render.py $version dist/SHA256SUMS "packaging/winget/$name.in" "winget/$name"
+          }
+          python packaging/render.py $version dist/SHA256SUMS packaging/chocolatey/mash.nuspec.in chocolatey/mash.nuspec
+          python packaging/render.py $version dist/SHA256SUMS packaging/chocolatey/tools/chocolateyinstall.ps1.in chocolatey/tools/chocolateyinstall.ps1
+      - name: Submit to winget
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { "WINGET_TOKEN is not set; skipping winget."; exit 0 }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe submit --token $env:WINGET_TOKEN winget
+      - name: Push to Chocolatey
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          if (-not $env:CHOCOLATEY_API_KEY) { "CHOCOLATEY_API_KEY is not set; skipping Chocolatey."; exit 0 }
+          choco pack chocolatey/mash.nuspec --outputdirectory chocolatey
+          $package = Get-ChildItem chocolatey/mash.*.nupkg | Select-Object -First 1
+          choco push $package.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY

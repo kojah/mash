@@ -38,7 +38,15 @@ On Xenia, run builds and tests through `agent-test`. The static output goes to
 ## Publishing
 
 The Documentation workflow validates pull requests and publishes changes on
-`main`. It can also be dispatched manually.
+`main`. It can also be dispatched manually. A completed Release workflow
+rebuilds the site so newly published apt packages are included.
+
+The release workflow owns the signed apt repository on the `gh-pages` branch.
+Documentation builds copy that branch's `apt/` directory into the Pages artifact
+without modifying it. The documentation workflow never rewrites that branch.
+If fetching an existing apt branch fails, publishing fails rather than dropping
+packages. Before the first apt release, publishing only the documentation is
+expected.
 
 GitHub Pages must use GitHub Actions as its publishing source and `mashapp.dev`
 as its custom domain. DNS points the domain at GitHub Pages; no Cloudflare token
