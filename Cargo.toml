@@ -93,7 +93,7 @@ serde_json = { version = "1.0.149", features = ["raw_value"] }
 schemars = "1.2"
 # The dashboard's OpenAPI document. Pinned: 0.16 is the first line that reads
 # schemars 1 schemas, and it is still a pre-release.
-aide = { version = "=0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query"] }
+aide = { version = "=0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-ws"] }
 walkdir = "2.5.0"
 same-file = "1.0.6"
 

@@ -206,8 +206,9 @@ pub(crate) struct Indexed {
     pub views_current: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "ViewRequest")]
 pub(crate) struct View {
     pub node_id: String,
     pub id: String,
@@ -219,7 +220,7 @@ pub(crate) struct View {
     pub content: crate::storage::MessageContent,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ChatPage {
     pub node_id: String,
@@ -229,7 +230,7 @@ pub(crate) struct ChatPage {
 }
 
 /// A bounded search-only batch; the explicit view API retains larger radii.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Contexts {
     pub anchors: Vec<View>,

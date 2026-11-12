@@ -99,3 +99,15 @@ each route answers with. A running dashboard serves the document at
   MCP contract.
 - `aide` is pinned to a pre-release (`0.16.0-alpha.4`), the first line that
   reads `schemars` 1 schemas. Move to the stable release when there is one.
+
+The shared server is described the same way. Its handlers already take and
+return typed values, so `aide` reads everything from them. The result is kept
+as a reference at `docs/internal/shared-server-openapi.json`; the Rust test
+`committed_server_contract_matches_the_routes` fails when it is out of date
+and rewrites it with `MASH_WRITE_CONTRACT=1`. The synchronization route
+upgrades to a WebSocket, and its frames are outside what the document
+describes.
+
+Several types share a short name, such as `Request` and `Scope`, and the MCP
+tools publish them under those names. `app/openapi.rs` gives each a distinct
+name inside the generated documents without renaming the types.

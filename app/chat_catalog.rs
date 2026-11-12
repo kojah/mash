@@ -170,8 +170,9 @@ pub(crate) fn headline(title: &mut String) {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "ChatCatalogPage")]
 pub(crate) struct Page {
     pub(crate) chats: Vec<Chat>,
     pub(crate) next_offset: Option<usize>,

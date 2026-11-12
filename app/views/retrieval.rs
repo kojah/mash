@@ -3,8 +3,9 @@ use crate::provider::Provider;
 use crate::storage::SearchHit;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "SearchRequest")]
 pub(crate) struct Search {
     #[serde(default)]
     pub match_mode: crate::views::matching::Mode,
@@ -36,14 +37,14 @@ fn related_discussion(intent: &crate::views::exact::Intent) -> bool {
     *intent == crate::views::exact::Intent::RelatedDiscussion
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Candidates {
     pub lexical: Vec<SearchHit>,
     pub semantic: Vec<SearchHit>,
     pub documents: Vec<Document>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Document {
     pub node_id: String,
     pub id: String,

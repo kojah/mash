@@ -7,7 +7,6 @@ use axum::extract::{DefaultBodyLimit, Extension, Request, State, rejection::Json
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
 use axum::{Json, Router};
 
 mod admission;
@@ -42,6 +41,10 @@ struct Listening {
 }
 
 struct ApiError(StatusCode, AppError);
+/// A failure answers with the error body, whatever the route.
+impl aide::OperationOutput for ApiError {
+    type Inner = crate::AppError;
+}
 impl From<AppError> for ApiError {
     fn from(error: AppError) -> Self {
         let status = match error.error.kind {
@@ -132,22 +135,62 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
             .into_response()
         })
 }
+/// Every route, and the `OpenAPI` document `aide` derives from the handlers'
+/// own request and answer types. The synchronization route upgrades to a
+/// WebSocket; its frames are outside what the document describes.
+fn api() -> (Router<App>, aide::openapi::OpenApi) {
+    use aide::axum::routing::{get, post};
+    let mut document = aide::openapi::OpenApi {
+        info: aide::openapi::Info {
+            title: "mash-server".into(),
+            description: Some(
+                "The shared index's API. Every request carries a node's bearer token. Generated from the server's routes; do not edit."
+                    .into(),
+            ),
+            version: "1".into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let router = aide::axum::ApiRouter::new()
+        .api_route("/v1/freshness", get(freshness))
+        .api_route("/v1/search", post(search))
+        .api_route("/v1/chats", post(list_chats))
+        .api_route("/v1/records", post(list_records))
+        .api_route("/v1/record", post(get_record))
+        .api_route("/v1/catalog", get(catalog))
+        .api_route("/v1/chat", post(chat_page))
+        .api_route("/v1/view", post(view))
+        .api_route("/v1/contexts", post(contexts::read))
+        .api_route("/v1/query", post(query))
+        .api_route("/v1/fingerprints", get(fingerprints))
+        .api_route("/v1/attachments", post(attachments::list))
+        .api_route("/v1/attachment", post(attachments::get))
+        .api_route("/v1/sync", get(sync::upgrade))
+        .finish_api(&mut document);
+    (router, document)
+}
+
+/// The contract as JSON, with each schema under a name of its own.
+#[cfg(test)]
+fn document() -> serde_json::Value {
+    let mut document = serde_json::to_value(api().1).unwrap_or_default();
+    crate::openapi::settle(
+        &mut document,
+        "Request",
+        &[
+            ("direction", "ChatListRequest"),
+            ("group_by", "QueryRequest"),
+            ("attachment_id", "AttachmentRequest"),
+        ],
+    );
+    crate::openapi::settle(&mut document, "Filter", &[("chat", "QueryFilter")]);
+    crate::openapi::settle(&mut document, "Scope", &[("after", "CoverageScope")]);
+    crate::openapi::sorted(document)
+}
+
 fn router(app: App) -> Router {
-    let router = Router::new()
-        .route("/v1/freshness", get(freshness))
-        .route("/v1/search", post(search))
-        .route("/v1/chats", post(list_chats))
-        .route("/v1/records", post(list_records))
-        .route("/v1/record", post(get_record))
-        .route("/v1/catalog", get(catalog))
-        .route("/v1/chat", post(chat_page))
-        .route("/v1/view", post(view))
-        .route("/v1/contexts", post(contexts::read))
-        .route("/v1/query", post(query))
-        .route("/v1/fingerprints", get(fingerprints))
-        .route("/v1/attachments", post(attachments::list))
-        .route("/v1/attachment", post(attachments::get))
-        .route("/v1/sync", get(sync::upgrade));
+    let router = api().0;
     router
         .method_not_allowed_fallback(|| async {
             ApiError(
@@ -177,7 +220,7 @@ async fn fingerprints(
     ))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SharedQuery {
     /// Member of the caller's group; defaults to the caller's own node.
@@ -567,3 +610,25 @@ async fn test_parent_exit() {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod contract {
+    /// `docs/internal/shared-server-openapi.json` is a reference copy of this
+    /// server's API. Rewrite it with `MASH_WRITE_CONTRACT=1` after changing a
+    /// route or a type it reads or answers with.
+    #[test]
+    fn committed_server_contract_matches_the_routes() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("docs/internal/shared-server-openapi.json");
+        let mut current = serde_json::to_string_pretty(&super::document()).unwrap();
+        current.push('\n');
+        if std::env::var_os("MASH_WRITE_CONTRACT").is_some() {
+            std::fs::write(&path, &current).unwrap();
+        }
+        let committed = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            committed == current,
+            "docs/internal/shared-server-openapi.json is out of date: rerun this test with MASH_WRITE_CONTRACT=1"
+        );
+    }
+}

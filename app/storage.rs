@@ -108,7 +108,7 @@ pub(crate) struct Message {
     pub(crate) tools: crate::tools::Activity,
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum MessageContent {
     #[default]

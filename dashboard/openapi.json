@@ -3131,7 +3131,7 @@
             "type": "array"
           },
           "scope": {
-            "$ref": "#/components/schemas/RecordScope"
+            "$ref": "#/components/schemas/Scope"
           }
         },
         "required": [
@@ -3350,74 +3350,6 @@
         ],
         "type": "object"
       },
-      "RecordScope": {
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "const": "personal",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "identity": {
-                "type": "string"
-              },
-              "kind": {
-                "const": "repository",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "identity"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "const": "local_project",
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "path"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "kind": {
-                "const": "chat",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "id"
-            ],
-            "type": "object"
-          }
-        ]
-      },
       "RedactionSettings": {
         "additionalProperties": false,
         "description": "Where a node masks recognizable credentials, configured under `[redaction]`.\nEach destination defaults on; credentials in canonical silver are never\nmasked (`<private>` spans never reach it: see [`private_text`]).",
@@ -3553,6 +3485,74 @@
           "rejected_sources"
         ],
         "type": "object"
+      },
+      "Scope": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "personal",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "identity": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "repository",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "identity"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "local_project",
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "chat",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "Search": {
         "oneOf": [

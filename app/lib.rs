@@ -3,6 +3,7 @@
 
 // Silver canonical history and the vocabulary used by native adapters.
 mod message_context;
+mod openapi;
 mod provider;
 mod role;
 mod silver;

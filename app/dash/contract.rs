@@ -57,60 +57,11 @@ pub(super) fn changes<R: JsonSchema>(
     move |operation| describe::<R>(operation, "post", path, summary)
 }
 
-const REFERENCE: &str = "#/components/schemas/";
-
-/// Points every reference to the schema `from` at `to`.
-fn redirect(value: &mut Value, from: &str, to: &str) {
-    match value {
-        Value::Object(fields) => {
-            if let Some(Value::String(target)) = fields.get_mut("$ref")
-                && target.strip_prefix(REFERENCE) == Some(from)
-            {
-                *target = format!("{REFERENCE}{to}");
-            }
-            fields
-                .values_mut()
-                .for_each(|field| redirect(field, from, to));
-        }
-        Value::Array(items) => items.iter_mut().for_each(|item| redirect(item, from, to)),
-        _ => {}
-    }
-}
-
-fn rename(document: &mut Value, from: &str, to: &str) {
-    if let Some(schemas) = document["components"]["schemas"].as_object_mut()
-        && let Some(schema) = schemas.remove(from)
-    {
-        schemas.insert(to.into(), schema);
-        redirect(document, from, to);
-    }
-}
-
-/// The contract as JSON.
-///
-/// A memory's scope and a coverage report's scope are both called `Scope`,
-/// and the MCP tools publish both under that name, so neither type can be
-/// renamed. One document cannot hold two schemas of one name: the generator
-/// numbers the second. Here each gets a name of its own instead.
+/// The contract as JSON, with each schema under a name of its own.
 pub(super) fn document(api: &aide::openapi::OpenApi) -> Value {
     let mut document = serde_json::to_value(api).unwrap_or_default();
-    // Only a coverage scope has an `after` bound.
-    let covers = |name: &str| {
-        document["components"]["schemas"][name]["properties"]
-            .get("after")
-            .is_some()
-    };
-    let (coverage, record) = if covers("Scope") {
-        ("Scope", "Scope2")
-    } else {
-        ("Scope2", "Scope")
-    };
-    rename(&mut document, coverage, "CoverageScope");
-    rename(&mut document, record, "RecordScope");
-    if let Some(schemas) = document["components"]["schemas"].as_object_mut() {
-        schemas.sort_keys();
-    }
-    document
+    crate::openapi::settle(&mut document, "Scope", &[("after", "CoverageScope")]);
+    crate::openapi::sorted(document)
 }
 
 #[cfg(test)]

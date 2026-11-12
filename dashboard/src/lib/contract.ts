@@ -1260,7 +1260,7 @@ export interface components {
             node_id?: string | null;
             owner: string;
             revisions: components["schemas"]["RecordRevision"][];
-            scope: components["schemas"]["RecordScope"];
+            scope: components["schemas"]["Scope"];
         };
         RecordDetailParams: {
             /** Format: int64 */
@@ -1326,22 +1326,6 @@ export interface components {
             /** Format: int64 */
             revision: number;
         };
-        RecordScope: {
-            /** @constant */
-            kind: "personal";
-        } | {
-            identity: string;
-            /** @constant */
-            kind: "repository";
-        } | {
-            /** @constant */
-            kind: "local_project";
-            path: string;
-        } | {
-            id: string;
-            /** @constant */
-            kind: "chat";
-        };
         /**
          * @description Where a node masks recognizable credentials, configured under `[redaction]`.
          *     Each destination defaults on; credentials in canonical silver are never
@@ -1394,6 +1378,22 @@ export interface components {
             rejected_sources: number;
             /** @description Completion of a recorded scan, not completeness of all historical chats. */
             state: components["schemas"]["Completeness"];
+        };
+        Scope: {
+            /** @constant */
+            kind: "personal";
+        } | {
+            identity: string;
+            /** @constant */
+            kind: "repository";
+        } | {
+            /** @constant */
+            kind: "local_project";
+            path: string;
+        } | {
+            id: string;
+            /** @constant */
+            kind: "chat";
         };
         Search: {
             /** @constant */

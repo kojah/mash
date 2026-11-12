@@ -173,14 +173,14 @@ pub(crate) struct Metadata {
     pub(crate) redacted: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Listing {
     pub(crate) message_id: String,
     pub(crate) attachments: Vec<Metadata>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Retrieved {
     pub(crate) message_id: String,
@@ -194,6 +194,7 @@ pub(crate) struct Retrieved {
     clippy::struct_field_names,
     reason = "wire identities distinguish publishing node, message and attachment"
 )]
+#[derive(schemars::JsonSchema)]
 pub(crate) struct Request {
     pub(crate) node_id: String,
     pub(crate) message_id: String,
