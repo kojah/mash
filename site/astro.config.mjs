@@ -6,11 +6,21 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "mash",
-      favicon: "/mash-logo.png",
+      favicon: "/favicon.svg",
       description: "The Multi-Agent Search History Tool",
-      logo: { src: "./public/mash-logo.png" },
+      // On the cream of the light theme the mark sits on its own dark tile.
+      logo: { dark: "./public/mash-mark.svg", light: "./public/favicon.svg" },
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/kojah/mash" }],
-      customCss: ["./src/styles/custom.css"],
+      // The fonts are bundled with the site, as they are with the dashboard.
+      customCss: [
+        "@fontsource/ibm-plex-sans/latin-400.css",
+        "@fontsource/ibm-plex-sans/latin-400-italic.css",
+        "@fontsource/ibm-plex-sans/latin-500.css",
+        "@fontsource/ibm-plex-sans/latin-600.css",
+        "@fontsource/ibm-plex-mono/latin-400.css",
+        "@fontsource/ibm-plex-mono/latin-500.css",
+        "./src/styles/custom.css",
+      ],
       components: {
         Head: "./src/components/Head.astro",
         Search: "./src/components/Search.astro",
