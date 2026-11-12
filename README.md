@@ -36,35 +36,33 @@ Qdrant powers both word search and semantic search; semantic models are optional
 
 ### 1. Install Mash
 
-Public release packages have not been published yet. For now, build with Rust:
+Public release packages have not been published yet, so today Mash is built
+from source with Rust. The first build can take several minutes:
 
 ```bash
 cargo +stable install --locked --git https://github.com/kojah/mash mash
 ```
 
-The first build can take several minutes.
+Every channel below installs a prebuilt binary without Rust, and starts working
+with the first published release. Choose one.
 
-**Recommended for published releases: the install scripts.** They download a
-prebuilt binary without requiring Rust. These commands will work once the first
-release is published:
+| Channel | Command | Works |
+| --- | --- | --- |
+| Build from source | `cargo +stable install --locked --git https://github.com/kojah/mash mash` | today |
+| Shell script, macOS and Linux | `curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh \| sh` | from the first release |
+| PowerShell script, Windows x64 | `irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 \| iex` | from the first release |
+| Homebrew | `brew install kojah/tap/mash` | from the first release |
+| apt, Debian and Ubuntu | [add the Mash repository](docs/installation.md#package-manager-alternatives), then `sudo apt install mash` | from the first release |
+| winget | `winget install --id kojah.mash --exact` | from the first release |
+| Chocolatey | `choco install mash` | from the first release |
+| Scoop | `scoop bucket add kojah https://github.com/kojah/mash`, then `scoop install kojah/mash` | from the first release |
+| mise | `mise use -g github:kojah/mash` | from the first release |
+| cargo-binstall | `cargo binstall --git https://github.com/kojah/mash mash` | from the first release |
 
-**Shell — macOS / Linux**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
-```
-
-**PowerShell — Windows x64**
-
-```powershell
-irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
-```
-
-Both scripts verify release checksums. They install to your user’s `.local/bin`
-directory; add it to `PATH` if needed.
-
-Prefer a package manager? See [alternative installation methods](docs/installation.md#package-manager-alternatives)
-for Homebrew, apt, winget, Chocolatey, Scoop, mise, and cargo-binstall.
+The two scripts are the recommended way to install a release. They verify
+release checksums and install to your user’s `.local/bin` directory; add it to
+`PATH` if needed. [Install Mash](docs/installation.md#install-the-cli) has the
+details for each channel.
 
 ### 2. Start the local search service
 
