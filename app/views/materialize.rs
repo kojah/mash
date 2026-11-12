@@ -214,11 +214,7 @@ impl<'a> Writer<'a> {
         let mut stats = vec![ChatStats::default(); chats.len()];
         for (chat_index, (chat, messages)) in chats.iter().enumerate() {
             stats[chat_index].messages = messages.len() as u64;
-            let mut units = super::units::Stream::default();
-            for batch in messages.chunks(embedding::CACHE_ROWS) {
-                let (next_units, prepared) =
-                    Prepared::read(self.store, self.scope, chat, batch, units, self.reuse).await?;
-                units = next_units;
+            for prepared in self.prepare_chat(chat, messages).await? {
                 let Prepared {
                     rows,
                     texts,
@@ -272,6 +268,44 @@ impl<'a> Writer<'a> {
                 )
             })
             .collect())
+    }
+
+    /// Prepare a whole chat, then look up its reusable vectors together.
+    /// Most rows of a long agent chat carry no dense input, so a lookup per
+    /// row batch would cost one Qdrant request for a handful of vectors.
+    async fn prepare_chat(
+        &self,
+        chat: &ChatRecord,
+        messages: &[SearchMessage],
+    ) -> Result<Vec<Prepared>, AppError> {
+        let mut units = super::units::Stream::default();
+        let mut prepared = Vec::new();
+        for batch in messages.chunks(embedding::CACHE_ROWS) {
+            let (next, batch) =
+                Prepared::read(self.store, self.scope, chat, batch, units, false).await?;
+            units = next;
+            prepared.push(batch);
+        }
+        if self.reuse {
+            let lookup = prepared
+                .iter()
+                .flat_map(|batch| inputs(chat, &batch.rows, &batch.texts))
+                .collect::<Vec<_>>();
+            let mut cached = self
+                .store
+                .reusable_vectors(self.scope, &lookup)
+                .await?
+                .into_iter();
+            drop(lookup);
+            for batch in &mut prepared {
+                let dense = batch.cached.len();
+                batch.cached = cached.by_ref().take(dense).collect();
+                if batch.cached.len() != dense {
+                    return Err(AppError::internal("incomplete reusable vector lookup"));
+                }
+            }
+        }
+        Ok(prepared)
     }
 
     async fn flush_pending(

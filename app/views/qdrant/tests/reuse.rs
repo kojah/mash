@@ -170,6 +170,51 @@ async fn qdrant_materializer_reuses_chat_vectors_after_metadata_edits_without_a_
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
+async fn qdrant_chat_window_reuses_sparse_dense_inputs_across_row_batches() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let model = model();
+    let chat = Fixture::chat();
+    let template = search_messages(&fixture).remove(0);
+    let rows = crate::views::shared::CACHE_ROWS;
+    // A long agent chat: three searchable messages, one in each row batch,
+    // among rows with nothing to search.
+    let visible = [1, rows + 2, 2 * rows + 3];
+    let messages = (0..2 * rows + 5)
+        .map(|index| {
+            let mut message = template.clone();
+            message.id = format!("row-{index}");
+            message.ordinal = i64::try_from(index).unwrap();
+            message.projection = if visible.contains(&index) {
+                format!("searchable text of row {index}")
+            } else {
+                String::new()
+            };
+            message
+        })
+        .collect::<Vec<_>>();
+    let chats = [(chat, messages)];
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
+    let built = writer.write_chats(&chats).await.unwrap();
+    assert!(built[0].1.complete);
+    assert_eq!(built[0].1.embeddings, 3);
+    assert_eq!(
+        writer.finish().await.unwrap().embeddings.model_inferences,
+        3
+    );
+
+    // Without a model every vector must come back from the stored points,
+    // each matched to its own row.
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, None);
+    let built = writer.write_chats(&chats).await.unwrap();
+    assert!(built[0].1.complete);
+    let result = writer.finish().await.unwrap();
+    assert_eq!(result.embeddings.model_inferences, 0);
+    assert_eq!(result.embeddings.reused_vectors, 3);
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
 async fn qdrant_materializer_reuse_tracks_prepared_title_and_parent_context() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let store = fixture
