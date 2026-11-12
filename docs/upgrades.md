@@ -41,10 +41,18 @@ revisions and the links that resolved them. Decisions, preferences and facts
 are untouched. Read-only commands never
 migrate a database. Restart agent connections and watchers after the upgrade.
 
+This release needs Qdrant 1.20 or later. Upgrade Qdrant first: stop the 1.19
+service, start 1.20 on the same storage, then install the new Mash and run
+`mash index` once. That run adds a word-search index to your existing search
+data; it does not rebuild it or recompute embeddings. Until it has run, search
+reports that the views need upgrading. Qdrant storage opened by 1.20 should not
+be opened by 1.19 again, so back up first if you may need to go back.
+
 For shared indexing, upgrade the server and publishing nodes to a matching
 release. The synchronization handshake rejects older peers that cannot publish
 native records. A protocol mismatch does not require deleting or rebuilding
-valid chat search data.
+valid chat search data. Upgrade the server's Qdrant to 1.20 before starting
+the new `mash-server`; it adds the word-search index when it starts.
 
 Earlier schemas, including schema 54, are not supported by this migration. Use
 the export/import fallback below for those versions. Do not change database

@@ -11,6 +11,7 @@ mod recipe;
 mod recovery;
 mod retries;
 mod reuse;
+mod upgrade;
 
 /// One disposable group: a SQLite silver file and its Qdrant views collections.
 struct Fixture {
@@ -209,11 +210,7 @@ impl Fixture {
 }
 
 #[test]
-fn qdrant_configuration_and_sparse_vectors_are_typed_and_bounded() {
-    let sparse = sparse("needle needle other", false);
-    assert_eq!(sparse.indices.len(), 2);
-    assert_eq!(sparse.indices.len(), sparse.values.len());
-    assert!(sparse.values.iter().all(|v| v.is_finite() && *v > 0.0));
+fn document_ids_are_stable_and_scoped_to_their_node() {
     assert_eq!(
         document_id("node", "message"),
         document_id("node", "message")

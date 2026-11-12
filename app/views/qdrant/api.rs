@@ -117,10 +117,11 @@ pub(super) struct Scored<P> {
     pub score: f32,
     pub payload: P,
 }
+/// Word search ranks from the `unit.text` payload index, so points carry
+/// only their dense vector.
 #[derive(Clone, Default)]
 pub(super) struct Vectors {
     pub dense: Option<(String, Vec<f64>)>,
-    pub lexical: Option<Sparse>,
 }
 impl Serialize for Vectors {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -129,16 +130,8 @@ impl Serialize for Vectors {
         if let Some((name, vector)) = &self.dense {
             map.serialize_entry(name, vector)?;
         }
-        if let Some(vector) = &self.lexical {
-            map.serialize_entry("lexical", vector)?;
-        }
         map.end()
     }
-}
-#[derive(Clone, Serialize)]
-pub(super) struct Sparse {
-    pub indices: Vec<u32>,
-    pub values: Vec<f32>,
 }
 #[derive(Serialize)]
 pub(super) struct Upsert<P> {
@@ -157,6 +150,7 @@ pub(super) struct Filter {
 #[serde(untagged)]
 pub(super) enum Condition {
     Match { key: String, r#match: Match },
+    Text { key: String, r#match: TextAny },
     Range { key: String, range: Range },
     Nested(Filter),
 }
@@ -170,6 +164,19 @@ pub(super) struct Range {
     pub gte: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lt: Option<i64>,
+}
+/// Any of these words, as the field's full-text index tokenizes them.
+#[derive(Clone, Serialize)]
+pub(super) struct TextAny {
+    pub text_any: String,
+}
+pub(super) fn text_any(key: &str, words: &[String]) -> Condition {
+    Condition::Text {
+        key: key.into(),
+        r#match: TextAny {
+            text_any: words.join(" "),
+        },
+    }
 }
 pub(super) fn matches(key: &str, values: Vec<String>) -> Condition {
     Condition::Match {
@@ -185,7 +192,11 @@ pub(super) fn impossible() -> Condition {
 #[serde(untagged)]
 pub(super) enum QueryVector {
     Dense(Vec<f64>),
-    Sparse(Sparse),
+    /// BM25 over the full-text index of the payload field named by `using`.
+    /// A point scores when it holds any word; required words go in the filter.
+    Text {
+        text: String,
+    },
 }
 #[derive(Serialize)]
 pub(super) struct QueryRequest {
@@ -256,11 +267,52 @@ struct DenseConfig {
     #[serde(default, skip_serializing)]
     datatype: Option<String>,
 }
-#[derive(Serialize, Deserialize)]
+/// Collections created before word search moved to the text index keep this
+/// vector's configuration; Qdrant cannot remove it, and nothing reads it.
+#[derive(Deserialize)]
 struct SparseConfig {
     modifier: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    index: Option<Placement>,
+}
+/// The word-search index: Mash's own word boundaries (`word`, lowercased)
+/// with the document lengths BM25 needs.
+#[derive(Serialize)]
+struct TextIndex {
+    r#type: &'static str,
+    tokenizer: &'static str,
+    lowercase: bool,
+    scoring: Scoring,
+    memory: PhysicalMemory,
+}
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+struct Scoring {
+    r#type: String,
+}
+impl TextIndex {
+    fn new(memory: PhysicalMemory) -> Self {
+        Self {
+            r#type: "text",
+            tokenizer: "word",
+            lowercase: true,
+            scoring: Scoring {
+                r#type: "bm25".into(),
+            },
+            memory,
+        }
+    }
+}
+/// Parameters Qdrant reports for an installed payload index.
+#[derive(Default, Deserialize)]
+struct IndexParams {
+    tokenizer: Option<String>,
+    lowercase: Option<bool>,
+    scoring: Option<Scoring>,
+}
+impl IndexParams {
+    fn ranks_words(&self) -> bool {
+        self.tokenizer.as_deref() == Some("word")
+            && self.lowercase != Some(false)
+            && self.scoring.as_ref().is_some_and(|s| s.r#type == "bm25")
+    }
 }
 #[derive(Serialize, Deserialize)]
 struct Hnsw {
@@ -296,20 +348,10 @@ impl Placement {
             PhysicalMemory::Cached
         }) == expected
     }
-
-    fn matches_sparse(&self, expected: PhysicalMemory) -> bool {
-        self.memory.unwrap_or(if self.on_disk == Some(true) {
-            PhysicalMemory::Cold
-        } else {
-            PhysicalMemory::Pinned
-        }) == expected
-    }
 }
 #[derive(Serialize)]
 struct Create {
     vectors: BTreeMap<String, DenseConfig>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    sparse_vectors: BTreeMap<String, SparseConfig>,
     hnsw_config: Hnsw,
     #[serde(skip_serializing_if = "Option::is_none")]
     optimizers_config: Option<planner::Optimizers>,
@@ -323,6 +365,14 @@ struct Info {
 #[derive(Deserialize)]
 struct FieldSchema {
     data_type: String,
+    #[serde(default)]
+    params: Option<IndexParams>,
+}
+impl FieldSchema {
+    fn serves(&self, kind: &str) -> bool {
+        self.data_type == kind
+            && (kind != "text" || self.params.as_ref().is_some_and(IndexParams::ranks_words))
+    }
 }
 #[derive(Deserialize)]
 struct Instance {
@@ -383,7 +433,13 @@ impl<'a> VocabularyRequest<'a> {
 #[derive(Serialize)]
 struct PayloadIndex<'a> {
     field_name: &'a str,
-    field_schema: &'a str,
+    field_schema: IndexSchema,
+}
+#[derive(Serialize)]
+#[serde(untagged)]
+enum IndexSchema {
+    Plain(&'static str),
+    Text(TextIndex),
 }
 
 fn schema_fields(
@@ -403,16 +459,7 @@ fn memory_matches(info: &Info, dimensions: Option<usize>, memory: MemoryTier) ->
                 .vectors
                 .values()
                 .all(|v| v.placement.matches(memory.dense()))
-                && info.config.hnsw_config.placement.matches(memory.index())
-                && info.config.params.sparse_vectors.as_ref().is_some_and(|s| {
-                    s.get("lexical").is_some_and(|v| {
-                        v.index
-                            .as_ref()
-                            .map_or(memory.index() == PhysicalMemory::Pinned, |p| {
-                                p.matches_sparse(memory.index())
-                            })
-                    })
-                })))
+                && info.config.hnsw_config.placement.matches(memory.index())))
 }
 
 fn schema_fields_mode(
@@ -435,8 +482,9 @@ fn schema_fields_mode(
                     && v.multivector_config.is_none()
                     && v.datatype.as_deref().is_none_or(|t| t == "float32")
             })
-            && info.config.params.sparse_vectors.as_ref().is_some_and(|s| {
-                s.len() == 1 && s.get("lexical").is_some_and(|v| v.modifier == "idf")
+            && info.config.params.sparse_vectors.as_ref().is_none_or(|s| {
+                s.is_empty()
+                    || (s.len() == 1 && s.get("lexical").is_some_and(|v| v.modifier == "idf"))
             })
             && info.config.hnsw_config.m == 16
             && info.config.hnsw_config.ef_construct == 200
@@ -466,6 +514,7 @@ fn schema_fields_mode(
             ("project", "keyword"),
             ("repository", "keyword"),
             ("tokens", "keyword"),
+            ("unit.text", "text"),
             ("created_at", "integer"),
             ("unit.sequence", "integer"),
         ]
@@ -476,7 +525,7 @@ fn schema_fields_mode(
         if info
             .payload_schema
             .get(name)
-            .is_some_and(|f| f.data_type != kind)
+            .is_some_and(|f| !f.serves(kind))
         {
             return Err(AppError::configuration(
                 "existing Qdrant payload index has incompatible schema; choose a new group_id",
@@ -557,9 +606,9 @@ impl Client {
             .next()
             .and_then(|v| v.parse::<u32>().ok())
             .ok_or_else(failure)?;
-        if major != 1 || minor < 19 {
+        if major != 1 || minor < 20 {
             return Err(AppError::configuration(
-                "Qdrant backend requires Qdrant 1.19 or later in the 1.x series for conditional publication",
+                "Qdrant backend requires Qdrant 1.20 or later in the 1.x series for BM25 word search on the text index; upgrade Qdrant from 1.19 in place, then run `mash index`",
             ));
         }
         Ok(())
@@ -738,18 +787,8 @@ impl Client {
                     },
                 )])
             });
-            let sparse_vectors = dimensions.map_or_else(BTreeMap::new, |_| {
-                BTreeMap::from([(
-                    "lexical".into(),
-                    SparseConfig {
-                        modifier: "idf".into(),
-                        index: Some(Placement::new(memory.index())),
-                    },
-                )])
-            });
             let create = Create {
                 vectors,
-                sparse_vectors,
                 hnsw_config: Hnsw {
                     m: 16,
                     ef_construct: 200,
@@ -771,7 +810,7 @@ impl Client {
         let fields = schema_fields(&info, dimensions, memory)?;
         for &(field_name, field_schema) in fields {
             if let Some(installed) = info.payload_schema.get(field_name) {
-                if installed.data_type != field_schema {
+                if !installed.serves(field_schema) {
                     return Err(AppError::configuration(
                         "existing Qdrant payload index has incompatible schema; choose a new group_id",
                     ));
@@ -784,7 +823,13 @@ impl Client {
                     &format!("{path}/index?wait=true"),
                     Some(&PayloadIndex {
                         field_name,
-                        field_schema,
+                        // Built from the stored payloads; existing points are
+                        // not rewritten or re-embedded.
+                        field_schema: if field_schema == "text" {
+                            IndexSchema::Text(TextIndex::new(memory.index()))
+                        } else {
+                            IndexSchema::Plain(field_schema)
+                        },
                     }),
                 )
                 .await?;
@@ -802,16 +847,10 @@ impl Client {
             payload: Placement,
         }
         #[derive(Serialize)]
-        struct SparsePlacement {
-            index: Placement,
-        }
-        #[derive(Serialize)]
         struct Update {
             params: PayloadParams,
             #[serde(skip_serializing_if = "BTreeMap::is_empty")]
             vectors: BTreeMap<String, Placement>,
-            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-            sparse_vectors: BTreeMap<String, SparsePlacement>,
             #[serde(skip_serializing_if = "Option::is_none")]
             hnsw_config: Option<Placement>,
         }
@@ -842,16 +881,6 @@ impl Client {
                 .keys()
                 .map(|name| (name.clone(), Placement::new(memory.dense())))
                 .collect(),
-            sparse_vectors: if dimensions.is_some() {
-                BTreeMap::from([(
-                    "lexical".into(),
-                    SparsePlacement {
-                        index: Placement::new(memory.index()),
-                    },
-                )])
-            } else {
-                BTreeMap::new()
-            },
             hnsw_config: dimensions.map(|_| Placement::new(memory.index())),
         };
         let _: bool = self.call(Method::PATCH, path, Some(&update)).await?;

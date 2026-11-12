@@ -208,11 +208,14 @@ impl Plan {
         Ok(Self { groups })
     }
 
-    pub(crate) fn sparse_text(&self) -> String {
+    /// Every accepted word once, so a repeated word is not scored twice.
+    pub(crate) fn query_text(&self) -> String {
+        let mut seen = std::collections::BTreeSet::new();
         self.groups
             .iter()
             .flatten()
-            .cloned()
+            .filter(|word| seen.insert(word.as_str()))
+            .map(String::as_str)
             .collect::<Vec<_>>()
             .join(" ")
     }

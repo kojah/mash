@@ -100,7 +100,7 @@ The installed August 2026 nightly can hit a [Clippy compiler crash](https://gith
 when checking async code. On that toolchain, use
 `RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.
 
-The storage integration tests require disposable Qdrant 1.19+ in
+The storage integration tests require disposable Qdrant 1.20+ in
 `MASH_TEST_QDRANT_URL` and its gRPC endpoint in `MASH_TEST_QDRANT_GRPC_URL`.
 Tests start real HTTP services and create/remove isolated
 collections for their owned groups:

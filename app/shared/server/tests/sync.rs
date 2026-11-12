@@ -316,7 +316,7 @@ async fn websocket_resumes_durable_checkpoints_and_reports_application_failure()
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_websocket_publishes_typed_batch_and_certifies_views() {
     let service = Service::qdrant(384).await;
     let (start, encoded) = publication();
@@ -399,7 +399,7 @@ async fn qdrant_websocket_publishes_typed_batch_and_certifies_views() {
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_native_publisher_spools_and_uploads_over_websocket() {
     use std::io::Write;
 
@@ -665,7 +665,7 @@ fn baseline_batch() -> (Start, Vec<Event>, Vec<wire::BackfillMember>) {
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 #[allow(
     clippy::too_many_lines,
     reason = "one flow proves revision guard, coverage and baseline completion"
@@ -813,7 +813,7 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_attachment_upload_uses_the_websocket_transport() {
     let service = Service::qdrant(384).await;
     let source = crate::attachments::Source::Base64 {
@@ -888,7 +888,7 @@ async fn qdrant_attachment_upload_uses_the_websocket_transport() {
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_startup_recovery_resumes_queued_publications() {
     let service = Service::qdrant(384).await;
     let (start, encoded) = publication();
@@ -1065,7 +1065,7 @@ fn summarize(label: &str, mut samples: Vec<std::time::Duration>, bytes: usize) -
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 #[allow(
     clippy::too_many_lines,
     reason = "one comparative measurement of both mutation transports"
@@ -1259,7 +1259,7 @@ async fn publish_over_socket(
 /// Baseline records that arrive after a newer live publication must not apply:
 /// the live chat wins, and a live tombstone keeps the deletion.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 #[allow(
     clippy::too_many_lines,
     reason = "one flow freezes a baseline, edits live, deletes live and replays the baseline"
@@ -1564,7 +1564,7 @@ async fn qdrant_late_baseline_cannot_overwrite_live_state_or_resurrect_deletions
 /// The production backfill sender drives manifest, batch and completion over
 /// one `/v1/sync` session, without the test harness speaking the protocol.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
     use std::io::Write;
 
@@ -1654,7 +1654,7 @@ async fn qdrant_client_backfill_sender_completes_a_baseline_end_to_end() {
 /// Silver and its receipt commit first; a views failure is reported separately
 /// and never as a published batch.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_reports_silver_committed_before_a_certification_failure() {
     let service = Service::qdrant_views_failure(384).await;
     let (start, encoded) = publication();
@@ -1836,7 +1836,7 @@ async fn periodic_sweep_reclaims_an_abandoned_receiving_spool() {
 /// The periodic apply retry finishes durable queued work without a restart and
 /// without a client reconnecting.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn periodic_apply_retry_finishes_queued_publications() {
     let service = Service::qdrant(384).await;
     let (start, encoded) = publication();
@@ -1922,7 +1922,7 @@ async fn periodic_apply_retry_finishes_queued_publications() {
 /// The coordinator commits batch by batch: the first commit is searchable
 /// before the second batch is even sent.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 #[allow(
     clippy::too_many_lines,
     reason = "one flow proves per-batch commits and progressive visibility"
@@ -2069,7 +2069,7 @@ async fn qdrant_backfill_commits_each_batch_progressively() {
 /// Documents are written, certification fails, and a retry repairs and
 /// certifies without re-committing silver.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_partial_views_are_repaired_by_resending_finish() {
     let service = Service::qdrant_partial_views(384).await;
     let (start, encoded) = publication();
@@ -2163,7 +2163,7 @@ async fn qdrant_partial_views_are_repaired_by_resending_finish() {
 /// Two members of one group publish at the same time. Revisions, catalogs and
 /// view certification stay per-node; the duplicate report still sees both.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn two_nodes_publish_concurrently_without_interference() {
     let service = Service::qdrant(384).await;
     let first_events = snapshot(11);
@@ -2209,7 +2209,7 @@ async fn two_nodes_publish_concurrently_without_interference() {
 /// Lanes commit baseline batches concurrently. Each commit must still receive
 /// the next revision under the node lock, and coverage must end complete.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 #[allow(
     clippy::too_many_lines,
     reason = "one end-to-end ordering scenario: plan, upload, coverage, freshness"
@@ -2330,7 +2330,7 @@ async fn qdrant_backfill_lanes_assign_ordered_revisions() {
 /// revision 2 must not claim the newer head. Stamping the head a slow
 /// certification happens to read makes searches serve older chats as current.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
     let service = Service::qdrant(384).await;
     assert_eq!(
@@ -2397,7 +2397,7 @@ async fn qdrant_stale_certification_does_not_claim_the_newer_head() {
 /// A later batch can capture an old chat marker before an earlier batch
 /// certifies that chat. Both completion orders must keep the valid marker.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();
@@ -2488,7 +2488,7 @@ async fn qdrant_certification_merges_valid_chat_over_stale_marker_in_both_orders
 /// Restoring that completed batch at the commit/certify boundary must survive
 /// the next batch's invalidation write, not just its final certification merge.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_upload_preparation_preserves_newer_coverage() {
     use std::io::Write as _;
     let service = Service::qdrant(384).await;
@@ -2568,7 +2568,7 @@ async fn qdrant_upload_preparation_preserves_newer_coverage() {
 
 /// Canonical acceptance does not certify a dense projection with missing vectors.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_certification_requires_vectors_for_every_eligible_native_unit() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();
@@ -2611,7 +2611,7 @@ async fn qdrant_certification_requires_vectors_for_every_eligible_native_unit() 
 /// A delayed partial marker for unchanged content must not downgrade a later
 /// complete marker, even though both fingerprints match canonical silver.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_certification_keeps_complete_preferred_chat_over_partial_alternate() {
     let service = Service::qdrant(384).await;
     let identity = service.first.clone();

@@ -311,7 +311,7 @@ recall tradeoffs before choosing approximate retrieval.
 Configure `qdrant_url_env` and `qdrant_grpc_url_env` on the HTTP service. Point
 publication uses gRPC; reads and collection setup use REST. Both endpoints must
 address the same Qdrant instance. Nodes continue using the same
-API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
+API URL, bearer token, CLI and MCP tools. Qdrant **1.20+ in the 1.x series** is
 required; older versions are rejected before creating collections. Shared
 silver lives on the API host under `silver_dir` (absolute path; default
 `shared-silver` in the platform data directory), one SQLite database per
@@ -333,7 +333,7 @@ qdrant_grpc_url_env = "MASH_QDRANT_GRPC_URL"
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
 # silver_dir = "/var/lib/mash/shared-silver"
 max_upload_mib = 64
-qdrant_memory = "durable" # Default: pinned HNSW/sparse indexes, cached dense vectors, cold payloads.
+qdrant_memory = "durable" # Default: pinned HNSW/text indexes, cached dense vectors, cold payloads.
 
 [[nodes]]
 group_id = "personal"
@@ -373,7 +373,7 @@ the current persisted group default.
 
 ```bash
 docker run --name mash-qdrant --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 \
-  -v mash-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
+  -v mash-qdrant-data:/qdrant/storage qdrant/qdrant:v1.20.0
 export MASH_QDRANT_URL='http://127.0.0.1:6333/'
 export MASH_QDRANT_GRPC_URL='http://127.0.0.1:6334/'
 # Set MASH_XENIA_TOKEN to the node's existing API token.
@@ -400,16 +400,16 @@ contain credentials, paths, queries or fragments; redirects are disabled so keys
 are not forwarded elsewhere. Shared Qdrant credentials belong on the HTTP server;
 local Qdrant credentials are resolved from the node's `qdrant.api_key_env`.
 Populating a new shared group requires an explicit `mash index` from each publishing node.
-`qdrant_memory` selects a durable Qdrant 1.19+ storage profile. The default,
-`durable`, pins HNSW and sparse indexes in RAM, preloads dense vectors into the
+`qdrant_memory` selects a durable Qdrant 1.20+ storage profile. The default,
+`durable`, pins the HNSW and word-search text indexes in RAM, preloads dense vectors into the
 OS cache and keeps payloads cold on disk; search reads payloads only for returned
-hits. Qdrant 1.19 cannot pin dense vectors or payloads. Database files and the
+hits. The text index takes its placement when it is first built. Qdrant cannot pin dense vectors or payloads. Database files and the
 write-ahead log remain on persistent disk. Cached dense vectors can still be
 evicted under memory pressure; this is not a volatile RAM filesystem and does
 not eliminate ingestion/optimizer disk writes.
 
 The explicit `cached` profile preserves the previous placement: cached dense,
-HNSW and sparse indexes with cold payloads. `cold` uses cold placement for those
+HNSW and text indexes with cold payloads. `cold` uses cold placement for those
 components. Payload filter indexes retain Qdrant's own defaults. Pinning requires
 enough RAM for the indexes, and optimizer conversion can temporarily increase
 resource use.
@@ -433,13 +433,24 @@ describes residency and low-memory behavior. Lower peak RAM and search latency
 need workload-specific measurement.
 
 Each group has an isolated message collection with named cosine dense vectors
-and IDF-weighted sparse lexical vectors, plus a state collection for the group's
+and a BM25-scored full-text index on `unit.text`, plus a state collection for the group's
 views configuration and each node's views certificate. Canonical history,
-checkpoints, tombstones and chat catalogs live in shared silver. Lexical retrieval uses
-lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
-and a fixed 256-token length reference; exact token predicates prevent hash
-collisions from producing false lexical matches. Local and shared retrieval use
-this same lexical ranking function.
+checkpoints, tombstones and chat catalogs live in shared silver. Lexical retrieval is
+a Qdrant `text` query on that index (`word` tokenizer, lowercased; k=1.2, b=0.75),
+so document frequencies and the average length come from the collection rather
+than a fixed 256-word reference. A `text_any` condition per query word requires
+the word or one of its accepted prefix/typo alternatives; metadata filters do
+not change the statistics. Deleted or rewritten points stay in the statistics
+until Qdrant optimizes their segment. The `tokens` keyword field remains the
+prefix/typo vocabulary and literal-verification evidence. Local and shared
+retrieval use this same lexical ranking function.
+
+Views schema 13 marks a group whose collection has the text index. Explicit
+setup (`mash index`, `mash-server` startup) builds the index from stored
+payloads and upgrades a schema-12 group in place, keeping its views version and
+certificates; readers fail closed until then. Collections created under schema
+12 keep an unused `lexical` sparse vector configuration, and their old sparse
+vectors disappear as documents are rewritten or views are rebuilt.
 The existing application core still fuses, reranks, and groups message candidates.
 All expressive filters apply inside Qdrant before candidate limits. HNSW is
 approximate; exact mode stays available without rebuilding the collection.

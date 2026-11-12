@@ -165,16 +165,6 @@ pub(super) fn point<P: Serialize>(point: &Point<P>) -> Result<q::PointStruct, Ap
         }
         vectors.insert(name.clone(), values.into());
     }
-    if let Some(sparse) = &point.vector.lexical {
-        vectors.insert(
-            "lexical".into(),
-            q::SparseVector {
-                indices: sparse.indices.clone(),
-                values: sparse.values.clone(),
-            }
-            .into(),
-        );
-    }
     // Generic JSON is confined to this SDK boundary; persisted payload models
     // remain the common typed document and readiness contracts.
     let payload = Payload::try_from(serde_json::to_value(&point.payload).map_err(|_| failure())?)
@@ -204,6 +194,13 @@ impl From<Condition> for q::Condition {
                     match_value: Some(q::r#match::MatchValue::Keywords(q::RepeatedStrings {
                         strings: r#match.any,
                     })),
+                }),
+                ..Default::default()
+            }),
+            Condition::Text { key, r#match } => C::Field(q::FieldCondition {
+                key,
+                r#match: Some(q::Match {
+                    match_value: Some(q::r#match::MatchValue::TextAny(r#match.text_any)),
                 }),
                 ..Default::default()
             }),
@@ -271,10 +268,6 @@ mod tests {
             id: "00000000-0000-0000-0000-000000000001".into(),
             vector: super::super::Vectors {
                 dense: Some(("dense_2".into(), vec![0.5, -0.25])),
-                lexical: Some(super::super::Sparse {
-                    indices: vec![2, 9],
-                    values: vec![1.0, 2.0],
-                }),
             },
             payload: serde_json::json!({"text":"λ\nquoted", "count":42}),
         })
@@ -289,9 +282,9 @@ mod tests {
         else {
             panic!("named vectors")
         };
-        assert_eq!(vectors.vectors.len(), 2);
+        // Word search ranks from the payload text index, not a vector.
+        assert_eq!(vectors.vectors.len(), 1);
         assert!(vectors.vectors.contains_key("dense_2"));
-        assert!(vectors.vectors.contains_key("lexical"));
     }
 
     #[test]

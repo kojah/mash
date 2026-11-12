@@ -194,7 +194,6 @@ fn dimension_fields_preserve_the_original_schema_and_reject_foreign_shapes() {
     }
     let vectors = Vectors {
         dense: Some(("dense_8".into(), vec![1.0, 0.0])),
-        lexical: None,
     };
     assert_eq!(
         serde_json::to_value(vectors).unwrap(),
@@ -207,18 +206,10 @@ fn memory_schema_checks_each_component_and_preserves_legacy_cached_collections()
     let info: Info = serde_json::from_value(legacy()).unwrap();
     assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_ok());
     assert!(schema_fields(&info, Some(4), MemoryTier::Cold).is_err());
-    for path in [
-        "/config/params/vectors/dense",
-        "/config/hnsw_config",
-        "/config/params/sparse_vectors/lexical",
-    ] {
+    for path in ["/config/params/vectors/dense", "/config/hnsw_config"] {
         let mut document = legacy();
         let component = document.pointer_mut(path).unwrap().as_object_mut().unwrap();
-        if path.ends_with("lexical") {
-            component.insert("index".into(), serde_json::json!({"memory":"cold"}));
-        } else {
-            component.insert("memory".into(), "cold".into());
-        }
+        component.insert("memory".into(), "cold".into());
         let info: Info = serde_json::from_value(document).unwrap();
         assert!(
             schema_fields(&info, Some(4), MemoryTier::Cached).is_err(),
@@ -245,8 +236,6 @@ fn durable_profile_pins_indexes_caches_dense_vectors_and_keeps_payloads_cold() {
     assert_eq!(PAYLOAD_MEMORY, PhysicalMemory::Cold);
     let mut document = legacy();
     document["config"]["params"]["payload"] = serde_json::json!({"memory":"cold"});
-    document["config"]["params"]["sparse_vectors"]["lexical"]["index"] =
-        serde_json::json!({"memory":"pinned"});
     document["config"]["hnsw_config"]["memory"] = "pinned".into();
     let info: Info = serde_json::from_value(document.clone()).unwrap();
     assert!(schema_fields(&info, Some(4), MemoryTier::Durable).is_ok());
@@ -295,5 +284,118 @@ fn lexical_vocabulary_uses_index_backed_approximate_counts() {
     assert!(
         !request.exact,
         "exact facets scan every on-disk payload and dominate search latency"
+    );
+}
+
+#[test]
+fn word_search_uses_a_ranked_text_index_and_keeps_collections_that_had_sparse_vectors() {
+    // Collections created before the text index keep their sparse vector
+    // configuration; new ones have none. Foreign sparse vectors are rejected.
+    let mut document = legacy();
+    let info: Info = serde_json::from_value(document.clone()).unwrap();
+    assert!(
+        schema_fields(&info, Some(4), MemoryTier::Cached)
+            .unwrap()
+            .contains(&("unit.text", "text"))
+    );
+    document["config"]["params"]
+        .as_object_mut()
+        .unwrap()
+        .remove("sparse_vectors");
+    let info: Info = serde_json::from_value(document.clone()).unwrap();
+    assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_ok());
+    document["config"]["params"]["sparse_vectors"] =
+        serde_json::json!({"other": {"modifier":"idf"}});
+    let info: Info = serde_json::from_value(document.clone()).unwrap();
+    assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_err());
+
+    // Only a lowercased `word` index with BM25 scoring ranks Mash's words.
+    let mut document = legacy();
+    for (params, accepted) in [
+        (
+            serde_json::json!({"type":"text","tokenizer":"word","lowercase":true,"scoring":{"type":"bm25"}}),
+            true,
+        ),
+        (
+            serde_json::json!({"type":"text","tokenizer":"word","scoring":{"type":"bm25"}}),
+            true,
+        ),
+        (
+            serde_json::json!({"type":"text","tokenizer":"word","lowercase":true}),
+            false,
+        ),
+        (
+            serde_json::json!({"type":"text","tokenizer":"code","lowercase":true,"scoring":{"type":"bm25"}}),
+            false,
+        ),
+        (
+            serde_json::json!({"type":"text","tokenizer":"word","lowercase":false,"scoring":{"type":"bm25"}}),
+            false,
+        ),
+    ] {
+        document["payload_schema"]["unit.text"] =
+            serde_json::json!({"data_type":"text","params":params,"points":1});
+        let info: Info = serde_json::from_value(document.clone()).unwrap();
+        assert_eq!(
+            schema_fields(&info, Some(4), MemoryTier::Cached).is_ok(),
+            accepted,
+            "{}",
+            document["payload_schema"]["unit.text"]
+        );
+    }
+    document["payload_schema"]["unit.text"] = serde_json::json!({"data_type":"keyword"});
+    let info: Info = serde_json::from_value(document).unwrap();
+    assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_err());
+
+    assert_eq!(
+        serde_json::to_value(PayloadIndex {
+            field_name: "unit.text",
+            field_schema: IndexSchema::Text(TextIndex::new(PhysicalMemory::Pinned)),
+        })
+        .unwrap(),
+        serde_json::json!({"field_name":"unit.text","field_schema":{
+            "type":"text","tokenizer":"word","lowercase":true,
+            "scoring":{"type":"bm25"},"memory":"pinned"}})
+    );
+}
+
+#[test]
+fn word_queries_rank_by_text_and_require_each_word_or_an_alternative() {
+    let plan = crate::views::matching::Plan::new(
+        "stall fsync stall",
+        crate::views::matching::Mode::Flexible,
+        &["stalls".to_owned(), "stalled".to_owned()],
+    )
+    .unwrap();
+    let mut filter = Filter::default();
+    for group in &plan.groups {
+        filter.must.push(text_any("unit.text", group));
+    }
+    let request = QueryRequest {
+        query: QueryVector::Text {
+            text: plan.query_text(),
+        },
+        using: "unit.text".into(),
+        filter,
+        params: Params {
+            exact: true,
+            hnsw_ef: 200,
+        },
+        limit: 50,
+        with_payload: true,
+    };
+    let body = serde_json::to_value(request).unwrap();
+    assert_eq!(
+        body["query"],
+        serde_json::json!({"text":"stall stalled stalls fsync"})
+    );
+    assert_eq!(body["using"], "unit.text");
+    assert_eq!(
+        body["filter"]["must"],
+        serde_json::json!([
+            {"key":"unit.text","match":{"text_any":"stall stalled stalls"}},
+            {"key":"unit.text","match":{"text_any":"fsync"}},
+            {"key":"unit.text","match":{"text_any":"stall stalled stalls"}}
+        ])
     );
 }

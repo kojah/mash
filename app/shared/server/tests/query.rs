@@ -3,7 +3,7 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn shared_typed_queries_are_group_scoped_and_reject_sql() {
     let service = Service::qdrant(384).await;
     assert_eq!(

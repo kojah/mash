@@ -3,7 +3,11 @@ use super::{AppError, PointKind, Scope, Store, api, collection, failure, point_i
 use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const SCHEMA_VERSION: u32 = 12;
+pub(crate) const SCHEMA_VERSION: u32 = 13;
+/// Views whose word search ranked from sparse vectors. Their documents are
+/// unchanged; explicit setup builds the text index and then records 13, which
+/// also makes binaries that still expect sparse vectors fail closed.
+const SPARSE_SCHEMA_VERSION: u32 = 12;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -86,10 +90,41 @@ impl Store {
                 if point.id != id {
                     return Err(failure());
                 }
+                if point.payload.schema_version == SPARSE_SCHEMA_VERSION {
+                    return Err(super::conflict(
+                        "Qdrant views predate BM25 word search; run `mash index` (or restart mash-server) once to upgrade them in place",
+                    ));
+                }
                 point.payload.validate()?;
                 Ok(point.payload)
             })
             .transpose()
+    }
+
+    /// Record that this group's collection now has the text index. Called
+    /// only after explicit setup built it; documents and their certified
+    /// views version are kept, so nothing is republished or re-embedded.
+    async fn upgrade_configuration(&self, identity: &Scope) -> Result<(), AppError> {
+        let id = point_id(&["views-configuration"]);
+        let mut points = self
+            .api
+            .retrieve::<Configuration>(
+                &collection(&identity.group_id, true),
+                std::slice::from_ref(&id),
+            )
+            .await?;
+        let Some(point) = points.pop() else {
+            return Ok(());
+        };
+        if !points.is_empty() || point.id != id {
+            return Err(failure());
+        }
+        let mut configuration = point.payload;
+        if configuration.schema_version != SPARSE_SCHEMA_VERSION {
+            return Ok(());
+        }
+        configuration.schema_version = SCHEMA_VERSION;
+        self.put_configuration(identity, &configuration).await
     }
 
     async fn put_configuration(
@@ -119,6 +154,7 @@ impl Store {
         identity: &Scope,
         activate: bool,
     ) -> Result<String, AppError> {
+        self.upgrade_configuration(identity).await?;
         let previous = self.group_configuration(identity).await?;
         if let Some(previous) = &previous {
             if previous.matches(self, identity) {

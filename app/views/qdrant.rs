@@ -239,33 +239,6 @@ fn tokens(text: &str) -> Vec<String> {
         .map(str::to_lowercase)
         .collect()
 }
-fn sparse(text: &str, query: bool) -> api::Sparse {
-    use std::collections::BTreeMap;
-    let words = tokens(text);
-    let length = words.len();
-    let mut counts = BTreeMap::<u32, u32>::new();
-    for word in words {
-        let hash = blake3::hash(word.as_bytes());
-        let index = u32::from_le_bytes(hash.as_bytes()[..4].try_into().expect("four hash bytes"));
-        *counts.entry(index).or_default() += 1;
-    }
-    #[allow(clippy::cast_precision_loss)]
-    let norm = 1.2 * (0.25 + 0.75 * length as f32 / 256.0);
-    api::Sparse {
-        indices: counts.keys().copied().collect(),
-        #[allow(clippy::cast_precision_loss)]
-        values: counts
-            .values()
-            .map(|&tf| {
-                if query {
-                    1.0
-                } else {
-                    tf as f32 * 2.2 / (tf as f32 + norm)
-                }
-            })
-            .collect(),
-    }
-}
 impl Store {
     #[cfg(test)]
     pub(crate) fn unavailable() -> Self {

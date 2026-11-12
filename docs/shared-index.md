@@ -11,7 +11,7 @@ For one machine, skip this setup: local search already works offline.
 
 - Mash installed and initialized on each publishing machine.
 - A local Qdrant instance on each machine.
-- A server running the same Mash release, with Qdrant 1.19+ and persistent storage.
+- A server running the same Mash release, with Qdrant 1.20+ and persistent storage.
 - An HTTPS endpoint for the Mash API, or a trusted private network.
 
 Run Qdrant [directly on each host](installation.md#start-the-local-search-service).

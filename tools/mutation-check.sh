@@ -56,7 +56,7 @@ case "${1:-}" in
         [[ $# == 1 ]] || exit 2
         config=.cargo/mutants-certification.toml
         if [[ $1 == --list-certification ]]; then exec "$tool" mutants --config "$config" "${diff_args[@]}" --list; fi
-        [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+' >&2; exit 2; }
+        [[ -n ${MASH_TEST_QDRANT_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.20+' >&2; exit 2; }
         [[ -n ${MASH_TEST_QDRANT_GRPC_URL:-} ]] || { echo 'Set MASH_TEST_QDRANT_GRPC_URL to the same disposable Qdrant instance' >&2; exit 2; }
         ;;
     *) echo 'Usage: mutation-check.sh [--install-tools|--list|--runtime|--list-runtime|--services|--list-services|--certification|--list-certification]' >&2; exit 2 ;;

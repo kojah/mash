@@ -88,7 +88,7 @@ Some settings may cause Qdrant to rebuild its internal indexes; that does not
 mean Mash must regenerate embeddings or republish all history.
 
 Recompute vectors only when the embedding model or relevant input changes.
-Account separately for dense vectors, sparse lexical vectors, payload fields,
+Account separately for dense vectors, the lexical text index, payload fields,
 filter indexes and freshness certification. Never certify stale results as
 current merely because the SQLite migration succeeded. Search must remain
 replayable from canonical silver after a failure.

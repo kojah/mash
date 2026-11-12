@@ -2,7 +2,7 @@
 //! silver in SQLite is authoritative and any lost or partial views are replayed.
 use super::{
     AppError, Document, PointKind, Scope, SearchUnit, Store, api, collection, document_id, failure,
-    point_id, sparse, tokens,
+    point_id, tokens,
 };
 use crate::silver::revision::State;
 use crate::views::documents::{ChatRecord, MessageRecord, SearchMessage};
@@ -520,13 +520,12 @@ impl Documents {
         }
         let words = tokens(&message.projection);
         let embedded = u64::from(message.vector.is_some());
-        let vector = Self::vectors(
-            store,
-            identity,
-            &message.projection,
-            &words,
-            message.vector.clone(),
-        );
+        let vector = api::Vectors {
+            dense: message
+                .vector
+                .clone()
+                .map(|v| (store.dense_name(identity).into(), v)),
+        };
         self.push_point(
             store,
             api::Point {
@@ -559,19 +558,6 @@ impl Documents {
         )
         .await?;
         Ok(embedded)
-    }
-
-    fn vectors(
-        store: &Store,
-        identity: &Scope,
-        text: &str,
-        words: &[String],
-        dense: Option<Vec<f64>>,
-    ) -> api::Vectors {
-        api::Vectors {
-            dense: dense.map(|v| (store.dense_name(identity).into(), v)),
-            lexical: (!words.is_empty()).then(|| sparse(text, false)),
-        }
     }
 
     /// All source projections share the same bounded, completion-checked writer.

@@ -5,7 +5,7 @@ async fn read(service: &Service, token: &str) -> crate::shared::Freshness {
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_replayed_unpublished_node_does_not_block_published_search() {
     let service = Service::qdrant(384).await;
     service
@@ -71,7 +71,7 @@ async fn qdrant_replayed_unpublished_node_does_not_block_published_search() {
 }
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_freshness_reports_unpublished_members_only_in_the_authorized_group() {
     let service = Service::qdrant(384).await;
     let initial = read(&service, FIRST).await;

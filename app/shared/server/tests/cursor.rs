@@ -123,7 +123,7 @@ async fn contract(service: Service) {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_native_cursor_ide_publication_preserves_provenance_and_metadata() {
     contract(Service::qdrant(384).await).await;
 }
