@@ -131,26 +131,10 @@ Start with one distinctive word you remember. Without semantic models, multiple
 words match a phrase: “log rotation” won't find “rotate the application logs.”
 Try “rotate,” or enable [search by meaning](docs/indexing.md#enable-semantic-search).
 
-Prefer browsing? [Build the web interface](docs/dashboard.md) for a source
-installation, then start the local dashboard (chat history is read-only):
+Prefer browsing? `mash dash` starts a local, read-only [web dashboard](docs/dashboard.md).
 
-```bash
-mash dash
-```
-
-Open the address it prints to browse chats, search history, and read transcripts.
-
-## Keep it up to date
-
-```bash
-mash index                 # Pick up recent changes
-mash index --all-history   # Include history older than 90 days
-mash status                # Check setup and index readiness
-```
-
-The history plugin also starts a throttled background refresh when an agent
-session begins. For continuous updates, run `mash index --watch` in a separate
-terminal. [Synchronization details →](docs/synchronization.md)
+To pick up new chats, run `mash index`; `mash index --watch` keeps the index
+current. [Synchronization details →](docs/synchronization.md)
 
 ## Privacy
 
