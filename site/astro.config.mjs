@@ -23,8 +23,10 @@ export default defineConfig({
         "./src/styles/custom.css",
       ],
       components: {
+        Footer: "./src/components/Footer.astro",
         Head: "./src/components/Head.astro",
         Search: "./src/components/Search.astro",
+        SocialIcons: "./src/components/SocialIcons.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
       },
       sidebar: [

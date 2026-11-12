@@ -4,3 +4,4 @@ dist/
 src/content/docs/
 test-results/
 playwright-report/
+public/agents/

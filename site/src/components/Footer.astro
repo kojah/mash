@@ -1,0 +1,70 @@
+---
+// The landing page ends with the project's name and a few ways onward; every
+// other page keeps Starlight's footer.
+import Default from "@astrojs/starlight/components/Footer.astro";
+
+const home = Astro.locals.starlightRoute.entry.data.template === "splash";
+---
+
+{
+  home ? (
+    <footer class="mash-footer">
+      <span class="name">
+        <img class="dark" src="/mash-mark.svg" alt="" width="20" height="20" />
+        <img class="light" src="/mash-mark-light.svg" alt="" width="20" height="20" />
+        mash
+      </span>
+      <nav aria-label="Footer">
+        <a href="/guides/">Docs</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="https://github.com/kojah/mash">GitHub</a>
+      </nav>
+    </footer>
+  ) : (
+    <Default />
+  )
+}
+
+<style>
+  .mash-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-top: 4rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+  .name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--mash-name);
+    font-family: var(--sl-font-mono);
+    font-weight: 600;
+  }
+  .light,
+  :global([data-theme="light"]) .dark {
+    display: none;
+  }
+  :global([data-theme="light"]) .light {
+    display: block;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.375rem;
+  }
+  nav a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--sl-color-gray-2);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  nav a:hover {
+    color: var(--sl-color-white);
+  }
+</style>

@@ -1,0 +1,63 @@
+---
+// The agents Mash reads, as their marks. The names, files and colours are the
+// dashboard's own, so the site and the product always agree.
+import { agents } from "../../../dashboard/src/lib/agents.ts";
+
+const shown = ["claude-code", "codex", "copilot", "cursor", "opencode", "antigravity"] as const;
+---
+
+<div class="mash-agents not-content">
+  <span class="label">Works with</span>
+  <ul aria-label="Supported agents">
+    {shown.map((key) => {
+      const agent = agents[key];
+      const mask = `url(${agent.logo})`;
+      return (
+        <li title={agent.name}>
+          <span class="mark" aria-hidden="true" style={{ backgroundColor: agent.tint, maskImage: mask, WebkitMaskImage: mask }} />
+          <span class="sr-only">{agent.name}</span>
+        </li>
+      );
+    })}
+  </ul>
+</div>
+
+<style>
+  .mash-agents {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.875rem 1.625rem;
+    margin-block: 1.25rem 1.75rem;
+  }
+  .label {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.875rem 1.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    display: flex;
+  }
+  .mark {
+    display: block;
+    width: 1.875rem;
+    height: 1.875rem;
+    mask: center / contain no-repeat;
+    -webkit-mask: center / contain no-repeat;
+  }
+  /* The marks are tinted for a dark ground; flip their lightness, keep the hue. */
+  :global([data-theme="light"]) .mark {
+    filter: invert(1) hue-rotate(180deg);
+  }
+</style>

@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown } from "./markdown.ts";
 
@@ -34,4 +34,8 @@ for (const source of [...names.map((name) => `docs/${name}`), "README.md"]) {
   );
 }
 await copyFile(new URL("docs/home.mdx", repo), new URL("index.mdx", output));
+// The landing page shows the dashboard's own agent marks.
+await cp(new URL("dashboard/public/agents/", repo), new URL("../public/agents/", import.meta.url), {
+  recursive: true,
+});
 console.log(`Prepared documentation in ${fileURLToPath(output)}`);

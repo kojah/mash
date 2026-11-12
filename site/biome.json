@@ -17,7 +17,9 @@
   "overrides": [
     {
       "includes": ["**/*.astro"],
-      "linter": { "rules": { "correctness": { "noUnusedImports": "off" } } }
+      "linter": {
+        "rules": { "correctness": { "noUnusedImports": "off", "noUnusedVariables": "off" } }
+      }
     }
   ]
 }

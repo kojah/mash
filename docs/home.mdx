@@ -1,10 +1,11 @@
 ---
-title: Find it again.
-description: Search the conversations behind your code.
+title: Your agents forget. Mash doesn’t.
+description: Search every conversation you’ve had with your coding agents, and keep what you decided.
 template: splash
 editUrl: https://github.com/kojah/mash/edit/main/docs/home.mdx
 hero:
-  tagline: Your past conversations, one place to search. Find what you worked out across chats, agents, and machines.
+  title: <span>Your agents forget.</span> <span class="mash-turn">Mash doesn’t.</span>
+  tagline: Search every conversation you’ve had, across agents and machines. Keep what you decided, so your next session starts out knowing it.
   image:
     dark: ../../../public/mash-mark.svg
     light: ../../../public/mash-mark-light.svg
@@ -14,15 +15,15 @@ hero:
       icon: right-arrow
     - text: Explore the docs
       link: /guides/
-      variant: minimal
+      variant: secondary
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import Agents from '../../components/Agents.astro';
 
-## The Multi-Agent Search History Tool
+## Search and memory for every coding agent
 
-Find things you've already worked out with Claude Code, Codex, GitHub Copilot,
-Cursor, OpenCode, and Antigravity.
+<Agents />
 
 <CardGrid>
   <Card title="Pick up where you left off" icon="open-book">
@@ -38,15 +39,3 @@ Cursor, OpenCode, and Antigravity.
     Open the original messages around a search result and see what was actually discussed.
   </Card>
 </CardGrid>
-
-## Start with a question
-
-Ask your agent: **“What did we decide about authentication last week?”**
-
-Or search directly:
-
-```sh
-mash search 'authentication'
-```
-
-New to Mash? The [quick start](/quick-start/) covers installation, the local search service, and your first search.

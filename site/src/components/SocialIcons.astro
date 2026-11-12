@@ -1,0 +1,18 @@
+---
+// The header's links: the guides by name, then Starlight's own icons.
+import Default from "@astrojs/starlight/components/SocialIcons.astro";
+---
+
+<a class="mash-nav" href="/guides/">Docs</a>
+<Default />
+
+<style>
+  .mash-nav {
+    color: var(--sl-color-gray-2);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .mash-nav:hover {
+    color: var(--sl-color-white);
+  }
+</style>
