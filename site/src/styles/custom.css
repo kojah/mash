@@ -19,6 +19,8 @@
   --sl-color-accent-high: #e8926f;
   --mash-current: #2b2926;
   --mash-cursor: #8a857c;
+  /* The name's colour in the project logo: clay on dark, ink on light. */
+  --mash-name: #e8926f;
 }
 :root[data-theme="light"] {
   --sl-color-white: #2a2419;
@@ -34,7 +36,8 @@
   --sl-color-accent: #a84a26;
   --sl-color-accent-high: #7a3318;
   --mash-current: #ecdcae;
-  --mash-cursor: #8a7c61;
+  --mash-cursor: #9a948a;
+  --mash-name: #2a2419;
 }
 h1,
 h2,
@@ -47,6 +50,7 @@ h4 {
 .site-title {
   font-weight: 600;
   gap: 0.35em;
+  color: var(--mash-name);
 }
 .site-title::after {
   content: "_";
@@ -113,4 +117,11 @@ h4 {
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
+}
+
+/* Cards sit two across from a tablet's width up, not only on a wide desktop. */
+@media (min-width: 36rem) {
+  .card-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
