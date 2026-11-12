@@ -2984,9 +2984,6 @@ summary.rw::-webkit-details-marker {
   font-weight: 500;
   color: var(--body);
 }
-.tc[open] > summary .tc-s {
-  white-space: normal;
-}
 .tc .mt.ok {
   color: var(--ok);
 }
