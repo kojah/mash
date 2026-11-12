@@ -1,7 +1,7 @@
 use super::*;
 use crate::provider::Provider;
 use crate::role::Role;
-use crate::search_results::ChatMetadata;
+use crate::search_results::{self, ChatMetadata};
 use crate::views::config::Fusion;
 
 fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
@@ -48,7 +48,7 @@ fn fusion_finish_preserves_order_and_thread_evidence_without_inference() {
 
 #[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
-fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
+fn reranking_ranks_a_selected_threads_fourth_message_first() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
     let mut backend = crate::semantic::Models::new(root).load().unwrap().unwrap();
     let query = "keeping a model warm between CLI searches";
@@ -74,7 +74,7 @@ fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
         )
     }));
     let hits = search_results::diversify(hits, SearchUnit::Chats);
-    let selection = select(&mut backend, query, hits, SearchUnit::Chats).unwrap();
+    let selection = select(hits, SearchUnit::Chats);
     assert!(selection.count <= 30);
     assert!(
         selection.hits[..selection.count]
@@ -153,4 +153,28 @@ fn recent_sort_orders_messages_and_chats_newest_first() {
     };
     // Undated results keep their relevance order, after dated ones.
     assert_eq!(ids(&hits), ["new", "old", "undated"]);
+}
+
+#[test]
+fn chat_selection_takes_the_best_fused_threads_without_inference() {
+    // Twelve threads in fused order, interleaved; thread 0 has eight messages.
+    let mut hits = (0..12)
+        .map(|thread| candidate(&format!("t{thread}"), &format!("t{thread}-0"), "text"))
+        .collect::<Vec<_>>();
+    hits.extend((1..8).map(|message| candidate("t0", &format!("t0-{message}"), "text")));
+    hits.push(candidate("t11", "t11-1", "text"));
+
+    let selection = select(hits, SearchUnit::Chats);
+
+    let ids = |hits: &[SearchHit]| hits.iter().map(|hit| hit.id.clone()).collect::<Vec<_>>();
+    let mut expected = (0..10)
+        .map(|thread| format!("t{thread}-0"))
+        .collect::<Vec<_>>();
+    expected.extend((1..6).map(|message| format!("t0-{message}")));
+    assert_eq!(ids(&selection.hits[..selection.count]), expected);
+    // Later threads and a thread's further messages stay, unranked, in order.
+    assert_eq!(
+        ids(&selection.hits[selection.count..]),
+        ["t10-0", "t11-0", "t0-6", "t0-7", "t11-1"]
+    );
 }

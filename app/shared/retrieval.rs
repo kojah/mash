@@ -118,7 +118,7 @@ pub(super) async fn search_prepared(
     prepared: PreparedSearch,
 ) -> Result<SearchOutcome, AppError> {
     let PreparedSearch {
-        mut backend,
+        backend,
         vector,
         local,
         generation,
@@ -177,7 +177,6 @@ pub(super) async fn search_prepared(
     // display their projection, which also omits embedded tool results.
     apply_projections(lexical.iter_mut().chain(&mut semantic), &documents);
     let query = query.to_owned();
-    let ranking_query = query.clone();
     let (mut backend, selection) = crate::blocking(move || {
         let fused = combine_candidates(lexical, semantic, local_hits, options);
         let selection = if ranking == crate::views::config::Ranking::Fusion {
@@ -186,7 +185,7 @@ pub(super) async fn search_prepared(
                 count: 0,
             }
         } else {
-            crate::search_ranking::select(&mut backend, &ranking_query, fused, unit)?
+            crate::search_ranking::select(fused, unit)
         };
         Ok((backend, selection))
     })

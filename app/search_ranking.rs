@@ -1,10 +1,11 @@
-//! Built-in views: bounded thread selection followed by evidence ranking across transports.
+//! Built-in views: bounded thread selection by fused order, then one evidence reranking pass, across transports.
 use crate::AppError;
-use crate::search_results::{self, SearchUnit};
+use crate::search_results::SearchUnit;
 use crate::semantic::Backend;
 use crate::storage::SearchHit;
 use crate::views::config::Fusion;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 #[cfg(test)]
 mod tests;
@@ -12,6 +13,8 @@ mod tests;
 /// Threads whose evidence is reranked in chat mode. Fixed so the final
 /// order, and therefore every page of it, is independent of the page size.
 const RERANK_THREADS: usize = 10;
+/// Messages of each such thread that are reranked.
+const THREAD_MESSAGES: usize = 6;
 
 pub(crate) struct Selection {
     pub(crate) hits: Vec<SearchHit>,
@@ -62,70 +65,41 @@ pub(crate) fn finish_fusion(mut hits: Vec<SearchHit>, fusion: Fusion) -> Vec<Sea
     hits
 }
 
-pub(crate) fn select(
-    backend: &mut Backend,
-    query: &str,
-    hits: Vec<SearchHit>,
-    unit: SearchUnit,
-) -> Result<Selection, AppError> {
+/// Choose the evidence to rerank. Chat searches take the best-fused threads
+/// in fused order, each with its first messages; the contextual reranker then
+/// scores that evidence once. Selecting needs no inference.
+pub(crate) fn select(hits: Vec<SearchHit>, unit: SearchUnit) -> Selection {
     if matches!(unit, SearchUnit::Messages) {
-        return Ok(Selection {
+        return Selection {
             count: hits.len().min(unit.rerank_limit()),
             hits,
-        });
+        };
     }
-    let mut positions = HashMap::new();
-    let mut groups = Vec::<Vec<usize>>::new();
-    for (index, hit) in hits.iter().enumerate() {
-        let next = groups.len();
-        let slot = *positions
-            .entry((&hit.provider, &hit.chat_id))
-            .or_insert_with(|| {
-                groups.push(Vec::new());
-                next
-            });
-        groups[slot].push(index);
-    }
-    let documents = groups
+    let mut taken = HashMap::new();
+    let selected = hits
         .iter()
-        .take(20)
-        .map(|group| {
-            group
-                .iter()
-                .take(6)
-                .map(|&index| {
-                    // Six short, query-focused anchors fit the model's input budget.
-                    search_results::evidence_window(&hits[index].content, query, 160)
-                })
-                .collect::<Vec<_>>()
-                .join("\nThread message: ")
+        .map(|hit| {
+            let threads = taken.len();
+            let Some(messages) = (match taken.entry((hit.provider, &hit.chat_id)) {
+                Entry::Occupied(entry) => Some(entry.into_mut()),
+                Entry::Vacant(entry) => (threads < RERANK_THREADS).then(|| entry.insert(0_usize)),
+            }) else {
+                return false;
+            };
+            *messages += 1;
+            *messages <= THREAD_MESSAGES
         })
         .collect::<Vec<_>>();
-    let refs = documents.iter().map(String::as_str).collect::<Vec<_>>();
-    let mut ranked = backend.rerank_search(query, &refs)?;
-    ranked.sort_by(|a, b| {
-        b.score
-            .total_cmp(&a.score)
-            .then_with(|| a.index.cmp(&b.index))
-    });
-    let mut selected = vec![false; hits.len()];
-    for thread in ranked.into_iter().take(RERANK_THREADS) {
-        if let Some(group) = groups.get(thread.index) {
-            for &index in group.iter().take(6) {
-                selected[index] = true;
-            }
-        }
-    }
     let (mut chosen, remaining): (Vec<_>, Vec<_>) = hits
         .into_iter()
         .enumerate()
         .partition(|(index, _)| selected[*index]);
     let count = chosen.len();
     chosen.extend(remaining);
-    Ok(Selection {
+    Selection {
         hits: chosen.into_iter().map(|(_, hit)| hit).collect(),
         count,
-    })
+    }
 }
 
 pub(crate) fn score(

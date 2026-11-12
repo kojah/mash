@@ -199,9 +199,9 @@ See [the search quality audit](https://github.com/kojah/mash/blob/a49210157b990b
 and remaining relevance limitations.
 
 Chat retrieval considers up to 200 lexical and 200 semantic candidates per
-index. It keeps up to six distinct candidate messages per chat. A first
-reranking pass evaluates up to 20 grouped chat documents, then individual
-evidence is reranked for the ten most promising chats (at most 60 messages).
+index. It keeps up to six distinct candidate messages per chat. The ten chats
+that rank best after fusion are chosen without inference, and their individual
+evidence is reranked in one pass (at most 60 messages).
 Each evidence document includes bounded text from its two nearest searchable
 neighbours. Chats are grouped before applying `limit`;
 their score is reciprocal rank of the best qualifying message plus a bounded

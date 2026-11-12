@@ -34,7 +34,7 @@ pub(crate) fn finish_hybrid(
     if ranking == crate::views::config::Ranking::Fusion {
         return Ok(crate::search_ranking::finish_fusion(fused, fusion));
     }
-    let selection = crate::search_ranking::select(backend, query, fused, unit)?;
+    let selection = crate::search_ranking::select(fused, unit);
     let documents =
         tracing::info_span!("rerank_context", hits = selection.count).in_scope(|| {
             selection.hits[..selection.count]
