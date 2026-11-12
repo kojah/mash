@@ -348,7 +348,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                     rule_version: super::enrichment::VERSION,
                 }),
             }),
-            project: (!meta.cwd.is_empty()).then_some(meta.cwd),
+            project: (!meta.cwd.is_empty()).then(|| super::parsers::folder(&meta.cwd)),
             repository: meta.repository,
             title: (!meta.title.is_empty()).then_some(meta.title),
             created_at: Some(meta.created),

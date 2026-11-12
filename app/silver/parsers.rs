@@ -265,6 +265,25 @@ fn clean_projection(message: &mut ExtractedMessage) {
     }
 }
 
+/// A working folder as people write it. Windows programs may record the
+/// extended-length form (`\\?\C:\work`), which names the same folder as
+/// `C:\work`; kept as written, one project would be listed twice.
+pub(super) fn folder(path: &str) -> String {
+    match path.strip_prefix(r"\\?\UNC\") {
+        Some(share) => format!(r"\\{share}"),
+        None => path.strip_prefix(r"\\?\").unwrap_or(path).to_owned(),
+    }
+}
+
+#[test]
+fn folder_drops_the_windows_extended_length_prefix_only() {
+    assert_eq!(folder(r"\\?\C:\work\disk-report"), r"C:\work\disk-report");
+    assert_eq!(folder(r"\\?\UNC\host\share\repo"), r"\\host\share\repo");
+    for same in [r"C:\work", r"\\host\share", "/home/me/work", ""] {
+        assert_eq!(folder(same), same);
+    }
+}
+
 pub(super) fn capture_metadata(
     raw: &Record,
     project: &mut Option<String>,
@@ -278,7 +297,11 @@ pub(super) fn capture_metadata(
         &raw.metadata
     };
     if project.is_none() {
-        *project = meta.cwd.as_ref().filter(|value| !value.is_empty()).cloned();
+        *project = meta
+            .cwd
+            .as_ref()
+            .filter(|value| !value.is_empty())
+            .map(|value| folder(value));
     }
     if repository.is_none() {
         *repository = meta
