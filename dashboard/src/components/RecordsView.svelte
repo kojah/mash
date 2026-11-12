@@ -1,15 +1,13 @@
 <script lang="ts">
 import BadgeCheck from "@lucide/svelte/icons/badge-check";
-import CircleHelp from "@lucide/svelte/icons/circle-help";
 import Database from "@lucide/svelte/icons/database";
-import Gavel from "@lucide/svelte/icons/gavel";
 import ListChecks from "@lucide/svelte/icons/list-checks";
-import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
 import { whenLabel } from "../lib/browse";
 import { navigate } from "../lib/navigation";
 import { catalogOptions, stableRead } from "../lib/queries";
+import { kindIcons } from "../lib/recordIcons";
 import {
   kinds,
   label,
@@ -24,12 +22,6 @@ import FilterMenu from "./FilterMenu.svelte";
 import QueryError from "./QueryError.svelte";
 import Skeleton from "./Skeleton.svelte";
 
-const icons = {
-  decision: Gavel,
-  preference: SlidersHorizontal,
-  fact: BadgeCheck,
-  open_question: CircleHelp,
-} as const;
 const now = Date.now();
 
 let { params }: { params: string } = $props();
@@ -121,7 +113,7 @@ const dirty = $derived(
 <nav class="chips" aria-label="Memory kind">
   <a class="chip big-c" class:on={!kind} href={kindHref("")} aria-current={!kind ? "page" : undefined}>all</a>
   {#each kinds as value (value)}
-    {@const Icon = icons[value]}
+    {@const Icon = kindIcons[value]}
     <a class="chip big-c" class:on={kind === value} href={kindHref(value)} aria-current={kind === value ? "page" : undefined}><Icon size={15} color="var(--pink)" aria-hidden="true" />{label(value).toLowerCase()}s</a>
   {/each}
 </nav>
@@ -151,7 +143,7 @@ const dirty = $derived(
     {#each page.data.records as record (JSON.stringify([record.node, record.owner, record.id]))}
       {@const revision = record.revisions.find((revision) => revision.revision === record.currentRevision)}
       {#if revision}
-        {@const Icon = icons[revision.details.kind]}
+        {@const Icon = kindIcons[revision.details.kind]}
         <article style:padding="14px 0" style:border-bottom="1px solid var(--hair)">
           <p style:color="var(--pink)" style:font-size="13px" style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="6px">
             <Icon size={15} aria-hidden="true" />{label(revision.details.kind).toLowerCase()} / {label(revision.details.state).toLowerCase()}{standing(revision) === "established" ? "" : ` / ${standing(revision)}`}

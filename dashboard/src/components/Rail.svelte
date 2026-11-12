@@ -1,5 +1,4 @@
 <script lang="ts">
-import BookOpen from "@lucide/svelte/icons/book-open";
 import Bot from "@lucide/svelte/icons/bot";
 import Brain from "@lucide/svelte/icons/brain";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -18,6 +17,7 @@ import { untrack } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
 import { groupChats, projectLabel } from "../lib/browse";
 import { catalogOptions } from "../lib/queries";
+import { kindIcons } from "../lib/recordIcons";
 import { label as kindLabel, kinds } from "../lib/records";
 import { agentHref, machineHref, projectHref, recordsHref, router } from "../lib/route.svelte";
 import AgentMark from "./AgentMark.svelte";
@@ -191,7 +191,8 @@ function toggle(id: Section): void {
           {/each}
         {:else if section.id === "memory"}
           {#each kinds as kind (kind)}
-            <a class="sub" class:on={child === kind} href={recordsHref(new URLSearchParams({ kind }))} onclick={close}><BookOpen size={16} color="var(--pink)" aria-hidden="true" /><span>{kindLabel(kind).toLowerCase()}s</span></a>
+            {@const KindIcon = kindIcons[kind]}
+            <a class="sub" class:on={child === kind} href={recordsHref(new URLSearchParams({ kind }))} onclick={close}><KindIcon size={16} color="var(--pink)" aria-hidden="true" /><span>{kindLabel(kind).toLowerCase()}s</span></a>
           {/each}
         {/if}
       {/if}
