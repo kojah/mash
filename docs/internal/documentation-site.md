@@ -1,6 +1,6 @@
 # Documentation website
 
-The documentation at [mashapp.dev](https://mashapp.dev) uses Astro and Starlight,
+The documentation at [getmash.io](https://getmash.io) uses Astro and Starlight,
 published as static files on GitHub Pages. Cloudflare manages the domain's DNS.
 Internal links use Astro's client router to change pages without a full reload.
 Browser back/forward, direct URLs, and ordinary links without JavaScript still
@@ -48,7 +48,7 @@ If fetching an existing apt branch fails, publishing fails rather than dropping
 packages. Before the first apt release, publishing only the documentation is
 expected.
 
-GitHub Pages must use GitHub Actions as its publishing source and `mashapp.dev`
+GitHub Pages must use GitHub Actions as its publishing source and `getmash.io`
 as its custom domain. DNS points the domain at GitHub Pages; no Cloudflare token
 is required in GitHub Actions. Enable HTTPS enforcement once GitHub has issued
 the domain certificate.

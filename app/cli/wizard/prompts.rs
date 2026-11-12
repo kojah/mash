@@ -286,13 +286,13 @@ fn sharing(
     if selection != Choice::Shared {
         if selection == Choice::Later {
             eprintln!(
-                "Finish local setup now. Hosting guide: https://mashapp.dev/shared-index/\nLater, rerun `mash init` and choose Review and edit settings."
+                "Finish local setup now. Hosting guide: https://getmash.io/shared-index/\nLater, rerun `mash init` and choose Review and edit settings."
             );
         }
         return Ok(None);
     }
     eprintln!(
-        "Each computer keeps a local index and publishes history to the shared server.\nAsk its administrator for these settings and a token for this computer. Hosting guide: https://mashapp.dev/shared-index/"
+        "Each computer keeps a local index and publishes history to the shared server.\nAsk its administrator for these settings and a token for this computer. Hosting guide: https://getmash.io/shared-index/"
     );
     let api_url = text(
         "Shared server URL",

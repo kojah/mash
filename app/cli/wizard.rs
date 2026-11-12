@@ -28,7 +28,7 @@ pub(super) async fn run(cli: Cli) -> Result<Response, AppError> {
         );
     } else {
         eprintln!(
-            "Local Qdrant is unavailable. Start it using https://mashapp.dev/installation/#start-the-local-search-service\nYou can save configuration now and run `mash init` again afterward."
+            "Local Qdrant is unavailable. Start it using https://getmash.io/installation/#start-the-local-search-service\nYou can save configuration now and run `mash init` again afterward."
         );
     }
     if let Some(shared) = &draft.shared {

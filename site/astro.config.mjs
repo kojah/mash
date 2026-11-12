@@ -2,7 +2,7 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-  site: "https://mashapp.dev",
+  site: "https://getmash.io",
   integrations: [
     starlight({
       title: "mash",

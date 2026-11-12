@@ -104,7 +104,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             crate::blocking(move || write_configuration(&path, semantic, request.plan.as_ref()))
                 .await?;
         if !semantic {
-            next.push("For semantic search, run `mash models install`, then update your existing configuration as shown at https://mashapp.dev/indexing/#enable-semantic-search".to_owned());
+            next.push("For semantic search, run `mash models install`, then update your existing configuration as shown at https://getmash.io/indexing/#enable-semantic-search".to_owned());
         }
         ConfigOutcome {
             path: config_path,
@@ -142,7 +142,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         Vec::new()
     };
     if agents.is_empty() && request.agents {
-        next.push("No Claude Code or Codex CLI was found on PATH. CLI search and the dashboard still work; to connect an agent, see https://mashapp.dev/agents/".to_owned());
+        next.push("No Claude Code or Codex CLI was found on PATH. CLI search and the dashboard still work; to connect an agent, see https://getmash.io/agents/".to_owned());
     }
     next.extend(agent_next_steps(&agents));
     if !request.index {

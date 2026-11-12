@@ -530,7 +530,7 @@ impl Client {
             11,
             crate::ErrorKind::QdrantUnavailable,
             format!(
-                "Could not reach Qdrant at {}; start the configured Qdrant service and check its HTTP port, then retry. For local setup, see https://mashapp.dev/installation/",
+                "Could not reach Qdrant at {}; start the configured Qdrant service and check its HTTP port, then retry. For local setup, see https://getmash.io/installation/",
                 self.url
             ),
             true,

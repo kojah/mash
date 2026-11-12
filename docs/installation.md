@@ -87,8 +87,8 @@ brew install kojah/tap/mash
 **apt — Debian or Ubuntu**
 
 ```sh
-curl -fsSL https://mashapp.dev/apt/mash-archive-keyring.gpg | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://mashapp.dev/apt stable main" | sudo tee /etc/apt/sources.list.d/mash.list
+curl -fsSL https://getmash.io/apt/mash-archive-keyring.gpg | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://getmash.io/apt stable main" | sudo tee /etc/apt/sources.list.d/mash.list
 sudo apt update && sudo apt install mash
 ```
 

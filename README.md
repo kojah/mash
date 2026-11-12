@@ -24,7 +24,7 @@ terminal, or browse conversations in the dashboard.
 - **Local embeddings by default**, with opt-in [remote batch inference](docs/configuration.md#embedding-inference).
 - Runs on **Linux, macOS, and Windows**.
 
-**Documentation website:** [mashapp.dev](https://mashapp.dev)
+**Documentation website:** [getmash.io](https://getmash.io)
 
 ## Quick start
 
@@ -180,4 +180,4 @@ before replacing an existing installation.
 | Configure an MCP client | [MCP reference](docs/mcp.md) |
 | Understand indexing and models | [Indexing](docs/indexing.md) |
 
-[Documentation website](https://mashapp.dev) · [All guides](docs/README.md) · [License](LICENSE)
+[Documentation website](https://getmash.io) · [All guides](docs/README.md) · [License](LICENSE)

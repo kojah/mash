@@ -647,7 +647,7 @@ pub(super) fn empty_notice(
     .to_owned();
     if !configuration.views.build.dense_enabled() {
         notice.push_str(
-            "; to search by meaning, run `mash models install`, then update your existing configuration using https://mashapp.dev/indexing/#enable-semantic-search",
+            "; to search by meaning, run `mash models install`, then update your existing configuration using https://getmash.io/indexing/#enable-semantic-search",
         );
     }
     notice.push('.');

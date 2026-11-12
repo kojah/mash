@@ -153,7 +153,7 @@ pub(crate) fn render(providers: &ProviderRoots, semantic: bool) -> Result<String
     if !semantic {
         text.push_str(
             "\n# Models are not installed, so search matches words exactly. After\n\
-             # `mash models install`, follow https://mashapp.dev/indexing/#enable-semantic-search.\n\
+             # `mash models install`, follow https://getmash.io/indexing/#enable-semantic-search.\n\
              [views.build]\nrepresentations = \"lexical-only\"\n\n\
              [views.query]\nintent = \"exact-mention\"\n",
         );
