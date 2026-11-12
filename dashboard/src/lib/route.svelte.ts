@@ -6,7 +6,6 @@ export type Route =
   | { readonly page: "history" }
   /** Bulk export of the chats a set of filters matches. */
   | { readonly page: "export"; readonly params: string }
-  | { readonly page: "import" }
   | { readonly page: "projects" }
   | { readonly page: "project"; readonly name: string }
   | { readonly page: "agents" }
@@ -31,7 +30,6 @@ export type Route =
 
 const plain = {
   "#/history": { page: "history" },
-  "#/import": { page: "import" },
   "#/projects": { page: "projects" },
   "#/agents": { page: "agents" },
   "#/machines": { page: "machines" },

@@ -55,7 +55,7 @@ for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 850 });
     const read = await mockHistory(page);
     await page.goto("/#/");
-    await followRail(page, "import / export", "chats");
+    await followRail(page, "export", "chats");
     await expect(page).toHaveURL(/#\/export$/);
     const main = page.getByRole("main");
     const status = main.getByRole("status").first();
@@ -101,13 +101,6 @@ for (const width of [390, 1280]) {
     await main.getByRole("radio", { name: /Mash archive/ }).check();
     await expect(main.getByText("mash export ~/mash-backup")).toBeVisible();
     await expect(main.getByRole("button", { name: /^Export/ })).toHaveCount(0);
-
-    await main.getByRole("link", { name: "import", exact: true }).click();
-    await expect(page).toHaveURL(/#\/import$/);
-    await expect(main.getByRole("link", { name: "Set up sharing" })).toBeVisible();
-    // Coming back keeps the filter and the chat left out.
-    await main.getByRole("link", { name: "export", exact: true }).click();
-    await expect(status).toContainText("29 chats will be exported");
   });
 }
 

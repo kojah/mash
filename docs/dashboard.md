@@ -142,7 +142,7 @@ for a later restore, use [a portable backup](upgrades.md#make-a-portable-backup)
 
 ## Export many chats at once
 
-Open **chats**, then **import / export**. Narrow the list with the agent,
+Open **chats**, then **export**. Narrow the list with the agent,
 machine, project and time filters; every chat they match is exported, on every
 page, unless you untick it. Choose **Markdown** for one readable file per chat
 or **JSON** for one file per chat that a script can read, then choose

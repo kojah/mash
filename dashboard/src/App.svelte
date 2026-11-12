@@ -66,9 +66,8 @@ $effect(() => {
         <!-- Rendered above so it survives opening a chat. -->
       {:else if route.page === "history"}
         <History />
-      {:else if route.page === "export" || route.page === "import"}
-        <!-- One instance for both tabs, so chats left out by hand survive a visit to the other tab. -->
-        <Transfer tab={route.page} params={route.page === "export" ? route.params : ""} />
+      {:else if route.page === "export"}
+        <Transfer params={route.params} />
       {:else if route.page === "projects"}
         <Projects />
       {:else if route.page === "project"}

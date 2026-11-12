@@ -5,11 +5,9 @@ import Braces from "@lucide/svelte/icons/braces";
 import Check from "@lucide/svelte/icons/check";
 import Clock from "@lucide/svelte/icons/clock";
 import Copy from "@lucide/svelte/icons/copy";
-import Download from "@lucide/svelte/icons/download";
 import FileText from "@lucide/svelte/icons/file-text";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
-import Share2 from "@lucide/svelte/icons/share-2";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import Upload from "@lucide/svelte/icons/upload";
 import { createQuery } from "@tanstack/svelte-query";
@@ -28,19 +26,14 @@ import MetaChips from "./MetaChips.svelte";
 import QueryError from "./QueryError.svelte";
 import Skeleton from "./Skeleton.svelte";
 
-// Bulk export of the chats a set of filters matches, and where to go to bring
-// chats in. The export is built in the browser from the same read-only pages a
-// single chat uses, so nothing here changes history or writes on the machine.
-let { tab, params }: { tab: "export" | "import"; params: string } = $props();
+// Bulk export of the chats a set of filters matches. The export is built in the
+// browser from the same read-only pages a single chat uses, so nothing here
+// changes history or writes on the machine.
+let { params }: { params: string } = $props();
 const pageSize = 25;
 const base = "#/export";
 const now = Date.now();
 const applied = $derived(parseApplied(params));
-// The import tab has no filters of its own; its link back keeps the export's.
-let exportHref = $state(base);
-$effect(() => {
-  if (tab === "export") exportHref = appliedHref({ ...applied, offset: 0 }, base);
-});
 const catalogue = createQuery(() => catalogOptions);
 const chats = $derived(catalogue.data?.chats ?? []);
 const matching = $derived(
@@ -205,129 +198,109 @@ async function copy(): Promise<void> {
 </script>
 
 <div class="hd">
-  <div><h1 class="h1">Import / export</h1><p class="meta">Copy many chats out of Mash at once, or bring chats in.</p></div>
-  <nav class="chips" aria-label="Import or export">
-    <a class="chip" class:on={tab === "export"} href={exportHref} aria-current={tab === "export" ? "page" : undefined}><Upload size={15} aria-hidden="true" />export</a>
-    <a class="chip" class:on={tab === "import"} href="#/import" aria-current={tab === "import" ? "page" : undefined}><Download size={15} aria-hidden="true" />import</a>
-  </nav>
+  <div><h1 class="h1">Export</h1><p class="meta">Copy many chats out of Mash at once.</p></div>
 </div>
 
-{#if tab === "export"}
-  <QueryError title="Couldn’t load chats" query={catalogue} />
-  {#if catalogue.isPending}<Skeleton rows={5} />{/if}
-  {#if catalogue.data}
-    <div class="chips" role="group" aria-label="Filters">
-      <FilterMenu label={chipLabel("agents", "agent")} active={applied.agents.length > 0} multiple options={options.agents} selected={applied.agents} choose={(value) => toggleFilter("agents", value)}>
-        {#snippet icon()}<Bot size={15} aria-hidden="true" />{/snippet}
-      </FilterMenu>
-      <FilterMenu label={chipLabel("machines", "machine")} active={applied.machines.length > 0} multiple options={options.machines} selected={applied.machines} choose={(value) => toggleFilter("machines", value)}>
-        {#snippet icon()}<Laptop size={15} aria-hidden="true" />{/snippet}
-      </FilterMenu>
-      <FilterMenu label={chipLabel("projects", "project")} active={applied.projects.length > 0} multiple options={options.projects} selected={applied.projects} choose={(value) => toggleFilter("projects", value)}>
-        {#snippet icon()}<Folder size={15} aria-hidden="true" />{/snippet}
-      </FilterMenu>
-      <FilterMenu
-        label={dateRanges.find((range) => range.days === applied.days)?.label ?? "any time"}
-        active={applied.days !== null}
-        options={dateRanges.map((range) => ({ value: String(range.days ?? ""), label: range.label }))}
-        selected={[String(applied.days ?? "")]}
-        choose={(value) => go({ ...applied, days: value ? Number(value) : null })}
-      >
-        {#snippet icon()}<Clock size={15} aria-hidden="true" />{/snippet}
-      </FilterMenu>
-      {#if filtered}<a class="a" href={base} style:font-size="13.5px" style:padding="0 6px">Clear filters</a>{/if}
-    </div>
+<QueryError title="Couldn’t load chats" query={catalogue} />
+{#if catalogue.isPending}<Skeleton rows={5} />{/if}
+{#if catalogue.data}
+  <div class="chips" role="group" aria-label="Filters">
+    <FilterMenu label={chipLabel("agents", "agent")} active={applied.agents.length > 0} multiple options={options.agents} selected={applied.agents} choose={(value) => toggleFilter("agents", value)}>
+      {#snippet icon()}<Bot size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    <FilterMenu label={chipLabel("machines", "machine")} active={applied.machines.length > 0} multiple options={options.machines} selected={applied.machines} choose={(value) => toggleFilter("machines", value)}>
+      {#snippet icon()}<Laptop size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    <FilterMenu label={chipLabel("projects", "project")} active={applied.projects.length > 0} multiple options={options.projects} selected={applied.projects} choose={(value) => toggleFilter("projects", value)}>
+      {#snippet icon()}<Folder size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    <FilterMenu
+      label={dateRanges.find((range) => range.days === applied.days)?.label ?? "any time"}
+      active={applied.days !== null}
+      options={dateRanges.map((range) => ({ value: String(range.days ?? ""), label: range.label }))}
+      selected={[String(applied.days ?? "")]}
+      choose={(value) => go({ ...applied, days: value ? Number(value) : null })}
+    >
+      {#snippet icon()}<Clock size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    {#if filtered}<a class="a" href={base} style:font-size="13.5px" style:padding="0 6px">Clear filters</a>{/if}
+  </div>
 
-    <p class="meta" role="status" style:font-size="13.5px">
-      <b style:color="var(--fg)">{count(chosen.length, "chat")}</b> will be exported{#if !filtered}, which is every chat this dashboard lists{/if}.
-      {#if leftOut > 0}
-        {count(leftOut, "chat")} left out by hand:
-        <button class="a" type="button" onclick={() => { onlyLeftOut = !onlyLeftOut; go(applied); }}>{onlyLeftOut ? "show all" : "show them"}</button>
-        ·
-        <button class="a" type="button" onclick={() => { excluded = new Set(); onlyLeftOut = false; }}>include all again</button>
-      {/if}
-    </p>
-
-    {#if !matching.length}
-      <div class="state-c"><p>No chat matches these filters.</p></div>
-    {:else}
-      <section aria-label="Chats to export">
-        {#each shown as chat (chatKey(chat))}
-          {@const key = chatKey(chat)}
-          {@const included = !excluded.has(key)}
-          <label class="xrow" class:off={!included}>
-            <input type="checkbox" checked={included} onchange={(event) => setIncluded(key, event.currentTarget.checked)} />
-            <span style:min-width="0">
-              <span class="row-t"><AgentMark agent={chat.agent} /><span>{plainTitle(chat.title)}</span></span>
-              <span class="elb" style:margin-top="2px"><MetaChips {chat} extra={included ? "" : "left out"} /></span>
-            </span>
-          </label>
-        {/each}
-        {#if listed.length > pageSize}
-          <nav class="hd" aria-label="Pages" style:margin-top="14px">
-            <span class="meta">{(first + 1).toLocaleString()}–{(first + shown.length).toLocaleString()} of {count(listed.length, "chat")} · {shownChosen.toLocaleString()} of the {shown.length} on this page included</span>
-            <span class="acts">
-              {#if first > 0}<a class="btn" rel="prev" href={appliedHref({ ...applied, offset: Math.max(0, first - pageSize) }, base)}>Previous</a>{:else}<button class="btn" type="button" disabled>Previous</button>{/if}
-              {#if first + pageSize < listed.length}<a class="btn" rel="next" href={appliedHref({ ...applied, offset: first + pageSize }, base)}>Next</a>{:else}<button class="btn" type="button" disabled>Next</button>{/if}
-            </span>
-          </nav>
-        {/if}
-      </section>
+  <p class="meta" role="status" style:font-size="13.5px">
+    <b style:color="var(--fg)">{count(chosen.length, "chat")}</b> will be exported{#if !filtered}, which is every chat this dashboard lists{/if}.
+    {#if leftOut > 0}
+      {count(leftOut, "chat")} left out by hand:
+      <button class="a" type="button" onclick={() => { onlyLeftOut = !onlyLeftOut; go(applied); }}>{onlyLeftOut ? "show all" : "show them"}</button>
+      ·
+      <button class="a" type="button" onclick={() => { excluded = new Set(); onlyLeftOut = false; }}>include all again</button>
     {/if}
+  </p>
 
-    <div class="grid-tiles" role="radiogroup" aria-label="What to make">
-      {#each formats as option (option.value)}
-        <label class="tile pick" class:on={format === option.value}>
-          <span class="tile-h"><option.icon size={22} color={option.tint} aria-hidden="true" /><b style:flex="1">{option.name}</b><input type="radio" name="format" value={option.value} bind:group={format} /></span>
-          <span class="meta" style:font-size="13.5px">{option.about}</span>
+  {#if !matching.length}
+    <div class="state-c"><p>No chat matches these filters.</p></div>
+  {:else}
+    <section aria-label="Chats to export">
+      {#each shown as chat (chatKey(chat))}
+        {@const key = chatKey(chat)}
+        {@const included = !excluded.has(key)}
+        <label class="xrow" class:off={!included}>
+          <input type="checkbox" checked={included} onchange={(event) => setIncluded(key, event.currentTarget.checked)} />
+          <span style:min-width="0">
+            <span class="row-t"><AgentMark agent={chat.agent} /><span>{plainTitle(chat.title)}</span></span>
+            <span class="elb" style:margin-top="2px"><MetaChips {chat} extra={included ? "" : "left out"} /></span>
+          </span>
         </label>
       {/each}
-    </div>
-
-    {#if format === "archive"}
-      <div class="tile">
-        <b>Make a full backup on the machine itself</b>
-        <p class="meta" style:font-size="13.5px">A Mash archive always holds one machine’s whole history, so it ignores the filters above. Run this there, with a folder that does not exist yet:</p>
-        <div class="cmdline"><code>{backup}</code><button type="button" aria-label={copied ? "Copied" : "Copy the command"} title={copied ? "Copied" : "Copy"} onclick={copy}>{#if copied}<Check size={16} aria-hidden="true" />{:else}<Copy size={16} aria-hidden="true" />{/if}</button></div>
-        <p class="meta" style:font-size="13px">Restoring one is covered in <a class="a" href="https://getmash.io/upgrades/" rel="noreferrer">backups and upgrades</a>.</p>
-      </div>
-    {:else}
-      <div class="tile">
-        <p class="warn" style:display="flex" style:gap="8px" style:font-size="13.5px"><TriangleAlert size={16} aria-hidden="true" style="flex:none;margin-top:2px" /><span>The download holds these chats in full, including any passwords or private details said in them.</span></p>
-        <div class="hd">
+      {#if listed.length > pageSize}
+        <nav class="hd" aria-label="Pages" style:margin-top="14px">
+          <span class="meta">{(first + 1).toLocaleString()}–{(first + shown.length).toLocaleString()} of {count(listed.length, "chat")} · {shownChosen.toLocaleString()} of the {shown.length} on this page included</span>
           <span class="acts">
-            <button class="btn p" type="button" disabled={!chosen.length || job.state === "running"} onclick={() => { if (format !== "archive") void start(format); }}><Upload size={15} aria-hidden="true" />Export {count(chosen.length, "chat")}</button>
-            {#if job.state === "running"}<button class="btn" type="button" onclick={() => controller?.abort()}>Stop</button>{/if}
+            {#if first > 0}<a class="btn" rel="prev" href={appliedHref({ ...applied, offset: Math.max(0, first - pageSize) }, base)}>Previous</a>{:else}<button class="btn" type="button" disabled>Previous</button>{/if}
+            {#if first + pageSize < listed.length}<a class="btn" rel="next" href={appliedHref({ ...applied, offset: first + pageSize }, base)}>Next</a>{:else}<button class="btn" type="button" disabled>Next</button>{/if}
           </span>
-          <span class="meta" style:font-size="13px">Saved by your browser as one .zip file. Attachments are not included.</span>
-        </div>
-        {#if job.state === "running"}
-          <div role="status">
-            <p class="meta" style:font-size="13.5px">Reading chat {Math.min(job.chats + 1, job.total).toLocaleString()} of {job.total.toLocaleString()} · {count(job.messages, "message")} so far. Keep this page open.</p>
-            <span class="bar" role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.chats}><i style:width="{Math.round((job.chats / job.total) * 100)}%"></i></span>
-          </div>
-        {:else if job.state === "done"}
-          <p class="ok" role="status" style:font-size="13.5px">Exported {count(job.chats, "chat")} and {count(job.messages, "message")} to {job.file}.</p>
-        {:else if job.state === "stopped"}
-          <p class="meta" role="status" style:font-size="13.5px">Export stopped. Nothing was saved.</p>
-        {:else if job.state === "failed"}
-          <p class="warn" role="alert" style:font-size="13.5px">{job.reason}</p>
-        {/if}
-      </div>
-    {/if}
+        </nav>
+      {/if}
+    </section>
   {/if}
-{:else}
-  <div class="grid-tiles">
-    <div class="tile">
-      <span class="tile-h"><Share2 size={22} color="var(--blue)" aria-hidden="true" /><b>Chats from another machine</b></span>
-      <p class="meta" style:font-size="13.5px">These are not imported. Each machine keeps its own history and shares it, and the chats then appear here next to this machine’s, kept up to date.</p>
-      <p style:font-size="13.5px"><a class="a" href="https://getmash.io/shared-index/" rel="noreferrer">Set up sharing</a> · <a class="a" href="#/machines">machines sharing now</a></p>
-    </div>
-    <div class="tile">
-      <span class="tile-h"><Archive size={22} color="var(--clay2)" aria-hidden="true" /><b>Restore a Mash archive</b></span>
-      <p class="meta" style:font-size="13.5px">An archive made with <code>mash export</code> restores a machine’s whole history into a new, empty database. It is a recovery step run on that machine, not something this page does.</p>
-      <p style:font-size="13.5px"><a class="a" href="https://getmash.io/upgrades/" rel="noreferrer">Backups and upgrades</a></p>
-    </div>
+
+  <div class="grid-tiles" role="radiogroup" aria-label="What to make">
+    {#each formats as option (option.value)}
+      <label class="tile pick" class:on={format === option.value}>
+        <span class="tile-h"><option.icon size={22} color={option.tint} aria-hidden="true" /><b style:flex="1">{option.name}</b><input type="radio" name="format" value={option.value} bind:group={format} /></span>
+        <span class="meta" style:font-size="13.5px">{option.about}</span>
+      </label>
+    {/each}
   </div>
-  <p class="meta" style:font-size="13.5px">Markdown and JSON exports are for reading and scripts. They cannot be brought back in.</p>
+
+  {#if format === "archive"}
+    <div class="tile">
+      <b>Make a full backup on the machine itself</b>
+      <p class="meta" style:font-size="13.5px">A Mash archive always holds one machine’s whole history, so it ignores the filters above. Run this there, with a folder that does not exist yet:</p>
+      <div class="cmdline"><code>{backup}</code><button type="button" aria-label={copied ? "Copied" : "Copy the command"} title={copied ? "Copied" : "Copy"} onclick={copy}>{#if copied}<Check size={16} aria-hidden="true" />{:else}<Copy size={16} aria-hidden="true" />{/if}</button></div>
+      <p class="meta" style:font-size="13px">Restoring one is covered in <a class="a" href="https://getmash.io/upgrades/" rel="noreferrer">backups and upgrades</a>.</p>
+    </div>
+  {:else}
+    <div class="tile">
+      <p class="warn" style:display="flex" style:gap="8px" style:font-size="13.5px"><TriangleAlert size={16} aria-hidden="true" style="flex:none;margin-top:2px" /><span>The download holds these chats in full, including any passwords or private details said in them.</span></p>
+      <div class="hd">
+        <span class="acts">
+          <button class="btn p" type="button" disabled={!chosen.length || job.state === "running"} onclick={() => { if (format !== "archive") void start(format); }}><Upload size={15} aria-hidden="true" />Export {count(chosen.length, "chat")}</button>
+          {#if job.state === "running"}<button class="btn" type="button" onclick={() => controller?.abort()}>Stop</button>{/if}
+        </span>
+        <span class="meta" style:font-size="13px">Saved by your browser as one .zip file. Attachments are not included.</span>
+      </div>
+      {#if job.state === "running"}
+        <div role="status">
+          <p class="meta" style:font-size="13.5px">Reading chat {Math.min(job.chats + 1, job.total).toLocaleString()} of {job.total.toLocaleString()} · {count(job.messages, "message")} so far. Keep this page open.</p>
+          <span class="bar" role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.chats}><i style:width="{Math.round((job.chats / job.total) * 100)}%"></i></span>
+        </div>
+      {:else if job.state === "done"}
+        <p class="ok" role="status" style:font-size="13.5px">Exported {count(job.chats, "chat")} and {count(job.messages, "message")} to {job.file}.</p>
+      {:else if job.state === "stopped"}
+        <p class="meta" role="status" style:font-size="13.5px">Export stopped. Nothing was saved.</p>
+      {:else if job.state === "failed"}
+        <p class="warn" role="alert" style:font-size="13.5px">{job.reason}</p>
+      {/if}
+    </div>
+  {/if}
 {/if}
