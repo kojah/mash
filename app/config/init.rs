@@ -108,6 +108,10 @@ pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
     for (provider, paths) in candidates {
         let mut roots: Vec<PathBuf> = Vec::new();
         for path in paths.into_iter().flatten() {
+            // Rebuilt from its parts so every separator is the platform's own:
+            // the names above are written with "/" and joined to a Windows home
+            // would otherwise read `C:\Users\me\.claude/projects`.
+            let path: PathBuf = path.components().collect();
             if path.exists() && !roots.contains(&path) {
                 roots.push(path);
             }

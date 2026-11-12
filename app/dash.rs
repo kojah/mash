@@ -592,7 +592,7 @@ async fn asset(uri: Uri) -> Response {
         if assets::ASSETS.is_empty() {
             return (
                 [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                "<!doctype html><title>Mash</title><p>The dashboard has not been built. Run <code>pnpm install &amp;&amp; pnpm build</code> in <code>dashboard/</code>, then rebuild mash.</p>",
+                "<!doctype html><title>Mash</title><p>The dashboard has not been built. Run <code>pnpm install &amp;&amp; pnpm build</code> in <code>dashboard/</code>, then rebuild mash. Installed with cargo? See <a href=\"https://mashapp.dev/installation/#install-the-cli\">the installation guide</a>.</p>",
             )
                 .into_response();
         }

@@ -77,6 +77,12 @@ The controller's `allow_actions` selects which operations appear. Deployment
 requires configured build/install/preflight commands; adding `deploy` to the
 allowlist alone does not provide an installer.
 
+A Windows machine uses `platform = "windows"`. It appears in the dashboard
+through its own `mash dash` peer, with the services you list for it (use the
+`windows_task` or `windows_service` managers), but fleet operations skip it:
+they run through Ansible over SSH with a POSIX shell. Install and update Mash
+on it directly.
+
 A shared server is a service of the machine that runs it, not a machine of its
 own. Give its entry under that machine a `deployment` table and it appears
 under **services** in the picker, named by its `id`. Machines that publish to

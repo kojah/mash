@@ -83,6 +83,7 @@ impl Action {
 pub enum Platform {
     Linux,
     Darwin,
+    Windows,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -108,6 +109,17 @@ pub struct Machine {
 
 const fn enabled() -> bool {
     true
+}
+
+impl Machine {
+    /// Whether fleet operations can run on this machine. They go through
+    /// Ansible over SSH with a POSIX shell, which a Windows machine does not
+    /// offer. One still appears in the dashboard through its own peer, with
+    /// the services listed for it.
+    #[must_use]
+    pub fn operated(&self) -> bool {
+        self.history && self.platform != Platform::Windows
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -153,6 +165,9 @@ impl Machine {
         if let Some(watcher) = &self.watcher {
             let (manager, unit, plist, log) = match self.platform {
                 Platform::Linux => (Manager::SystemdUser, "mash-index-watch.service", None, None),
+                // Unreachable: validation refuses a fleet watcher on Windows,
+                // whose watcher is listed as one of the machine's services.
+                Platform::Windows => (Manager::WindowsTask, "mash-index-watch", None, None),
                 Platform::Darwin => (
                     Manager::Launchd,
                     "dev.mash.index-watch",
@@ -268,7 +283,7 @@ impl Inventory {
         if !self.controller.allow_actions.contains(&action) {
             return Err("fleet action is not enabled in the controller inventory".into());
         }
-        let history = self.machines.iter().filter(|machine| machine.history);
+        let history = self.machines.iter().filter(|machine| machine.operated());
         let eligible: Vec<&str> = match action {
             Action::Status | Action::Preflight | Action::Deploy => self
                 .servers()
@@ -373,14 +388,17 @@ impl Inventory {
             if let Some(watcher) = &machine.watcher
                 && (!watcher.home.is_absolute()
                     || !watcher.launcher.is_absolute()
-                    || !machine.history
+                    || !machine.operated()
                     || !watcher
                         .launcher
                         .to_string_lossy()
                         .bytes()
                         .all(|byte| byte.is_ascii_alphanumeric() || b"/_.-".contains(&byte)))
             {
-                return Err("invalid watcher home, launcher or non-history machine".into());
+                return Err(
+                    "invalid watcher home or launcher, or a machine fleet operations cannot reach"
+                        .into(),
+                );
             }
             let mut services = HashSet::new();
             let managed = machine.managed_services();
@@ -582,6 +600,40 @@ allow_control = true
         assert!(inventory.validate().is_err());
         inventory.machines[0].databases.clear();
         inventory.machines[0].token_env = Some("TOKEN=secret".into());
+        assert!(inventory.validate().is_err());
+    }
+
+    #[test]
+    fn windows_machine_is_listed_but_is_not_a_fleet_operation_target() {
+        let mut inventory = fixture();
+        inventory.controller.allow_actions = vec![Action::Status, Action::Sync];
+        let before = inventory.targets(Action::Status, &[]).unwrap();
+        let mut windows = inventory.machines[0].clone();
+        windows.id = "ares".into();
+        windows.platform = Platform::Windows;
+        windows.dashboard_url = Some("http://100.64.0.9:8790".into());
+        windows.services.clear();
+        windows.databases.clear();
+        windows.watcher = None;
+        inventory.machines.push(windows);
+        inventory.validate().unwrap();
+        assert_eq!(serde_json::to_value(Platform::Windows).unwrap(), "windows");
+
+        // Fleet operations run through Ansible, which cannot drive it.
+        assert_eq!(inventory.targets(Action::Status, &[]).unwrap(), before);
+        assert!(inventory.targets(Action::Sync, &["ares".into()]).is_err());
+        let ansible = String::from_utf8(crate::ansible::encode(&inventory).unwrap()).unwrap();
+        assert!(!ansible.contains("ares"));
+
+        // A fleet watcher is installed by those operations, so it is refused.
+        let watcher = inventory.machines[0].watcher.clone().or_else(|| {
+            Some(Watcher {
+                launcher: "/usr/local/bin/mash-watch".into(),
+                home: "/home/me".into(),
+                allow_control: false,
+            })
+        });
+        inventory.machines.last_mut().unwrap().watcher = watcher;
         assert!(inventory.validate().is_err());
     }
 

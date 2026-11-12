@@ -23,6 +23,20 @@ cargo +stable install --locked --git https://github.com/kojah/mash mash
 mash --version
 ```
 
+This installs the command line and the MCP server. The web dashboard's pages
+are built separately, so `mash dash` from this install says the dashboard has
+not been built. To include it, install [Node.js](https://nodejs.org/) and
+[pnpm](https://pnpm.io/), then build from a checkout:
+
+```bash
+git clone https://github.com/kojah/mash
+cd mash/dashboard
+pnpm install --frozen-lockfile
+pnpm build
+cd ..
+cargo +stable install --locked --path .
+```
+
 If your shell cannot find `mash`, add Cargo's binary directory to `PATH`
 (usually `~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows).
 For the current terminal, use `export PATH="$HOME/.cargo/bin:$PATH"` on
