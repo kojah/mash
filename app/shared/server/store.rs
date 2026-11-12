@@ -14,6 +14,9 @@ mod replay;
 #[cfg(test)]
 pub(crate) use replay::ReplayFault;
 mod records;
+mod retire;
+#[cfg(test)]
+pub(crate) use retire::RetireFault;
 mod sync;
 
 /// Serializes publications per node while other nodes proceed.
@@ -47,6 +50,8 @@ pub(crate) struct Store {
     responses: crate::redaction::Policy,
     #[cfg(test)]
     replay_fault: Option<ReplayFault>,
+    #[cfg(test)]
+    retire_fault: Option<RetireFault>,
     /// Test hook: fail views certification after a committed silver write.
     #[cfg(test)]
     views_interruption: bool,
@@ -164,6 +169,8 @@ impl Store {
             responses: crate::redaction::Policy::ON,
             #[cfg(test)]
             replay_fault: None,
+            #[cfg(test)]
+            retire_fault: None,
             #[cfg(test)]
             views_interruption: false,
             #[cfg(test)]

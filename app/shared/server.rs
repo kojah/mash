@@ -432,6 +432,39 @@ pub(crate) struct Activation {
     pub(crate) memory: bool,
 }
 
+/// Delete everything one configured node published, then exit without
+/// serving. The node's machine can publish afresh afterwards, from any local
+/// index, as if it had never published. `node` is `GROUP/NODE`.
+///
+/// The service must be stopped first: this takes the same exclusive hold on
+/// the history directory that a running server has.
+pub(crate) async fn retire(path: &Path, node: &str) -> Result<(), AppError> {
+    let config = configuration::load(path).await?;
+    let identities = configuration::identities(&config)?;
+    let identity = identities
+        .values()
+        .find(|identity| format!("{}/{}", identity.group_id, identity.node_id) == node)
+        .ok_or_else(|| {
+            AppError::usage("--retire-node names no configured node; use GROUP/NODE from [[nodes]]")
+        })?;
+    let store = store::initialize(&config, &identities, false, false, false).await?;
+    let retired = store.retire(identity).await?;
+    // Receipts and attachments go with the history they describe: a receipt
+    // left behind could acknowledge an upload that no longer exists.
+    let transfers = config.silver_dir()?.join("sync");
+    let (group, name) = (identity.group_id.clone(), identity.node_id.clone());
+    crate::blocking(move || sync::open_catalog(&transfers)?.retire(&group, &name)).await?;
+    if let Some(root) = &config.attachments_dir {
+        let directory = attachments::node_directory(root, &identity.group_id, &identity.node_id);
+        match tokio::fs::remove_dir_all(&directory).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(AppError::io(error)),
+        }
+    }
+    crate::write_json(&mut std::io::stdout(), &retired)
+}
+
 /// `models` is used to replay views from silver before serving.
 pub(crate) async fn run(
     path: &Path,

@@ -318,7 +318,10 @@ silver lives on the API host under `silver_dir` (absolute path; default
 configured node at `<silver_dir>/<group_id>/<node_id>.sqlite3`, using the same
 silver schema as local indexes. Back it up: Qdrant can be rebuilt from it, but
 not the reverse. One `mash-server` process owns a `silver_dir`; a second one using
-the same directory fails at startup. Filtered HNSW vector retrieval is the default, with
+the same directory fails at startup. `mash-server --retire-node GROUP/NODE` takes
+that same ownership for a one-off deletion of a node's silver, documents,
+transfer receipts and attachments, and exits; see
+[Search across your machines](../shared-index.md#remove-a-machine-or-let-a-rebuilt-one-publish-again). Filtered HNSW vector retrieval is the default, with
 `ef_runtime = 200`; exact vector retrieval remains an explicit option.
 
 ```toml

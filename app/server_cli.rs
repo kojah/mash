@@ -30,6 +30,15 @@ struct Arguments {
     /// Rebuild all shared views from shared silver before serving.
     #[arg(long)]
     replay_views: bool,
+    /// Delete everything one node published, then exit without serving. Use it
+    /// when a machine's local index was rebuilt and it can no longer publish
+    /// under its name, or to remove a machine for good. Stop the service first.
+    #[arg(
+        long,
+        value_name = "GROUP/NODE",
+        conflicts_with_all = ["replay_views", "activate_views", "activate_query", "activate_memory"]
+    )]
+    retire_node: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -74,6 +83,10 @@ where
     let models = args
         .models_dir
         .unwrap_or_else(crate::core::default_models_path);
+    if let Some(node) = &args.retire_node {
+        runtime.block_on(server::retire(&args.server_config, node))?;
+        return Ok(None);
+    }
     runtime.block_on(server::run(
         &args.server_config,
         server::Activation {

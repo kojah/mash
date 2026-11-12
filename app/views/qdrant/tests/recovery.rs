@@ -228,3 +228,101 @@ async fn qdrant_replay_reconstructs_all_views_from_shared_silver() {
     assert_eq!(view.len(), 2);
     fixture.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_retire_removes_a_node_and_another_database_can_publish_under_its_name() {
+    use crate::shared::server::store::RetireFault;
+
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    // The same node name published from a different local database.
+    let rebuilt = |marker: &str| {
+        Fixture::upload(&[
+            Event::Start(Start {
+                instance: "rebuilt".into(),
+                ..Fixture::start(1)
+            }),
+            Event::Batch(Batch::Chats {
+                records: vec![Fixture::chat()],
+            }),
+            Event::Batch(Batch::Messages {
+                records: fixture.messages(marker),
+            }),
+            Event::Finish,
+        ])
+    };
+    let mut server = reconnect(&fixture).await;
+    for (round, fault) in [RetireFault::AfterDocuments, RetireFault::AfterInvalidation]
+        .into_iter()
+        .enumerate()
+    {
+        // Whichever database holds the name now publishes its next revision.
+        let upload = if round == 0 {
+            fixture.file(1, "durable")
+        } else {
+            let mut next = Fixture::start(2);
+            next.instance = "rebuilt".into();
+            Fixture::upload(&[
+                Event::Start(next),
+                Event::Batch(Batch::Chats {
+                    records: vec![Fixture::chat()],
+                }),
+                Event::Batch(Batch::Messages {
+                    records: fixture.messages("durable"),
+                }),
+                Event::Finish,
+            ])
+        };
+        server.index(&fixture.identity, upload).await.unwrap();
+        // Another database is refused while the name is held.
+        let other = if round == 0 { "rebuilt" } else { "third" };
+        let mut claim = Fixture::start(9);
+        claim.instance = other.into();
+        let refused = Fixture::upload(&[Event::Start(claim), Event::Finish]);
+        assert!(server.index(&fixture.identity, refused).await.is_err());
+        let silver = fixture.retained();
+
+        let interrupted = fixture
+            .serve(fixture.store.clone())
+            .with_retire_fault(fault);
+        let error = interrupted.retire(&fixture.identity).await.unwrap_err();
+        assert_eq!(error.error.message, "injected retire interruption");
+        drop(interrupted);
+
+        // Interrupted, the history is whole and its views are reported stale:
+        // never search documents for history that is gone.
+        let reopened = reconnect(&fixture).await;
+        assert_eq!(fixture.retained(), silver);
+        assert!(!reopened.freshness(&fixture.identity).await.unwrap().nodes[0].views_current);
+
+        let retired = reopened.retire(&fixture.identity).await.unwrap();
+        assert_eq!((retired.chats, retired.messages), (1, 2));
+        assert_eq!(reopened.state(&fixture.identity).await.unwrap().revision, 0);
+        let listed = reopened
+            .list_chats(&fixture.identity, crate::chat_catalog::Request::default())
+            .await
+            .unwrap();
+        assert!(listed.chats.is_empty());
+
+        // The name is free: a rebuilt database publishes from its first revision.
+        reopened
+            .index(&fixture.identity, rebuilt("fresh"))
+            .await
+            .unwrap();
+        let freshness = reopened.freshness(&fixture.identity).await.unwrap();
+        assert!(freshness.nodes[0].lexical_current && freshness.nodes[0].views_current);
+        let results = reopened
+            .search(&fixture.identity, fixture.query())
+            .await
+            .unwrap();
+        assert!(!results.documents.is_empty());
+        assert!(
+            results
+                .documents
+                .iter()
+                .all(|document| document.projection.contains("fresh"))
+        );
+        server = reopened;
+    }
+    fixture.cleanup().await;
+}

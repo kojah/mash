@@ -172,6 +172,29 @@ impl SilverStore {
             .join(format!("{}.sqlite3", identity.node_id))
     }
 
+    /// Remove one node's published history, leaving an empty database with no
+    /// publication head, as before the node first published. The caller holds
+    /// the node's lock; this process owns the directory.
+    pub(crate) fn retire(&self, identity: &Identity) -> Result<(), AppError> {
+        if self.owner.is_none() {
+            return Err(AppError::io(std::io::Error::other(
+                "shared silver is unavailable",
+            )));
+        }
+        let path = self.path(identity);
+        for suffix in ["", "-wal", "-shm"] {
+            let mut file = path.clone().into_os_string();
+            file.push(suffix);
+            match std::fs::remove_file(&file) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(AppError::io(error)),
+            }
+        }
+        drop(self.connect(identity)?);
+        Ok(())
+    }
+
     /// Configured nodes of one group, in identity order.
     pub(crate) fn nodes(&self, group: &str) -> &[String] {
         self.groups.get(group).map_or(&[], Vec::as_slice)

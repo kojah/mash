@@ -26,7 +26,7 @@ pub(super) fn validate_owner(
         || target.publication_revision > snapshot.revision
     {
         return Err(AppError::shared(
-            "shared node ownership or revision changed; retry indexing or choose a new node_id",
+            "shared node ownership or revision changed; retry indexing. If this machine's index was rebuilt, retire the node on the server (mash-server --retire-node) or choose a new node_id",
         ));
     }
     Ok(())

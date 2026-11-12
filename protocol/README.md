@@ -494,6 +494,19 @@ The real-backend readiness regression checks applied insert/replacement/deletion
 visibility while a proxy continuously reports optimization; API tests forbid
 polling the optimization queue. These checks do not prove latency at fleet scale.
 
+Retiring a node ([server/store/retire.rs](../app/shared/server/store/retire.rs),
+`mash-server --retire-node`) is not a modeled action and needs none. It runs
+with the service stopped, under the history directory's exclusive hold, so it
+interleaves with no upload, replay or certification. Its three durable steps
+follow the modeled order: persist an uncertified empty views record, delete
+the node's documents, then empty its silver. Views therefore stay uncertified
+from the first step until the node next publishes, and a crash between steps
+leaves either the whole history with stale views or no history and no
+documents; neither can be reported current. Afterwards the node is in the
+modeled initial state. A real-backend regression interrupts after each of the
+first two steps and checks the retained history, the stale marker, a completed
+retry and a fresh publication from a different database.
+
 ### Retry recovery source mapping
 
 [RetryViews.tla](RetryViews.tla) adds the retry details that `SharedViews` abstracts

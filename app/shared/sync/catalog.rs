@@ -970,6 +970,57 @@ impl Catalog {
         Ok(expired.len())
     }
 
+    /// Forget every transfer, receipt and backfill of one node. A receipt kept
+    /// after its history is gone could acknowledge an upload that no longer
+    /// exists, so retiring a node removes them with it.
+    pub(crate) fn retire(&self, group_id: &str, node_id: &str) -> Result<usize, AppError> {
+        let transaction = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(database)?;
+        let ids = {
+            let mut statement = transaction
+                .prepare("SELECT operation_id FROM operations WHERE group_id = ?1 AND node_id = ?2")
+                .map_err(database)?;
+            statement
+                .query_map(params![group_id, node_id], |row| row.get::<_, String>(0))
+                .map_err(database)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(database)?
+        };
+        for id in &ids {
+            transaction
+                .execute("DELETE FROM pieces WHERE operation_id = ?1", params![id])
+                .map_err(database)?;
+        }
+        transaction
+            .execute(
+                "DELETE FROM backfill_members WHERE backfill_id IN
+                    (SELECT backfill_id FROM backfills WHERE group_id = ?1 AND node_id = ?2)",
+                params![group_id, node_id],
+            )
+            .map_err(database)?;
+        for table in ["backfills", "operations"] {
+            transaction
+                .execute(
+                    &format!("DELETE FROM {table} WHERE group_id = ?1 AND node_id = ?2"),
+                    params![group_id, node_id],
+                )
+                .map_err(database)?;
+        }
+        transaction.commit().map_err(database)?;
+        // Files go after the durable change, as when a transfer expires.
+        for id in &ids {
+            match std::fs::remove_dir_all(self.piece_directory(id)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(AppError::io(error)),
+            }
+        }
+        Ok(ids.len())
+    }
+
     /// Bound retained spool and catalog rows. Published operations keep only
     /// their receipt so a reconnect can still report the outcome.
     pub(crate) fn prune(&self, group_id: &str, node_id: &str, keep: usize) -> Result<(), AppError> {
@@ -1224,6 +1275,48 @@ mod tests {
             })
             .unwrap();
         catalog.backfill(id, "group", "node").unwrap()
+    }
+
+    #[test]
+    fn retiring_a_node_forgets_its_transfers_and_backfills_but_no_other_nodes() {
+        let directory = tempfile::tempdir().unwrap();
+        let catalog = Catalog::open(directory.path()).unwrap();
+        let digest = "a".repeat(64);
+        begin(&catalog, "mine", &manifest(2, &[(0, 0, &digest)]), 2);
+        backfill(&catalog, "backfill", &digest, 2);
+        let other = Begin {
+            operation_id: "theirs",
+            group_id: "group",
+            node_id: "other",
+            kind: "publication",
+            manifest_digest: &manifest(2, &[(0, 0, &digest)]),
+            decoded_bytes: 2,
+            record_count: 2,
+            start_json: "{\"type\":\"start\"}",
+        };
+        catalog.begin(&other).unwrap();
+        // A spooled piece directory, as an interrupted upload leaves behind.
+        let spool = catalog.piece_directory("mine");
+        std::fs::create_dir_all(&spool).unwrap();
+        std::fs::write(spool.join("0.zst"), b"piece").unwrap();
+
+        assert_eq!(catalog.retire("group", "node").unwrap(), 1);
+        let count = |table: &str, node: &str| -> i64 {
+            catalog
+                .connection
+                .query_row(
+                    &format!("SELECT count(*) FROM {table} WHERE node_id = ?1"),
+                    params![node],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(count("operations", "node"), 0);
+        assert_eq!(count("backfills", "node"), 0);
+        assert_eq!(count("operations", "other"), 1);
+        assert!(!spool.exists());
+        // Nothing left to retire is not an error.
+        assert_eq!(catalog.retire("group", "node").unwrap(), 0);
     }
 
     #[test]

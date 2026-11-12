@@ -10,10 +10,15 @@ use axum::{
 use std::path::PathBuf;
 
 pub(super) fn directory(app: &App, id: &Identity, node: &str) -> Option<PathBuf> {
-    app.attachments_dir.as_ref().map(|root| {
-        root.join(blake3::hash(id.group_id.as_bytes()).to_hex().as_str())
-            .join(blake3::hash(node.as_bytes()).to_hex().as_str())
-    })
+    app.attachments_dir
+        .as_ref()
+        .map(|root| node_directory(root, &id.group_id, node))
+}
+
+/// Where one node's shared attachment files are kept under `root`.
+pub(super) fn node_directory(root: &std::path::Path, group: &str, node: &str) -> PathBuf {
+    root.join(blake3::hash(group.as_bytes()).to_hex().as_str())
+        .join(blake3::hash(node.as_bytes()).to_hex().as_str())
 }
 
 pub(super) async fn known(

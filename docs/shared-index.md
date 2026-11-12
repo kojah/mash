@@ -127,4 +127,28 @@ Run a watcher on each publishing machine for [ongoing updates](synchronization.m
 If publication fails, local history is retained; inspect the reported shared
 error and retry indexing once the connection is fixed.
 
+## Remove a machine, or let a rebuilt one publish again
+
+The server ties each machine's name to the local index that first published
+under it, so another machine cannot overwrite its history by using its name.
+That also stops the same machine after its index is deleted and rebuilt:
+publishing fails with "shared node ownership or revision changed". Restoring
+the index from a [backup](upgrades.md) keeps the name. Otherwise, retire the
+name on the server:
+
+```sh
+# On the API host, with the mash-server service stopped.
+mash-server --server-config /absolute/path/to/server.toml --retire-node personal/laptop
+```
+
+This permanently deletes everything that machine published: its chats and
+records on the server, their search data, and its shared attachments. It
+prints how many chats and messages it removed and exits without serving.
+Start the service again, then run `mash index` on the machine to publish from
+its current index. Other machines are not affected, and the machine's own
+local history is untouched.
+
+To remove a machine for good, retire it and then delete its `[[nodes]]` entry
+from the server configuration.
+
 For schema changes, follow [upgrades and backups](upgrades.md).
