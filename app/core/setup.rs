@@ -228,6 +228,7 @@ pub(super) fn first_index() -> Operation {
         provider: Vec::new(),
         since_days: None,
         all_history: false,
+        reading: crate::core::Reading::Changed,
         defer_publication: false,
         backfill: None,
     })

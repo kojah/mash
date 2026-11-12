@@ -36,6 +36,17 @@ impl IndexMode {
     }
 }
 
+/// Which admitted sources an index pass reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Reading {
+    /// Those that changed since they were last read.
+    #[default]
+    Changed,
+    /// All of them, so a release that reads history differently takes effect
+    /// on chats indexed before it.
+    Everything,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct IndexRequest {
     pub(crate) mode: IndexMode,
@@ -43,6 +54,7 @@ pub(crate) struct IndexRequest {
     pub(crate) provider: Vec<Provider>,
     pub(crate) since_days: Option<u32>,
     pub(crate) all_history: bool,
+    pub(crate) reading: Reading,
     /// Watch passes queue publication instead of awaiting it, so a slow
     /// network publisher never occupies the local indexing task.
     pub(crate) defer_publication: bool,

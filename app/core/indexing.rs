@@ -19,7 +19,13 @@ use std::time::Instant;
 use crate::{silver::local as silver, views::local as views};
 
 enum LocalInput {
-    ProviderFiles(history::IndexOptions, crate::attachments::Configuration),
+    /// The sources to read, the attachment policy, and whether to read every
+    /// source again regardless of its checkpoint.
+    ProviderFiles(
+        history::IndexOptions,
+        crate::attachments::Configuration,
+        super::Reading,
+    ),
     StoredSilver,
 }
 
@@ -52,7 +58,7 @@ pub(super) async fn run(
         models,
         configuration,
         full,
-        LocalInput::ProviderFiles(local_options, attachments),
+        LocalInput::ProviderFiles(local_options, attachments, request.reading),
     )
     .await?;
     if let Some(backfill_id) = request.backfill.clone() {
@@ -217,8 +223,11 @@ async fn index(
             }
             let storage_setup_milliseconds = elapsed_milliseconds(storage_started);
             let (summary, certificate, ingestion_milliseconds) = match input {
-                LocalInput::ProviderFiles(options, attachments) => {
+                LocalInput::ProviderFiles(options, attachments, reading) => {
                     storage.configure_attachments(attachments)?;
+                    if reading == super::Reading::Everything {
+                        storage.reread_sources(options.providers.keys().copied())?;
+                    }
                     let source = silver::ingest(&mut storage, &options)?;
                     (source.summary, source.certificate, source.milliseconds)
                 }

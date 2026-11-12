@@ -605,6 +605,7 @@ impl Mash {
                 provider: request.provider,
                 since_days: request.since_days,
                 all_history: request.all_history,
+                reading: crate::core::Reading::Changed,
                 defer_publication: false,
                 backfill: None,
             }),

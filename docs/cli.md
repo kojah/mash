@@ -10,6 +10,7 @@
 | Open the dashboard | `mash dash` |
 | Refresh recent history | `mash index` |
 | Include older history | `mash index --all-history` |
+| Read every chat again after an upgrade | `mash index --reread` |
 | Keep watching for changes | `mash index --watch` |
 | Check setup | `mash status --installation` |
 | Check search readiness | `mash status` |

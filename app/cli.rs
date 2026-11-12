@@ -91,6 +91,11 @@ enum Command {
         /// Admit source history regardless of age.
         #[arg(long)]
         all_history: bool,
+        /// Read every admitted source again, even where nothing has changed.
+        /// Use it after upgrading to a release that reads an agent's history
+        /// differently; unchanged chats keep their search data.
+        #[arg(long, conflicts_with_all = ["watch", "rebuild_local_views"])]
+        reread: bool,
         /// Publish this database as a progressive baseline that merges instead
         /// of replacing: a chat missing from the payload is not-yet-sent, never
         /// deleted. Plain `index` or `forget` removes chats from the server.
@@ -402,6 +407,7 @@ impl Cli {
                 provider,
                 since_days,
                 all_history,
+                reread,
                 backfill,
                 ..
             } => Operation::Index(IndexRequest {
@@ -410,6 +416,11 @@ impl Cli {
                 provider,
                 since_days,
                 all_history,
+                reading: if reread {
+                    crate::core::Reading::Everything
+                } else {
+                    crate::core::Reading::Changed
+                },
                 defer_publication: false,
                 backfill,
             }),
@@ -756,6 +767,8 @@ mod tests {
         assert!(Cli::try_parse_from(["mash", "mcp", "--watch"]).is_err());
         assert!(Cli::try_parse_from(["mash", "mcp", "--debounce-ms", "500"]).is_err());
         assert!(Cli::try_parse_from(["mash", "index", "--watch", "--debounce-ms", "500"]).is_ok());
+        assert!(Cli::try_parse_from(["mash", "index", "--reread"]).is_ok());
+        assert!(Cli::try_parse_from(["mash", "index", "--reread", "--watch"]).is_err());
     }
 
     #[test]

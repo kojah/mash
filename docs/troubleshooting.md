@@ -65,6 +65,21 @@ Installing models alone does not change an existing lexical-only configuration.
 Follow the configuration steps in that guide, then index. Preserve custom provider and shared
 settings instead of replacing your entire configuration.
 
+## A chat still shows what an older release read
+
+Mash skips a chat whose files have not changed since it last read them. When
+an upgrade changes how an agent's history is read, for example which folder a
+chat is filed under, chats indexed before the upgrade keep the old result
+until they change. To apply it to everything now:
+
+```sh
+mash index --reread
+```
+
+This reads every chat again and updates the ones that come out differently.
+Chats that come out the same keep their search data, so it is quicker than a
+first index. Add `--provider codex` to limit it to one agent.
+
 ## Search views are missing or stale
 
 If the current database is compatible and its retained history is ready, rebuild

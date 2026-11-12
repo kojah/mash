@@ -18,8 +18,8 @@ pub(crate) mod setup;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
-    BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Request, Response, SearchMode,
-    SearchResponse, ViewResponse,
+    BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Reading, Request, Response,
+    SearchMode, SearchResponse, ViewResponse,
 };
 pub(crate) use setup::{InitRequest, MARKETPLACE};
 

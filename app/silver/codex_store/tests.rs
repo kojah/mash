@@ -450,6 +450,13 @@ fn codex_paginated_thread_is_reread_only_when_its_own_rows_or_metadata_change() 
     assert!(!has_text(&writer, "visibleamber"));
     drop(writer);
 
+    // A requested re-read ignores the checkpoints once, then they hold again.
+    let mut writer = Storage::open_writer(&database).unwrap();
+    writer.reread_sources([Provider::Codex]).unwrap();
+    writer.commit_writer().unwrap();
+    assert_eq!(pass(&database, &path), 0);
+    assert_eq!(pass(&database, &path), 2);
+
     // The metadata row beside the thread is part of what was read.
     state
         .execute("UPDATE threads SET title='Renamed' WHERE id='beta'", [])

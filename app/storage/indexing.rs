@@ -177,6 +177,25 @@ impl Storage {
             .is_some())
     }
 
+    /// Mark every checkpoint of these providers as read by an older release,
+    /// so the next pass reads their sources again. A chat whose content and
+    /// metadata come out the same is left as it is.
+    pub(crate) fn reread_sources(
+        &mut self,
+        providers: impl IntoIterator<Item = Provider>,
+    ) -> Result<(), AppError> {
+        self.require_writer()?;
+        for provider in providers {
+            self.connection
+                .execute(
+                    "UPDATE source_checkpoints SET interpretation_version = 0 WHERE provider = ?1",
+                    params![provider],
+                )
+                .map_err(AppError::database)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn record_source_checkpoint(
         &mut self,
         provider: Provider,
