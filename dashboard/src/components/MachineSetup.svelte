@@ -1,6 +1,7 @@
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
 import CircleHelp from "@lucide/svelte/icons/circle-help";
+import Copy from "@lucide/svelte/icons/copy";
 import Laptop from "@lucide/svelte/icons/laptop";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery } from "@tanstack/svelte-query";
@@ -65,15 +66,17 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
         </div>
         {#if fix}
           <div class="fix">
-            <p>{fix.cause}</p>
+            <p class="why"><TriangleAlert size={16} aria-hidden="true" /><span>{fix.cause}</span></p>
             <ol>
               {#each fix.steps as step, index (step)}
-                <li>{step}{#if fix.deploy && index === 0} <a class="a" href={fleetHref("deploy")}>Deploy Mash from Fleet manager</a>, or install it there directly.{/if}</li>
+                <li>
+                  <span>{step}{#if fix.deploy && index === 0}{" "}<a class="a" href={fleetHref("deploy")}>Deploy it from Fleet manager</a>, or install it there yourself.{/if}</span>
+                  {#if fix.command && index === fix.commandStep}
+                    <div class="cmd"><code>{fix.command}</code><button type="button" aria-label={copied === agent.agent ? "Copied" : "Copy the command"} title={copied === agent.agent ? "Copied" : "Copy"} onclick={() => copy(agent.agent, fix.command ?? "")}>{#if copied === agent.agent}<Check size={16} aria-hidden="true" />{:else}<Copy size={16} aria-hidden="true" />{/if}</button></div>
+                  {/if}
+                </li>
               {/each}
             </ol>
-            {#if fix.command}
-              <div class="cmd"><code>{fix.command}</code><button class="btn" type="button" onclick={() => copy(agent.agent, fix.command ?? "")}>{copied === agent.agent ? "Copied" : "Copy"}</button></div>
-            {/if}
           </div>
           <details class="fold" style:margin-top="8px">
             <summary>{fix.checks === 1 ? "The check behind this" : `The ${fix.checks} checks behind this`}</summary>

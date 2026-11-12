@@ -2684,36 +2684,84 @@ button:disabled {
 .fix {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   margin-top: 4px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--warn);
-  border-radius: 0 6px 6px 0;
-  background: var(--raised);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 7%, var(--raised));
   font-size: 14px;
+}
+.fix .why {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+}
+.fix .why svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--warn);
 }
 .fix ol {
   margin: 0;
-  padding-left: 20px;
+  padding: 0;
+  list-style: none;
+  counter-reset: fix;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
   color: var(--body);
 }
-.fix .cmd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+.fix li {
+  counter-increment: fix;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 6px 8px;
 }
-.fix .cmd code {
-  flex: 1 1 200px;
-  min-width: 0;
-  padding: 8px 10px;
+.fix li::before {
+  content: counter(fix);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.fix .cmd {
+  grid-column: 2;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg);
+  overflow: hidden;
+}
+.fix .cmd code {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
   font-size: 13px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.fix .cmd button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--body);
+  cursor: pointer;
+}
+.fix .cmd button:hover {
+  color: var(--fg);
+  background: var(--raised);
 }
 
 /* The light and dark switch, at the far end of the top bar. */
@@ -2832,6 +2880,66 @@ summary.rw::-webkit-details-marker {
   .rws:not(.setup) .rw > :nth-last-child(2) {
     display: none;
   }
+}
+
+/* Import / export: a chat row with a checkbox, a choice drawn as a tile, and
+   a command to copy. */
+.xrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hair);
+  cursor: pointer;
+}
+.xrow > input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 5px;
+  accent-color: var(--clay2);
+}
+.xrow.off .row-t {
+  color: var(--dim);
+}
+.tile.pick {
+  cursor: pointer;
+}
+.tile.pick input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--clay2);
+}
+.tile.pick.on,
+.tile.pick.on:hover {
+  border-color: var(--clay2);
+}
+.cmdline {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cmdline code {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.cmdline button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  border-left: 1px solid var(--line);
+  color: var(--body);
+}
+.cmdline button:hover {
+  color: var(--fg);
+  background: var(--raised);
 }
 
 /* A tool call in a transcript: one card per call, with its output. */

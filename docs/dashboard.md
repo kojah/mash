@@ -40,7 +40,7 @@ The left rail is the way around. On a phone it opens from the menu button.
   browser session; each reopens where you left it.
 - **agents**, **machines** and **projects:** one page each, with its recent
   chats and how they break down by the other two.
-- **memory:** saved decisions, preferences, facts and open questions.
+- **memory:** saved decisions, preferences and facts.
 - **services** and **fleet manager:** process and database checks, each
   machine's agent setup, and fleet actions where they are configured. See
   [services](services.md).
@@ -86,7 +86,7 @@ message. In a transcript, **memory from this chat** lists records citing that
 chat in any retained revision, including records whose latest revision cites
 another chat. A message a record quotes shows **Saved as** beneath it.
 
-Browsing includes candidates and resolved or retired records. Review the status,
+Browsing includes candidates and retired records. Review the status,
 expiry dates, evidence warnings and declared conflicts before relying on a
 conclusion. Reading never confirms or changes a record; ask your agent to make
 changes through Mash's [record tools](records.md).
@@ -133,6 +133,24 @@ HTML, including tool output. **Export to PDF** opens a printable copy; choose
 Wait for any indexing to finish before exporting if you need a stable copy.
 Downloaded transcripts may contain sensitive information. To back up Mash
 for a later restore, use [a portable backup](upgrades.md#make-a-portable-backup).
+
+## Export many chats at once
+
+Open **chats**, then **import / export**. Narrow the list with the agent,
+machine, project and time filters; every chat they match is exported, on every
+page, unless you untick it. Choose **Markdown** for one readable file per chat
+or **JSON** for one file per chat that a script can read, then choose
+**Export**. Your browser saves a single `.zip` file with a folder per project.
+
+Keep the page open until the download starts. If any chat cannot be read, the
+export stops and saves nothing, so a download is never missing chats without
+saying so. Attachments are not included, and the files hold the chats in full,
+including anything sensitive said in them.
+
+These exports are for reading and scripts and cannot be brought back into Mash.
+For a copy Mash can restore, use [a portable backup](upgrades.md#make-a-portable-backup).
+Chats from your other machines are not imported: they appear in the dashboard
+through [sharing](shared-index.md).
 
 ## Keep access private
 

@@ -295,6 +295,8 @@ export interface SetupFix {
   steps: string[];
   /** A command to run on that machine, when one does the job. */
   command: string | null;
+  /** Which step the command belongs to, counted from zero. */
+  commandStep: number;
   /** Whether updating Mash on the machine is part of the fix. */
   deploy: boolean;
   /** How many separate checks this one fix answers. */
@@ -317,14 +319,16 @@ export function setupFix(agent: AgentSetup, name: string): SetupFix | null {
       cause: `${name} has not approved the Mash plugin's hooks, so they do not run.`,
       steps: [`Open /hooks in ${name}, trust the Mash hooks, then start a new session.`],
       command: null,
+      commandStep: 0,
       deploy: false,
       checks,
     };
   if (first.label === "Connection")
     return {
       cause: `${name} does not have Mash registered on this machine.`,
-      steps: ["Run this on the machine.", `Restart ${name}.`],
+      steps: ["Run this on the machine:", `Restart ${name}.`],
       command: "mash init --yes --no-index",
+      commandStep: 0,
       deploy: false,
       checks,
     };
@@ -332,10 +336,11 @@ export function setupFix(agent: AgentSetup, name: string): SetupFix | null {
     cause: `The Mash plugin in ${name} does not match the Mash installed on this machine. They have to be the same release.`,
     steps: [
       "Update Mash on the machine.",
-      "Then run this there to reinstall the plugin.",
+      "Reinstall the plugin by running this there:",
       `Restart ${name}.`,
     ],
     command: "mash init --yes --no-index",
+    commandStep: 1,
     deploy: true,
     checks,
   };

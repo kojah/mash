@@ -1,4 +1,5 @@
 <script lang="ts">
+import ArrowDownUp from "@lucide/svelte/icons/arrow-down-up";
 import Bot from "@lucide/svelte/icons/bot";
 import Brain from "@lucide/svelte/icons/brain";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -64,6 +65,8 @@ const area = $derived.by((): Section | "" => {
       return "overview";
     case "search":
     case "history":
+    case "export":
+    case "import":
     case "chat":
       return "chats";
     case "agents":
@@ -94,6 +97,7 @@ const area = $derived.by((): Section | "" => {
 const child = $derived.by((): string => {
   if (route.page === "search") return "recent";
   if (route.page === "history") return "history";
+  if (route.page === "export" || route.page === "import") return "transfer";
   if (route.page === "agent") return route.agent;
   if (route.page === "machine") return route.id;
   if (route.page === "project") return route.name;
@@ -178,6 +182,7 @@ function toggle(id: Section): void {
         {#if section.id === "chats"}
           <a class="sub" class:on={child === "recent"} href="#/search" aria-current={child === "recent" ? "page" : undefined} onclick={close}><Clock size={16} color="var(--sky)" aria-hidden="true" /><span>recent chats</span></a>
           <a class="sub" class:on={child === "history"} href="#/history" aria-current={child === "history" ? "page" : undefined} onclick={close}><History size={16} color="var(--sky)" aria-hidden="true" /><span>viewing history</span></a>
+          <a class="sub" class:on={child === "transfer"} href="#/export" aria-current={child === "transfer" ? "page" : undefined} onclick={close}><ArrowDownUp size={16} color="var(--sky)" aria-hidden="true" /><span>import / export</span></a>
         {:else if section.id === "agents"}
           {#each providers as provider (provider.key)}
             {@const agent = provider.chats[0]?.agent}

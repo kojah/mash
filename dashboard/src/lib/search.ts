@@ -48,7 +48,8 @@ export function parseApplied(params: string): Applied {
   };
 }
 
-export function appliedHref(applied: Applied): string {
+/** `base` is the page the search belongs to: the chat list, or the export page. */
+export function appliedHref(applied: Applied, base = "#/search"): string {
   const params = new URLSearchParams();
   if (applied.query) params.set("q", applied.query);
   if (applied.agents.length) params.set("agent", applied.agents.join(","));
@@ -57,7 +58,7 @@ export function appliedHref(applied: Applied): string {
   if (applied.days !== null) params.set("days", String(applied.days));
   if (applied.sort !== "new") params.set("sort", applied.sort);
   if (applied.offset) params.set("offset", String(applied.offset));
-  return params.size ? `#/search?${params}` : "#/search";
+  return params.size ? `${base}?${params}` : base;
 }
 
 export function filtersOf(applied: Applied): SearchFilters {
