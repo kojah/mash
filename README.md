@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/mash-logo.png" alt="mash logo: a smiling bowl of mashed potatoes" width="200">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/mash-logo-dark.svg">
+    <img src="assets/mash-logo-light.svg" alt="mash" width="360">
+  </picture>
 </p>
 
 # mash - The **M**ulti-**A**gent **S**earch **H**istory Tool
