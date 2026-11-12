@@ -111,6 +111,21 @@ const fn enabled() -> bool {
     true
 }
 
+/// Whether a path is absolute on the machine it describes. One inventory is
+/// read by machines of different platforms, so the host cannot be asked: a
+/// Windows peer has to accept the controller's `/home/...` paths, and a Linux
+/// controller a peer's `C:\...` ones.
+fn absolute(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    let bytes = text.as_bytes();
+    text.starts_with('/')
+        || text.starts_with(r"\\")
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'))
+}
+
 impl Machine {
     /// Whether fleet operations can run on this machine. They go through
     /// Ansible over SSH with a POSIX shell, which a Windows machine does not
@@ -358,9 +373,9 @@ impl Inventory {
         if self.version != 1
             || self.machines.is_empty()
             || self.machines.len() > 32
-            || !self.controller.repository.is_absolute()
-            || !self.controller.binary.is_absolute()
-            || !self.controller.jobs.is_absolute()
+            || !absolute(&self.controller.repository)
+            || !absolute(&self.controller.binary)
+            || !absolute(&self.controller.jobs)
         {
             return Err("invalid fleet version, machine count or controller paths".into());
         }
@@ -386,8 +401,8 @@ impl Inventory {
                 return Err("fleet service or database limit exceeded".into());
             }
             if let Some(watcher) = &machine.watcher
-                && (!watcher.home.is_absolute()
-                    || !watcher.launcher.is_absolute()
+                && (!absolute(&watcher.home)
+                    || !absolute(&watcher.launcher)
                     || !machine.operated()
                     || !watcher
                         .launcher
@@ -458,7 +473,7 @@ fn validate_machine_inputs(machine: &Machine) -> Result<(), String> {
             || !databases.insert(&database.id)
             || database.name.trim().is_empty()
             || database.name.len() > 128
-            || !database.path.is_absolute()
+            || !absolute(&database.path)
         {
             return Err("invalid fleet database identity or path".into());
         }
@@ -482,11 +497,8 @@ fn validate_service(service: &Service) -> Result<(), String> {
         || !identifier(&service.unit)
         || service.name.trim().is_empty()
         || service.name.len() > 128
-        || service
-            .plist
-            .as_ref()
-            .is_some_and(|path| !path.is_absolute())
-        || service.log.as_ref().is_some_and(|path| !path.is_absolute())
+        || service.plist.as_ref().is_some_and(|path| !absolute(path))
+        || service.log.as_ref().is_some_and(|path| !absolute(path))
         || (service.manager == Manager::Launchd && service.allow_control && service.plist.is_none())
     {
         return Err("invalid fleet service identity or supervisor configuration".into());
@@ -618,6 +630,19 @@ allow_control = true
         inventory.machines.push(windows);
         inventory.validate().unwrap();
         assert_eq!(serde_json::to_value(Platform::Windows).unwrap(), "windows");
+
+        // Paths are judged by their own form, whichever platform reads them.
+        for path in [
+            "/home/me/mash",
+            r"C:\tools\mash",
+            "C:/tools/mash",
+            r"\\host\share",
+        ] {
+            assert!(absolute(Path::new(path)), "{path}");
+        }
+        for path in ["mash", "./mash", r"tools\mash", "C:mash", ""] {
+            assert!(!absolute(Path::new(path)), "{path}");
+        }
 
         // Fleet operations run through Ansible, which cannot drive it.
         assert_eq!(inventory.targets(Action::Status, &[]).unwrap(), before);
