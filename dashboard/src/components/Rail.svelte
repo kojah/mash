@@ -1,4 +1,5 @@
 <script lang="ts">
+import BookOpen from "@lucide/svelte/icons/book-open";
 import Bot from "@lucide/svelte/icons/bot";
 import Brain from "@lucide/svelte/icons/brain";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -13,6 +14,7 @@ import Settings from "@lucide/svelte/icons/settings";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import Terminal from "@lucide/svelte/icons/terminal";
 import { createQuery } from "@tanstack/svelte-query";
+import { untrack } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
 import { groupChats, projectLabel } from "../lib/browse";
 import { catalogOptions } from "../lib/queries";
@@ -97,15 +99,67 @@ const child = $derived.by((): string => {
   return "";
 });
 let expanded = $state<readonly Section[]>([]);
+// Arriving in a section opens it once. After that it is the reader's to
+// collapse, even while one of its pages is the current one.
+let arrived = "";
 $effect(() => {
-  if (area && expandable.includes(area) && !expanded.includes(area)) expanded = [...expanded, area];
+  if (area === arrived) return;
+  arrived = area;
+  if (area && expandable.includes(area))
+    expanded = untrack(() => (expanded.includes(area) ? expanded : [...expanded, area]));
 });
+
+// The reader can drag the edge to set the width, which this browser keeps.
+const widths = { least: 180, usual: 216, most: 440 } as const;
+function stored(): number {
+  try {
+    const width = Number(localStorage.getItem("mash.rail.width"));
+    return width >= widths.least && width <= widths.most ? width : widths.usual;
+  } catch {
+    return widths.usual;
+  }
+}
+let width = $state(stored());
+let dragging = $state(false);
+function resize(next: number): void {
+  width = Math.round(Math.min(widths.most, Math.max(widths.least, next)));
+  try {
+    localStorage.setItem("mash.rail.width", String(width));
+  } catch {
+    // The width still applies for this visit.
+  }
+}
+function grip(event: PointerEvent): void {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const handle = event.currentTarget as HTMLElement;
+  const origin = event.clientX - width;
+  handle.setPointerCapture(event.pointerId);
+  dragging = true;
+  const move = (moved: PointerEvent) => resize(moved.clientX - origin);
+  const done = () => {
+    dragging = false;
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", done);
+    handle.removeEventListener("pointercancel", done);
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", done);
+  handle.addEventListener("pointercancel", done);
+}
+function nudge(event: KeyboardEvent): void {
+  if (event.key === "ArrowLeft") resize(width - 16);
+  else if (event.key === "ArrowRight") resize(width + 16);
+  else if (event.key === "Home") resize(widths.usual);
+  else return;
+  event.preventDefault();
+}
 function toggle(id: Section): void {
   expanded = expanded.includes(id) ? expanded.filter((item) => item !== id) : [...expanded, id];
 }
 </script>
 
-<aside id="rail" class:open>
+<aside id="rail" class:open style:--rail-width="{width}px">
   <a class="brand" href="#/" onclick={close}><img src="/mash-mark.svg" alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
   <button id="xdrawer" type="button" aria-label="Close navigation" onclick={close}>×</button>
   <nav class="nav" aria-label="Main">
@@ -137,7 +191,7 @@ function toggle(id: Section): void {
           {/each}
         {:else if section.id === "memory"}
           {#each kinds as kind (kind)}
-            <a class="sub" class:on={child === kind} href={recordsHref(new URLSearchParams({ kind }))} onclick={close}><Brain size={16} color="var(--pink)" aria-hidden="true" /><span>{kindLabel(kind).toLowerCase()}s</span></a>
+            <a class="sub" class:on={child === kind} href={recordsHref(new URLSearchParams({ kind }))} onclick={close}><BookOpen size={16} color="var(--pink)" aria-hidden="true" /><span>{kindLabel(kind).toLowerCase()}s</span></a>
           {/each}
         {/if}
       {/if}
@@ -147,4 +201,6 @@ function toggle(id: Section): void {
       <button class="a" type="button" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()} style:display="block" style:min-height="32px">{catalogue.isFetching ? "reloading…" : "reload chat list"}</button>
     </div>
   </nav>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+  <div id="rail-grip" class:on={dragging} role="separator" aria-orientation="vertical" aria-label="Resize navigation" aria-valuemin={widths.least} aria-valuemax={widths.most} aria-valuenow={width} tabindex="0" onpointerdown={grip} onkeydown={nudge} ondblclick={() => resize(widths.usual)}></div>
 </aside>

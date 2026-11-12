@@ -8,7 +8,7 @@ import {
   servicesHref,
 } from "../lib/services.svelte";
 import MachineSetup from "./MachineSetup.svelte";
-import ServiceStatus from "./ServiceStatus.svelte";
+import ServiceTiles from "./ServiceTiles.svelte";
 
 // What a machine's own dashboard reports: its agents' setup and its services.
 let { machineId }: { machineId: string } = $props();
@@ -27,10 +27,9 @@ const issues = $derived(problems(machine ? [machine] : []));
   {#if fleet.data && !machine}<p class="meta">This machine is not in the dashboard's services configuration, so its services and agent setup are not reported.</p>{/if}
   {#if machine && !machine.reachable}<p><span class="warn">Could not be reached.</span> {issues[0]?.fix}</p>{/if}
   {#if machine?.reachable}
-    {#each machine.services as service (service.id)}
-      {@const issue = issues.find((found) => found.service?.id === service.id)}
-      <a class="li" href={servicesHref(machine.id, service.id)}><Server size={16} color="var(--teal)" aria-hidden="true" /><span class="g">{service.name}</span><ServiceStatus state={service.state} label={service.summary} /></a>
-      {#if issue}<p class="meta" style:margin="2px 0 8px 26px">{issue.fix}{issue.actions.length ? " Open it to do that." : ""}</p>{/if}
+    <ServiceTiles machineId={machine.id} services={machine.services} />
+    {#each issues.filter((issue) => issue.service) as issue (issue.service?.id)}
+      <p class="meta" style:margin-top="8px"><strong style:font-weight="600">{issue.service?.name}:</strong> {issue.fix}{issue.actions.length ? " Open it to do that." : ""}</p>
     {/each}
     {#each machine.warnings as warning (warning)}<p class="meta" style:margin-top="8px">{warning}</p>{/each}
   {/if}

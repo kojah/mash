@@ -1,11 +1,7 @@
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
 import Clock from "@lucide/svelte/icons/clock";
-import Database from "@lucide/svelte/icons/database";
-import Eye from "@lucide/svelte/icons/eye";
 import Info from "@lucide/svelte/icons/info";
-import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
-import Plug from "@lucide/svelte/icons/plug";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import ScrollText from "@lucide/svelte/icons/scroll-text";
 import Search from "@lucide/svelte/icons/search";
@@ -34,6 +30,7 @@ import LoadError from "./LoadError.svelte";
 import MachineSetup from "./MachineSetup.svelte";
 import QueryError from "./QueryError.svelte";
 import ServiceStatus from "./ServiceStatus.svelte";
+import ServiceTiles from "./ServiceTiles.svelte";
 import Skeleton from "./Skeleton.svelte";
 
 let { params }: { params: string } = $props();
@@ -55,14 +52,6 @@ const columns = [
   { kind: "mcp", label: "MCP" },
   { kind: "dashboard", label: "dash" },
 ] as const;
-const kindIcon = {
-  sqlite: Database,
-  qdrant: Search,
-  server: Server,
-  watcher: Eye,
-  mcp: Plug,
-  dashboard: LayoutDashboard,
-} as const;
 const severity: readonly ServiceState[] = ["failed", "unknown", "degraded", "stopped", "healthy"];
 /** The state a matrix cell shows: the worst among that machine's services of a
  * kind, or a plain note when the only thing to say is not a fault. */
@@ -278,16 +267,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
     {/if}
     <section>
       <h2 class="h2"><Server size={15} aria-hidden="true" />services on {machine.id}</h2>
-      <div class="svc-tiles">
-        {#each machine.services as entry (entry.id)}
-          {@const Icon = kindIcon[entry.kind]}
-          <a class="svc-tile" href={servicesHref(machine.id, entry.id)}>
-            <span class="svc-th"><Icon size={18} aria-hidden="true" /><strong>{entry.name}</strong></span>
-            <ServiceStatus state={entry.state} label={entry.summary}/>
-            <span class="mt">{entry.kind}</span>
-          </a>
-        {/each}
-      </div>
+      <ServiceTiles machineId={machine.id} services={machine.services} />
       {#if !machine.services.length}<p class="meta">{machine.reachable ? "No services were reported." : "This machine's dashboard could not be reached."}</p>{/if}
       {#if machine.reachable}{#each machine.warnings as warning (warning)}<p class="meta" style:margin-top="8px">{warning}</p>{/each}{/if}
     </section>

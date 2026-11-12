@@ -107,7 +107,7 @@ summary::-webkit-details-marker {
 }
 #rail {
   flex: none;
-  width: 216px;
+  width: var(--rail-width, 216px);
   position: sticky;
   top: 0;
   height: 100vh;
@@ -2142,6 +2142,29 @@ button:disabled {
   font-weight: 600;
 }
 
+/* The navigation's right edge can be dragged to set its width. */
+#rail-grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+#rail-grip:hover,
+#rail-grip.on,
+#rail-grip:focus-visible {
+  background: color-mix(in srgb, var(--clay) 55%, transparent);
+  outline: none;
+}
+@media (max-width: 800px) {
+  /* The drawer on a narrow screen has one width. */
+  #rail-grip {
+    display: none;
+  }
+}
+
 /* Everything in the navigation is bold. */
 #rail .nav-link,
 #rail .sub,
@@ -2536,4 +2559,13 @@ button:disabled {
 }
 .svc-tile .svc-st .dot {
   margin-top: 6px;
+}
+
+/* An agent's setup as a tile: its heading spans the tile, its steps sit under. */
+.svc-tile.agent {
+  align-items: stretch;
+}
+.svc-tile.agent .hd {
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }

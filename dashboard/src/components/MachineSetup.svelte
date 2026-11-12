@@ -19,11 +19,12 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
     {#if setup.isPending && enabled}<p class="meta" role="status">Checking agent setup…</p>{/if}
     {#if setup.error}<p class="meta warn" role="alert">Agent setup is unavailable: {setup.error.message}</p><p class="meta">A machine running an older Mash cannot report its setup. Update it, then check again.</p>{/if}
     {#if setup.data}
+      <div class="svc-tiles">
       {#each setup.data.agents as agent (agent.agent)}
         {@const headline = setupHeadline(agent)}
         {@const chain = setupChain(agent)}
-        <div style:margin-bottom="14px">
-          <div class="hd" style:align-items="center"><h3 style:display="flex" style:align-items="center" style:gap="8px" style:font-size="15px" style:font-weight="500"><AgentMark agent={agent.agent} size={17} />{agents[agent.agent].name}</h3><span class={headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"} style:font-size="13.5px">{headline.label}</span></div>
+        <div class="svc-tile agent">
+          <div class="hd" style:align-items="center"><h3 style:display="flex" style:align-items="center" style:gap="8px" style:font-size="15px" style:font-weight="600"><AgentMark agent={agent.agent} size={17} />{agents[agent.agent].name}</h3><span class={headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"} style:font-size="13.5px">{headline.label}</span></div>
           {#if agent.expected}
             <div class="set">
               {#each chain as part (part.label)}
@@ -44,6 +45,7 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
           {/if}
         </div>
       {/each}
-      <p class="meta">Mash reads settings and files for this; it does not start the agents. Inspected by build {setup.data.build.slice(0, 8)}.</p>
+      </div>
+      <p class="meta" style:margin-top="10px">Mash reads settings and files for this; it does not start the agents. Inspected by build {setup.data.build.slice(0, 8)}.</p>
     {/if}
   </section>
