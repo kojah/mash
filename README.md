@@ -5,6 +5,13 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/kojah/mash/actions/workflows/ci.yml"><img src="https://github.com/kojah/mash/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/kojah/mash/actions/workflows/windows.yml"><img src="https://github.com/kojah/mash/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows"></a>
+  <a href="https://getmash.io"><img src="https://github.com/kojah/mash/actions/workflows/docs.yml/badge.svg?branch=main" alt="Documentation"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licence"></a>
+</p>
+
 # mash - The **M**ulti-**A**gent **S**earch **H**istory Tool
 
 **Find things you’ve already worked out with your coding agents.**
