@@ -81,9 +81,12 @@ A Windows machine uses `platform = "windows"`. It appears in the dashboard
 through its own `mash dash` peer, with the services you list for it (use the
 `windows_task` or `windows_service` managers). The fleet can check it, index
 and publish its history, and rebuild its local search, because those need only
-the machine's `mcp` command. It cannot deploy to it or install its watcher:
-those steps need a POSIX shell on the machine. Install and update Mash on a
-Windows machine directly, and run its watcher as a scheduled task.
+the machine's `mcp` command. It can also deploy to it: there is no
+cross-built Windows binary, so the machine builds its own from the published
+code and the fleet swaps it in (see [fleet setup](../deployment/README.md)).
+It cannot install the watcher there. Run the watcher as a scheduled task and
+list it as one of the machine's services, so the dashboard can start and stop
+it.
 
 A shared server is a service of the machine that runs it, not a machine of its
 own. Give its entry under that machine a `deployment` table and it appears

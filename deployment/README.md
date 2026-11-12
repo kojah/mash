@@ -104,6 +104,41 @@ The macOS builder copies its CLI to `OUTPUT` and its server to `OUTPUT-server`,
 each with its own checksum and revision file; Linux keeps both in the release
 target directory. Release archives and public installers include both binaries.
 
+### Windows machines
+
+A Windows machine builds its own release, since there is no cross-built
+Windows artifact, and every step is a command the controller runs over SSH.
+It needs OpenSSH Server, Git, stable Rust with the Microsoft C++ build tools,
+Node.js and pnpm, a checkout of the published repository, and a `C:\tools\logs`
+folder. Give the inventory a `windows` build and the machine a preflight and
+an install:
+
+```toml
+[builds]
+windows = [["bash", "tools/build-dev-windows.sh", "winbox", "C:\\mash-src"]]
+
+[[machines]]
+id = "winbox"
+platform = "windows"
+
+[machines.deployment]
+requires = ["shared-api"]
+preflight = [["ssh", "-o", "BatchMode=yes", "winbox", "exit"]]
+install = [[
+  "bash", "tools/install-dev-windows.sh", "winbox", "C:\\mash-src",
+  "C:\\Users\\me\\.cargo\\bin", "mash-index-watch", "mash-dashboard",
+]]
+```
+
+`build-dev-windows.sh` checks out exactly the controller's revision there,
+which must already be pushed, builds the dashboard and both binaries, and
+leaves them staged. `install-dev-windows.sh` stops the named scheduled tasks,
+because Windows will not replace a running program, swaps the binaries in,
+keeping the previous ones beside them, and starts the tasks again. Leave
+`node_configs` empty for a Windows machine, and run its watcher as a scheduled
+task listed under `[[machines.services]]`: the fleet does not install a
+watcher there.
+
 Canonical runners select and synchronize the locked controller runtime in
 `/home/james/scratch/mash-artifacts/ansible-venv`. Set `UV_PROJECT_ENVIRONMENT`
 to override that private location; no manual setup is required. Copy
