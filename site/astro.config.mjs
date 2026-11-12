@@ -8,8 +8,9 @@ export default defineConfig({
       title: "mash",
       favicon: "/favicon.svg",
       description: "The Multi-Agent Search History Tool",
-      // On the cream of the light theme the mark sits on its own dark tile.
-      logo: { dark: "./public/mash-mark.svg", light: "./public/favicon.svg" },
+      // The header is the project logo drawn live: the mark, the name and its
+      // cursor, in the dark colouring or the light one to suit the theme.
+      logo: { dark: "./public/mash-mark.svg", light: "./public/mash-mark-light.svg" },
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/kojah/mash" }],
       // The fonts are bundled with the site, as they are with the dashboard.
       customCss: [

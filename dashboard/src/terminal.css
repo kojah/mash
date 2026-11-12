@@ -131,6 +131,8 @@ summary::-webkit-details-marker {
   padding: 14px 6px 0;
   font-size: 23px;
   font-weight: 600;
+  /* The project's dark logo, drawn live so its cursor can blink. */
+  color: var(--clay2);
 }
 /* The mark is sized from the lettering: its dome is as tall as the "h" (0.74em
    in this face) and the rule under it sits on the baseline, so only the butter
