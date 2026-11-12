@@ -13,6 +13,9 @@ use crate::{
 };
 use std::{path::Path, sync::Arc, time::Instant};
 
+/// How long a search waits for an index pass in progress before saying so.
+const CATCH_UP: std::time::Duration = std::time::Duration::from_secs(8);
+
 mod projection;
 
 #[cfg(test)]
@@ -126,6 +129,46 @@ impl Local {
         })
     }
 
+    /// Open views that are current with the stored history. An index pass
+    /// commits history first and certifies search after, so for a moment
+    /// search is behind; with a watcher running that moment recurs after every
+    /// pass. While a writer holds the index this waits briefly for it to
+    /// finish, and never answers from views that are not certified.
+    pub(crate) async fn open_current(
+        database: &Path,
+        configuration: &ResolvedConfig,
+    ) -> Result<Self, AppError> {
+        Self::open_current_within(database, configuration, CATCH_UP).await
+    }
+
+    async fn open_current_within(
+        database: &Path,
+        configuration: &ResolvedConfig,
+        patience: std::time::Duration,
+    ) -> Result<Self, AppError> {
+        let deadline = tokio::time::Instant::now() + patience;
+        loop {
+            let local = Self::open(database, configuration).await?;
+            if local.current().await?.is_some() {
+                return Ok(local);
+            }
+            let path = database.to_path_buf();
+            if !crate::blocking(move || crate::storage::admission::held(&path)).await? {
+                // The writer may have finished between the two looks.
+                let local = Self::open(database, configuration).await?;
+                return if local.current().await?.is_some() {
+                    Ok(local)
+                } else {
+                    Err(AppError::search_behind())
+                };
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(AppError::search_catching_up());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
+
     pub(crate) async fn current(&self) -> Result<Option<NodeViews>, AppError> {
         let database = self.database.clone();
         let (instance, current) =
@@ -151,9 +194,7 @@ impl Local {
             Stage::LocalCandidates
         });
         if self.current().await?.is_none() {
-            return Err(AppError::search_not_ready(
-                "local gold is not current; run mash index",
-            ));
+            return Err(AppError::search_catching_up());
         }
         let active = std::collections::BTreeSet::from([self.scope.node_id.clone()]);
         let mut result = self.store.search(&self.scope, input, &active).await?;
@@ -165,7 +206,7 @@ impl Local {
         .await?;
         if self.current().await?.is_none() {
             return Err(AppError::search_not_ready(
-                "local silver changed during retrieval; retry after indexing",
+                "new history arrived during this search; try again in a moment",
             ));
         }
         measured.complete(None, Some(result.lexical.len() + result.semantic.len()));

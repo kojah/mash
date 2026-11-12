@@ -503,12 +503,7 @@ async fn local_search(
         Ok(models)
     })
     .await?;
-    let local = crate::views::local::Local::open(database_path, configuration).await?;
-    if local.current().await?.is_none() {
-        return Err(AppError::search_not_ready(
-            "local gold is not current; run mash index",
-        ));
-    }
+    let local = crate::views::local::Local::open_current(database_path, configuration).await?;
     let text = query.clone();
     let (mut backend, vector) = crate::blocking(move || {
         let mut backend = models

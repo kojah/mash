@@ -109,9 +109,41 @@ pub(crate) fn acquire(database: &Path) -> Result<Arc<Owner>, AppError> {
     }
 }
 
+/// Whether some process is updating this database right now. A reader uses it
+/// to tell search that is about to catch up from search nobody is refreshing.
+/// The probe takes a shared lock for an instant, so a writer arriving in that
+/// instant reports the index busy, as it would beside any other writer.
+pub(crate) fn held(database: &Path) -> Result<bool, AppError> {
+    let mut path = canonical(database)?.into_os_string();
+    path.push(".writer.lock");
+    let file = match File::open(Path::new(&path)) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(AppError::io(error)),
+    };
+    match file.try_lock_shared() {
+        Ok(()) => Ok(false),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(true),
+        Err(std::fs::TryLockError::Error(error)) => Err(AppError::io(error)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reader_can_tell_whether_the_index_is_being_updated() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("index.sqlite3");
+        assert!(!held(&database).unwrap());
+        let owner = acquire(&database).unwrap();
+        assert!(held(&database).unwrap());
+        drop(owner);
+        assert!(!held(&database).unwrap());
+        // Asking leaves the lock free for the next writer.
+        drop(acquire(&database).unwrap());
+    }
 
     #[test]
     fn local_writer_admission_spans_transactions_and_releases_on_drop() {

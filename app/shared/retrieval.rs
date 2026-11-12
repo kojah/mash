@@ -86,13 +86,7 @@ pub(super) async fn prepare_search(
     let text = query.to_owned();
     let local = match local_database {
         Some((path, configuration)) => {
-            let local = crate::views::local::Local::open(path, configuration).await?;
-            if local.current().await?.is_none() {
-                return Err(AppError::search_not_ready(
-                    "local gold is not current; run mash index",
-                ));
-            }
-            Some(local)
+            Some(crate::views::local::Local::open_current(path, configuration).await?)
         }
         None => None,
     };

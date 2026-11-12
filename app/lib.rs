@@ -343,6 +343,24 @@ impl AppError {
         Self::with_action(8, ErrorKind::SearchNotReady, message, true, Action::Index)
     }
 
+    /// Search is behind only because an index pass is still running. Trying
+    /// again is the remedy; starting another index would collide with it.
+    fn search_catching_up() -> Self {
+        Self::new(
+            8,
+            ErrorKind::SearchNotReady,
+            "search is catching up with new history; try again in a moment",
+            true,
+        )
+    }
+
+    /// Search is behind the stored history and nothing is refreshing it.
+    fn search_behind() -> Self {
+        Self::search_not_ready(
+            "search is behind the stored history and nothing is refreshing it; run `mash index`",
+        )
+    }
+
     fn schema(message: impl Into<String>) -> Self {
         Self::new(7, ErrorKind::SchemaIncompatible, message, false)
     }
