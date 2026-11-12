@@ -22,6 +22,8 @@ mod assets {
 struct Dash {
     paths: Paths,
     hosts: Vec<String>,
+    /// Whether only this machine can reach the dashboard.
+    loopback: bool,
     model_work: tokio::sync::Semaphore,
     services: services::Services,
     console: crate::mcp::console::Console,
@@ -53,6 +55,7 @@ pub(crate) async fn run(
         console: crate::mcp::console::Console::new(paths.clone()),
         paths,
         hosts: allowed_hosts(address),
+        loopback: address.ip().is_loopback(),
         model_work: tokio::sync::Semaphore::new(1),
         services,
     });
@@ -94,6 +97,10 @@ fn router(state: Arc<Dash>) -> Router {
         .route(
             "/api/services/action",
             axum::routing::post(services::action),
+        )
+        .route(
+            "/api/services/settings",
+            axum::routing::get(settings).post(change_settings),
         )
         .route("/api/status", axum::routing::get(status))
         .route("/api/chats", axum::routing::get(list_chats))
@@ -186,7 +193,7 @@ async fn guard(
     }
     let service_action = matches!(
         request.uri().path(),
-        "/api/services/action" | "/api/services/fleet/jobs"
+        "/api/services/action" | "/api/services/fleet/jobs" | "/api/services/settings"
     ) && request.method() == axum::http::Method::POST;
     if service_action && let Some(origin) = request.headers().get(header::ORIGIN) {
         let valid = origin
@@ -267,6 +274,80 @@ async fn status(State(state): State<Arc<Dash>>) -> Response {
         },
     };
     json_result(core::execute(request).await)
+}
+
+/// The configuration file this dashboard's Mash reads.
+fn configuration_path(paths: &Paths) -> Result<std::path::PathBuf, AppError> {
+    match &paths.config {
+        Some(path) => Ok(path.clone()),
+        None => crate::config::default_path(),
+    }
+}
+
+async fn settings(State(state): State<Arc<Dash>>) -> Response {
+    let paths = state.paths.clone();
+    let view = tokio::task::spawn_blocking(move || {
+        crate::config::settings::view(&configuration_path(&paths)?)
+    })
+    .await
+    .unwrap_or_else(|_| Err(AppError::internal("read settings")));
+    settings_result(view, state.loopback || state.services.managed())
+}
+
+/// Rewrites the configuration file. A dashboard other machines can reach
+/// accepts this only when it was started with a services configuration, the
+/// same opt-in that lets it manage services; like every service route it is
+/// then subject to that configuration's access token.
+async fn change_settings(
+    State(state): State<Arc<Dash>>,
+    input: Result<
+        axum::Json<crate::config::settings::Change>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Response {
+    if !state.loopback && !state.services.managed() {
+        return (
+            StatusCode::FORBIDDEN,
+            axum::Json(AppError::configuration(
+                "settings can be changed on the machine itself, or from a dashboard started with a services configuration",
+            )),
+        )
+            .into_response();
+    }
+    let Ok(axum::Json(change)) = input else {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(AppError::configuration("invalid settings change")),
+        )
+            .into_response();
+    };
+    let paths = state.paths.clone();
+    let view = tokio::task::spawn_blocking(move || {
+        crate::config::settings::apply(&configuration_path(&paths)?, &change)
+    })
+    .await
+    .unwrap_or_else(|_| Err(AppError::internal("write settings")));
+    settings_result(view, true)
+}
+
+/// The settings, with whether this dashboard accepts changes to them.
+fn settings_result(
+    view: Result<crate::config::settings::View, AppError>,
+    editable: bool,
+) -> Response {
+    match view.and_then(|view| {
+        serde_json::to_value(view).map_err(|_| AppError::internal("serialize settings"))
+    }) {
+        Ok(mut view) => {
+            view["editable"] = editable.into();
+            axum::Json(view).into_response()
+        }
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ "error": error.error })),
+        )
+            .into_response(),
+    }
 }
 
 async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
@@ -679,6 +760,7 @@ mod tests {
             console: crate::mcp::console::Console::new(crate::core::Paths::default()),
             paths,
             hosts: allowed_hosts(address),
+            loopback: address.ip().is_loopback(),
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -727,6 +809,7 @@ mod tests {
             console: crate::mcp::console::Console::new(crate::core::Paths::default()),
             paths,
             hosts: allowed_hosts(address),
+            loopback: address.ip().is_loopback(),
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -818,6 +901,7 @@ mod tests {
                 models_dir: None,
             },
             hosts: allowed_hosts(address),
+            loopback: address.ip().is_loopback(),
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -910,6 +994,7 @@ mod tests {
                 models_dir: None,
             },
             hosts: allowed_hosts(address),
+            loopback: address.ip().is_loopback(),
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1029,5 +1114,105 @@ mod tests {
         );
         assert_eq!(content_type("/agents/claude.svg"), "image/svg+xml");
         assert_eq!(content_type("/unknown"), "application/octet-stream");
+    }
+    #[tokio::test]
+    async fn settings_are_changed_only_where_the_dashboard_is_private() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.toml");
+        std::fs::write(
+            &config,
+            "version = 1\n\n[providers.codex]\nroots = [\"/h/codex\"]\n\n[index]\nall_history = true\n",
+        )
+        .unwrap();
+        let paths = crate::core::Paths {
+            config: Some(config.clone()),
+            ..crate::core::Paths::default()
+        };
+        let mut addresses = Vec::new();
+        for loopback in [true, false] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let app = super::router(std::sync::Arc::new(super::Dash {
+                console: crate::mcp::console::Console::new(crate::core::Paths::default()),
+                paths: paths.clone(),
+                hosts: allowed_hosts(address),
+                loopback,
+                model_work: tokio::sync::Semaphore::new(0),
+                services: super::services::Services::load(None).unwrap(),
+            }));
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            addresses.push(address);
+        }
+        let client = reqwest::Client::new();
+        let private = format!("http://{}/api/services/settings", addresses[0]);
+        let view: serde_json::Value = client
+            .get(&private)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(view["agents"]["codex"]["indexed"], true);
+        assert_eq!(view["editable"], true);
+        let shown: serde_json::Value = client
+            .get(format!("http://{}/api/services/settings", addresses[1]))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(shown["editable"], false);
+        assert_eq!(view["since_days"], serde_json::Value::Null);
+        let change = |revision: &serde_json::Value| {
+            serde_json::json!({
+                "revision": revision,
+                "agents": {},
+                "since_days": 30,
+                "destination": "local",
+                "memory_capture": false,
+                "hide_credentials": { "output": true, "publication": true },
+            })
+        };
+        // A dashboard other machines can reach, without the services opt-in, refuses.
+        let open = format!("http://{}/api/services/settings", addresses[1]);
+        let refused = client
+            .post(&open)
+            .json(&change(&view["revision"]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), reqwest::StatusCode::FORBIDDEN);
+        // Another site cannot submit the change through the reader's browser.
+        let foreign = client
+            .post(&private)
+            .header("Origin", "http://evil.invalid")
+            .json(&change(&view["revision"]))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(foreign.status(), reqwest::StatusCode::FORBIDDEN);
+        assert!(
+            std::fs::read_to_string(&config)
+                .unwrap()
+                .contains("all_history = true")
+        );
+        let saved: serde_json::Value = client
+            .post(&private)
+            .json(&change(&view["revision"]))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(saved["since_days"], 30);
+        assert_eq!(saved["memory_capture"], false);
+        // Unknown fields, such as a path from the browser, are not accepted.
+        let mut extra = change(&saved["revision"]);
+        extra["roots"] = serde_json::json!(["/etc"]);
+        let rejected = client.post(&private).json(&extra).send().await.unwrap();
+        assert_eq!(rejected.status(), reqwest::StatusCode::BAD_REQUEST);
     }
 }

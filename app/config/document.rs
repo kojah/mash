@@ -93,6 +93,44 @@ pub(super) fn configure(text: &str, choices: &super::init::Choices) -> Result<St
     Ok(text)
 }
 
+/// What the dashboard's settings page may change; see [`super::settings`].
+pub(super) struct Edit<'a> {
+    pub(super) providers: &'a ProviderRoots,
+    pub(super) since_days: Option<u32>,
+    pub(super) destination: IndexDestination,
+    pub(super) memory_capture: bool,
+    pub(super) redaction: crate::redaction::Settings,
+}
+
+/// Apply `edit` to the file's text, preserving every other typed field. The
+/// result is validated as a whole before it is returned.
+pub(super) fn edit(text: &str, edit: &Edit) -> Result<String, AppError> {
+    parse_document(text.as_bytes())?;
+    let mut document: RawDocument = toml::from_str(text)
+        .map_err(|error| AppError::configuration(format!("invalid configuration: {error}")))?;
+    document.providers = edit
+        .providers
+        .iter()
+        .map(|(provider, roots)| {
+            (
+                *provider,
+                RawProvider {
+                    roots: roots.clone(),
+                },
+            )
+        })
+        .collect();
+    document.index.since_days = edit.since_days;
+    document.index.all_history = edit.since_days.is_none();
+    document.index.destination = Some(edit.destination);
+    document.records.enabled = edit.memory_capture;
+    document.redaction = edit.redaction;
+    let text = toml::to_string_pretty(&document)
+        .map_err(|error| AppError::configuration(format!("serialize configuration: {error}")))?;
+    parse_document(text.as_bytes())?;
+    Ok(text)
+}
+
 pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     let contents = std::str::from_utf8(bytes)
         .map_err(|_| AppError::configuration("configuration must be UTF-8 TOML"))?;

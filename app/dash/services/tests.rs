@@ -39,6 +39,7 @@ async fn app_named(
             ..Paths::default()
         },
         hosts: super::super::allowed_hosts(address),
+        loopback: true,
         model_work: tokio::sync::Semaphore::new(1),
         services: Services {
             fleet_path: root

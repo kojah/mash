@@ -51,8 +51,14 @@ The left rail is the way around. On a phone it opens from the menu button.
   run from the dashboard.
 - **light and dark:** the button in the top right corner switches between the
   two. The dashboard opens dark, and remembers your choice in that browser.
-- **settings:** what the configuration file says, with index readiness. It is
-  read-only: edit the file to change a setting.
+- **settings:** this machine's configuration, with index readiness. Which
+  agents are indexed, how far back, whether history also goes to the shared
+  server, memory capture and credential masking are controls: change them,
+  review the changes, then save. The file is rewritten and the previous one is
+  kept beside it as `config.toml.previous`; restart the watcher and reconnect
+  agents to apply. How search works and where data is stored are shown but not
+  offered as choices. A dashboard that other machines can reach changes
+  settings only when it was started with `--services-config`.
 
 ## Find and read a chat
 

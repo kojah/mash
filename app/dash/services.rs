@@ -102,6 +102,12 @@ impl Services {
         })
     }
 
+    /// Whether this dashboard was started with a services configuration: the
+    /// operator's opt-in to managing the machine from it.
+    pub(super) fn managed(&self) -> bool {
+        self.config.is_some()
+    }
+
     pub(super) fn authorized(&self, headers: &HeaderMap) -> bool {
         let Some(expected) = self.token_hash else {
             return true;

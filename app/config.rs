@@ -10,6 +10,7 @@ mod embeddings;
 pub(crate) mod init;
 mod loading;
 mod qdrant;
+pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
 

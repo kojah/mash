@@ -1873,6 +1873,7 @@ h1:focus {
   background: var(--clay);
   border-color: var(--clay);
 }
+/* A switch: a rectangular track with a white head; the track is clay when on. */
 .sw {
   display: inline-flex;
   align-items: center;
@@ -1881,20 +1882,22 @@ h1:focus {
 .sw i {
   position: relative;
   display: block;
-  width: 40px;
-  height: 22px;
-  border-radius: 11px;
-  background: var(--line);
+  width: 42px;
+  height: 24px;
+  border-radius: 5px;
+  background: var(--strong);
+  transition: background 0.12s;
 }
 .sw i::after {
   content: "";
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--fg);
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
   transition: left 0.12s;
 }
 .sw[aria-checked="true"] i {
@@ -3071,5 +3074,154 @@ summary.rw::-webkit-details-marker {
 @media (max-width: 560px) {
   .tc-r {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Settings: controls in place of values, and a bar for what is not yet saved. */
+.set-s {
+  max-width: 860px;
+}
+.set-s > .h2 {
+  border-bottom: 1px solid var(--line);
+}
+.set-a,
+.set-r {
+  display: grid;
+  align-items: center;
+  gap: 4px 14px;
+  min-height: 54px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.set-a {
+  grid-template-columns: 22px minmax(0, 170px) minmax(0, 1fr) auto;
+}
+.set-r {
+  grid-template-columns: minmax(0, 230px) minmax(0, 1fr);
+}
+.set-a.changed,
+.set-r.changed {
+  padding-left: 10px;
+  box-shadow: inset 3px 0 0 var(--clay);
+}
+.set-a.off .set-n,
+.set-a.off .set-p,
+.set-a.off .mark {
+  opacity: 0.5;
+}
+.set-n,
+.set-l {
+  font-weight: 600;
+}
+.set-l small {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--dim);
+}
+.set-p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.set-c {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.set-h {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  color: var(--warn);
+}
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--strong);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.seg button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--dim);
+}
+.seg button + button {
+  border-left: 1px solid var(--strong);
+}
+.seg button[aria-pressed="true"] {
+  background: var(--clay);
+  color: var(--bg);
+}
+.set-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 860px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  background: var(--raised);
+}
+.set-bt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.set-bt strong {
+  flex: 1 1 160px;
+  font-weight: 600;
+}
+.set-d {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13.5px;
+}
+.set-d li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.set-d li > span:first-child {
+  flex: 0 1 260px;
+  font-weight: 500;
+}
+.set-d .was {
+  color: var(--bad);
+  text-decoration: line-through;
+}
+.set-d .now {
+  color: var(--ok);
+}
+@media (max-width: 640px) {
+  .set-r {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .set-a {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+  }
+  .set-a .set-p {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+  .set-d li > span:first-child {
+    flex-basis: 100%;
   }
 }

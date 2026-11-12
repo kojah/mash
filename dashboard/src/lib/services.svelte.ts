@@ -145,7 +145,11 @@ function operation(value: unknown): Operation {
   };
 }
 
-async function request(path: string, signal?: AbortSignal, body?: unknown): Promise<unknown> {
+export async function request(
+  path: string,
+  signal?: AbortSignal,
+  body?: unknown,
+): Promise<unknown> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     cache: "no-store",
