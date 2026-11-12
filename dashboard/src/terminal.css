@@ -37,7 +37,81 @@
   --cream-rule: #c9b98f;
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Colours with one job each, so the light theme can restate them. */
+  --name: #e8926f;
+  --cursor: #8a857c;
+  --dot-ok: #4ade80;
+  --dot-warn: #fbbf24;
+  --dot-bad: #f87171;
+  --dot-run: #ff9a70;
+  --ok-bg: #17301f;
+  --ok-fg: #b4f0c4;
+  --bad-bg: #3d1f1c;
+  --bad-fg: #ffc4bc;
+  --warn-bg: #3a3320;
+  --warn-fg: #f6e3a8;
+  --found: #4a3026;
+  --string: #a9d8a0;
+  --quote: #4a463f;
+  --on-blue: #10202c;
   color-scheme: dark;
+}
+/* The light theme: the same design on the cream of the mash, with dark ink.
+   The reader's own messages invert with it, dark on the light page, as the
+   logo's dome does. Code blocks and tool cards keep their dark surfaces. */
+:root[data-theme="light"] {
+  --bg: #fbf6e9;
+  --raised: #f5ecd5;
+  --soft: #efe2bd;
+  --line: #d6c79f;
+  --hair: #e8dcba;
+  --strong: #a8997a;
+  --fg: #2a2419;
+  --body: #3a3225;
+  --dim: #6b5f49;
+  --faint: #8a7c61;
+  --clay: #c0562f;
+  --clay2: #a84a26;
+  --tag: #f1d9c9;
+  --tagfg: #7a3318;
+  --ok: #2f7d47;
+  --warn: #8a6100;
+  --bad: #b3372b;
+  --blue: #2b6ca8;
+  --pink: #a8477f;
+  --lilac: #6a55c2;
+  --teal: #177a70;
+  --indigo: #4a57c4;
+  --sky: #2f7fa6;
+  --stone: #6f6a5e;
+  --cream: #2a2419;
+  --cream-ink: #f3e6c4;
+  --cream-deep: #3d3527;
+  --cream-rule: #5a4f3c;
+  --name: #2a2419;
+  --cursor: #9a948a;
+  --dot-ok: #22a35a;
+  --dot-warn: #d99a00;
+  --dot-bad: #dc4b3f;
+  --dot-run: #d9652f;
+  --ok-bg: #d9efdd;
+  --ok-fg: #1d5a31;
+  --bad-bg: #f6dcd8;
+  --bad-fg: #8f271d;
+  --warn-bg: #f3e3b4;
+  --warn-fg: #6b4b00;
+  --found: #f6dc9a;
+  --string: #2f7d47;
+  --quote: #c9b98f;
+  --on-blue: #ffffff;
+  color-scheme: light;
+}
+:root[data-theme="light"] :is(.brand, #burger) img {
+  content: url("/mash-mark-light.svg");
+}
+/* Agent logos are tinted for a dark ground; flip their lightness, keep the hue. */
+:root[data-theme="light"] .mark {
+  filter: invert(1) hue-rotate(180deg);
 }
 * {
   box-sizing: border-box;
@@ -131,8 +205,8 @@ summary::-webkit-details-marker {
   padding: 14px 6px 0;
   font-size: 23px;
   font-weight: 600;
-  /* The project's dark logo, drawn live so its cursor can blink. */
-  color: var(--clay2);
+  /* The project's logo, drawn live so its cursor can blink. */
+  color: var(--name);
 }
 /* The mark is sized from the lettering: its dome is as tall as the "h" (0.74em
    in this face) and the rule under it sits on the baseline, so only the butter
@@ -149,7 +223,7 @@ summary::-webkit-details-marker {
 .brand i {
   font-style: normal;
   font-weight: 600;
-  color: #8a857c;
+  color: var(--cursor);
   margin-left: 2px;
   animation: cursor 1.6s ease-in-out infinite;
 }
@@ -530,18 +604,18 @@ summary::-webkit-details-marker {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  color: #4ade80;
+  color: var(--dot-ok);
   background: currentColor;
   box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
 }
 .dot.warn {
-  color: #fbbf24;
+  color: var(--dot-warn);
 }
 .dot.bad {
-  color: #f87171;
+  color: var(--dot-bad);
 }
 .dot.run {
-  color: #ff9a70;
+  color: var(--dot-run);
 }
 .dot.none {
   background: transparent;
@@ -763,7 +837,7 @@ summary::-webkit-details-marker {
 }
 mark {
   padding: 0 2px;
-  background: #4a3026;
+  background: var(--found);
   color: var(--tagfg);
 }
 .chat {
@@ -916,19 +990,19 @@ code.i {
 }
 .dl-add {
   padding: 0 6px;
-  background: #1f3d29;
-  color: #c9f0d2;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 .dl-del {
   padding: 0 6px;
-  background: #47241f;
-  color: #ffd0c9;
+  background: var(--bad-bg);
+  color: var(--bad-fg);
 }
 .kw {
   color: var(--clay2);
 }
 .st {
-  color: #a9d8a0;
+  color: var(--string);
 }
 .div {
   display: flex;
@@ -1017,13 +1091,13 @@ code.i {
   gap: 8px 14px;
   width: min(460px, 100%);
   padding: 12px 14px;
-  border: 1px dashed #4a463f;
+  border: 1px dashed var(--quote);
   border-radius: 8px;
 }
 blockquote {
   display: block;
   padding-left: 14px;
-  border-left: 3px solid #4a463f;
+  border-left: 3px solid var(--quote);
   color: var(--body);
 }
 .matrix {
@@ -2321,7 +2395,7 @@ button:disabled {
 }
 .badge.read {
   background: var(--blue);
-  color: #10202c;
+  color: var(--on-blue);
 }
 .badge.write {
   background: var(--tag);
@@ -2467,16 +2541,16 @@ button:disabled {
   box-shadow: none;
 }
 .pill.ok {
-  background: #17301f;
-  color: #b4f0c4;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 .pill.failed {
-  background: #3d1f1c;
-  color: #ffc4bc;
+  background: var(--bad-bg);
+  color: var(--bad-fg);
 }
 .pill.busy {
-  background: #3a3320;
-  color: #f6e3a8;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
 }
 .json {
   padding: 12px 14px;
@@ -2606,4 +2680,23 @@ button:disabled {
   background: var(--bg);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+/* The light and dark switch, at the far end of the top bar. */
+#theme {
+  flex: none;
+  /* Held at the far corner whatever the width of the search box. */
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--body);
+}
+#theme:hover {
+  border-color: var(--strong);
+  color: var(--clay2);
 }

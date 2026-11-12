@@ -1,5 +1,7 @@
 <script lang="ts">
+import Moon from "@lucide/svelte/icons/moon";
 import Search from "@lucide/svelte/icons/search";
+import Sun from "@lucide/svelte/icons/sun";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import { groupChats, projectLabel } from "../lib/browse";
@@ -7,6 +9,7 @@ import { navigate } from "../lib/navigation";
 import { catalogOptions } from "../lib/queries";
 import { chatHref, router, searchHref } from "../lib/route.svelte";
 import { type Applied, appliedHref, dateRanges, parseApplied } from "../lib/search";
+import { theme, toggleTheme } from "../lib/theme.svelte";
 import AgentMark from "./AgentMark.svelte";
 
 let { railOpen, toggleRail }: { railOpen: boolean; toggleRail: () => void } = $props();
@@ -121,4 +124,7 @@ function submit(event: SubmitEvent): void {
       </div>
     {/if}
   </div>
+  <button id="theme" type="button" aria-label={theme.current === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme.current === "dark" ? "Switch to light mode" : "Switch to dark mode"} onclick={toggleTheme}>
+    {#if theme.current === "dark"}<Sun size={18} aria-hidden="true" />{:else}<Moon size={18} aria-hidden="true" />{/if}
+  </button>
 </header>

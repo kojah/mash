@@ -34,11 +34,14 @@ test("mobile menu and theme still work after navigation", async ({ page }) => {
   await expect(page.locator("h1")).toHaveText("Install Mash");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("button", { name: "Menu", exact: true }).click();
-  await page.locator("starlight-theme-select select:visible").selectOption("dark");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  // The button in the menu switches to the other theme, and the choice holds.
+  const before = await page.locator("html").getAttribute("data-theme");
+  const other = before === "light" ? "dark" : "light";
+  await page.locator(".mash-theme:visible").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", other);
   await page.locator('nav.sidebar a[href="/search/"]').click();
   await expect(page.locator("h1")).toHaveText("Find a conversation");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", other);
 });
 
 test("direct links remain usable without JavaScript", async ({ browser }) => {

@@ -49,6 +49,8 @@ The left rail is the way around. On a phone it opens from the menu button.
   Fill in a read-only tool and run it to see the reply exactly as an agent
   receives it. Tools that change data are listed for reference but cannot be
   run from the dashboard.
+- **light and dark:** the button in the top right corner switches between the
+  two. The dashboard opens dark, and remembers your choice in that browser.
 - **settings:** what the configuration file says, with index readiness. It is
   read-only: edit the file to change a setting.
 

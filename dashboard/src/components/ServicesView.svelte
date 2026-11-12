@@ -233,7 +233,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
             {#if status === null}<span class="cell none">–</span>
             {:else if status === "healthy"}<span class="cell ok"><Check size={16} aria-label="healthy" /></span>
             {:else if status === "reconnect" || status === "off"}<span class="cell none">{status}</span>
-            {:else}<span class="cell warn"><TriangleAlert size={16} aria-hidden="true" />{status}</span>{/if}
+            {:else}<span class="cell warn" title={status}><TriangleAlert size={16} aria-label={status} /></span>{/if}
           {/each}
         </a>
       {/each}

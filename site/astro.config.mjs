@@ -25,6 +25,7 @@ export default defineConfig({
       components: {
         Head: "./src/components/Head.astro",
         Search: "./src/components/Search.astro",
+        ThemeSelect: "./src/components/ThemeSelect.astro",
       },
       sidebar: [
         {

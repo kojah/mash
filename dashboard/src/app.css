@@ -27,3 +27,24 @@
   --color-code-bar: #2b2926;
   --color-code-ink: #d8d3ca;
 }
+
+/* The light theme restates the page's colours. Code keeps its dark surface. */
+:root[data-theme="light"] {
+  --color-ground: #fbf6e9;
+  --color-surface: #f5ecd5;
+  --color-ink: #2a2419;
+  --color-ink-2: #3a3225;
+  --color-muted: #6b5f49;
+  --color-faint: #8a7c61;
+  --color-hairline: #e8dcba;
+  --color-line: #d6c79f;
+  --color-fill: #efe2bd;
+  --color-chevron: #a8997a;
+  --color-accent: #c0562f;
+  --color-accent-ink: #a84a26;
+  --color-accent-soft: #f1d9c9;
+  --color-ok: #2f7d47;
+  --color-warn: #8a6100;
+  --color-bad: #b3372b;
+  --color-mark: #f6dc9a;
+}
