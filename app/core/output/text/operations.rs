@@ -111,8 +111,11 @@ pub(super) fn index(out: &mut String, value: &IndexResponse) -> Result<(), serde
     line(
         out,
         &format!(
-            "Embeddings: {} · model inferences: {} · reused: {}",
-            value.embeddings, value.model_inferences, value.reused_embeddings
+            "Embeddings: {} · model inferences: {} ({} remote) · reused: {}",
+            value.embeddings,
+            value.model_inferences,
+            value.remote_inferences,
+            value.reused_embeddings
         ),
     );
     line(

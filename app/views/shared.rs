@@ -62,7 +62,10 @@ pub(crate) async fn embed_units(
                 .remote
                 .as_ref()
                 .ok_or_else(|| AppError::internal("missing embedding client"))?;
+            let started = Instant::now();
             let embedded = client.embed(&texts).await?;
+            result.embeddings.remote_inferences += texts.len() as u64;
+            result.embeddings.remote_milliseconds += elapsed(started);
             result.embedding_milliseconds += embedded.inference_milliseconds;
             embedded.vectors
         }

@@ -215,12 +215,17 @@ pub(crate) struct IndexResponse {
     pub(super) embeddings: u64,
     pub(super) model_inferences: u64,
     pub(super) reused_embeddings: u64,
+    /// How many of `model_inferences` the remote worker computed; the local
+    /// model computed the rest.
+    pub(super) remote_inferences: u64,
     pub(super) realized_mode: SearchMode,
     pub(super) model_load_milliseconds: u64,
     pub(super) storage_setup_milliseconds: u64,
     pub(super) ingestion_milliseconds: u64,
     pub(super) search_refresh_milliseconds: u64,
     pub(super) embedding_milliseconds: u64,
+    /// Time spent waiting on the remote worker, including its start.
+    pub(super) remote_milliseconds: u64,
     pub(super) total_milliseconds: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared: Option<shared::Publication>,

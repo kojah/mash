@@ -284,6 +284,7 @@ async fn index(
         embeddings: embeddings.stored_vectors,
         model_inferences: embeddings.model_inferences,
         reused_embeddings: embeddings.reused_vectors,
+        remote_inferences: embeddings.remote_inferences,
         realized_mode: if views.ready {
             if build.dense_enabled() {
                 SearchMode::Hybrid
@@ -298,6 +299,7 @@ async fn index(
         ingestion_milliseconds,
         search_refresh_milliseconds: views.search_refresh_milliseconds,
         embedding_milliseconds: views.embedding_milliseconds,
+        remote_milliseconds: embeddings.remote_milliseconds,
         total_milliseconds: elapsed_milliseconds(total_started),
         shared: None,
     })

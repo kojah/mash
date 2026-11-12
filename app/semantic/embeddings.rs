@@ -39,6 +39,10 @@ pub(crate) struct EmbeddingSummary {
     pub(crate) stored_vectors: u64,
     pub(crate) model_inferences: u64,
     pub(crate) reused_vectors: u64,
+    /// The part of `model_inferences` a remote worker computed, and how long
+    /// its requests took end to end, including any worker start.
+    pub(crate) remote_inferences: u64,
+    pub(crate) remote_milliseconds: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

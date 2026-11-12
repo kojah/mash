@@ -74,7 +74,10 @@ local_below = 256
 A batch with fewer new texts than this is embedded by the local model, which
 needs `mash models install`; larger batches, such as a first index or a
 backfill, still go to the worker. Both produce the same vectors. The value can
-be at most 1024, and leaving it out sends every batch to the worker.
+be at most 1024, and leaving it out sends every batch to the worker. Each
+`mash index` result reports how many texts the worker embedded
+(`remote_inferences`, out of `model_inferences`) and how long its requests took
+(`remote_milliseconds`).
 
 Existing matching vectors are reused. Failed remote requests return an error;
 Mash does not automatically retry the request or silently switch to local
