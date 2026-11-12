@@ -12,6 +12,7 @@
     - name: Remember successful silver upgrades
       ansible.builtin.set_fact:
         mash_upgraded: "{{ (mash_upgraded | default(false)) or ('local index upgraded;' in mash_install_result.stdout) }}"
+        mash_migrating: "{{ (mash_migrating | default(false)) or ('local index needs an in-place upgrade;' in mash_install_result.stdout) }}"
       no_log: true
   rescue:
     - name: Report the failed step without exposing command arguments or history

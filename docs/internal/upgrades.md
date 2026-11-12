@@ -79,6 +79,10 @@ the original database before activating the replacement; never run two
 publishers with that same identity. Normal imports without this option create
 a new publication identity.
 
+During a fleet deployment, a schema the new release upgrades in place is not
+exported: the upgrade script leaves the index alone and the deployment runs one
+incremental index pass with the new release, which performs the upgrade.
+
 For compatible archives, [upgrade-local-index.sh](../../tools/upgrade-local-index.sh)
 exports, stages and validates an import before retiring the old files, and
 retains recovery artifacts. It refuses a database with open users and leaves an

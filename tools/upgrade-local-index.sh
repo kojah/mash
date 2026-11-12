@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Carry a node's local index across a silver schema change. Mash has no
-# in-place migrations: export and validate a staged import before retiring any
+# Carry a node's local index across a silver schema change. A schema the new
+# release upgrades in place is left alone: indexing with that release performs
+# the upgrade, and the deployment runs one pass for it. Any other incompatible
+# schema is exported, and a staged import validated, before retiring any
 # active files. Keep publication identity when the export actually carries it.
 # Views are rebuilt afterwards by
 # an explicit `mash index --rebuild-local-views`. A no-op when the new release
@@ -28,6 +30,12 @@ if ! grep -q '"kind":"schema-incompatible"' "$probe"; then
     echo 'new release cannot read the local index for a reason other than its schema' >&2
     cat "$probe" >&2
     exit 1
+fi
+# The release says so itself when it can upgrade this schema in place. Nothing
+# is exported or moved for that; read-only commands never migrate.
+if grep -q 'requires an in-place upgrade' "$probe"; then
+    echo 'local index needs an in-place upgrade; indexing with the new release performs it'
+    exit 0
 fi
 command -v jq >/dev/null
 command -v lsof >/dev/null

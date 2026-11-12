@@ -22,7 +22,13 @@ cat > "$scratch/bin/mash" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 case " $* " in
-    *' status '*) printf '{"error":{"kind":"schema-incompatible"}}\n' >&2; exit 1 ;;
+    *' status '*)
+        if [[ -e $TEST_UPGRADE_ROOT/in-place ]]; then
+            printf '{"error":{"kind":"schema-incompatible","message":"local index schema 65 requires an in-place upgrade to 66; run `mash index` with this release"}}\n' >&2
+        else
+            printf '{"error":{"kind":"schema-incompatible"}}\n' >&2
+        fi
+        exit 1 ;;
     *' export '*)
         destination=${!#}
         mkdir "$destination"
@@ -66,6 +72,13 @@ for failure in reject legacy busy; do
     unchanged
     [[ ! -e $TEST_UPGRADE_ROOT/db.sqlite3.upgrade-in-progress ]]
 done
+# A schema the release upgrades in place is neither exported nor moved.
+fixture in-place
+touch "$TEST_UPGRADE_ROOT/in-place"
+upgrade
+unchanged
+grep -q '^local index needs an in-place upgrade;' "$TEST_UPGRADE_ROOT/result"
+[[ ! -e $TEST_UPGRADE_ROOT/backups && ! -e $TEST_UPGRADE_ROOT/db.sqlite3.upgrade-in-progress ]]
 for identity in absent present; do
     fixture "identity-$identity"
     if [[ $identity == present ]]; then touch "$TEST_UPGRADE_ROOT/identity"; fi
@@ -104,4 +117,4 @@ backup=$(cat "$marker/backup")
 [[ $(cat "$TEST_UPGRADE_ROOT/db.sqlite3") == new ]]
 [[ $(cat "$backup/retired/db.sqlite3") == original ]]
 if upgrade; then echo 'Ignored retained marker after database promotion' >&2; exit 1; fi
-echo 'Upgrade staging, identity, quiescence, retention and interrupted retry checks passed.'
+echo 'Upgrade staging, in-place hand-off, identity, quiescence, retention and interrupted retry checks passed.'

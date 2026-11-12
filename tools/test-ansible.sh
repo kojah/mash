@@ -64,7 +64,7 @@ all:
           mash_requires: [api]
           mash_deploy_preflight: [[sh, -c, 'test ! -e $scratch/deny-install']]
           mash_install:
-            - [sh, -c, 'if test -e $scratch/fail-upgrade; then exit 1; fi; echo one-install >> $scratch/actions; if test -e $scratch/upgrade; then echo "local index upgraded;"; fi']
+            - [sh, -c, 'if test -e $scratch/fail-upgrade; then exit 1; fi; echo one-install >> $scratch/actions; if test -e $scratch/upgrade; then echo "local index upgraded;"; fi; if test -e $scratch/migrate; then echo "local index needs an in-place upgrade;"; fi']
             - [sh, -c, 'echo one-binary-install >> $scratch/actions']
           mash_mcp: [unused]
         offline:
@@ -148,8 +148,15 @@ run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml upgraded
 [[ $(grep -c '^sync$' "$scratch/actions") == 1 ]]
 if grep -q '^local-views$' "$scratch/actions"; then echo 'Upgrade replayed views before refreshing interpretation.' >&2; exit 1; fi
 rm "$scratch/upgrade"
-run_playbook sync '["one"]' deployment/playbooks/refresh.yml explicit
+# A schema the release upgrades in place gets one incremental pass, not a refresh of all history.
+touch "$scratch/migrate"
+run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml migrated
 [[ $(grep -c '^sync$' "$scratch/actions") == 2 ]]
+rm "$scratch/migrate"
+run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml unchanged-schema
+[[ $(grep -c '^sync$' "$scratch/actions") == 2 ]]
+run_playbook sync '["one"]' deployment/playbooks/refresh.yml explicit
+[[ $(grep -c '^sync$' "$scratch/actions") == 3 ]]
 run_playbook local-views '["one"]' deployment/playbooks/refresh.yml offline
 [[ $(grep -c '^local-views$' "$scratch/actions") == 1 ]]
 if run_playbook sync '["api"]' deployment/playbooks/refresh.yml invalid; then echo 'API refresh was accepted.' >&2; exit 1; fi

@@ -84,6 +84,12 @@
         mash_probe_mode: sync
         mash_refresh_all_history: true
       when: mash_upgraded | default(false)
+    - name: Upgrade silver in place with one incremental index pass
+      ansible.builtin.include_tasks: tasks/probe.yml
+      vars:
+        mash_probe_mode: sync
+        mash_refresh_all_history: false
+      when: (mash_migrating | default(false)) and not (mash_upgraded | default(false))
     - name: Verify live tools, contract, readiness and smoke searches
       ansible.builtin.include_tasks: tasks/probe.yml
       vars:
