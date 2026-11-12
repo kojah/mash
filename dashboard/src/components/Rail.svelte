@@ -16,6 +16,7 @@ import Wrench from "@lucide/svelte/icons/wrench";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
+import { asset } from "../lib/asset";
 import { groupChats, projectLabel } from "../lib/browse";
 import { catalogOptions } from "../lib/queries";
 import { kindIcons } from "../lib/recordIcons";
@@ -165,7 +166,7 @@ function toggle(id: Section): void {
 </script>
 
 <aside id="rail" class:open style:--rail-width="{width}px">
-  <a class="brand" href="#/" onclick={close}><img src="/mash-mark.svg" alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
+  <a class="brand" href="#/" onclick={close}><img src={asset("mash-mark.svg")} alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
   <button id="xdrawer" type="button" aria-label="Close navigation" onclick={close}>×</button>
   <nav class="nav" aria-label="Main">
     {#each sections as section (section.id)}

@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/svelte-query";
 import { stableRead } from "./queries";
+import { send } from "./transport";
 
 export type ServiceState = "healthy" | "degraded" | "stopped" | "failed" | "unknown";
 export type ServiceAction = "start" | "stop" | "restart";
@@ -150,7 +151,7 @@ export async function request(
   signal?: AbortSignal,
   body?: unknown,
 ): Promise<unknown> {
-  const response = await fetch(path, {
+  const response = await send(path, {
     method: body === undefined ? "GET" : "POST",
     cache: "no-store",
     ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" } }),

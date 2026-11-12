@@ -1,7 +1,14 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!dist", "!node_modules", "!.svelte-check"]
+    "includes": [
+      "**",
+      "!dist",
+      "!dist-demo",
+      "!src/demo/tools.json",
+      "!node_modules",
+      "!.svelte-check"
+    ]
   },
   "formatter": {
     "indentStyle": "space",

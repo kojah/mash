@@ -4,6 +4,7 @@ import Search from "@lucide/svelte/icons/search";
 import Sun from "@lucide/svelte/icons/sun";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
+import { asset } from "../lib/asset";
 import { groupChats, projectLabel } from "../lib/browse";
 import { navigate } from "../lib/navigation";
 import { catalogOptions } from "../lib/queries";
@@ -91,7 +92,7 @@ function submit(event: SubmitEvent): void {
 </script>
 
 <header id="top">
-  <button id="burger" type="button" aria-label="Open navigation" aria-expanded={railOpen} onclick={toggleRail}><img src="/mash-mark.svg" alt="" width="30" height="28" /></button>
+  <button id="burger" type="button" aria-label="Open navigation" aria-expanded={railOpen} onclick={toggleRail}><img src={asset("mash-mark.svg")} alt="" width="30" height="28" /></button>
   <div
     class="search"
     role="search"

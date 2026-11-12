@@ -52,3 +52,26 @@ GitHub Pages must use GitHub Actions as its publishing source and `getmash.io`
 as its custom domain. DNS points the domain at GitHub Pages; no Cloudflare token
 is required in GitHub Actions. Enable HTTPS enforcement once GitHub has issued
 the domain certificate.
+
+## The dashboard demo
+
+`getmash.io/demo/` is the dashboard itself, built with `pnpm build:demo` in
+`dashboard/` and copied into the site by `pnpm add-demo` in `site/`. The
+documentation workflow runs both, so the demo is republished whenever the
+dashboard changes.
+
+The demo sends no requests. Its entry point (`dashboard/src/demo/main.ts`)
+installs a transport that answers in the browser from a made-up history
+(`dashboard/src/demo/history.ts`), in the shapes `mash dash` sends. Nothing
+outside `dashboard/src/demo/` knows the demo exists, and the real build
+carries none of it.
+
+- **Keeping it honest.** `dashboard/src/demo/backend.test.ts` passes every
+  demo answer through the dashboard's own response checks. When a response
+  shape changes, update `backend.ts` until that test passes.
+- **Search.** The demo matches words only and says so on the results page.
+- **The tool list.** `dashboard/src/demo/tools.json` is a copy of what a
+  running dashboard serves at `/api/console/tools`. Refresh it with
+  `curl -s http://127.0.0.1:8790/api/console/tools > dashboard/src/demo/tools.json`.
+- **History.** Every project, machine and conversation is invented. Never add
+  real history to it.

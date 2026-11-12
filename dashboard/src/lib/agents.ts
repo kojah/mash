@@ -1,3 +1,4 @@
+import { asset } from "./asset";
 import type { Agent } from "./types";
 
 export interface AgentInfo {
@@ -9,10 +10,10 @@ export interface AgentInfo {
 }
 
 export const agents: Readonly<Record<Agent, AgentInfo>> = {
-  "claude-code": { name: "Claude Code", logo: "/agents/claude.svg", tint: "#d97757" },
-  codex: { name: "Codex", logo: "/agents/openai.svg", tint: "#f0ece4" },
-  opencode: { name: "OpenCode", logo: "/agents/opencode.svg", tint: "#bdb8ad" },
-  copilot: { name: "GitHub Copilot", logo: "/agents/githubcopilot.svg", tint: "#b6a6f0" },
-  cursor: { name: "Cursor", logo: "/agents/cursor.svg", tint: "#f0ece4" },
-  antigravity: { name: "Antigravity", logo: "/agents/antigravity.svg", tint: "#7fb8ea" },
+  "claude-code": { name: "Claude Code", logo: asset("agents/claude.svg"), tint: "#d97757" },
+  codex: { name: "Codex", logo: asset("agents/openai.svg"), tint: "#f0ece4" },
+  opencode: { name: "OpenCode", logo: asset("agents/opencode.svg"), tint: "#bdb8ad" },
+  copilot: { name: "GitHub Copilot", logo: asset("agents/githubcopilot.svg"), tint: "#b6a6f0" },
+  cursor: { name: "Cursor", logo: asset("agents/cursor.svg"), tint: "#f0ece4" },
+  antigravity: { name: "Antigravity", logo: asset("agents/antigravity.svg"), tint: "#7fb8ea" },
 };

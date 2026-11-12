@@ -22,6 +22,7 @@
   /* The name's colour in the project logo: clay on dark, ink on light. */
   --mash-name: #e8926f;
   --mash-turn: #f3e6c4;
+  --mash-mound: #f3e6c4;
 }
 :root[data-theme="light"] {
   --sl-color-white: #2a2419;
@@ -40,6 +41,7 @@
   --mash-cursor: #9a948a;
   --mash-name: #2a2419;
   --mash-turn: #a84a26;
+  --mash-mound: #2a2419;
 }
 h1,
 h2,
@@ -112,6 +114,12 @@ h4 {
 }
 .hero .sl-link-button.secondary {
   border-color: var(--sl-color-gray-4);
+}
+/* The demo's button is filled with the colour of the mash in the logo. */
+.hero .sl-link-button.mash-demo {
+  background: var(--mash-mound);
+  border-color: var(--mash-mound);
+  color: var(--sl-color-black);
 }
 /* Landing page tiles: one quiet surface, each with its icon in clay. */
 .card-grid .card {

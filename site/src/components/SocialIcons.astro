@@ -1,9 +1,11 @@
 ---
-// The header's links: the guides by name, then Starlight's own icons.
+// The header's links: the guides and the demo by name, then Starlight's own
+// icons. The demo is a separate app, so its link loads it afresh.
 import Default from "@astrojs/starlight/components/SocialIcons.astro";
 ---
 
 <a class="mash-nav" href="/guides/">Docs</a>
+<a class="mash-nav" href="/demo/" data-astro-reload>Demo</a>
 <Default />
 
 <style>

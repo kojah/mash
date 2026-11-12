@@ -3,10 +3,10 @@ name: Documentation
 on:
   push:
     branches: [main]
-    paths: ['docs/**', 'site/**', 'README.md', 'dashboard/public/agents/**', 'dashboard/src/lib/agents.ts', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', 'README.md', 'dashboard/**', '.github/workflows/docs.yml']
   pull_request:
     branches: [main]
-    paths: ['docs/**', 'site/**', 'README.md', 'dashboard/public/agents/**', 'dashboard/src/lib/agents.ts', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', 'README.md', 'dashboard/**', '.github/workflows/docs.yml']
   workflow_dispatch:
   # A release adds packages to the apt repository; republish so they are served.
   workflow_run:
@@ -34,7 +34,15 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: site/pnpm-lock.yaml
+          cache-dependency-path: |
+            site/pnpm-lock.yaml
+            dashboard/pnpm-lock.yaml
+      # The demo is the dashboard itself, built to answer from made-up history.
+      - name: Build the dashboard demo
+        working-directory: dashboard
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:demo
       - name: Install and validate documentation
         working-directory: site
         run: |
@@ -43,6 +51,7 @@ jobs:
           pnpm check
           pnpm test
           pnpm build
+          pnpm add-demo
           pnpm exec playwright install --with-deps chromium
           pnpm test:browser
       - name: Preserve published apt repository

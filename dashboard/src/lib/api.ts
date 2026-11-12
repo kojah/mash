@@ -1,3 +1,4 @@
+import { send } from "./transport";
 import type { Agent, ChatSummary, Message, SearchFilters, SearchHit } from "./types";
 
 export interface Catalog {
@@ -64,7 +65,7 @@ export async function read(
   params: URLSearchParams,
   signal: AbortSignal,
 ): Promise<unknown> {
-  const response = await fetch(`${path}?${params}`, {
+  const response = await send(`${path}?${params}`, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
     cache: "no-store",
   }).catch((error: unknown) => {
