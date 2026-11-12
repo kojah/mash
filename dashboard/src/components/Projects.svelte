@@ -2,7 +2,7 @@
 import type { ProjectView } from "../lib/browse";
 
 // Kept for the life of the page, so returning from a project keeps the view.
-const view: ProjectView = $state({ find: "", agent: "", machine: "", sort: "chats" });
+const view: ProjectView = $state({ find: "", agent: "", machine: "", sort: "recent" });
 </script>
 
 <script lang="ts">
@@ -50,8 +50,8 @@ $effect(() => {
   return () => watcher.disconnect();
 });
 const sorts = [
-  { value: "chats", label: "most chats" },
   { value: "recent", label: "most recent" },
+  { value: "chats", label: "most chats" },
   { value: "name", label: "by name" },
 ] as const;
 const now = Date.now();
