@@ -7,7 +7,7 @@ $root = Join-Path $env:RUNNER_TEMP 'qdrant-path-probe'
 $reports = Join-Path $root 'reports'
 New-Item -ItemType Directory -Path $reports -Force | Out-Null
 $zip = Join-Path $root 'qdrant.zip'
-Invoke-WebRequest 'https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-x86_64-pc-windows-msvc.zip' -OutFile $zip
+Invoke-WebRequest 'https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-x86_64-pc-windows-msvc.zip' -OutFile $zip
 Expand-Archive $zip (Join-Path $root 'bin')
 $exe = Join-Path $root 'bin/qdrant.exe'
 $results = @()

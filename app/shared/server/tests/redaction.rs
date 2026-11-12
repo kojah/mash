@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with disposable Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with disposable Qdrant 1.20+"]
 async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
     const APP_TOKEN: &str = "xapp-1-A1B2C3D4E5-1234567890123-abcdef0123456789abcdef0123456789";
     let service = Service::qdrant(384).await;

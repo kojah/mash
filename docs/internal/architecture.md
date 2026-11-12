@@ -64,7 +64,7 @@ modules are grouped by responsibility:
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and views embeddings within one atomic revision.
 - `app/views/qdrant/`: common typed REST reads/setup, gRPC document writes, collection schema,
-  and dense/sparse retrieval. The engine takes an index scope, independently
+  and dense/BM25 text retrieval. The engine takes an index scope, independently
   of Axum authentication; shared publication owns coordination around it.
   `Store::open` inspects existing collections without writes; `Store::connect`
   explicitly completes setup and then verifies the same reader contract.

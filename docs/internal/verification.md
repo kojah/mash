@@ -26,7 +26,7 @@ Qdrant test selection. It does not terminate a process or simulate power loss;
 the separate persisted-restart contract covers process termination.
 
 Run locally through `agent-test` with `MASH_TEST_QDRANT_URL` pointing to a
-disposable, memory-limited Qdrant 1.19+ service:
+disposable, memory-limited Qdrant 1.20+ service:
 
 ```bash
 agent-test env TMPDIR=/home/james/scratch/achi-tmp \

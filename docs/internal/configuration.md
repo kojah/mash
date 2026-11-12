@@ -45,7 +45,7 @@ memory = "durable"
 # api_key_env = "MASH_LOCAL_QDRANT_KEY"
 ```
 
-Both endpoints must reach the same Qdrant 1.19+ instance. If an API key is
+Both endpoints must reach the same Qdrant 1.20+ instance. If an API key is
 required, put it in the named environment variable, not in the URL.
 
 ## Search defaults

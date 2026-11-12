@@ -176,7 +176,7 @@ fn server_rejects_relative_silver_dir_before_backend_access() {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_default_server_configuration_starts_and_creates_group_collections() {
     let root = tempfile::tempdir().unwrap();
     let group = format!(

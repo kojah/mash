@@ -2,13 +2,13 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_context_preserves_branches_and_rejects_broken_publications() {
     contract(Service::qdrant(384).await).await;
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_small_tree_context_matches_large_view_with_unrelated_roots() {
     let service = Service::qdrant(384).await;
     let mut events = snapshot(1);
@@ -64,7 +64,7 @@ async fn qdrant_small_tree_context_matches_large_view_with_unrelated_roots() {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_batches() {
     let service = Service::qdrant(384).await;
     let mut events = snapshot(1);

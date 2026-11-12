@@ -17,20 +17,11 @@ struct Config {
 #[derive(Deserialize)]
 struct Parameters {
     vectors: Dense,
-    sparse_vectors: Sparse,
     payload: Placement,
 }
 #[derive(Deserialize)]
 struct Dense {
     dense: Placement,
-}
-#[derive(Deserialize)]
-struct Sparse {
-    lexical: SparseIndex,
-}
-#[derive(Deserialize)]
-struct SparseIndex {
-    index: Placement,
 }
 #[derive(Deserialize)]
 struct Placement {
@@ -54,16 +45,12 @@ async fn assert_policy(fixture: &Fixture, memory: MemoryTier) {
         .unwrap();
     let config = response.result.config;
     assert_eq!(config.params.vectors.dense.memory, memory.dense());
-    assert_eq!(
-        config.params.sparse_vectors.lexical.index.memory,
-        memory.index()
-    );
     assert_eq!(config.hnsw_config.memory, memory.index());
     assert_eq!(config.params.payload.memory, PAYLOAD_MEMORY);
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn durable_memory_activation_preserves_publications_and_is_idempotent() {
     let fixture = Fixture::with_memory(VectorIndex::default(), MemoryTier::Cached).await;
     fixture
@@ -161,7 +148,7 @@ async fn assert_filters_and_context(fixture: &Fixture) {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch_and_forget() {
     for memory in [MemoryTier::Cached, MemoryTier::Cold, MemoryTier::Durable] {
         for index in [VectorIndex::Exact {}, VectorIndex::Hnsw { ef_runtime: 200 }] {

@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_chat_catalog_http_filter_sort_page_and_group_contract() {
     contract(Service::qdrant(384).await).await;
 }
@@ -10,7 +10,7 @@ use crate::chat_catalog::{Direction, Page, Request, Sort};
 mod integrated;
 
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_dashboard_catalog_and_pages_preserve_group_scope() {
     let service = Service::qdrant(384).await;
     assert_eq!(

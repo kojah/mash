@@ -130,12 +130,12 @@ both word and semantic search. Alternatively, use the
 [official Qdrant Docker image](#optional-qdrant-docker-image). Mash and the
 dashboard run directly on your machine in either setup.
 
-An existing Qdrant 1.19+ service also works. Both HTTP and gRPC ports must reach
+An existing Qdrant 1.20+ service also works. Both HTTP and gRPC ports must reach
 the same instance. For nondefault endpoints, see [Qdrant configuration](configuration.md#local-qdrant).
 
 ### Native Windows without Docker
 
-On Windows x64, download [Qdrant 1.19.1 for Windows](https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-x86_64-pc-windows-msvc.zip)
+On Windows x64, download [Qdrant 1.20.0 for Windows](https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-x86_64-pc-windows-msvc.zip)
 and extract it into `C:\mash-qdrant` (or another short, writable folder).
 Use a short absolute data path: longer paths under your user profile can make
 Qdrant's payload indexes fail even when its startup health check succeeds.
@@ -158,14 +158,14 @@ In the second terminal, check readiness with
 ### Native macOS or Linux without Docker
 
 Download the archive for your machine from the
-[Qdrant 1.19.1 release](https://github.com/qdrant/qdrant/releases/tag/v1.19.1):
+[Qdrant 1.20.0 release](https://github.com/qdrant/qdrant/releases/tag/v1.20.0):
 
 | Machine | Archive |
 | --- | --- |
-| macOS, Apple Silicon | [Download](https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-aarch64-apple-darwin.tar.gz) |
-| macOS, Intel | [Download](https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-x86_64-apple-darwin.tar.gz) |
-| Linux, x86_64 | [Download](https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-x86_64-unknown-linux-musl.tar.gz) |
-| Linux, ARM64 | [Download](https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-aarch64-unknown-linux-musl.tar.gz) |
+| macOS, Apple Silicon | [Download](https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-aarch64-apple-darwin.tar.gz) |
+| macOS, Intel | [Download](https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-x86_64-apple-darwin.tar.gz) |
+| Linux, x86_64 | [Download](https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-x86_64-unknown-linux-musl.tar.gz) |
+| Linux, ARM64 | [Download](https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-aarch64-unknown-linux-musl.tar.gz) |
 
 Extract it into a dedicated folder, such as `~/qdrant`. Open a terminal there:
 
@@ -191,7 +191,7 @@ them. Use the native Windows instructions above in that case.
 Run this command in Bash or PowerShell:
 
 ```sh
-docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.19.1
+docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.20.0
 ```
 
 Docker downloads Qdrant and keeps its data in a persistent volume. Only this

@@ -61,7 +61,7 @@ jobs:
           $root = Join-Path $env:RUNNER_TEMP 'qdrant'
           New-Item -ItemType Directory -Path $root -Force | Out-Null
           $archive = Join-Path $root 'qdrant.zip'
-          Invoke-WebRequest 'https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-x86_64-pc-windows-msvc.zip' -OutFile $archive
+          Invoke-WebRequest 'https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-x86_64-pc-windows-msvc.zip' -OutFile $archive
           if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '9b6f69bd85f6abed4bc13f943099f55c6ffd55f5dd90388635320d8fbb569eb0') {
             throw 'Qdrant archive checksum mismatch'
           }
@@ -137,7 +137,7 @@ jobs:
     timeout-minutes: 30
     services:
       qdrant:
-        image: qdrant/qdrant:v1.19.1
+        image: qdrant/qdrant:v1.20.0
         ports:
           - 6333:6333
           - 6334:6334

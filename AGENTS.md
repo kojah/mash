@@ -63,8 +63,11 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   vectors. Never silently fall back or automatically retry ambiguous billable work.
 - Qdrant publication uses the generated Tonic client with bounded protobuf requests,
   explicit completion checks and no automatic mutation retries or REST fallback.
-  Reads and collection setup use the existing reqwest client and typed REST models, named dense/sparse
-  vectors on Qdrant 1.19+. Default to HNSW vector retrieval with ef_runtime=200;
+  Reads and collection setup use the existing reqwest client and typed REST models, named dense
+  vectors on Qdrant 1.20+. Word search ranks with BM25 on the `unit.text` full-text
+  index (`word` tokenizer, matching Mash's own word boundaries); do not publish
+  sparse vectors. The `tokens` payload field remains the prefix/typo vocabulary and
+  literal-verification evidence. Default to HNSW vector retrieval with ef_runtime=200;
   permit explicit exact search. Never report uncertified views as current, and
   fail closed on incompatible existing schemas or superseded views settings.
 - Do not add provider traits, registries, compatibility

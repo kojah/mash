@@ -416,27 +416,27 @@ impl Drop for Service {
     }
 }
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.20+"]
 async fn qdrant_publication_http_authorization_vectors_groups_rollback_and_retry() {
     Box::pin(http_storage_contract(Service::qdrant(384).await)).await;
 }
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.20+"]
 async fn qdrant_publication_rich_filters_apply_before_ranking() {
     rich_filter_contract(Service::qdrant(384).await).await;
 }
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.20+"]
 async fn qdrant_publication_excludes_own_node_before_candidate_limit_and_readiness() {
     exclude_own_contract(Service::qdrant(384).await).await;
 }
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.20+"]
 async fn qdrant_round_trips_every_supported_provider_with_filters() {
     provider_contract(Service::qdrant(384).await).await;
 }
 #[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.20+"]
 async fn qdrant_publication_rejects_queries_from_another_vector_space() {
     alternate_space_contract(Service::qdrant(1024).await).await;
 }
@@ -1048,7 +1048,7 @@ async fn http_storage_contract(service: Service) {
 
 /// Two nodes holding the same history are reported, not silently duplicated.
 #[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn fingerprint_report_counts_chats_shared_by_two_nodes() {
     let service = Service::qdrant(384).await;
     assert_eq!(

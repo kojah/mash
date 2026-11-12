@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub(crate) struct Manifest {
     pub(crate) schema_version: u32,
-    /// Qdrant lexical payloads and sparse retrieval, with literal verification.
+    /// Qdrant lexical payloads and their ranked text index, with literal
+    /// verification. Moving ranking from sparse vectors to the text index
+    /// changed no payload, so it did not change this version.
     pub(crate) representation_version: u32,
     pub(crate) silver: Certificate,
     pub(crate) searchable_messages: u64,

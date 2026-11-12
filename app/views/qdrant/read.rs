@@ -1,10 +1,13 @@
 //! Group-scoped retrieval over the documents of nodes with compatible views.
 use super::{
-    AppError, Document, Scope, Store, VectorIndex, api, collection, document_hit, failure, sparse,
+    AppError, Document, Scope, Store, VectorIndex, api, collection, document_hit, failure,
 };
 use crate::storage::SearchHit;
 use crate::views::retrieval as protocol;
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Payload field whose full-text index ranks and filters word search.
+const TEXT: &str = "unit.text";
 
 pub(crate) fn validate_search(input: &protocol::Search, identity: &Scope) -> Result<(), AppError> {
     if let Some(policy) = input.vector_policy {
@@ -145,12 +148,16 @@ impl Store {
         )?;
         let request = |plan: &crate::views::matching::Plan| {
             let mut scoped = filter.clone();
+            // BM25 scores a point holding any word; each query word, or one
+            // of its accepted alternatives, is required by the same index.
             for group in &plan.groups {
-                scoped.must.push(api::matches("tokens", group.clone()));
+                scoped.must.push(api::text_any(TEXT, group));
             }
             api::QueryRequest {
-                query: api::QueryVector::Sparse(sparse(&plan.sparse_text(), true)),
-                using: "lexical".into(),
+                query: api::QueryVector::Text {
+                    text: plan.query_text(),
+                },
+                using: TEXT.into(),
                 filter: scoped,
                 params: api::Params {
                     exact: true,

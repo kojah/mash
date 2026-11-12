@@ -42,7 +42,7 @@ docker logs mash-local-qdrant
 If it has not been created, follow [installation](installation.md#start-the-local-search-service).
 Wait for [the readiness check](http://127.0.0.1:6333/readyz) to report
 “all shards are ready.”
-The HTTP and gRPC endpoints must point to the same Qdrant 1.19+ instance.
+The HTTP and gRPC endpoints must point to the same Qdrant 1.20+ instance.
 See [custom endpoints](configuration.md#local-qdrant).
 
 You can still list chats, read messages, and export a backup while the search

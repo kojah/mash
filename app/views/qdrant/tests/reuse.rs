@@ -315,7 +315,6 @@ async fn qdrant_materializer_rejects_corrupt_cached_evidence_and_repairs_it() {
                                 fixture.store.dense_name(&fixture.identity).into(),
                                 vec![1.0, 0.0, 0.0, 0.0],
                             )),
-                            lexical: None,
                         },
                         payload: document,
                     }],

@@ -57,7 +57,7 @@ impl Database {
     pub(super) fn start() -> Self {
         let mut nonce = [0; 12];
         getrandom::fill(&mut nonce).unwrap();
-        let image = "qdrant/qdrant:v1.19.1";
+        let image = "qdrant/qdrant:v1.20.0";
         let port = "6333";
         let database = Self {
             name: format!("mash-restart-qdrant-{}", hex::encode(nonce)),
