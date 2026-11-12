@@ -28,7 +28,10 @@ one is wrong, ask the agent to correct, withdraw or forget it.
 
 As a safety net, the plugin occasionally asks the agent to save anything it
 missed: never in a session's first fifteen minutes, and at most once every
-fifteen minutes after that. Saving uses the agent you are already running,
+fifteen minutes after that. The reminder travels with your next message, so
+the agent acts on it while answering you and never takes a turn just to say
+there was nothing to save. Something settled in a session's very last
+message is therefore not swept. Saving uses the agent you are already running,
 including its normal permissions and token budget. It does not start another
 agent, download models or run an independent background model. Install the
 current Mash binary and plugin, then restart the agent. Codex also requires

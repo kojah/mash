@@ -108,7 +108,7 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
             .filter(|finding| matches!(finding.component, Component::HookTrust)
                 && finding.state == State::Missing)
             .count(),
-        4,
+        3,
         "every bundled hook needs its own Codex approval"
     );
     assert!(

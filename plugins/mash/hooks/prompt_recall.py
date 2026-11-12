@@ -4,8 +4,11 @@ looks back at earlier work or names something from outside the conversation.
 A prompt that states a lasting preference or decision also gets a note on how
 to save it. It reads only the prompt and needs no index; the saving note alone
 asks the installed binary whether it supports session citations.
+
+The occasional memory check (record_capture) rides along here too, so it never
+costs a turn of its own. `MASH_RECORD_CAPTURE=off` disables that check.
 Fails open: any error produces no output and exit status 0. Set
-`MASH_PROMPT_RECALL=off` to disable it.
+`MASH_PROMPT_RECALL=off` to disable the nudges.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import sys
 from typing import Any, Literal
 
 import recall_common as common
+import record_capture
 
 Kind = Literal["recall", "reference"]
 
@@ -159,20 +163,35 @@ def memory(payload: dict[str, Any]) -> str | None:
     )
 
 
+def check(payload: Any) -> str | None:
+    """The occasional memory check, when one is due for this session."""
+    try:
+        return record_capture.context(payload)
+    except Exception:  # Fail open: the check must never cost the other nudges.
+        return None
+
+
 def context(payload: Any) -> str | None:
     """The nudges for this hook payload, or None when the prompt needs none."""
-    if os.environ.get("MASH_PROMPT_RECALL", "").strip().lower() in (
-        "0",
-        "off",
-        "false",
-    ):
-        return None
     prompt = payload.get("prompt") if isinstance(payload, dict) else None
     if not isinstance(prompt, str):
         return None
-    kind = classify(prompt)
+    quiet = os.environ.get("MASH_PROMPT_RECALL", "").strip().lower() in (
+        "0",
+        "off",
+        "false",
+    )
+    kind = None if quiet else classify(prompt)
     nudges = [NUDGES[kind]] if kind else []
-    if lasting(prompt):
+    states = not quiet and lasting(prompt)
+    if due := check(payload):
+        # The check already says how to save; it only needs to cover this prompt.
+        also = (
+            " This prompt may itself state a lasting preference or decision; if"
+            " it does, save that too."
+        )
+        nudges.append(due + (also if states else ""))
+    elif states:
         try:
             nudges += [text] if (text := memory(payload)) else []
         except (OSError, ValueError, subprocess.SubprocessError):

@@ -86,7 +86,14 @@ class Lasting(unittest.TestCase):
         )
         binary.chmod(0o755)
         environment = unittest.mock.patch.dict(
-            os.environ, {"MASH_BIN": str(binary), "FAKE_CITES": ',"session_id"'}
+            os.environ,
+            {
+                "MASH_BIN": str(binary),
+                "FAKE_CITES": ',"session_id"',
+                # The memory check keeps per-session state; keep it out of the
+                # real state directory.
+                "MASH_RECALL_STATE_DIR": directory.name,
+            },
         )
         environment.start()
         self.addCleanup(environment.stop)

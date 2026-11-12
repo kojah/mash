@@ -301,7 +301,6 @@ fn hooks(
         ("SessionStart", "session_start", "session_start.py"),
         ("UserPromptSubmit", "user_prompt_submit", "prompt_recall.py"),
         ("PreToolUse", "pre_tool_use", "file_context.py"),
-        ("Stop", "stop", "record_capture.py"),
     ] {
         let entries: Vec<_> = definition
             .hooks
