@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  argumentsFor,
-  headline,
-  locked,
-  parseAnswer,
-  parseConsole,
-  sentences,
-  summarize,
-} from "./console";
+import * as wire from "./console";
+import { argumentsFor, headline, locked, sentences, summarize } from "./console";
+import { trimmed } from "./trimmed";
+
+const parseAnswer = (body: unknown) => wire.parseAnswer(trimmed(body));
+const parseConsole = (body: unknown) => wire.parseConsole(trimmed(body));
 
 const listing = {
   build_revision: "abc123",
@@ -127,6 +124,5 @@ describe("console answers", () => {
     expect(
       summarize(parseAnswer({ failed: true, reply: null, text: "plain refusal\nmore" })).heading,
     ).toBe("plain refusal");
-    expect(() => parseAnswer({ reply: {} })).toThrow();
   });
 });

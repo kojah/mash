@@ -1,4 +1,4 @@
-import type { Answer, ReadPath } from "./routes";
+import type { Answer, ReadPath, Wire } from "./routes";
 import { send } from "./transport";
 import type { Agent, ChatSummary, Message, SearchFilters, SearchHit } from "./types";
 
@@ -16,47 +16,20 @@ export interface MessagePage {
   readonly messages: readonly Message[];
 }
 
-function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Mash returned an invalid response. Reload after updating the dashboard.");
-  return value as Record<string, unknown>;
-}
-function string(value: unknown): string {
-  if (typeof value !== "string") throw new Error("Mash returned an invalid text field.");
-  return value;
-}
-function optionalString(value: unknown): string | undefined {
-  return value == null ? undefined : string(value);
-}
-function number(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value))
-    throw new Error("Mash returned an invalid number.");
-  return value;
-}
-function array(value: unknown): unknown[] {
-  if (!Array.isArray(value)) throw new Error("Mash returned an invalid list.");
-  return value;
-}
 export function isAgent(value: string): value is Agent {
   return ["claude-code", "codex", "opencode", "copilot", "cursor", "antigravity"].includes(value);
-}
-function timestamp(value: unknown): number | undefined {
-  return value == null ? undefined : number(value);
 }
 function date(value: number | undefined): string {
   return value === undefined ? "Time unknown" : new Date(value).toLocaleString();
 }
-function chat(value: unknown, localNode: string): ChatSummary {
-  const row = object(value);
-  const agent = string(row.provider);
-  if (!isAgent(agent)) throw new Error(`Unsupported agent: ${agent}`);
-  const updatedMs = timestamp(row.updated_at) ?? timestamp(row.created_at);
+function chat(row: Wire["Chat"] | Wire["ChatHit"], localNode: string): ChatSummary {
+  const updatedMs = row.updated_at ?? row.created_at ?? undefined;
   return {
-    id: string(row.chat_id),
-    title: optionalString(row.title) || "Untitled chat",
-    agent,
-    machine: optionalString(row.node_id) ?? localNode,
-    project: optionalString(row.project) ?? "",
+    id: row.chat_id,
+    title: row.title || "Untitled chat",
+    agent: row.provider,
+    machine: row.node_id ?? localNode,
+    project: row.project ?? "",
     updatedAt: date(updatedMs),
     ...(updatedMs === undefined ? {} : { updatedMs }),
   };
@@ -81,27 +54,23 @@ export async function read<P extends ReadPath>(
   if (!response.ok) {
     let detail = "Check that mash dash and the requested history source are available.";
     try {
-      const error: unknown = await response.json();
-      detail = string(object(object(error).error).message);
+      const failure = (await response.json()) as Wire["Failure"];
+      detail = failure.error.message;
     } catch {
       /* Non-JSON HTTP failures keep the safe fallback. */
     }
     throw new Error(`Mash request failed (${response.status}). ${detail}`);
   }
-  // The server generates the contract these types come from. The parsers that
-  // receive this still check what they use, in case the two are out of step.
+  // The server generates the contract these types come from, and the dashboard
+  // is built into the same binary, so the two cannot be out of step.
   return (await response.json()) as Answer<P>;
 }
-export function parseCatalog(value: unknown): Catalog {
-  const body = object(value);
-  const localNode = string(body.local_node);
-  if (typeof body.truncated !== "boolean") throw new Error("Invalid catalogue completeness.");
-  const sharedError = optionalString(body.shared_error);
+export function parseCatalog(body: Answer<"/api/chats">): Catalog {
   return {
-    localNode,
-    chats: array(body.chats).map((row) => chat(row, localNode)),
+    localNode: body.local_node,
+    chats: body.chats.map((row) => chat(row, body.local_node)),
     warnings: [
-      ...(sharedError ? [`Shared history is unavailable: ${sharedError}`] : []),
+      ...(body.shared_error ? [`Shared history is unavailable: ${body.shared_error}`] : []),
       ...(body.truncated
         ? ["Showing the newest 10,000 chats. Counts and filter choices cover this catalogue only."]
         : []),
@@ -146,68 +115,62 @@ export async function search(
   return parseSearch(await read("/api/search", params, signal), localNode);
 }
 
-export function parseSearch(value: unknown, localNode: string): SearchPage {
-  const body = object(value);
+export function parseSearch(body: Answer<"/api/search">, localNode: string): SearchPage {
   return {
-    hits: array(body.results).map((value) => {
-      const row = object(value);
-      const first = array(row.matches)[0];
-      const match = first === undefined ? undefined : object(first);
-      const lookup = match?.lookup == null ? undefined : object(object(match.lookup).view);
+    // The dashboard asks for chats; a result without matches is a message hit.
+    hits: body.results.flatMap((row) => {
+      if (!("matches" in row)) return [];
+      const match = row.matches[0];
+      const lookup = match?.lookup?.view;
       const metadata = chat(row, localNode);
-      const machine = lookup
-        ? (optionalString(lookup.shared) ?? localNode)
-        : (optionalString(match?.node_id) ?? metadata.machine);
-      return {
-        chat: { ...metadata, machine },
-        messageId: lookup ? string(lookup.id) : match ? string(match.message_id) : "",
-        before: match ? string(match.snippet) : "",
-        match: "",
-        after: "",
-      };
+      const machine = lookup ? (lookup.shared ?? localNode) : (match?.node_id ?? metadata.machine);
+      return [
+        {
+          chat: { ...metadata, machine },
+          messageId: lookup ? lookup.id : (match?.message_id ?? ""),
+          before: match?.snippet ?? "",
+          match: "",
+          after: "",
+        },
+      ];
     }),
-    nextOffset: body.next_offset == null ? null : number(body.next_offset),
-    warnings: [body.shared_error, body.shared_context_error, body.notice].flatMap((value) => {
-      const text = optionalString(value);
-      return text ? [text] : [];
-    }),
+    nextOffset: body.next_offset ?? null,
+    warnings: [body.shared_error, body.shared_context_error, body.notice].flatMap((text) =>
+      text ? [text] : [],
+    ),
   };
 }
-export function parseMessages(value: unknown): MessagePage {
+export function parseMessages(body: Answer<"/api/chat">): MessagePage {
   return {
-    messages: array(object(value).messages).map((value) => {
-      const row = object(value);
-      const tools = row.tools == null ? {} : object(row.tools);
-      const calls = tools.tool_calls == null ? [] : array(tools.tool_calls).map(object);
-      const results = tools.tool_results == null ? [] : array(tools.tool_results).map(object);
-      const content = string(row.content);
-      const role = string(row.role);
+    messages: body.messages.map((row) => {
+      const tools = row.tools ?? {};
+      const calls = tools.tool_calls ?? [];
+      const results = tools.tool_results ?? [];
       const presentation =
-        results.length || role === "tool"
+        results.length || row.role === "tool"
           ? "tool-result"
           : calls.length
             ? "tool-call"
-            : content.startsWith("[Thinking]")
+            : row.content.startsWith("[Thinking]")
               ? "reasoning"
               : "dialogue";
       return {
-        id: string(row.id),
-        ordinal: number(row.ordinal),
-        role,
+        id: row.id,
+        ordinal: row.ordinal,
+        role: row.role,
         presentation,
-        toolLabel:
-          calls.map((call) => optionalString(call.name) ?? "Tool").join(", ") || "Tool output",
-        at: date(timestamp(row.created_at)),
-        blocks: [{ type: "text", markdown: content }],
+        toolLabel: calls.map((call) => call.name ?? "Tool").join(", ") || "Tool output",
+        at: date(row.created_at ?? undefined),
+        blocks: [{ type: "text", markdown: row.content }],
         tools: {
           calls: calls.map((call) => ({
-            name: optionalString(call.name),
-            callId: optionalString(call.call_id),
+            name: call.name ?? undefined,
+            callId: call.call_id ?? undefined,
             input: call.input ?? undefined,
           })),
           results: results.map((result) => ({
-            callId: optionalString(result.call_id),
-            isError: typeof result.is_error === "boolean" ? result.is_error : undefined,
+            callId: result.call_id ?? undefined,
+            isError: result.is_error ?? undefined,
           })),
         },
         // Opaque provider inputs remain text, never interpreted as commands or markup.

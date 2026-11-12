@@ -1,11 +1,14 @@
 import { expect, test } from "vitest";
 import { agents } from "./agents";
-import { differences, draftOf, parseSettings, problem } from "./settings";
+import * as wire from "./settings";
+import { differences, draftOf, problem } from "./settings";
+import { trimmed } from "./trimmed";
 import type { Agent } from "./types";
 
 const names = Object.fromEntries(
   Object.entries(agents).map(([agent, info]) => [agent, info.name]),
 ) as Record<Agent, string>;
+const parseSettings = (answer: unknown) => wire.parseSettings(trimmed(answer));
 const body = {
   path: "/c/config.toml",
   revision: "abc",
@@ -22,12 +25,10 @@ const body = {
   hide_credentials: { output: true, publication: true },
 };
 
-test("settings are read strictly and unknown agents are left out", () => {
+test("unknown agents are left out of the settings", () => {
   const settings = parseSettings(body);
   expect(settings.agents.map((entry) => entry.agent)).toEqual(["codex", "cursor"]);
   expect(settings.sinceDays).toBeNull();
-  expect(() => parseSettings({ ...body, destination: "elsewhere" })).toThrow("destination");
-  expect(() => parseSettings({ ...body, since_days: 0 })).toThrow("since_days");
 });
 
 test("an untouched draft changes nothing, and each change is named in the page's words", () => {

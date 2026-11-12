@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/svelte-query";
 import { stableRead } from "./queries";
+import type { Answer, Changed, ReadPath, Sent, Wire, WritePath } from "./routes";
 import { send } from "./transport";
 
 export type ServiceState = "healthy" | "degraded" | "stopped" | "failed" | "unknown";
@@ -49,106 +50,30 @@ export interface Operation {
   message: string;
 }
 
-function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid services response. Update the dashboard and retry.");
-  return value as Record<string, unknown>;
-}
-function text(value: unknown): string {
-  if (typeof value !== "string") throw new Error("Invalid service text field.");
-  return value;
-}
-function integer(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-    throw new Error("Invalid service number.");
-  return value;
-}
-function optionalInteger(value: unknown): number | null {
-  return value === null ? null : integer(value);
-}
-function boolean(value: unknown): boolean {
-  if (typeof value !== "boolean") throw new Error("Invalid service flag.");
-  return value;
-}
-function list(value: unknown): unknown[] {
-  if (!Array.isArray(value)) throw new Error("Invalid services list.");
-  return value;
-}
-function choice<const T extends readonly string[]>(value: unknown, choices: T): T[number] {
-  const result = text(value);
-  if (!choices.includes(result)) throw new Error("Unsupported services response value.");
-  return result as T[number];
-}
-const states = ["healthy", "degraded", "stopped", "failed", "unknown"] as const;
-const actions = ["start", "stop", "restart"] as const;
-
-function service(value: unknown): Service {
-  const row = object(value);
-  const compat = row.compatibility === null ? null : object(row.compatibility);
+function service(row: Wire["Service"]): Service {
   return {
-    id: text(row.id),
-    name: text(row.name),
-    kind: choice(row.kind, ["qdrant", "watcher", "mcp", "server", "dashboard", "sqlite"]),
-    state: choice(row.state, states),
-    summary: text(row.summary),
-    checked_at: integer(row.checked_at),
-    pid: optionalInteger(row.pid),
-    actions: list(row.actions).map((action) => choice(action, actions)),
-    control_note: text(row.control_note),
-    diagnostics: list(row.diagnostics).map((value) => {
-      const item = object(value);
-      return { label: text(item.label), value: text(item.value) };
-    }),
-    logs_available: boolean(row.logs_available),
-    control_revision: row.control_revision === null ? null : text(row.control_revision),
-    compatibility:
-      compat === null
-        ? null
-        : {
-            database_schema: optionalInteger(compat.database_schema),
-            supported_schema: optionalInteger(compat.supported_schema),
-            running_build: text(compat.running_build),
-            observer_build: text(compat.observer_build),
-            state: choice(compat.state, states),
-            blocked: text(compat.blocked),
-            next_step: text(compat.next_step),
-          },
+    ...row,
+    pid: row.pid ?? null,
+    control_revision: row.control_revision ?? null,
+    compatibility: row.compatibility
+      ? {
+          ...row.compatibility,
+          database_schema: row.compatibility.database_schema ?? null,
+          supported_schema: row.compatibility.supported_schema ?? null,
+        }
+      : null,
   };
 }
-export function parseMachines(value: unknown): Machine[] {
-  return list(object(value).machines).map((value) => {
-    const row = object(value);
-    return {
-      id: text(row.id),
-      platform: text(row.platform),
-      checked_at: integer(row.checked_at),
-      reachable: boolean(row.reachable),
-      services: list(row.services).map(service),
-      warnings: list(row.warnings).map(text),
-    };
-  });
+export function parseMachines(body: Answer<"/api/services">): Machine[] {
+  return body.machines.map((row) => ({ ...row, services: row.services.map(service) }));
 }
-function operation(value: unknown): Operation {
-  const row = object(value),
-    request = object(row.request);
-  return {
-    request: {
-      machine: text(request.machine),
-      service: text(request.service),
-      action: choice(request.action, actions),
-      request_id: text(request.request_id),
-      control_revision: text(request.control_revision),
-    },
-    requested_at: integer(row.requested_at),
-    completed_at: optionalInteger(row.completed_at),
-    outcome: choice(row.outcome, ["pending", "succeeded", "failed", "unknown"]),
-    message: text(row.message),
-  };
+function operation(row: Wire["ServiceOperation"]): Operation {
+  return { ...row, completed_at: row.completed_at ?? null };
 }
 
-export async function request(
+async function call(
   path: string,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
   body?: unknown,
 ): Promise<unknown> {
   const response = await send(path, {
@@ -164,7 +89,7 @@ export async function request(
         ? "Services refused this request. Remove token_env from this dashboard's services configuration."
         : "Service request failed. Check status before repeating an action.";
     try {
-      message = text(object(object(await response.json()).error).message);
+      message = ((await response.json()) as Wire["Failure"]).error.message;
     } catch {
       /* Preserve useful fallback for non-JSON failures. */
     }
@@ -172,30 +97,21 @@ export async function request(
   }
   return response.json();
 }
-const setupComponents = [
-  "configuration",
-  "plugin",
-  "skill",
-  "hooks",
-  "hook_trust",
-  "mcp",
-  "probe",
-  "index",
-  "runtime",
-] as const;
-const setupStates = [
-  "present",
-  "missing",
-  "disabled",
-  "invalid",
-  "outdated",
-  "unverified",
-  "not_configured",
-  "passed",
-  "failed",
-] as const;
-export type SetupComponent = (typeof setupComponents)[number];
-export type SetupState = (typeof setupStates)[number];
+/** Reads a service route. The answer's type is the contract's for that route. */
+export async function get<P extends ReadPath>(
+  path: P,
+  signal?: AbortSignal,
+  params?: Record<string, string>,
+): Promise<Answer<P>> {
+  const query = params ? `?${new URLSearchParams(params)}` : "";
+  return (await call(`${path}${query}`, signal)) as Answer<P>;
+}
+/** Sends a change to a service route, typed by the contract both ways. */
+export async function post<P extends WritePath>(path: P, body: Sent<P>): Promise<Changed<P>> {
+  return (await call(path, undefined, body)) as Changed<P>;
+}
+export type SetupComponent = Wire["Component"];
+export type SetupState = Wire["SetupState"];
 export interface SetupStep {
   component: SetupComponent;
   state: SetupState;
@@ -213,27 +129,13 @@ export interface Setup {
   build: string;
   agents: AgentSetup[];
 }
-export function parseSetup(value: unknown): Setup {
-  const row = object(value);
+export function parseSetup(row: Answer<"/api/services/installation">): Setup {
   return {
-    build: text(row.build),
-    agents: list(row.agents).map((value) => {
-      const agent = object(value);
-      return {
-        agent: choice(agent.agent, ["codex", "claude-code"]),
-        expected: boolean(agent.expected),
-        connected: boolean(agent.connected),
-        steps: list(agent.steps).map((value) => {
-          const step = object(value);
-          return {
-            component: choice(step.component, setupComponents),
-            state: choice(step.state, setupStates),
-            message: text(step.message),
-            remediation: step.remediation === null ? null : text(step.remediation),
-          };
-        }),
-      };
-    }),
+    build: row.build,
+    agents: row.agents.map((agent) => ({
+      ...agent,
+      steps: agent.steps.map((step) => ({ ...step, remediation: step.remediation ?? null })),
+    })),
   };
 }
 
@@ -356,9 +258,7 @@ export function setupOptions(machine: string, enabled: boolean) {
     queryKey: ["service-setup", machine],
     enabled: enabled && !!machine,
     queryFn: async ({ signal }) =>
-      parseSetup(
-        await request(`/api/services/installation?${new URLSearchParams({ machine })}`, signal),
-      ),
+      parseSetup(await get("/api/services/installation", signal, { machine })),
   });
 }
 
@@ -366,8 +266,8 @@ export const serviceAccessOptions = queryOptions({
   ...stableRead,
   queryKey: ["service-access"],
   queryFn: async ({ signal }) => {
-    const row = object(await request("/api/services/access", signal));
-    return { localNode: text(row.local_node) };
+    const row = await get("/api/services/access", signal);
+    return { localNode: row.local_node };
   },
 });
 export function serviceOptions(enabled: boolean) {
@@ -375,7 +275,7 @@ export function serviceOptions(enabled: boolean) {
     ...stableRead,
     queryKey: ["services"],
     enabled,
-    queryFn: async ({ signal }) => parseMachines(await request("/api/services", signal)),
+    queryFn: async ({ signal }) => parseMachines(await get("/api/services", signal)),
   });
 }
 export function servicesHref(machine = "", service = ""): string {
@@ -448,15 +348,10 @@ export async function serviceLog(
   service: string,
   signal: AbortSignal,
 ): Promise<string> {
-  return text(
-    object(await request(`/api/services/log?${new URLSearchParams({ machine, service })}`, signal))
-      .text,
-  );
+  return (await get("/api/services/log", signal, { machine, service })).text;
 }
 export async function serviceHistory(machine: string, signal: AbortSignal): Promise<Operation[]> {
-  return list(
-    await request(`/api/services/operations?${new URLSearchParams({ machine })}`, signal),
-  ).map(operation);
+  return (await get("/api/services/operations", signal, { machine })).map(operation);
 }
 export async function serviceAction(
   machine: string,
@@ -465,7 +360,7 @@ export async function serviceAction(
   controlRevision: string,
 ): Promise<Operation> {
   return operation(
-    await request("/api/services/action", undefined, {
+    await post("/api/services/action", {
       machine,
       service,
       action,
@@ -484,19 +379,7 @@ export function serviceRequestId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const fleetActions = [
-  "status",
-  "preflight",
-  "deploy",
-  "sync",
-  "local-views",
-  "replay-views",
-  "watch-start",
-  "watch-stop",
-  "watch-status",
-  "watch-logs",
-] as const;
-export type FleetAction = (typeof fleetActions)[number];
+export type FleetAction = Wire["FleetAction"];
 export interface FleetRequest {
   id: string;
   action: FleetAction;
@@ -515,78 +398,34 @@ export const fleetActionLabel: Record<FleetAction, string> = {
   "watch-status": "Check watchers",
   "watch-logs": "Collect watcher logs",
 };
-export function parseFleetCatalog(value: unknown) {
-  const row = object(value);
-  const enabled = boolean(row.enabled);
-  const revision = row.revision === null ? null : text(row.revision);
-  if (enabled && !revision) throw new Error("Fleet configuration revision is missing.");
-  return {
-    enabled,
-    revision,
-    actions: list(row.actions).map((value) => {
-      const action = object(value);
-      return {
-        action: choice(action.action, fleetActions),
-        targets: list(action.targets).map(text),
-      };
-    }),
-    // Targets that are a shared server on a machine; every other target is a machine.
-    services: list(row.services).map((value) => {
-      const service = object(value);
-      return { id: text(service.id), name: text(service.name), machine: text(service.machine) };
-    }),
-  };
+export function parseFleetCatalog(row: Answer<"/api/services/fleet">) {
+  const revision = row.revision ?? null;
+  if (row.enabled && !revision) throw new Error("Fleet configuration revision is missing.");
+  // `services` are targets that are a shared server on a machine; every other target is a machine.
+  return { enabled: row.enabled, revision, actions: row.actions, services: row.services };
 }
-export function parseFleetJob(value: unknown) {
-  const row = object(value);
-  const submitted = object(row.request);
-  const request: FleetRequest = {
-    id: text(submitted.id),
-    action: choice(submitted.action, fleetActions),
-    targets: list(submitted.targets).map(text),
-    revision: text(submitted.revision),
-  };
+export function parseFleetJob(row: Wire["Job"]) {
   return {
-    request,
-    requested_at: integer(row.requested_at),
-    completed_at: optionalInteger(row.completed_at),
-    outcome: choice(row.outcome, ["running", "succeeded", "partial", "failed", "unknown"]),
-    targets: list(row.targets).map((value) => {
-      const target = object(value);
-      const progress = target.progress === null ? null : object(target.progress);
-      return {
-        id: text(target.id),
-        state: choice(target.state, [
-          "waiting",
-          "running",
-          "succeeded",
-          "failed",
-          "skipped",
-          "unknown",
-        ]),
-        detail: typeof target.detail === "string" ? target.detail : null,
-        progress:
-          progress === null
-            ? null
-            : {
-                progress: finiteProgress(progress.progress),
-                total: progress.total === null ? null : finiteProgress(progress.total),
-              },
-      };
-    }),
+    request: row.request satisfies FleetRequest,
+    requested_at: row.requested_at,
+    completed_at: row.completed_at ?? null,
+    outcome: row.outcome,
+    targets: row.targets.map((target) => ({
+      id: target.id,
+      state: target.state,
+      detail: target.detail ?? null,
+      progress: target.progress
+        ? { progress: target.progress.progress, total: target.progress.total ?? null }
+        : null,
+    })),
   };
-}
-function finiteProgress(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
-    throw new Error("Invalid fleet progress.");
-  return value;
 }
 export async function fleetCatalog(signal: AbortSignal) {
-  return parseFleetCatalog(await request("/api/services/fleet", signal));
+  return parseFleetCatalog(await get("/api/services/fleet", signal));
 }
 export async function fleetHistory(signal: AbortSignal) {
-  return list(await request("/api/services/fleet/jobs", signal)).map(parseFleetJob);
+  return (await get("/api/services/fleet/jobs", signal)).map(parseFleetJob);
 }
 export async function submitFleetJob(submitted: FleetRequest) {
-  return parseFleetJob(await request("/api/services/fleet/jobs", undefined, submitted));
+  return parseFleetJob(await post("/api/services/fleet/jobs", submitted));
 }

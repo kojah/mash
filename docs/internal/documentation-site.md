@@ -68,8 +68,8 @@ carries none of it.
 
 - **Keeping it honest.** Every demo answer is typed against the dashboard's
   API contract (see below), so a route or field the server changes stops
-  `backend.ts` compiling until the demo follows. `backend.test.ts` also passes
-  each answer through the dashboard's own response checks.
+  `backend.ts` compiling until the demo follows. `backend.test.ts` also runs
+  each answer through the code that turns it into what a page shows.
 - **Search.** The demo matches words only and says so on the results page.
 - **The tool list.** `dashboard/src/demo/tools.json` is a copy of what a
   running dashboard serves at `/api/console/tools`. Refresh it with
@@ -91,9 +91,17 @@ each route answers with. A running dashboard serves the document at
 - `dashboard/src/lib/contract.ts` holds the TypeScript types generated from
   it with `pnpm contract` in `dashboard/`. A dashboard test fails when they
   are out of date.
-- `read()` in `dashboard/src/lib/api.ts` takes its path and answer type from
-  those types. The hand-written checks that follow still validate what they
-  use, in case a dashboard and its server are from different builds.
+- The dashboard's request functions (`read()` in `dashboard/src/lib/api.ts`,
+  `get()` and `post()` in `services.svelte.ts`) take their paths, bodies and
+  answer types from those types. Answers are not checked again at run time:
+  the dashboard is built into the binary that serves it, so the two share one
+  contract. The exception is `pnpm dev` pointed at a `mash dash` from another
+  build, where a changed field shows up as a rendering error, not a message.
+- What remains by hand turns an answer into what a page shows, and keeps the
+  few checks that are about meaning, such as a memory page whose record lacks
+  its current revision.
+- A test that needs only part of an answer wraps its fixture in `trimmed()`
+  (`dashboard/src/lib/trimmed.ts`).
 - A type that answers a route needs `schemars::JsonSchema`. Types the MCP
   tools also publish must keep their schema names: renaming one changes the
   MCP contract.

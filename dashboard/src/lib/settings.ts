@@ -4,7 +4,8 @@
 import { queryOptions } from "@tanstack/svelte-query";
 import { isAgent } from "./api";
 import { stableRead } from "./queries";
-import { request } from "./services.svelte";
+import type { Answer } from "./routes";
+import { get, post } from "./services.svelte";
 import type { Agent } from "./types";
 
 export type Destination = "local" | "both";
@@ -37,53 +38,27 @@ export interface Draft {
   hideWhenPublishing: boolean;
 }
 
-function fail(field: string): never {
-  throw new Error(`Mash returned invalid settings (${field}). Reload after updating.`);
-}
-function fields(value: unknown, field: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail(field);
-  return value as Record<string, unknown>;
-}
-function flag(value: unknown, field: string): boolean {
-  return typeof value === "boolean" ? value : fail(field);
-}
-function text(value: unknown, field: string): string {
-  return typeof value === "string" ? value : fail(field);
-}
-
-export function parseSettings(value: unknown): Settings {
-  const body = fields(value, "settings");
-  const hide = fields(body.hide_credentials, "hide_credentials");
-  const days = body.since_days;
-  if (days !== null && !(typeof days === "number" && Number.isSafeInteger(days) && days > 0))
-    fail("since_days");
-  const destination = body.destination;
-  if (destination !== "local" && destination !== "both") fail("destination");
+export function parseSettings(body: Answer<"/api/services/settings">): Settings {
   return {
-    path: text(body.path, "path"),
-    revision: text(body.revision, "revision"),
-    editable: flag(body.editable, "editable"),
-    agents: Object.entries(fields(body.agents, "agents")).flatMap(([agent, entry]) => {
-      if (!isAgent(agent)) return [];
-      const row = fields(entry, "agent");
-      const roots = Array.isArray(row.roots) ? row.roots : fail("roots");
-      return [
-        { agent, indexed: flag(row.indexed, "indexed"), roots: roots.map((r) => text(r, "root")) },
-      ];
-    }),
-    sinceDays: days,
-    destination,
-    shared: flag(body.shared, "shared"),
-    memoryCapture: flag(body.memory_capture, "memory_capture"),
-    hideInResults: flag(hide.output, "output"),
-    hideWhenPublishing: flag(hide.publication, "publication"),
+    path: body.path,
+    revision: body.revision,
+    editable: body.editable,
+    agents: Object.entries(body.agents).flatMap(([agent, row]) =>
+      isAgent(agent) && row ? [{ agent, indexed: row.indexed, roots: row.roots }] : [],
+    ),
+    sinceDays: body.since_days ?? null,
+    destination: body.destination,
+    shared: body.shared,
+    memoryCapture: body.memory_capture,
+    hideInResults: body.hide_credentials.output,
+    hideWhenPublishing: body.hide_credentials.publication,
   };
 }
 
 export const settingsOptions = queryOptions({
   ...stableRead,
   queryKey: ["settings"],
-  queryFn: async ({ signal }) => parseSettings(await request("/api/services/settings", signal)),
+  queryFn: async ({ signal }) => parseSettings(await get("/api/services/settings", signal)),
 });
 
 export function draftOf(settings: Settings): Draft {
@@ -168,7 +143,7 @@ export function problem(settings: Settings, draft: Draft): string {
 
 export async function saveSettings(settings: Settings, draft: Draft): Promise<Settings> {
   return parseSettings(
-    await request("/api/services/settings", undefined, {
+    await post("/api/services/settings", {
       revision: settings.revision,
       agents: draft.agents,
       since_days: draft.sinceDays,

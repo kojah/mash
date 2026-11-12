@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { browse, parseCatalog, parseMessages, parseSearch } from "./api";
+import * as api from "./api";
+import { browse } from "./api";
+import { trimmed } from "./trimmed";
+
+const parseCatalog = (body: unknown) => api.parseCatalog(trimmed(body));
+const parseMessages = (body: unknown) => api.parseMessages(trimmed(body));
+const parseSearch = (body: unknown, localNode: string) => api.parseSearch(trimmed(body), localNode);
 
 const row = {
   chat_id: "same-id",
@@ -67,17 +73,6 @@ describe("dashboard API boundary", () => {
       "same-id",
     ]);
     expect(browse(catalog, { ...filters, machines: ["remote"] }, row.updated_at).hits).toEqual([]);
-  });
-  it("rejects malformed records rather than presenting an empty success", () => {
-    expect(() =>
-      parseCatalog({
-        local_node: "local",
-        truncated: false,
-        chats: [{ ...row, provider: "unknown" }],
-      }),
-    ).toThrow("Unsupported agent");
-    expect(() => parseMessages({ messages: [{ id: "a", ordinal: "0" }] })).toThrow();
-    expect(() => parseCatalog({ chats: [] })).toThrow();
   });
   it("retains provider roles, tool input and raw message text for safe rendering", () => {
     const page = parseMessages({

@@ -2,6 +2,8 @@
 // form needs, and a tool's answer, summarised for a status line. Nothing here
 // knows any particular tool except the grouping below.
 
+import type { Answer as RouteAnswer } from "./routes";
+
 /** How a parameter is typed in the form. Anything structured is typed as JSON. */
 export type ParamKind = "string" | "integer" | "number" | "boolean" | "enum" | "json";
 export interface Param {
@@ -54,11 +56,6 @@ export const locked = "Changes data";
 export const groupOrder: readonly string[] = [...groups.map(([name]) => name), "Other", locked];
 
 type Json = Record<string, unknown>;
-function object(value: unknown): Json {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid console response. Update the dashboard and retry.");
-  return value as Json;
-}
 const optional = (value: unknown): Json =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : {};
 const string = (value: unknown): string => (typeof value === "string" ? value : "");
@@ -108,17 +105,13 @@ function param(name: string, raw: Json, required: boolean, definitions: Json): P
   };
 }
 
-export function parseConsole(value: unknown): Console {
-  const root = object(value);
-  if (!Array.isArray(root.tools)) throw new Error("Invalid console tool list.");
-  const tools = root.tools.map((entry): Tool => {
-    const tool = object(entry);
-    const name = string(tool.name);
-    if (!name) throw new Error("Invalid console tool.");
+export function parseConsole(root: RouteAnswer<"/api/console/tools">): Console {
+  const tools = root.tools.map((tool): Tool => {
+    const name = tool.name;
     const schema = optional(tool.inputSchema);
     const definitions = { ...optional(schema.definitions), ...optional(schema.$defs) };
     const required = Array.isArray(schema.required) ? schema.required : [];
-    const readOnly = optional(tool.annotations).readOnlyHint === true;
+    const readOnly = tool.annotations?.readOnlyHint === true;
     const params = Object.entries(optional(schema.properties))
       .map(([key, raw]) => param(key, optional(raw), required.includes(key), definitions))
       // Required parameters first; the rest keep the server's order.
@@ -126,7 +119,7 @@ export function parseConsole(value: unknown): Console {
     const listed = readOnly ? groups.find(([, names]) => names.includes(name)) : undefined;
     return {
       name,
-      about: string(tool.description),
+      about: tool.description ?? "",
       readOnly,
       group: readOnly ? (listed?.[0] ?? "Other") : locked,
       rank: listed ? listed[1].indexOf(name) : Number.MAX_SAFE_INTEGER,
@@ -134,7 +127,7 @@ export function parseConsole(value: unknown): Console {
     };
   });
   tools.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return { build: string(root.build_revision), contract: string(root.contract_fingerprint), tools };
+  return { build: root.build_revision, contract: root.contract_fingerprint, tools };
 }
 
 /** A tool's description as separate sentences. Descriptions are written for
@@ -194,10 +187,8 @@ export interface Answer {
   readonly reply: unknown;
   readonly text: string;
 }
-export function parseAnswer(value: unknown): Answer {
-  const root = object(value);
-  if (typeof root.failed !== "boolean") throw new Error("Invalid console answer.");
-  return { failed: root.failed, reply: root.reply ?? null, text: string(root.text) };
+export function parseAnswer(root: RouteAnswer<"/api/console/call">): Answer {
+  return { failed: root.failed, reply: root.reply ?? null, text: root.text };
 }
 
 export interface Summary {
