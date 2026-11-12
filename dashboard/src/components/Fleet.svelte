@@ -169,18 +169,18 @@ const outcomeClass = {
   {/each}
 {/snippet}
 
-{#if action}<a class="back" href="#/fleet">&lt; manage fleet</a>{/if}
+{#if action}<a class="back" href="#/fleet">&lt; fleet manager</a>{/if}
 <QueryError title="Couldn’t connect to services" query={access} />
 <QueryError title="Couldn’t load fleet controls" query={catalog} />
-{#if (access.isPending || catalog.isPending) && !access.error && !catalog.error}<h1 class="h1">Manage fleet</h1><Skeleton rows={3} />{/if}
+{#if (access.isPending || catalog.isPending) && !access.error && !catalog.error}<h1 class="h1">Fleet manager</h1><Skeleton rows={3} />{/if}
 {#if catalog.data && !catalog.data.enabled}
-  <h1 class="h1">Manage fleet</h1>
+  <h1 class="h1">Fleet manager</h1>
   <div class="state-c">
     <p>Fleet control is not set up on this dashboard.</p>
     <p class="meta" style:margin-top="6px">It needs a fleet inventory that names this machine as the controller: start the dashboard with <code class="i">mash dash --fleet-config PATH</code>. Until then, deploys and index runs are started from the command line with <code class="i">tools/fleet.sh</code>.</p>
   </div>
 {:else if catalog.data && !action}
-  <h1 class="h1">Manage fleet</h1>
+  <h1 class="h1">Fleet manager</h1>
   <div class="cols">
     <div style:flex="999 1 400px" style:min-width="0">
       {#each groups as group (group.name)}

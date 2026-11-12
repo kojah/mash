@@ -53,7 +53,7 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
                 <p>{fix.cause}</p>
                 <ol>
                   {#each fix.steps as step, index (step)}
-                    <li>{step}{#if fix.deploy && index === 0} <a class="a" href={fleetHref("deploy")}>Deploy Mash from Manage fleet</a>, or install it there directly.{/if}</li>
+                    <li>{step}{#if fix.deploy && index === 0} <a class="a" href={fleetHref("deploy")}>Deploy Mash from Fleet manager</a>, or install it there directly.{/if}</li>
                   {/each}
                 </ol>
                 {#if fix.command}

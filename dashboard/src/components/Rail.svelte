@@ -11,7 +11,7 @@ import MessagesSquare from "@lucide/svelte/icons/messages-square";
 import Server from "@lucide/svelte/icons/server";
 import Settings from "@lucide/svelte/icons/settings";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
-import Terminal from "@lucide/svelte/icons/terminal";
+import Wrench from "@lucide/svelte/icons/wrench";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
@@ -44,12 +44,12 @@ const sections = [
   { id: "services", label: "services", href: "#/services", icon: Server, tint: "var(--teal)" },
   {
     id: "fleet",
-    label: "manage fleet",
+    label: "fleet manager",
     href: "#/fleet",
     icon: SlidersHorizontal,
     tint: "var(--indigo)",
   },
-  { id: "console", label: "mcp console", href: "#/console", icon: Terminal, tint: "var(--sky)" },
+  { id: "console", label: "tools", href: "#/console", icon: Wrench, tint: "var(--sky)" },
   { id: "settings", label: "settings", href: "#/settings", icon: Settings, tint: "var(--ok)" },
 ] as const;
 type Section = (typeof sections)[number]["id"];

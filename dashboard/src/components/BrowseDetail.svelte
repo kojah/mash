@@ -8,8 +8,9 @@ import { createQuery } from "@tanstack/svelte-query";
 import type { Snippet } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
 import { groupChats, projectLabel, whenLabel } from "../lib/browse";
+import { plainTitle } from "../lib/markdown";
 import { catalogOptions } from "../lib/queries";
-import { agentHref, machineHref, projectHref, searchHref } from "../lib/route.svelte";
+import { agentHref, chatHref, machineHref, projectHref, searchHref } from "../lib/route.svelte";
 import type { ChatSummary } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import ChatRow from "./ChatRow.svelte";
@@ -38,6 +39,13 @@ const key = (chat: ChatSummary) =>
   field === "agent" ? chat.agent : field === "machine" ? chat.machine : chat.project;
 const chats = $derived((catalogue.data?.chats ?? []).filter((chat) => key(chat) === value));
 const group = $derived(groupChats(chats, key)[0]);
+const named = $derived(group ? group.projects.filter(([name]) => name) : []);
+const latest = $derived(
+  chats.reduce<ChatSummary | undefined>(
+    (best, chat) => (best && (best.updatedMs ?? 0) >= (chat.updatedMs ?? 0) ? best : chat),
+    undefined,
+  ),
+);
 const now = Date.now();
 </script>
 
@@ -53,13 +61,13 @@ const now = Date.now();
 {#if catalogue.isPending}<Skeleton rows={5} />{/if}
 {#if catalogue.data && !group}<div class="state-c"><p>No indexed chats here.</p></div>{/if}
 {#if group}
-  <dl class="stat">
-    <div><dt>chats</dt><dd>{chats.length.toLocaleString()}</dd></div>
-    {#if field !== "agent"}<div><dt>agents</dt><dd>{group.agents.length}</dd></div>{/if}
-    {#if field !== "project"}<div><dt>projects</dt><dd>{group.projects.filter(([name]) => name).length}</dd></div>{/if}
-    {#if field !== "machine"}<div><dt>machines</dt><dd>{group.machines.length}</dd></div>{/if}
-    <div><dt>last active</dt><dd>{whenLabel(group.latestMs, now)}</dd></div>
-  </dl>
+  <nav class="stat" aria-label="Summary">
+    <a href={searchHref({ [field]: value })}><span class="k">chats</span><span class="v">{chats.length.toLocaleString()}</span></a>
+    {#if field !== "agent"}<a href={group.agents.length === 1 ? agentHref(group.agents[0]?.[0] ?? "") : "#/agents"}><span class="k">agents</span><span class="v">{group.agents.length}</span></a>{/if}
+    {#if field !== "project"}<a href={named.length === 1 ? projectHref(named[0]?.[0] ?? "") : "#/projects"}><span class="k">projects</span><span class="v">{named.length}</span></a>{/if}
+    {#if field !== "machine"}<a href={group.machines.length === 1 ? machineHref(group.machines[0]?.[0] ?? "") : "#/machines"}><span class="k">machines</span><span class="v">{group.machines.length}</span></a>{/if}
+    {#if latest}<a href={chatHref(latest.id, latest.machine)} title={plainTitle(latest.title)}><span class="k">last active</span><span class="v">{whenLabel(group.latestMs, now)}</span></a>{/if}
+  </nav>
   <div class="cols">
     <div class="c-main stack">
       {#if extra}{@render extra()}{/if}

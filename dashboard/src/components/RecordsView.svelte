@@ -1,13 +1,14 @@
 <script lang="ts">
 import BadgeCheck from "@lucide/svelte/icons/badge-check";
 import Database from "@lucide/svelte/icons/database";
+import Laptop from "@lucide/svelte/icons/laptop";
 import ListChecks from "@lucide/svelte/icons/list-checks";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
 import { whenLabel } from "../lib/browse";
 import { navigate } from "../lib/navigation";
 import { catalogOptions, stableRead } from "../lib/queries";
-import { kindIcons } from "../lib/recordIcons";
+import { kindIcons, scopeIcons } from "../lib/recordIcons";
 import {
   kinds,
   label,
@@ -144,15 +145,22 @@ const dirty = $derived(
       {@const revision = record.revisions.find((revision) => revision.revision === record.currentRevision)}
       {#if revision}
         {@const Icon = kindIcons[revision.details.kind]}
+        {@const ScopeIcon = scopeIcons[record.scope.kind]}
         <article style:padding="14px 0" style:border-bottom="1px solid var(--hair)">
-          <p style:color="var(--pink)" style:font-size="13px" style:display="flex" style:flex-wrap="wrap" style:align-items="center" style:gap="6px">
-            <Icon size={15} aria-hidden="true" />{label(revision.details.kind).toLowerCase()} / {label(revision.details.state).toLowerCase()}{standing(revision) === "established" ? "" : ` / ${standing(revision)}`}
-            {#if !revision.evidenceCurrent}<span class="warn">/ stale evidence</span>{/if}
-            {#if record.conflicted}<span class="warn">/ conflicting records</span>{/if}
-            {#if timingLabel(revision, now)}<span class="warn">/ {timingLabel(revision, now)?.toLowerCase()}</span>{/if}
+          <p class="mts">
+            <span class="mt kind"><Icon size={12} aria-hidden="true" />{label(revision.details.kind).toLowerCase()}</span>
+            <span class="mt">{label(revision.details.state).toLowerCase()}</span>
+            {#if standing(revision) !== "established"}<span class="mt">{standing(revision)}</span>{/if}
+            {#if !revision.evidenceCurrent}<span class="mt caution">stale evidence</span>{/if}
+            {#if record.conflicted}<span class="mt caution">conflicting records</span>{/if}
+            {#if timingLabel(revision, now)}<span class="mt caution">{timingLabel(revision, now)?.toLowerCase()}</span>{/if}
           </p>
-          <a href={recordHref(record.id, record.node, recordsHref(new URLSearchParams(params)))} style:display="block" style:margin-top="3px" style:font-size="15px" style:overflow-wrap="anywhere" style:white-space="pre-wrap">{revision.statement}</a>
-          <p class="meta" style:margin-top="4px" style:overflow-wrap="anywhere">{scopeLabel(record.scope)} / {record.node || "this machine"} / {whenLabel(revision.recordedAt, now)}</p>
+          <a href={recordHref(record.id, record.node, recordsHref(new URLSearchParams(params)))} style:display="block" style:margin-top="6px" style:font-size="15px" style:overflow-wrap="anywhere" style:white-space="pre-wrap">{revision.statement}</a>
+          <p class="mts" style:margin-top="7px">
+            <span class="mt" style:overflow-wrap="anywhere"><ScopeIcon size={12} aria-hidden="true" />{scopeLabel(record.scope)}</span>
+            <span class="mt"><Laptop size={12} aria-hidden="true" />{record.node || "this machine"}</span>
+            <span class="mtx">{whenLabel(revision.recordedAt, now)}</span>
+          </p>
         </article>
       {/if}
     {/each}

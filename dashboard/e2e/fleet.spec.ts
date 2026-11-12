@@ -77,7 +77,7 @@ for (const width of [390, 1280]) {
       return route.fulfill({ json: { local_node: "xenia", chats: [], truncated: false } });
     });
     await page.goto("/#/fleet");
-    await expect(page.getByRole("heading", { name: "Manage fleet", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Fleet manager", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
     await page.getByRole("link", { name: label, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/fleet/${action}$`));

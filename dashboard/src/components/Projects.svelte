@@ -6,6 +6,7 @@ const view: ProjectView = $state({ find: "", agent: "", machine: "", sort: "chat
 </script>
 
 <script lang="ts">
+import ArrowDownWideNarrow from "@lucide/svelte/icons/arrow-down-wide-narrow";
 import Bot from "@lucide/svelte/icons/bot";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
@@ -14,6 +15,7 @@ import { agents as agentInfo } from "../lib/agents";
 import { arrangeProjects, groupChats, projectLabel, whenLabel } from "../lib/browse";
 import { catalogOptions } from "../lib/queries";
 import { projectHref } from "../lib/route.svelte";
+import FilterMenu from "./FilterMenu.svelte";
 import QueryError from "./QueryError.svelte";
 import Skeleton from "./Skeleton.svelte";
 
@@ -30,6 +32,12 @@ const largest = $derived(projects[0]?.chats.length ?? 1);
 const agentChoices = $derived([...new Set(chats.map((chat) => chat.agent))].sort());
 const machineChoices = $derived([...new Set(chats.map((chat) => chat.machine))].sort());
 const narrowed = $derived(!!(view.find.trim() || view.agent || view.machine));
+const chosenAgent = $derived(agentChoices.find((agent) => agent === view.agent));
+const sorts = [
+  { value: "chats", label: "most chats" },
+  { value: "recent", label: "most recent" },
+  { value: "name", label: "by name" },
+] as const;
 const now = Date.now();
 </script>
 
@@ -37,22 +45,18 @@ const now = Date.now();
 <QueryError title="Couldn’t load chats" query={catalogue} />
 {#if catalogue.isPending}<Skeleton rows={5} />{/if}
 {#if projects.length}
-  <div class="pctl">
-    <input class="field" type="search" aria-label="Find a project" placeholder="Find a project" autocomplete="off" bind:value={view.find} />
-    <select aria-label="Sort projects" bind:value={view.sort}>
-      <option value="chats">Most chats</option>
-      <option value="recent">Most recent</option>
-      <option value="name">Name</option>
-    </select>
-    <select aria-label="Agent" bind:value={view.agent}>
-      <option value="">Any agent</option>
-      {#each agentChoices as agent (agent)}<option value={agent}>{agentInfo[agent].name}</option>{/each}
-    </select>
-    <select aria-label="Machine" bind:value={view.machine}>
-      <option value="">Any machine</option>
-      {#each machineChoices as machine (machine)}<option value={machine}>{machine}</option>{/each}
-    </select>
-    {#if narrowed}<button class="a" type="button" onclick={() => { view.find = ""; view.agent = ""; view.machine = ""; }}>Show all</button>{/if}
+  <div class="chips" role="group" aria-label="Project filters">
+    <input class="field" type="search" aria-label="Find a project" placeholder="find a project" autocomplete="off" bind:value={view.find} style:flex="1 1 220px" style:max-width="360px" />
+    <FilterMenu label={sorts.find((sort) => sort.value === view.sort)?.label ?? "sort"} options={sorts} selected={[view.sort]} choose={(value) => { const sort = sorts.find((sort) => sort.value === value); if (sort) view.sort = sort.value; }}>
+      {#snippet icon()}<ArrowDownWideNarrow size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    <FilterMenu label={chosenAgent ? agentInfo[chosenAgent].name : "any agent"} active={!!view.agent} options={[{ value: "", label: "any agent" }, ...agentChoices.map((agent) => ({ value: agent, label: agentInfo[agent].name }))]} selected={[view.agent]} choose={(value) => (view.agent = value)}>
+      {#snippet icon()}<Bot size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    <FilterMenu label={view.machine || "any machine"} active={!!view.machine} options={[{ value: "", label: "any machine" }, ...machineChoices.map((machine) => ({ value: machine, label: machine }))]} selected={[view.machine]} choose={(value) => (view.machine = value)}>
+      {#snippet icon()}<Laptop size={15} aria-hidden="true" />{/snippet}
+    </FilterMenu>
+    {#if narrowed}<button class="a" type="button" style:min-height="30px" style:padding="0 6px" style:font-size="13.5px" onclick={() => { view.find = ""; view.agent = ""; view.machine = ""; }}>Show all</button>{/if}
   </div>
 {/if}
 {#if projects.length && !shown.length}<div class="state-c"><p>No project matches. Change the name, agent or machine above.</p></div>{/if}

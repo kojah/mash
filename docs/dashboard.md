@@ -41,10 +41,10 @@ The left rail is the way around. On a phone it opens from the menu button.
 - **agents**, **machines** and **projects:** one page each, with its recent
   chats and how they break down by the other two.
 - **memory:** saved decisions, preferences, facts and open questions.
-- **services** and **manage fleet:** process and database checks, each
+- **services** and **fleet manager:** process and database checks, each
   machine's agent setup, and fleet actions where they are configured. See
   [services](services.md).
-- **mcp console:** every tool your agents can call on Mash, listed from the
+- **tools:** every tool your agents can call on Mash, listed from the
   server's own description: what each does, its parameters and their types.
   Fill in a read-only tool and run it to see the reply exactly as an agent
   receives it. Tools that change data are listed for reference but cannot be
