@@ -53,9 +53,9 @@ test("direct chats load before the catalogue and tool output stays literal", asy
     await expect(page.locator("main pre code")).toContainText('    println!("hello");');
     await expect(page.getByRole("heading", { name: "README" })).toHaveCount(0);
     // Tool output is folded into a run of steps; both levels open on request.
-    const steps = page.getByRole("group").filter({ hasText: "1 step" }).first();
+    const steps = page.getByRole("group").filter({ hasText: "1 tool call" }).first();
     await steps.locator("summary").first().click();
-    await steps.locator("summary").filter({ hasText: "Tool output" }).click();
+    await steps.locator("details.tc > summary").click();
     await expect(steps.locator("pre")).toContainText("# README");
     await expect(steps.locator("pre")).toContainText("<div>literal HTML</div>");
     await expect(steps.locator("pre *")).toHaveCount(0);

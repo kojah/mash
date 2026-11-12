@@ -160,9 +160,12 @@ for (const width of [390, 1440]) {
       "aria-current",
     );
     await expect(page.getByRole("link", { name: "macbook: unreachable" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "services on macbook" })).toBeVisible();
+    await expect(
+      page.getByText("macbook: this machine's dashboard could not be reached."),
+    ).toBeVisible();
     await expect(page.getByRole("region", { name: "Needs attention on macbook" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "services on xenia" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "services", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Index watcher/ })).toBeVisible();
     // Each fault is listed with what to do about it and, where one exists, its control.
     const attention = page.getByRole("region", { name: "Needs attention on xenia" });
     await expect(attention.getByText("Running · schema mismatch", { exact: true })).toBeVisible();
@@ -199,9 +202,9 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("region", { name: "Needs attention on macbook" })).toContainText(
       "Could not be reached",
     );
-    await expect(page.getByRole("heading", { name: "services on xenia" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Index watcher/ })).toHaveCount(0);
     await page.getByRole("link", { name: "Show every machine" }).click();
-    await expect(page.getByRole("heading", { name: "services on xenia" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Index watcher/ })).toBeVisible();
     await page.getByRole("link", { name: "xenia: needs attention" }).click();
     await page.getByRole("link", { name: /Index watcher/ }).click();
     await expect(page.getByText("Start it to bring it back.")).toBeVisible();

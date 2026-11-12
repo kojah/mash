@@ -23,11 +23,13 @@ import { catalogOptions, stableRead } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
 import { label, recordPage } from "../lib/records";
 import { chatHref, projectHref, recordHref, recordsHref } from "../lib/route.svelte";
+import { type ToolCall, toolCalls } from "../lib/toolcalls";
 import type { Message } from "../lib/types";
 import AgentMark from "./AgentMark.svelte";
 import MessageBody from "./MessageBody.svelte";
 import MetaChips from "./MetaChips.svelte";
 import QueryError from "./QueryError.svelte";
+import ToolStep from "./ToolStep.svelte";
 
 let {
   id,
@@ -240,16 +242,41 @@ const items = $derived.by(() => {
   flush();
   return list;
 });
+type StepPart =
+  | { readonly kind: "call"; readonly call: ToolCall; readonly messages: readonly Message[] }
+  | { readonly kind: "note"; readonly message: Message };
+// A run of steps as what the reader sees: each tool call once, with its
+// output, and the agent's thinking in between, in the order they happened.
+function stepParts(messages: readonly Message[]): StepPart[] {
+  const calls = toolCalls(messages);
+  const parts: StepPart[] = [];
+  for (const message of messages) {
+    if (message.presentation === "reasoning") parts.push({ kind: "note", message });
+    for (const call of calls) {
+      if (call.id !== message.id && !call.id.startsWith(`${message.id}:`)) continue;
+      parts.push({
+        kind: "call",
+        call,
+        messages: messages.filter(
+          (other) =>
+            (other.id === message.id && call.id === message.id) || other.id === call.resultId,
+        ),
+      });
+    }
+  }
+  return parts;
+}
 function stepLabel(message: Message): string {
   if (message.presentation === "reasoning") return "Thinking";
   return message.presentation === "tool-result" ? "Tool output" : message.toolLabel || "Tool call";
 }
 function stepsSummary(messages: readonly Message[]): string {
-  const calls = messages.filter((message) => message.presentation === "tool-call");
-  const names = [...new Set(calls.map(stepLabel))];
+  const calls = toolCalls(messages);
+  const names = [...new Set(calls.map((call) => call.name))];
   const count = calls.length || messages.length;
   const noun = calls.length ? "tool call" : "step";
-  return `${count} ${noun}${count === 1 ? "" : "s"}${names.length ? `: ${names.slice(0, 4).join(", ")}${names.length > 4 ? ", …" : ""}` : ""}`;
+  const failed = calls.filter((call) => call.status?.failed).length;
+  return `${count} ${noun}${count === 1 ? "" : "s"}${names.length ? `: ${names.slice(0, 4).join(", ")}${names.length > 4 ? ", …" : ""}` : ""}${failed ? ` · ${failed} failed` : ""}`;
 }
 const prompts = $derived(
   (loaded?.messages ?? []).filter(
@@ -335,12 +362,18 @@ const prompts = $derived(
           <details class="fold" open={item.messages.some((message) => message.id === messageId)}>
             <summary><Terminal size={16} aria-hidden="true" />{stepsSummary(item.messages)}</summary>
             <div>
-              {#each item.messages as message (message.id)}
-                <details class="fold" class:hit={message.id === messageId} id="message-{message.id}" data-message={message.id} open={message.id === messageId} style:scroll-margin-top="80px">
-                  <summary>{#if message.presentation === "reasoning"}<Lightbulb size={15} aria-hidden="true" />{:else}<Terminal size={15} aria-hidden="true" />{/if}{stepLabel(message)}<span class="mtx">{message.at}</span></summary>
-                  <div><pre class="pre" style:max-height="32rem" style:overflow="auto">{plainText(message)}</pre></div>
-                </details>
-                {@render saved(message)}
+              {#each stepParts(item.messages) as part (part.kind === "call" ? part.call.id : part.message.id)}
+                {#if part.kind === "call"}
+                  <ToolStep call={part.call} selected={messageId} />
+                  {#each part.messages as message (message.id)}{@render saved(message)}{/each}
+                {:else}
+                  {@const message = part.message}
+                  <details class="fold" class:hit={message.id === messageId} id="message-{message.id}" data-message={message.id} open={message.id === messageId} style:scroll-margin-top="80px">
+                    <summary><Lightbulb size={15} aria-hidden="true" />{stepLabel(message)}<span class="mtx">{message.at}</span></summary>
+                    <div><pre class="pre" style:max-height="32rem" style:overflow="auto">{plainText(message)}</pre></div>
+                  </details>
+                  {@render saved(message)}
+                {/if}
               {/each}
             </div>
           </details>

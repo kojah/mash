@@ -1,4 +1,5 @@
 <script lang="ts">
+import Bot from "@lucide/svelte/icons/bot";
 import Check from "@lucide/svelte/icons/check";
 import Clock from "@lucide/svelte/icons/clock";
 import Info from "@lucide/svelte/icons/info";
@@ -29,8 +30,8 @@ import {
 import LoadError from "./LoadError.svelte";
 import MachineSetup from "./MachineSetup.svelte";
 import QueryError from "./QueryError.svelte";
+import ServiceRows from "./ServiceRows.svelte";
 import ServiceStatus from "./ServiceStatus.svelte";
-import ServiceTiles from "./ServiceTiles.svelte";
 import Skeleton from "./Skeleton.svelte";
 
 let { params }: { params: string } = $props();
@@ -265,14 +266,25 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
         {/each}
       </section>
     {/if}
-    <section>
-      <h2 class="h2"><Server size={15} aria-hidden="true" />services on {machine.id}</h2>
-      <ServiceTiles machineId={machine.id} services={machine.services} />
-      {#if !machine.services.length}<p class="meta">{machine.reachable ? "No services were reported." : "This machine's dashboard could not be reached."}</p>{/if}
-      {#if machine.reachable}{#each machine.warnings as warning (warning)}<p class="meta" style:margin-top="8px">{warning}</p>{/each}{/if}
-    </section>
-    {#if machine.reachable}<MachineSetup machineId={machine.id} {enabled} />{/if}
   {/each}
+  <section>
+    <h2 class="h2"><Server size={15} aria-hidden="true" />services</h2>
+    {#if shown.some((machine) => machine.services.length)}<ServiceRows machines={shown} showMachine={shown.length > 1} />{/if}
+    {#each shown as machine (machine.id)}
+      {#if !machine.services.length}<p class="meta" style:margin-top="8px">{machine.id}: {machine.reachable ? "no services were reported." : "this machine's dashboard could not be reached."}</p>{/if}
+      {#if machine.reachable}{#each machine.warnings as warning (warning)}<p class="meta" style:margin-top="8px">{machine.id}: {warning}</p>{/each}{/if}
+    {/each}
+  </section>
+  {#if shown.some((machine) => machine.reachable)}
+    <section>
+      <h2 class="h2"><Bot size={15} aria-hidden="true" />agent setup</h2>
+      <div class="rws setup" class:solo={shown.length < 2}>
+        <div class="rw head" aria-hidden="true"><span>agent</span>{#if shown.length > 1}<span>machine</span>{/if}<span>parts</span><span>status</span></div>
+        {#each shown.filter((machine) => machine.reachable) as machine (machine.id)}<MachineSetup machineId={machine.id} {enabled} showMachine={shown.length > 1} />{/each}
+      </div>
+      <p class="meta" style:margin-top="10px">Mash reads settings and files for this; it does not start the agents.</p>
+    </section>
+  {/if}
 {/if}
 {#if enabled && selectedId}
   <section>

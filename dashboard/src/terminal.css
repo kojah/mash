@@ -2734,3 +2734,237 @@ button:disabled {
   border-color: var(--strong);
   color: var(--clay2);
 }
+
+/* Services and agent setup as one list across machines: a row per item, with
+   the machine as a column. */
+.rws {
+  --rw: minmax(0, 1.5fr) minmax(0, 1fr) 104px minmax(0, 1.7fr);
+  border-top: 1px solid var(--line);
+}
+.rws.solo {
+  --rw: minmax(0, 1.5fr) 104px minmax(0, 1.7fr);
+}
+.rws.setup {
+  --rw: minmax(0, 1.2fr) minmax(0, 1fr) 132px minmax(0, 1.5fr);
+}
+.rws.setup.solo {
+  --rw: minmax(0, 1.2fr) 132px minmax(0, 1.5fr);
+}
+.rw {
+  display: grid;
+  grid-template-columns: var(--rw);
+  align-items: center;
+  gap: 4px 14px;
+  min-height: 46px;
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--hair);
+}
+.rw.head {
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
+}
+a.rw:hover,
+summary.rw:hover {
+  background: var(--soft);
+}
+summary.rw {
+  list-style: none;
+  cursor: pointer;
+}
+summary.rw::-webkit-details-marker {
+  display: none;
+}
+.rw > * {
+  min-width: 0;
+}
+.rw-n {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.rw-n > svg,
+.rw-n > .mark {
+  flex: none;
+  margin-right: 0;
+}
+.rw-n strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rw-parts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rw-parts > span {
+  display: flex;
+}
+.rw .svc-st.ok {
+  color: var(--ok);
+}
+.rw .svc-st.warn {
+  color: var(--warn);
+}
+.rw-b {
+  padding: 4px 6px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+.rw-note {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--hair);
+}
+@media (max-width: 640px) {
+  .rw.head {
+    display: none;
+  }
+  .rw {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .rw > .svc-st,
+  .rw > .rw-parts {
+    grid-column: 1 / -1;
+  }
+  /* The icon already says the kind. */
+  .rws:not(.setup) .rw > :nth-last-child(2) {
+    display: none;
+  }
+}
+
+/* A tool call in a transcript: one card per call, with its output. */
+.tc {
+  margin: 4px 0;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--raised);
+  min-width: 0;
+}
+.tc.bad {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+.tc > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 9px;
+  min-height: 40px;
+  padding: 6px 12px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.tc > summary::-webkit-details-marker {
+  display: none;
+}
+.tc > summary > svg {
+  flex: none;
+  color: var(--sky);
+}
+.tc-n {
+  font: 500 13px var(--mono);
+  color: var(--sky);
+}
+.tc-s {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--body);
+}
+.tc[open] > summary .tc-s {
+  white-space: normal;
+}
+.tc .mt.ok {
+  color: var(--ok);
+}
+.tc .mt.bad {
+  color: var(--bad);
+}
+.tc-b {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--hair);
+  font-size: 13.5px;
+}
+.tc-r {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: start;
+}
+.tc-k {
+  padding-top: 2px;
+  font: 12.5px var(--mono);
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+.tc-v {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 13px / 1.6 var(--mono);
+}
+.tc-pre {
+  margin: 0;
+  min-width: 0;
+  max-height: 32rem;
+  padding: 9px 11px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--bg);
+  overflow: auto;
+  font: 12.5px / 1.6 var(--mono);
+  color: var(--body);
+  white-space: pre;
+  tab-size: 2;
+}
+.tc-pre.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tc-o {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.tc-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.tc-h::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
+}
+.tc-f {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.tc-f .a {
+  min-height: 28px;
+  font-size: 12.5px;
+}
+@media (max-width: 560px) {
+  .tc-r {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

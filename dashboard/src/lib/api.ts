@@ -196,6 +196,17 @@ export function parseMessages(value: unknown): MessagePage {
           calls.map((call) => optionalString(call.name) ?? "Tool").join(", ") || "Tool output",
         at: date(timestamp(row.created_at)),
         blocks: [{ type: "text", markdown: content }],
+        tools: {
+          calls: calls.map((call) => ({
+            name: optionalString(call.name),
+            callId: optionalString(call.call_id),
+            input: call.input ?? undefined,
+          })),
+          results: results.map((result) => ({
+            callId: optionalString(result.call_id),
+            isError: typeof result.is_error === "boolean" ? result.is_error : undefined,
+          })),
+        },
         // Opaque provider inputs remain text, never interpreted as commands or markup.
         activity: Object.keys(tools).length ? JSON.stringify(tools, null, 2) : "",
       };

@@ -59,6 +59,19 @@ export interface Message {
   readonly activity?: string;
   readonly presentation?: "dialogue" | "tool-call" | "tool-result" | "reasoning";
   readonly toolLabel?: string;
+  /** The stored tool records of a step, as the agent wrote them. Inputs are
+   * opaque provider payloads: shown as text, never interpreted. */
+  readonly tools?: {
+    readonly calls: readonly {
+      readonly name: string | undefined;
+      readonly callId: string | undefined;
+      readonly input: unknown;
+    }[];
+    readonly results: readonly {
+      readonly callId: string | undefined;
+      readonly isError: boolean | undefined;
+    }[];
+  };
   readonly at: string;
   readonly blocks: readonly Block[];
 }

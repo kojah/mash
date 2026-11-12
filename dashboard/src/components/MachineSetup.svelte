@@ -1,6 +1,7 @@
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
 import CircleHelp from "@lucide/svelte/icons/circle-help";
+import Laptop from "@lucide/svelte/icons/laptop";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents } from "../lib/agents";
@@ -8,9 +9,14 @@ import { fleetHref } from "../lib/route.svelte";
 import { setupChain, setupFix, setupHeadline, setupOptions } from "../lib/services.svelte";
 import AgentMark from "./AgentMark.svelte";
 
-// Each agent's integration on one machine, part by part, with what to do
-// about any part that needs attention.
-let { machineId, enabled }: { machineId: string; enabled: boolean } = $props();
+// One machine's agents as rows of the agent setup list: each agent's
+// integration part by part, opening to what to do about a part that needs
+// attention. The list itself, with its heading, belongs to the page.
+let {
+  machineId,
+  enabled,
+  showMachine = true,
+}: { machineId: string; enabled: boolean; showMachine?: boolean } = $props();
 const setup = createQuery(() => setupOptions(machineId, enabled));
 let copied = $state("");
 async function copy(agent: string, command: string): Promise<void> {
@@ -24,63 +30,77 @@ async function copy(agent: string, command: string): Promise<void> {
 const partWord = { ok: "ok", attention: "needs attention", unverified: "not verifiable" } as const;
 </script>
 
-  <section>
-    <h2 class="h2">agent setup</h2>
-    {#if setup.isPending && enabled}<p class="meta" role="status">Checking agent setup…</p>{/if}
-    {#if setup.error}<p class="meta warn" role="alert">Agent setup is unavailable: {setup.error.message}</p><p class="meta">A machine running an older Mash cannot report its setup. Update it, then check again.</p>{/if}
-    {#if setup.data}
-      <div class="svc-tiles">
-      {#each setup.data.agents as agent (agent.agent)}
-        {@const headline = setupHeadline(agent)}
-        {@const chain = setupChain(agent)}
-        {@const fix = setupFix(agent, agents[agent.agent].name)}
-        <div class="svc-tile agent">
-          <div class="hd" style:align-items="center"><h3 style:display="flex" style:align-items="center" style:gap="8px" style:font-size="15px" style:font-weight="600"><AgentMark agent={agent.agent} size={17} />{agents[agent.agent].name}</h3><span class={headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"} style:font-size="13.5px">{headline.label}</span></div>
-          {#if agent.expected}
-            <div class="set">
-              {#each chain as part (part.label)}
-                <div>
-                  <span class={part.state === "ok" ? "ok" : part.state === "attention" ? "warn" : "none"} style:display="flex">
-                    {#if part.state === "ok"}<Check size={16} aria-hidden="true" />{:else if part.state === "attention"}<TriangleAlert size={16} aria-hidden="true" />{:else}<CircleHelp size={16} aria-hidden="true" />{/if}
-                  </span>
-                  <span class="g">{part.label}</span>
-                  <span class={part.state === "attention" ? "warn" : "n"} style:font-size="13px">{partWord[part.state]}</span>
-                </div>
-              {/each}
+{#if setup.isPending && enabled}<p class="meta rw-note" role="status">Checking agent setup on {machineId}…</p>{/if}
+{#if setup.error}<p class="meta rw-note"><span class="warn" role="alert">Agent setup on {machineId} is unavailable: {setup.error.message}</span> A machine running an older Mash cannot report its setup. Update it, then check again.</p>{/if}
+{#each setup.data?.agents ?? [] as agent (agent.agent)}
+  {@const headline = setupHeadline(agent)}
+  {@const chain = setupChain(agent)}
+  {@const fix = setupFix(agent, agents[agent.agent].name)}
+  {@const tone = headline.state === "healthy" ? "ok" : headline.state === "unknown" ? "none" : "warn"}
+  {#if agent.expected}
+    <details class="rw-d" open={!!fix}>
+      <summary class="rw">
+        <span class="rw-n"><AgentMark agent={agent.agent} size={17} /><strong>{agents[agent.agent].name}</strong></span>
+        {#if showMachine}<span><span class="mt"><Laptop size={12} aria-hidden="true" />{machineId}</span></span>{/if}
+        <span class="rw-parts">
+          {#each chain as part (part.label)}
+            <span class={part.state === "ok" ? "ok" : part.state === "attention" ? "warn" : "none"} title="{part.label}: {partWord[part.state]}">
+              {#if part.state === "ok"}<Check size={15} aria-label="{part.label}: ok" />{:else if part.state === "attention"}<TriangleAlert size={15} aria-label="{part.label}: needs attention" />{:else}<CircleHelp size={15} aria-label="{part.label}: not verifiable" />{/if}
+            </span>
+          {/each}
+        </span>
+        <span class="svc-st {tone}">{headline.label}</span>
+      </summary>
+      <div class="rw-b">
+        <div class="set">
+          {#each chain as part (part.label)}
+            <div>
+              <span class={part.state === "ok" ? "ok" : part.state === "attention" ? "warn" : "none"} style:display="flex">
+                {#if part.state === "ok"}<Check size={16} aria-hidden="true" />{:else if part.state === "attention"}<TriangleAlert size={16} aria-hidden="true" />{:else}<CircleHelp size={16} aria-hidden="true" />{/if}
+              </span>
+              <span class="g">{part.label}</span>
+              <span class={part.state === "attention" ? "warn" : "n"} style:font-size="13px">{partWord[part.state]}</span>
             </div>
-            {#if fix}
-              <div class="fix">
-                <p>{fix.cause}</p>
-                <ol>
-                  {#each fix.steps as step, index (step)}
-                    <li>{step}{#if fix.deploy && index === 0} <a class="a" href={fleetHref("deploy")}>Deploy Mash from Fleet manager</a>, or install it there directly.{/if}</li>
-                  {/each}
-                </ol>
-                {#if fix.command}
-                  <div class="cmd"><code>{fix.command}</code><button class="btn" type="button" onclick={() => copy(agent.agent, fix.command ?? "")}>{copied === agent.agent ? "Copied" : "Copy"}</button></div>
-                {/if}
-              </div>
-              <details class="fold" style:margin-top="8px">
-                <summary>{fix.checks === 1 ? "The check behind this" : `The ${fix.checks} checks behind this`}</summary>
-                <div>
-                        {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
-                          {#each part.notes as note (note.message)}
-                      <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere"><span class={part.state === "attention" ? "warn" : ""}>{part.label}:</span> {note.message}{#if note.remediation && part.state === "attention"} <span style:display="block" style:color="var(--body)">{note.remediation}</span>{/if}</p>
-                    {/each}
-                  {/each}
-                </div>
-              </details>
-            {:else}
-            {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
-              {#each part.notes as note (note.message)}
-                <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere"><span class={part.state === "attention" ? "warn" : ""}>{part.label}:</span> {note.message}{#if note.remediation && part.state === "attention"} <span style:display="block" style:color="var(--body)">{note.remediation}</span>{/if}</p>
-              {/each}
-            {/each}
-            {/if}
-          {/if}
+          {/each}
         </div>
-      {/each}
+        {#if fix}
+          <div class="fix">
+            <p>{fix.cause}</p>
+            <ol>
+              {#each fix.steps as step, index (step)}
+                <li>{step}{#if fix.deploy && index === 0} <a class="a" href={fleetHref("deploy")}>Deploy Mash from Fleet manager</a>, or install it there directly.{/if}</li>
+              {/each}
+            </ol>
+            {#if fix.command}
+              <div class="cmd"><code>{fix.command}</code><button class="btn" type="button" onclick={() => copy(agent.agent, fix.command ?? "")}>{copied === agent.agent ? "Copied" : "Copy"}</button></div>
+            {/if}
+          </div>
+          <details class="fold" style:margin-top="8px">
+            <summary>{fix.checks === 1 ? "The check behind this" : `The ${fix.checks} checks behind this`}</summary>
+            <div>
+              {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
+            {#each part.notes as note (note.message)}
+              <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere"><span class={part.state === "attention" ? "warn" : ""}>{part.label}:</span> {note.message}{#if note.remediation && part.state === "attention"} <span style:display="block" style:color="var(--body)">{note.remediation}</span>{/if}</p>
+            {/each}
+          {/each}
+            </div>
+          </details>
+        {:else}
+          {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
+            {#each part.notes as note (note.message)}
+              <p class="meta" style:margin-top="8px" style:overflow-wrap="anywhere"><span class={part.state === "attention" ? "warn" : ""}>{part.label}:</span> {note.message}{#if note.remediation && part.state === "attention"} <span style:display="block" style:color="var(--body)">{note.remediation}</span>{/if}</p>
+            {/each}
+          {/each}
+        {/if}
+        <p class="meta" style:margin-top="8px">Inspected by build {setup.data?.build.slice(0, 8)}.</p>
       </div>
-      <p class="meta" style:margin-top="10px">Mash reads settings and files for this; it does not start the agents. Inspected by build {setup.data.build.slice(0, 8)}.</p>
-    {/if}
-  </section>
+    </details>
+  {:else}
+    <div class="rw">
+      <span class="rw-n"><AgentMark agent={agent.agent} size={17} /><strong>{agents[agent.agent].name}</strong></span>
+      {#if showMachine}<span><span class="mt"><Laptop size={12} aria-hidden="true" />{machineId}</span></span>{/if}
+      <span></span>
+      <span class="svc-st {tone}">{headline.label}</span>
+    </div>
+  {/if}
+{/each}
