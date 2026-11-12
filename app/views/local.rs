@@ -200,7 +200,9 @@ impl Local {
         let mut result = self.store.search(&self.scope, input, &active).await?;
         let database = self.database.clone();
         result = crate::blocking(move || {
-            Storage::open_silver(&database)?.hydrate_turns(&mut result)?;
+            let silver = Storage::open_silver(&database)?;
+            silver.hydrate_turns(&mut result)?;
+            silver.hydrate_chats(&mut result)?;
             Ok(result)
         })
         .await?;

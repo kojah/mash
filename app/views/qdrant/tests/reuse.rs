@@ -155,11 +155,12 @@ async fn qdrant_materializer_reuses_chat_vectors_after_metadata_edits_without_a_
         .await
         .unwrap();
     assert_eq!(stored.len(), 1);
-    assert!(stored.iter().any(|p| p.payload.unit.title == chat.title));
+    // The chat's title and times live in silver, not on its documents.
+    assert!(stored.iter().all(|p| p.payload.unit.title.is_none()));
     assert!(
         stored
             .iter()
-            .any(|p| p.payload.unit.chat_updated_at == Some(200))
+            .all(|p| p.payload.unit.chat_updated_at.is_none())
     );
 
     messages[0].projection = "changed embedding input".into();
@@ -210,6 +211,118 @@ async fn qdrant_chat_window_reuses_sparse_dense_inputs_across_row_batches() {
     let result = writer.finish().await.unwrap();
     assert_eq!(result.embeddings.model_inferences, 0);
     assert_eq!(result.embeddings.reused_vectors, 3);
+    fixture.cleanup().await;
+}
+
+/// One stored document's payload, and a way to overwrite it as an older
+/// build or a fault might have left it.
+async fn stored_payload(fixture: &Fixture, message: &str) -> serde_json::Value {
+    fixture
+        .store
+        .api
+        .retrieve::<serde_json::Value>(
+            &collection(&fixture.identity.group_id, false),
+            &[document_id(&fixture.identity.node_id, message)],
+        )
+        .await
+        .unwrap()
+        .remove(0)
+        .payload
+}
+
+async fn overwrite_payload(fixture: &Fixture, message: &str, payload: serde_json::Value) {
+    fixture
+        .store
+        .api
+        .upsert(
+            &collection(&fixture.identity.group_id, false),
+            &api::Upsert {
+                points: vec![api::Point {
+                    id: document_id(&fixture.identity.node_id, message),
+                    vector: api::Vectors {
+                        dense: Some((
+                            fixture.store.dense_name(&fixture.identity).into(),
+                            vec![1.0, 0.0, 0.0, 0.0],
+                        )),
+                        lexical: None,
+                    },
+                    payload,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_chat_window_leaves_matching_documents_alone_and_rewrites_the_rest() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let model = model();
+    let mut chats = [(Fixture::chat(), search_messages(&fixture))];
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
+    writer.write_chats(&chats).await.unwrap();
+    assert_eq!(
+        writer.finish().await.unwrap().embeddings.model_inferences,
+        2
+    );
+
+    // A marker in a field the comparison does not read shows whether a
+    // document was written again.
+    let mut marked = stored_payload(&fixture, "message-0").await;
+    marked["tokens"] = serde_json::json!(["marker"]);
+    overwrite_payload(&fixture, "message-0", marked).await;
+
+    // The chat gained a title and a later time: facts of the chat, which no
+    // document carries. Nothing is embedded and nothing is rewritten.
+    chats[0].0.title = Some("A later title".into());
+    chats[0].0.updated_at = Some(9_000);
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, None);
+    let built = writer.write_chats(&chats).await.unwrap();
+    assert!(built[0].1.complete);
+    assert_eq!(built[0].1.embeddings, 2);
+    let result = writer.finish().await.unwrap();
+    assert_eq!(result.embeddings.model_inferences, 0);
+    assert_eq!(result.embeddings.reused_vectors, 2);
+    let kept = stored_payload(&fixture, "message-0").await;
+    assert_eq!(kept["tokens"], serde_json::json!(["marker"]));
+    assert!(kept["unit"].get("title").is_none());
+
+    // A document from before chat facts moved is rewritten once without them.
+    let mut older = kept;
+    older["unit"]["title"] = serde_json::json!("Needle");
+    older["unit"]["chat_updated_at"] = serde_json::json!(2_000);
+    overwrite_payload(&fixture, "message-0", older).await;
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, None);
+    assert!(writer.write_chats(&chats).await.unwrap()[0].1.complete);
+    assert_eq!(
+        writer.finish().await.unwrap().embeddings.model_inferences,
+        0
+    );
+    let rewritten = stored_payload(&fixture, "message-0").await;
+    assert_ne!(rewritten["tokens"], serde_json::json!(["marker"]));
+    assert!(rewritten["unit"].get("title").is_none());
+    assert!(rewritten["unit"].get("chat_updated_at").is_none());
+
+    // Changed text is embedded and written; its neighbour is not touched.
+    let mut marked = stored_payload(&fixture, "message-0").await;
+    marked["tokens"] = serde_json::json!(["marker"]);
+    overwrite_payload(&fixture, "message-0", marked).await;
+    chats[0].1[1].projection = "changed searchable text".into();
+    let mut writer = Writer::new(&fixture.store, &fixture.identity, Some(model.path()));
+    assert!(writer.write_chats(&chats).await.unwrap()[0].1.complete);
+    assert_eq!(
+        writer.finish().await.unwrap().embeddings.model_inferences,
+        1
+    );
+    assert_eq!(
+        stored_payload(&fixture, "message-1").await["unit"]["text"],
+        serde_json::json!("changed searchable text")
+    );
+    assert_eq!(
+        stored_payload(&fixture, "message-0").await["tokens"],
+        serde_json::json!(["marker"])
+    );
     fixture.cleanup().await;
 }
 

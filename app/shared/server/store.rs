@@ -596,16 +596,18 @@ impl Store {
             ));
         }
         let mut candidates = self.views.search(identity, input, &active).await?;
-        self.hydrate_turns(identity, &mut candidates).await?;
+        self.hydrate(identity, &mut candidates).await?;
         Ok(candidates)
     }
 
-    /// Derived turns live only in silver and never trigger point rewrites.
-    async fn hydrate_turns(
+    /// Derived turns and chat facts live only in silver and never trigger
+    /// point rewrites.
+    async fn hydrate(
         &self,
         identity: &Identity,
         candidates: &mut protocol::Candidates,
     ) -> Result<(), AppError> {
+        use crate::storage::{chat_facts, turns};
         let mut wanted = BTreeMap::<String, BTreeSet<_>>::new();
         for hit in candidates.lexical.iter().chain(&candidates.semantic) {
             if let Some(node) = &hit.node_id {
@@ -618,27 +620,29 @@ impl Store {
         }
         let found = fan_out(wanted, |(node, messages)| async move {
             let scope = silver_store::node_identity(&identity.group_id, &node);
-            let turns = self
+            let rows = self
                 .read(&scope, move |connection| {
+                    let mut chats = BTreeMap::new();
                     messages
                         .into_iter()
                         .map(|(id, provider, chat)| {
-                            let turn = crate::storage::turns::message_turn(
-                                connection, provider, &chat, &id,
-                            )?;
-                            Ok((id, turn))
+                            let turn = turns::message_turn(connection, provider, &chat, &id)?;
+                            if !chats.contains_key(&chat) {
+                                let facts = chat_facts::read(connection, provider, &chat)?;
+                                chats.insert(chat.clone(), facts);
+                            }
+                            Ok((id, (turn, chats.get(&chat).cloned().flatten())))
                         })
                         .collect::<Result<BTreeMap<_, _>, AppError>>()
                 })
                 .await?;
-            Ok::<_, AppError>((node, turns))
+            Ok::<_, AppError>((node, rows))
         })
         .await?
         .into_iter()
-        .flat_map(|(node, turns)| {
-            turns
-                .into_iter()
-                .map(move |(id, turn)| ((node.clone(), id), turn))
+        .flat_map(|(node, rows)| {
+            rows.into_iter()
+                .map(move |(id, row)| ((node.clone(), id), row))
         })
         .collect::<BTreeMap<_, _>>();
         for hit in candidates
@@ -647,10 +651,14 @@ impl Store {
             .chain(&mut candidates.semantic)
         {
             if let Some(node) = &hit.node_id {
-                hit.turn_id = found
+                let (turn, facts) = found
                     .get(&(node.clone(), hit.id.clone()))
                     .cloned()
-                    .flatten();
+                    .unwrap_or_default();
+                hit.turn_id = turn;
+                if let Some(facts) = facts {
+                    facts.apply(hit);
+                }
             }
         }
         Ok(())

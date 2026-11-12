@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) use evidence::{ProjectionEvidence, Projections};
 pub(crate) use read::validate_search;
-pub(crate) use views::{Documents, NodeViews};
+pub(crate) use views::{Documents, Expected, NodeViews};
 
 #[derive(
     Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema,
@@ -115,11 +115,18 @@ pub(crate) struct SearchUnit {
     /// Indexed and embedded text; synchronization also fingerprints the evidence.
     pub(crate) text: String,
     pub(crate) content: String,
-    pub(crate) title: Option<String>,
-    pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
     /// Message position in its chat.
     pub(crate) sequence: i64,
+    /// Chat facts that documents once copied from their chat. Search reads
+    /// them from silver now and nothing writes them; a document written
+    /// before that still carries them until its chat next changes.
+    #[serde(default, skip_serializing)]
+    pub(crate) title: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
+    #[serde(default, skip_serializing)]
     pub(crate) chat_created_at: Option<i64>,
+    #[serde(default, skip_serializing)]
     pub(crate) chat_updated_at: Option<i64>,
     /// Set when the point carries a dense vector of this generation.
     pub(crate) generation: Option<String>,
@@ -169,13 +176,12 @@ fn document_hit(
         content: d.unit.content,
         copies: vec![],
         created_at: d.created_at,
+        // The chat's title, times and enrichment come from silver; see
+        // `storage::chat_facts`.
         metadata: crate::search_results::ChatMetadata {
-            enrichment: d.unit.enrichment,
-            title: d.unit.title,
             project: d.project,
             repository: d.repository,
-            created_at: d.unit.chat_created_at,
-            updated_at: d.unit.chat_updated_at,
+            ..Default::default()
         },
         lexical_score: None,
         lookup: None,

@@ -214,7 +214,11 @@ impl<'a> Writer<'a> {
         let mut stats = vec![ChatStats::default(); chats.len()];
         for (chat_index, (chat, messages)) in chats.iter().enumerate() {
             stats[chat_index].messages = messages.len() as u64;
-            for prepared in self.prepare_chat(chat, messages).await? {
+            let (prepared, kept) = self.prepare_chat(chat, messages).await?;
+            stats[chat_index].expected += kept;
+            stats[chat_index].stored += kept;
+            self.build.embeddings.reused_vectors += kept;
+            for prepared in prepared {
                 let Prepared {
                     rows,
                     texts,
@@ -270,14 +274,16 @@ impl<'a> Writer<'a> {
             .collect())
     }
 
-    /// Prepare a whole chat, then look up its reusable vectors together.
-    /// Most rows of a long agent chat carry no dense input, so a lookup per
-    /// row batch would cost one Qdrant request for a handful of vectors.
+    /// Prepare a whole chat, drop the rows whose documents are already
+    /// stored as they would be written, then look up reusable vectors for the
+    /// rest together. Most rows of a long agent chat carry no dense input, so
+    /// a lookup per row batch would cost one Qdrant request for a handful of
+    /// vectors. Returns the dense documents left in place.
     async fn prepare_chat(
         &self,
         chat: &ChatRecord,
         messages: &[SearchMessage],
-    ) -> Result<Vec<Prepared>, AppError> {
+    ) -> Result<(Vec<Prepared>, u64), AppError> {
         let mut units = super::units::Stream::default();
         let mut prepared = Vec::new();
         for batch in messages.chunks(embedding::CACHE_ROWS) {
@@ -286,26 +292,60 @@ impl<'a> Writer<'a> {
             units = next;
             prepared.push(batch);
         }
-        if self.reuse {
-            let lookup = prepared
-                .iter()
-                .flat_map(|batch| inputs(chat, &batch.rows, &batch.texts))
-                .collect::<Vec<_>>();
-            let mut cached = self
-                .store
-                .reusable_vectors(self.scope, &lookup)
-                .await?
-                .into_iter();
-            drop(lookup);
-            for batch in &mut prepared {
-                let dense = batch.cached.len();
-                batch.cached = cached.by_ref().take(dense).collect();
-                if batch.cached.len() != dense {
-                    return Err(AppError::internal("incomplete reusable vector lookup"));
+        if !self.reuse {
+            return Ok((prepared, 0));
+        }
+        let expected = prepared
+            .iter()
+            .flat_map(|batch| batch.rows.iter().zip(&batch.texts))
+            .filter(|(message, _)| !message.projection.is_empty())
+            .map(|(message, text)| super::qdrant::Expected {
+                message,
+                dense: text.as_deref(),
+            })
+            .collect::<Vec<_>>();
+        let mut unchanged = self
+            .store
+            .unchanged_documents(self.scope, chat, &expected)
+            .await?
+            .into_iter();
+        drop(expected);
+        let mut kept = 0;
+        for batch in &mut prepared {
+            let rows = std::mem::take(&mut batch.rows);
+            let texts = std::mem::take(&mut batch.texts);
+            for (message, text) in rows.into_iter().zip(texts) {
+                // A row with nothing to search has no document to compare.
+                if !message.projection.is_empty()
+                    && unchanged
+                        .next()
+                        .ok_or_else(|| AppError::internal("incomplete document comparison"))?
+                {
+                    kept += u64::from(text.is_some());
+                    continue;
                 }
+                batch.rows.push(message);
+                batch.texts.push(text);
             }
         }
-        Ok(prepared)
+        let lookup = prepared
+            .iter()
+            .flat_map(|batch| inputs(chat, &batch.rows, &batch.texts))
+            .collect::<Vec<_>>();
+        let mut cached = self
+            .store
+            .reusable_vectors(self.scope, &lookup)
+            .await?
+            .into_iter();
+        drop(lookup);
+        for batch in &mut prepared {
+            let dense = batch.texts.iter().filter(|text| text.is_some()).count();
+            batch.cached = cached.by_ref().take(dense).collect();
+            if batch.cached.len() != dense {
+                return Err(AppError::internal("incomplete reusable vector lookup"));
+            }
+        }
+        Ok((prepared, kept))
     }
 
     async fn flush_pending(

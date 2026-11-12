@@ -11,6 +11,7 @@ use crate::AppError;
 // View views and materialized retrieval data.
 pub(crate) mod admission;
 mod catalog;
+pub(crate) mod chat_facts;
 mod coverage;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.

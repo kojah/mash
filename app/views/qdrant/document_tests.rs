@@ -60,8 +60,12 @@ fn common_document_preserves_evidence_in_literal_and_ranked_search() {
         assert_eq!(ranked.content, "needle");
         assert_eq!(literal.sequence, Some(3));
         assert_eq!(ranked.sequence, Some(3));
-        assert_eq!(literal.metadata.title.as_deref(), Some("Title"));
-        assert_eq!(ranked.metadata.updated_at, Some(110));
+        // Chat facts come from silver, even where an older document has them.
+        for hit in [&literal, &ranked] {
+            assert_eq!(hit.metadata.title, None);
+            assert_eq!(hit.metadata.created_at, None);
+            assert_eq!(hit.metadata.updated_at, None);
+        }
     }
 }
 

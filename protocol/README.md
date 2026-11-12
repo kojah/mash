@@ -268,6 +268,19 @@ Source mapping:
   fingerprint collisions are excluded. The `qdrant_materializer_*` backend
   regressions cover metadata edits, title/parent dependencies and corrupt-cache
   repair; bounded models do not establish the correctness of those hashes.
+  A refresh of a changed chat leaves a document in place when its stored node,
+  source, role, chat, project, repository, time, anchor, text, position, model
+  generation and embedding fingerprint equal what it would write, and sends
+  only the others. That is the same abstraction: the model's write of an
+  unchanged projection is a write of equal content, so it adds no transition
+  and no interleaving, and invalidation, flush and certification order are
+  unchanged. It reads neither the stored vector nor the stored tokens of a
+  document it leaves; `document_hit` still checks both whenever search returns
+  one, and a full replay rewrites them. A chat's title, times and enrichment
+  are read from silver when results are built and are no longer stored on
+  documents, so they are outside this comparison; a document written before
+  that is rewritten once. `qdrant_chat_window_*` cover leaving, the one-time
+  rewrite and changed text.
   The materializer prefetches one bounded group of search inputs/cache evidence
   while the preceding group embeds and writes. Prefetch is read-only; mutations
   still have one ordered writer. `tokio::join!` waits for both branches even when

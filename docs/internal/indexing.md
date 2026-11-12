@@ -166,6 +166,15 @@ boundaries. Local fingerprints cover search dependencies, so incremental
 refresh can reuse unchanged chat projections after edits only to excluded
 canonical context. Explicit full rebuilds still rewrite search documents.
 
+Within a changed chat, a refresh compares each message's stored search
+document with the one it would write and sends only those that differ, so a
+long chat gains a message without its other documents being embedded or sent
+again. A chat's title, created and updated times and enrichment are not stored
+on its messages' documents: search reads them from the chat in silver when it
+builds results (`storage::chat_facts`), locally and on the shared server.
+Documents written by earlier builds still carry copies, which are ignored and
+dropped the next time their chat changes.
+
 The temporary snapshot uses length-prefixed Protobuf records, with bounded
 per-chat frames and no repeated chat IDs. Materialization reads reusable vectors
 in groups of up to 256 rows

@@ -94,6 +94,136 @@ struct CachedUnit {
     generation: Option<String>,
 }
 
+/// What a message's stored document must say for a refresh to leave it alone.
+pub(crate) struct Expected<'a> {
+    pub(crate) message: &'a SearchMessage,
+    /// The prepared dense input, when the recipe embeds this message.
+    pub(crate) dense: Option<&'a str>,
+}
+
+/// The part of a stored document a refresh compares. Every field is optional
+/// so a document missing one simply differs and is written again.
+#[derive(Deserialize)]
+struct StoredDocument {
+    node_id: Option<String>,
+    provider: Option<crate::provider::Provider>,
+    role: Option<crate::role::Role>,
+    chat_id: Option<String>,
+    project: Option<String>,
+    repository: Option<String>,
+    created_at: Option<i64>,
+    unit: Option<StoredUnit>,
+    embedding_fingerprint: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StoredUnit {
+    anchor: Option<String>,
+    text: Option<String>,
+    sequence: Option<i64>,
+    generation: Option<String>,
+    title: Option<String>,
+    enrichment: Option<serde::de::IgnoredAny>,
+    chat_created_at: Option<i64>,
+    chat_updated_at: Option<i64>,
+}
+
+/// Documents compared per request; only their text is sizeable.
+const COMPARE_ROWS: usize = 1024;
+
+impl Store {
+    /// Which of a chat's messages already have exactly the document a refresh
+    /// would write. Those are left alone: a long chat gains a message without
+    /// its other documents being sent again. The dense vector itself is not
+    /// read; its fingerprint ties it to the same input and model, and search
+    /// still checks every vector it returns.
+    pub(crate) async fn unchanged_documents(
+        &self,
+        scope: &Scope,
+        chat: &ChatRecord,
+        expected: &[Expected<'_>],
+    ) -> Result<Vec<bool>, AppError> {
+        let mut unchanged = Vec::with_capacity(expected.len());
+        for batch in expected.chunks(COMPARE_ROWS) {
+            let ids = batch
+                .iter()
+                .map(|row| document_id(&scope.node_id, &row.message.id))
+                .collect::<Vec<_>>();
+            let mut stored = self
+                .api
+                .retrieve_fields::<StoredDocument>(
+                    &collection(&scope.group_id, false),
+                    &ids,
+                    &[
+                        "node_id",
+                        "provider",
+                        "role",
+                        "chat_id",
+                        "project",
+                        "repository",
+                        "created_at",
+                        "unit.anchor",
+                        "unit.text",
+                        "unit.sequence",
+                        "unit.generation",
+                        "unit.title",
+                        "unit.enrichment",
+                        "unit.chat_created_at",
+                        "unit.chat_updated_at",
+                        "embedding_fingerprint",
+                    ],
+                )
+                .await?
+                .into_iter()
+                .map(|point| (point.id, point.payload))
+                .collect::<BTreeMap<_, _>>();
+            for (row, id) in batch.iter().zip(ids) {
+                unchanged.push(
+                    stored
+                        .remove(&id)
+                        .is_some_and(|document| document.is(scope, chat, row)),
+                );
+            }
+        }
+        Ok(unchanged)
+    }
+}
+
+impl StoredDocument {
+    fn is(&self, scope: &Scope, chat: &ChatRecord, expected: &Expected<'_>) -> bool {
+        let message = expected.message;
+        let Some(unit) = &self.unit else {
+            return false;
+        };
+        let dense = expected.dense.map(|text| {
+            crate::views::documents::EmbeddingInput {
+                provider: chat.provider,
+                anchor: &message.id,
+                text,
+            }
+            .fingerprint(&scope.generation, scope.dimensions)
+        });
+        self.node_id.as_deref() == Some(scope.node_id.as_str())
+            && self.provider == Some(chat.provider)
+            && self.role.as_ref() == Some(&message.role)
+            && self.chat_id.as_deref() == Some(chat.id.as_str())
+            && self.project == chat.project
+            && self.repository == chat.repository
+            && self.created_at == message.created_at
+            && unit.anchor.as_deref() == Some(message.id.as_str())
+            && unit.text.as_deref() == Some(message.projection.as_str())
+            && unit.sequence == Some(message.ordinal)
+            && unit.generation.as_deref() == dense.as_ref().map(|_| scope.generation.as_str())
+            && self.embedding_fingerprint == dense
+            // A document from before chat facts moved to silver is rewritten
+            // once, without them.
+            && unit.title.is_none()
+            && unit.enrichment.is_none()
+            && unit.chat_created_at.is_none()
+            && unit.chat_updated_at.is_none()
+    }
+}
+
 impl Store {
     /// Read bounded reusable dense evidence. An uncertified point may supply a
     /// vector, but never metadata or certification: the caller writes fresh
@@ -415,11 +545,11 @@ impl Documents {
                         anchor: message.id,
                         text: message.projection.clone(),
                         content: message.projection,
-                        title: chat.title.clone(),
-                        enrichment: chat.enrichment.clone(),
                         sequence: message.ordinal,
-                        chat_created_at: chat.created_at,
-                        chat_updated_at: chat.updated_at,
+                        title: None,
+                        enrichment: None,
+                        chat_created_at: None,
+                        chat_updated_at: None,
                         generation: message.generation,
                     },
                     vector: message.vector,
