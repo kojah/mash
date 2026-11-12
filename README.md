@@ -162,27 +162,13 @@ best effort. Local history and exports can contain sensitive text;
 treat backups like the original chats. Mash never modifies the agent’s source
 history. [Privacy and redaction →](docs/privacy.md)
 
-## Configuration
+## Documentation
 
-`mash init` writes a TOML configuration. Use [the configuration guide](docs/configuration.md)
-to choose history locations and search defaults.
-To search across machines, set up an optional [shared index](docs/shared-index.md).
+The guides live at **[getmash.io](https://getmash.io)**: search and filters,
+agent integrations, the dashboard, sharing across machines, configuration,
+troubleshooting, and the CLI and MCP references.
 
 Upgrading an existing installation? Read [the upgrade guide](docs/upgrades.md)
-before replacing an existing installation.
+before replacing it.
 
-## Learn more
-
-| I want to… | Guide |
-| --- | --- |
-| Narrow a search by project, provider, or date | [Search and filters](docs/search.md) |
-| Connect or troubleshoot an agent | [Agent integrations](docs/agents.md) |
-| Browse or save a transcript | [Dashboard](docs/dashboard.md) |
-| Find missing or stale history | [Troubleshooting](docs/troubleshooting.md) |
-| Search across my machines | [Shared index](docs/shared-index.md) |
-| Back up, restore, or upgrade | [Upgrades and backups](docs/upgrades.md) |
-| See all commands | [CLI reference](docs/cli.md) |
-| Configure an MCP client | [MCP reference](docs/mcp.md) |
-| Understand indexing and models | [Indexing](docs/indexing.md) |
-
-[Documentation website](https://getmash.io) · [All guides](docs/README.md) · [License](LICENSE)
+[License](LICENSE)
