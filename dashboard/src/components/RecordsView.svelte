@@ -111,7 +111,7 @@ const dirty = $derived(
 );
 </script>
 
-<div><h1 class="h1">Memory</h1><p class="meta">Decisions, preferences, facts and open questions, with the conversations behind them.</p></div>
+<div><h1 class="h1">Memory</h1><p class="meta">Decisions, preferences and facts, with the conversations behind them.</p></div>
 <nav class="chips" aria-label="Memory kind">
   <a class="chip big-c" class:on={!kind} href={kindHref("")} aria-current={!kind ? "page" : undefined}>all</a>
   {#each kinds as value (value)}

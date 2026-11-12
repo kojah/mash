@@ -1,6 +1,6 @@
 # Record what you worked out
 
-Native records preserve decisions, preferences, facts and open questions with
+Native records preserve decisions, preferences and facts with
 citations to your indexed chats. Ask your agent to inspect the source discussion
 before recording a conclusion. Records are interpretations; a matching quote
 does not prove that an interpretation is correct.
@@ -267,7 +267,6 @@ with verified sources before relying on them again.
 | `decision` | `proposed`, `accepted`, `superseded`, `withdrawn` | optional alternatives and consequences |
 | `preference` | `active`, `superseded`, `withdrawn` | optional conditions |
 | `fact` | `current`, `superseded`, `retracted` | required `reported_by`, optional `valid_until` |
-| `open_question` | `open`, `resolved`, `dropped` | answer for resolved questions |
 
 A current fact is an attributed claim, not independent verification. Optional
 `effective_at` and fact `valid_until` use Unix milliseconds. Unknown dates should
@@ -279,7 +278,7 @@ an exact `identity`, `local_project` with an absolute `path`, or `chat` with an
 ID. Repository identity and project path must match the cited chat metadata;
 matching project basenames are not enough.
 
-## Correct, replace or resolve
+## Correct or replace
 
 Edits provide `expected: {"id": "RECORD_ID", "revision": 1}`. If another edit
 has changed that revision, reread the record before trying again.
@@ -295,22 +294,7 @@ Reading or confirming a candidate does not establish it.
   Returning to an earlier choice creates another record, preserving the sequence.
 - `confirm` adds new supporting source messages to an established current record.
   Reusing the same evidence or retrying a request does not increase confirmations.
-- `resolve` supplies an answer and evidence for an open question. A later revision
-  can reopen it by setting its state to `open` and removing the answer.
-  Optionally provide `resolved_by: {"id": "ANSWER_RECORD_ID", "revision": 1}`
-  to link the decision, preference or fact that answered it. That record must
-  belong to the same owner and scope, be established and current, and have
-  matching evidence. Both revisions are checked together. The link remains as
-  history if the question reopens or the answer later changes; inspect their
-  current states before treating the question as settled.
 - `forget` removes the entire record, including its prior revisions and quotes.
-
-Resolved and dropped questions are inactive, so default recall and lists omit
-them. Their answers and history remain available through `get_record`; use
-`recall_records` with `include_review: true` or `list_records` with
-`include_inactive: true` to find them. If an answer should remain in current
-recall, save the resulting fact or decision separately and link it with
-`resolved_by` when resolving the question.
 
 Ordinary source updates retain records but mark changed evidence stale.
 **Forgetting a cited chat also removes every dependent record**, including records

@@ -171,12 +171,12 @@ fn prompt(task: &capture::Task, since: Option<i64>) -> Result<String, AppError> 
          BEFORE drafting anything, call list_records with chat set to this chat_id and \
          include_inactive=true, WITHOUT scope filtering, and follow every page. Inspect existing \
          records citing this chat, including personal records and other record kinds. Rewording, \
-         relabeling an existing question as a proposal, adding rationale, or moving an existing \
+         adding rationale, or moving an existing \
          personal fact into repository scope is NOT new memory. If the retained quotes support \
          knowledge already covered there, leave it unchanged and omit it entirely. Only genuinely \
          new outcomes or changed conclusions justify writes. A user's question is not an endorsed \
-         decision. Never create a parallel proposed-decision record for an existing open question. \
-         Find durable decisions, preferences, attributed facts and open questions. Inspect \
+         decision. \
+         Find durable decisions, preferences and attributed facts. Inspect \
          find_record_matches first; omit equivalent existing memory. Do not add confirmations \
          just for rereading. Use exact user quotes; decisions/preferences require explicit user \
          endorsement. Keep uncertain interpretations as candidates. Save reviewed outcomes through \

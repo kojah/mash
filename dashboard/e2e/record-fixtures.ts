@@ -10,11 +10,6 @@ export function recordFixture(id = "fact-1", kind: Kind = "fact") {
     },
     preference: { kind: "preference", state: "active", conditions: ["Incident reports"] },
     fact: { kind: "fact", state: "current", reported_by: "Fixture user", valid_until: null },
-    open_question: {
-      kind: "open_question",
-      state: "resolved",
-      answer: "The platform team owns the review.",
-    },
   }[kind];
   return {
     id,

@@ -56,6 +56,67 @@ fn extraction_migration_preserves_existing_checkpoint_and_history() {
 }
 
 #[test]
+fn retiring_open_questions_removes_them_and_refuses_new_ones() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let connection = baseline(&path);
+    for script in [
+        include_str!("../records.sql"),
+        include_str!("../record_provenance.sql"),
+        include_str!("../record_extractions.sql"),
+    ] {
+        connection.execute_batch(script).unwrap();
+    }
+    connection
+        .execute_batch(
+            "PRAGMA foreign_keys=ON; PRAGMA user_version=65;
+             INSERT INTO records(id,owner,kind,scope,revision) VALUES
+               ('kept','me','decision','{\"kind\":\"personal\"}',1),
+               ('asked','me','open_question','{\"kind\":\"personal\"}',1);
+             INSERT INTO record_revisions(record_id,revision,body,recorded_at) VALUES
+               ('kept',1,'{}',1),('asked',1,'{}',1);
+             INSERT INTO record_links(source_id,target_id,relation) VALUES('kept','asked','resolves');",
+        )
+        .unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(user_version(&path), SCHEMA_VERSION);
+    let count = |sql: &str| {
+        storage
+            .connection
+            .query_row(sql, [], |row| row.get::<_, i64>(0))
+            .unwrap()
+    };
+    // The question goes with its revisions and its link; everything else stays.
+    assert_eq!(count("SELECT count(*) FROM records"), 1);
+    assert_eq!(count("SELECT count(*) FROM records WHERE id='kept'"), 1);
+    assert_eq!(count("SELECT count(*) FROM record_revisions"), 1);
+    assert_eq!(count("SELECT count(*) FROM record_links"), 0);
+    assert_eq!(count("SELECT count(*) FROM messages WHERE id='message'"), 1);
+    for refused in [
+        "INSERT INTO records(id,owner,kind,scope,revision) VALUES('new','me','open_question','{}',1)",
+        "UPDATE records SET kind='open_question' WHERE id='kept'",
+        "INSERT INTO record_links(source_id,target_id,relation) VALUES('kept','kept2','resolves')",
+    ] {
+        assert!(
+            storage.connection.execute(refused, []).is_err(),
+            "{refused}"
+        );
+    }
+    // A database created at this release refuses them the same way.
+    let fresh = Storage::open(&directory.path().join("fresh.sqlite3")).unwrap();
+    assert!(
+        fresh
+            .connection
+            .execute(
+                "INSERT INTO records(id,owner,kind,scope,revision) VALUES('new','me','open_question','{}',1)",
+                [],
+            )
+            .is_err()
+    );
+}
+
+#[test]
 fn newer_schema_is_rejected_without_rewriting_version() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");

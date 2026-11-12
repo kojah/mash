@@ -48,7 +48,7 @@ fn native_records_filters_precede_pagination_and_find_historical_chat_evidence()
     actual.sort();
     assert_eq!(actual, expected_ids);
     input.offset = 0;
-    input.state = Some(records::Lifecycle::Resolved);
+    input.state = Some(records::Lifecycle::Retracted);
     assert!(storage.records(&input).unwrap().records.is_empty());
 
     let mut fact = body(Details::Fact {

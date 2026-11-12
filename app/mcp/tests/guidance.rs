@@ -90,7 +90,7 @@ fn assert_record_help_examples(records: &serde_json::Value) {
     for tool in ["record", "list_records", "get_record", "recall_records"] {
         assert!(examples.iter().any(|item| item["tool"] == tool));
     }
-    for action in ["create", "revise", "resolve", "forget"] {
+    for action in ["create", "revise", "forget"] {
         assert!(examples.iter().any(
             |item| item["tool"] == "record" && item["arguments"]["change"]["action"] == action
         ));

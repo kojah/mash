@@ -33,7 +33,6 @@ pub(crate) enum Kind {
     Decision,
     Preference,
     Fact,
-    OpenQuestion,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
@@ -43,9 +42,6 @@ pub(crate) enum Lifecycle {
     Accepted,
     Active,
     Current,
-    Open,
-    Resolved,
-    Dropped,
     Superseded,
     Withdrawn,
     Retracted,
@@ -93,13 +89,6 @@ pub(crate) enum FactState {
     Superseded,
     Retracted,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum QuestionState {
-    Open,
-    Resolved,
-    Dropped,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -124,10 +113,6 @@ pub(crate) enum Details {
         reported_by: String,
         valid_until: Option<i64>,
     },
-    OpenQuestion {
-        state: QuestionState,
-        answer: Option<String>,
-    },
 }
 
 impl Details {
@@ -136,7 +121,6 @@ impl Details {
             Self::Decision { .. } => "decision",
             Self::Preference { .. } => "preference",
             Self::Fact { .. } => "fact",
-            Self::OpenQuestion { .. } => "open_question",
         }
     }
 
@@ -152,9 +136,6 @@ impl Details {
             } | Self::Fact {
                 state: FactState::Current,
                 ..
-            } | Self::OpenQuestion {
-                state: QuestionState::Open,
-                ..
             }
         )
     }
@@ -167,9 +148,6 @@ impl Details {
             Self::Decision { state, .. } => *state = DecisionState::Superseded,
             Self::Preference { state, .. } => *state = PreferenceState::Superseded,
             Self::Fact { state, .. } => *state = FactState::Superseded,
-            Self::OpenQuestion { .. } => {
-                return Err(AppError::usage("resolve or drop an open question"));
-            }
         }
         Ok(())
     }
@@ -242,18 +220,6 @@ impl Body {
                 .is_some_and(|(end, start)| end < start)
             {
                 return Err(AppError::usage("fact validity ends before it starts"));
-            }
-        }
-        if let Details::OpenQuestion { state, answer } = &self.details {
-            if *state == QuestionState::Resolved
-                && answer.as_ref().is_none_or(|text| text.trim().is_empty())
-            {
-                return Err(AppError::usage("resolved questions require an answer"));
-            }
-            if *state == QuestionState::Open && answer.is_some() {
-                return Err(AppError::usage(
-                    "open questions cannot carry a resolved answer",
-                ));
             }
         }
         let encoded = encode(self)?;
@@ -367,13 +333,6 @@ pub(crate) enum Change {
         expected: Expected,
         evidence: Vec<Citation>,
     },
-    Resolve {
-        expected: Expected,
-        answer: String,
-        /// Optional current record that answers the question, checked atomically.
-        resolved_by: Option<Expected>,
-        evidence: Vec<Citation>,
-    },
     Forget {
         expected: Expected,
     },
@@ -446,8 +405,7 @@ impl Change {
             Self::Create { evidence, .. }
             | Self::Revise { evidence, .. }
             | Self::Supersede { evidence, .. }
-            | Self::Confirm { evidence, .. }
-            | Self::Resolve { evidence, .. } => Some(evidence),
+            | Self::Confirm { evidence, .. } => Some(evidence),
             Self::Link { .. } | Self::Forget { .. } => None,
         }
     }
@@ -508,11 +466,6 @@ impl Body {
                 }
             }
             Details::Fact { reported_by, .. } => *reported_by = policy.text(reported_by),
-            Details::OpenQuestion { answer, .. } => {
-                if let Some(text) = answer {
-                    *text = policy.text(text);
-                }
-            }
         }
     }
 }
@@ -527,7 +480,6 @@ pub(crate) struct Link {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Relation {
     Supersedes,
-    Resolves,
     Supports,
     Contradicts,
 }

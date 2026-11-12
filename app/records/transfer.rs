@@ -78,7 +78,6 @@ pub(crate) enum Kind {
     Decision,
     Preference,
     Fact,
-    OpenQuestion,
 }
 
 impl Kind {
@@ -87,7 +86,6 @@ impl Kind {
             Self::Decision => "decision",
             Self::Preference => "preference",
             Self::Fact => "fact",
-            Self::OpenQuestion => "open_question",
         }
     }
 }

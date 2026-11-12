@@ -14,7 +14,7 @@ then search. Multi-machine sharing is an optional extension to that setup.
 | Install Mash and connect my histories | [Installation](installation.md) |
 | Find a chat or read the messages behind a result | [Find a conversation](search.md) |
 | Ask Claude Code or Codex about past work | [Use Mash with your agent](agents.md) |
-| Save decisions, preferences, facts and open questions | [Conversation records](records.md) |
+| Save decisions, preferences and facts | [Conversation records](records.md) |
 | Browse chats and records or download a transcript | [Dashboard](dashboard.md) |
 | Check and manage services across machines | [Services](services.md) |
 | Refresh new chats or keep watching for changes | [Keep history up to date](synchronization.md) |

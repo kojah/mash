@@ -47,8 +47,8 @@ FAMILIES = {
         ["You have not used Mash's record tools before."],
     ),
     "record-correction": (
-        "Mash is installed. Using its MCP interface and your available chat history, save a fact and an open question, correct the fact, resolve the question, and inspect what changed. Finally remove the fact and check it no longer appears in recall.",
-        "You can inspect the history and resolution and verify removal, or reach a bounded impasse after 20 minutes.",
+        "Mash is installed. Using its MCP interface and your available chat history, save a fact and a preference, correct the fact, and inspect what changed. Finally remove the fact and check it no longer appears in recall.",
+        "You can inspect the history and verify removal, or reach a bounded impasse after 20 minutes.",
         ["You want changes to remain understandable to a future agent."],
     ),
     "install-and-connect": (

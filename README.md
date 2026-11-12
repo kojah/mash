@@ -16,7 +16,7 @@ terminal, or browse conversations in the dashboard.
 ## Features
 
 - **Search across Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, and Antigravity** from one place.
-- **An agent memory layer** for recording decisions, facts, preferences, and open questions, with links back to the chats they came from. [Conversation records →](docs/records.md)
+- **An agent memory layer** for recording decisions, facts and preferences, with links back to the chats they came from. [Conversation records →](docs/records.md)
 - **MCP integration, plugins, hooks, and skills** so agents can look up past conversations as they work. [Agent integrations →](docs/agents.md)
 - **Export and import indexed history**, including chats from different providers, for backups or moving between machines. [Backups →](docs/upgrades.md)
 - **BM25 keyword search + vector search with Qdrant**, so you can search for an exact error or describe what you remember. [Search →](docs/search.md)

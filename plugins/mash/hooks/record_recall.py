@@ -15,7 +15,7 @@ from typing import Any
 
 PROTOCOL = "2025-06-18"
 MAX_LINE = 65536
-KINDS = {"decision", "preference", "fact", "open_question"}
+KINDS = {"decision", "preference", "fact"}
 REVIEWS = {"current": "established", "candidate": "candidate"}
 
 

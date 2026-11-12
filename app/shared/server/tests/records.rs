@@ -177,7 +177,7 @@ async fn native_records_shared_http_applies_dashboard_filters() {
     seed(&service, FIRST);
     for (selector, value) in [
         ("kind", "decision"),
-        ("state", "resolved"),
+        ("state", "retracted"),
         ("review", "candidate"),
         ("chat", "other-chat"),
     ] {

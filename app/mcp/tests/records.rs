@@ -175,21 +175,14 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
     assert_eq!(packet["records"][0]["id"], receipt["record_id"]);
     assert_eq!(packet["records"][0]["status"], "current");
     assert!(serde_json::to_vec(&packet).unwrap().len() <= 1024);
-    let question = call("record", json!({"operation_id":"sdk-question","change":{"action":"create","scope":{"kind":"chat","id":"decision-thread"},"body":{"statement":"Which engine?","review":"established","recorded_by":"test agent","details":{"kind":"open_question","state":"open"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}})).await.unwrap();
-    assert_ne!(question.is_error, Some(true), "{question:?}");
-    let question = question.structured_content.unwrap();
-    let resolution = call("record", json!({"operation_id":"sdk-resolve","change":{"action":"resolve","expected":{"id":question["record_id"],"revision":1},"answer":"Use Qdrant","resolved_by":{"id":receipt["record_id"],"revision":1},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}})).await.unwrap();
-    assert_ne!(resolution.is_error, Some(true), "{resolution:?}");
-    let linked = call("get_record", json!({"id":question["record_id"]}))
-        .await
-        .unwrap()
-        .structured_content
-        .unwrap();
-    assert_eq!(linked["links"][0]["relation"], "resolves");
-    assert_eq!(linked["links"][0]["source_id"], receipt["record_id"]);
+    // Open questions are no longer a kind of record: the tool refuses one.
+    let question = call("record", json!({"operation_id":"sdk-question","change":{"action":"create","scope":{"kind":"chat","id":"decision-thread"},"body":{"statement":"Which engine?","review":"established","recorded_by":"test agent","details":{"kind":"open_question","state":"open"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}})).await;
+    assert!(question.map_or(true, |result| result.is_error == Some(true)));
+    let revised = call("record", json!({"operation_id":"sdk-revise","change":{"action":"revise","expected":{"id":receipt["record_id"],"revision":1},"body":{"statement":"Use Qdrant for search","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}})).await.unwrap();
+    assert_ne!(revised.is_error, Some(true), "{revised:?}");
     let page = call(
         "get_record",
-        json!({"id":question["record_id"],"history":true,"limit":1}),
+        json!({"id":receipt["record_id"],"history":true,"limit":1}),
     )
     .await
     .unwrap()
@@ -197,11 +190,11 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
     .unwrap();
     assert_eq!(page["revisions"][0]["revision"], 2);
     assert_eq!(page["next_before_revision"], 2);
-    let page = call("get_record", json!({"id":question["record_id"],"history":true,"limit":1,"before_revision":page["next_before_revision"]})).await.unwrap().structured_content.unwrap();
+    let page = call("get_record", json!({"id":receipt["record_id"],"history":true,"limit":1,"before_revision":page["next_before_revision"]})).await.unwrap().structured_content.unwrap();
     assert_eq!(page["revisions"][0]["revision"], 1);
     assert_eq!(page["revisions"][0]["evidence_current"], true);
     assert!(page["next_before_revision"].is_null());
-    let forgotten = call("record",json!({"operation_id":"sdk-forget","change":{"action":"forget","expected":{"id":receipt["record_id"],"revision":receipt["revision"]}}})).await.unwrap();
+    let forgotten = call("record",json!({"operation_id":"sdk-forget","change":{"action":"forget","expected":{"id":receipt["record_id"],"revision":2}}})).await.unwrap();
     assert_ne!(forgotten.is_error, Some(true), "{forgotten:?}");
     assert_eq!(
         call("get_record", json!({"id":receipt["record_id"]}))

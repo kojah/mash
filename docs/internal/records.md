@@ -37,12 +37,11 @@ kind's lifecycle:
 | Decision | proposed, accepted, superseded, withdrawn | alternatives and consequences |
 | Preference | active, superseded, withdrawn | conditions and exceptions |
 | Fact | current, superseded, retracted | reported-by attribution and optional validity interval |
-| Open question | open, resolved, dropped | answer and resolution links |
 
 Only established accepted decisions count as settled choices. Candidate records
 never silently become established through reads, repeated extraction or
 similarity. Current facts are recorded claims, not independent verification.
-An open question may reopen with a new revision. A decision to implement work
+A decision to implement work
 does not prove implementation; implementation evidence is recorded separately.
 
 Corrections create revisions of the same record. Changed choices create new

@@ -1,5 +1,4 @@
 import BadgeCheck from "@lucide/svelte/icons/badge-check";
-import CircleHelp from "@lucide/svelte/icons/circle-help";
 import Folder from "@lucide/svelte/icons/folder";
 import FolderGit2 from "@lucide/svelte/icons/folder-git-2";
 import Gavel from "@lucide/svelte/icons/gavel";
@@ -12,7 +11,6 @@ export const kindIcons = {
   decision: Gavel,
   preference: SlidersHorizontal,
   fact: BadgeCheck,
-  open_question: CircleHelp,
 } as const;
 
 /** The icon for what a memory applies to. */

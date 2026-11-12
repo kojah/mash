@@ -7,7 +7,7 @@ use crate::database_error::Operation;
 /// First supported migration baseline. Earlier releases require export/import.
 const BASELINE: i64 = 62;
 pub(crate) const MIN_SCHEMA_VERSION: i64 = BASELINE;
-pub(crate) const SCHEMA_VERSION: i64 = 65;
+pub(crate) const SCHEMA_VERSION: i64 = 66;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -16,6 +16,7 @@ pub(crate) const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
 const RECORDS: &str = include_str!("records.sql");
 const RECORD_PROVENANCE: &str = include_str!("record_provenance.sql");
 const RECORD_EXTRACTIONS: &str = include_str!("record_extractions.sql");
+const RECORD_KINDS: &str = include_str!("record_kinds.sql");
 /// Writers run in WAL mode with NORMAL sync: commits are atomic and survive a
 /// process crash without an fsync each; only an OS crash or power loss can
 /// drop the latest commits, and the database stays consistent. Per connection.
@@ -80,6 +81,9 @@ pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppEr
             .execute_batch(RECORD_EXTRACTIONS)
             .map_err(AppError::database)?;
         transaction
+            .execute_batch(RECORD_KINDS)
+            .map_err(AppError::database)?;
+        transaction
             .pragma_update(None, "user_version", SCHEMA_VERSION)
             .map_err(AppError::database)?;
         transaction.commit().map_err(AppError::database)?;
@@ -92,6 +96,7 @@ pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppEr
         steps.push(rusqlite_migration::M::up(RECORDS));
         steps.push(rusqlite_migration::M::up(RECORD_PROVENANCE));
         steps.push(rusqlite_migration::M::up(RECORD_EXTRACTIONS));
+        steps.push(rusqlite_migration::M::up(RECORD_KINDS));
         connection.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let result = rusqlite_migration::Migrations::new(steps).to_latest(connection);
         connection.set_transaction_behavior(rusqlite::TransactionBehavior::Deferred);

@@ -5,7 +5,7 @@ and full search rebuilds. Use the same migration definitions for local silver
 and each node's shared silver database. Export/import remains for portability,
 recovery and legacy transitions that do not have a tested migration.
 
-`app/storage/schema.rs` supports upgrades from versions 62 through 64 to 65.
+`app/storage/schema.rs` supports upgrades from versions 62 through 65 to 66.
 These are the supported older starting versions. The same initializer creates
 and upgrades local and shared silver. Read-only commands do not migrate.
 
@@ -23,8 +23,12 @@ against independently changing `user_version`. The runner reserves the first 62
 entries with empty steps and rejects all versions 1 through 61 before running.
 Step 63 creates the record tables. Step 64 adds the retained evidence purpose
 and source role; older evidence keeps these fields unknown rather than inferring
-historical intent. Step 65 adds owner-local extraction batch receipts. Fresh
-creation directly creates the same schema and sets version 65 in its creation
+historical intent. Step 65 adds owner-local extraction batch receipts. Step 66
+retires open questions: it deletes records of that kind and the links that
+resolved them, and adds triggers that refuse the retired kind and relation,
+because SQLite cannot change the checks on those columns in place. It is the
+first step that removes rows. Fresh
+creation directly creates the same schema and sets version 66 in its creation
 transaction. Do not reset a
 live database to zero, silently renumber it, or let placeholder migrations make
 unsupported old schemas appear valid. Fresh creation and upgraded databases must
@@ -100,7 +104,7 @@ necessary for every SQLite change.
 
 Before changing an active rollout, inspect installed binaries, retained backups,
 service state and recovery markers. Do not replace a partially executed recovery
-plan with an untested migration. Versions 62 through 64 upgrade in place to 65;
+plan with an untested migration. Versions 62 through 65 upgrade in place to 66;
 the deployment checks accept this interval without retiring shared history.
 Both binaries report `silver_schema_min` and `silver_schema` for installers.
 Unsupported older schemas still require a separately verified export/import or

@@ -49,7 +49,7 @@ returned attachment lookups. Text is credential-redacted; binary files are not.
 
 Memory is agent-assisted. Save lasting outcomes as they happen: a preference
 the person states, a decision they make or confirm, a correction to how you
-work, a settled non-obvious fact or an open question. Call `record` with the
+work, or a settled non-obvious fact. Call `record` with the
 scope and `session_id` from the Mash session-start note and the person's exact
 words as the quote. The quote is checked against your session's transcript, so
 saving needs no index. Check `find_record_matches` for duplicates first. Review

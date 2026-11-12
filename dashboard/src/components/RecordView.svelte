@@ -89,8 +89,6 @@ function date(value: number | null): string {
             {#if revision.details.conditions.length}<p class="meta" style:margin-top="6px">conditions</p><ul class="mdl">{#each revision.details.conditions as item, index (index)}<li style:overflow-wrap="anywhere">{item}</li>{/each}</ul>{/if}
           {:else if revision.details.kind === "fact"}
             <p class="meta" style:margin-top="6px">reported by {revision.details.reportedBy}{revision.details.validUntil === null ? "" : ` / valid until ${date(revision.details.validUntil)}`}</p>
-          {:else if revision.details.answer}
-            <p class="meta" style:margin-top="6px">answer</p><p style:white-space="pre-wrap" style:overflow-wrap="anywhere">{revision.details.answer}</p>
           {/if}
           {#if revision.revision !== record.currentRevision}
             <p class="meta" style:margin="8px 0 6px">evidence{revision.evidenceCurrent ? "" : " (stale or missing)"}</p>

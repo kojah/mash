@@ -86,7 +86,7 @@ fn expected(receipt: &Receipt) -> Expected {
 }
 
 #[test]
-fn native_records_all_four_kinds_have_typed_states_and_short_approval_evidence() {
+fn native_records_all_three_kinds_have_typed_states_and_short_approval_evidence() {
     let (_directory, mut storage) = database();
     let variants = [
         decision(),
@@ -98,10 +98,6 @@ fn native_records_all_four_kinds_have_typed_states_and_short_approval_evidence()
             state: FactState::Current,
             reported_by: "user".into(),
             valid_until: None,
-        }),
-        body(Details::OpenQuestion {
-            state: QuestionState::Open,
-            answer: None,
         }),
     ];
     for (index, body) in variants.into_iter().enumerate() {
@@ -124,7 +120,7 @@ fn native_records_all_four_kinds_have_typed_states_and_short_approval_evidence()
         );
         assert_eq!(record.revisions[0].evidence[1].quote, "yes");
     }
-    assert_eq!(storage.records(&List::default()).unwrap().records.len(), 4);
+    assert_eq!(storage.records(&List::default()).unwrap().records.len(), 3);
     assert!(
         serde_json::from_str::<Details>(
             r#"{"kind":"fact","state":"accepted","reported_by":"user","valid_until":null}"#
@@ -445,239 +441,6 @@ fn native_records_do_not_change_chat_projection_certificate() {
 }
 
 #[test]
-fn native_records_resolution_links_survive_retry_reopening_and_archive_remapping() {
-    let (directory, mut storage) = database();
-    storage
-        .connection
-        .execute("UPDATE chats SET source_key=id", [])
-        .unwrap();
-    let answer = storage
-        .mutate_record(&create_request("answer", decision()))
-        .unwrap();
-    let question_body = body(Details::OpenQuestion {
-        state: QuestionState::Open,
-        answer: None,
-    });
-    let question = storage
-        .mutate_record(&create_request("question", question_body.clone()))
-        .unwrap();
-    storage
-        .connection
-        .execute("DELETE FROM record_changes", [])
-        .unwrap();
-    let request = Mutation {
-        operation_id: "resolve-with-link".into(),
-        change: Change::Resolve {
-            expected: expected(&question),
-            answer: "Use Qdrant".into(),
-            resolved_by: Some(expected(&answer)),
-            evidence: vec![citation("yes", "yes")],
-        },
-    };
-    let resolved = storage.mutate_record(&request).unwrap();
-    assert_eq!(resolved.related.as_ref().unwrap().id, answer.record_id);
-    assert_eq!(
-        storage.mutate_record(&request).unwrap().revision,
-        resolved.revision
-    );
-    assert_eq!(
-        storage
-            .connection
-            .query_row("SELECT count(*) FROM record_changes", [], |row| row
-                .get::<_, i64>(0))
-            .unwrap(),
-        2
-    );
-    let linked = storage.record(&question.record_id, true).unwrap();
-    assert_eq!(linked.links.len(), 1);
-    assert_eq!(linked.links[0].source_id, answer.record_id);
-    assert_eq!(linked.links[0].target_id, question.record_id);
-    assert!(matches!(
-        linked.links[0].relation,
-        records::Relation::Resolves
-    ));
-    storage
-        .mutate_record(&Mutation {
-            operation_id: "reopen-linked".into(),
-            change: Change::Revise {
-                expected: expected(&resolved),
-                body: question_body,
-                evidence: vec![citation("yes", "yes")],
-            },
-        })
-        .unwrap();
-    let archive = directory.path().join("linked.jsonl");
-    crate::storage::export::write(&directory.path().join("index.sqlite3"), &archive).unwrap();
-    for keep in [true, false] {
-        let path = directory.path().join(if keep {
-            "restore-linked.sqlite3"
-        } else {
-            "copy-linked.sqlite3"
-        });
-        crate::storage::export::restore(&archive, &path, keep).unwrap();
-        let restored = Storage::open(&path).unwrap();
-        let page = restored.records(&List::default()).unwrap();
-        assert_eq!(page.records.len(), 2);
-        let reopened = page
-            .records
-            .iter()
-            .find(|record| {
-                matches!(
-                    record.revisions[0].body.details,
-                    Details::OpenQuestion { .. }
-                )
-            })
-            .unwrap();
-        assert_eq!(reopened.links.len(), 1);
-        let answer_record = restored
-            .record(&reopened.links[0].source_id, false)
-            .unwrap();
-        assert_eq!(answer_record.revisions[0].body.statement, "Use Qdrant");
-        assert_eq!(reopened.id == question.record_id, keep);
-        assert_eq!(answer_record.id == answer.record_id, keep);
-    }
-}
-
-#[test]
-fn native_records_resolution_rejects_stale_revisions_scope_owner_and_evidence() {
-    let (_directory, mut storage) = database();
-    let answer = storage
-        .mutate_record(&create_request("answer", decision()))
-        .unwrap();
-    let question = storage
-        .mutate_record(&create_request(
-            "question",
-            body(Details::OpenQuestion {
-                state: QuestionState::Open,
-                answer: None,
-            }),
-        ))
-        .unwrap();
-    let mut request = Mutation {
-        operation_id: "resolve".into(),
-        change: Change::Resolve {
-            expected: expected(&question),
-            answer: "Use Qdrant".into(),
-            resolved_by: Some(Expected {
-                id: answer.record_id.clone(),
-                revision: 2,
-            }),
-            evidence: vec![citation("yes", "yes")],
-        },
-    };
-    assert!(storage.mutate_record(&request).is_err());
-    if let Change::Resolve { resolved_by, .. } = &mut request.change {
-        *resolved_by = Some(expected(&answer));
-    }
-    for (sql, undo) in [
-        (
-            "UPDATE records SET scope='{\"kind\":\"personal\"}' WHERE kind='decision'",
-            "UPDATE records SET scope='{\"kind\":\"repository\",\"identity\":\"repo\"}' WHERE kind='decision'",
-        ),
-        (
-            "UPDATE records SET owner='foreign' WHERE kind='decision'",
-            "UPDATE records SET owner=(SELECT id FROM record_owner) WHERE kind='decision'",
-        ),
-        (
-            "UPDATE messages SET role='assistant' WHERE id='yes'",
-            "UPDATE messages SET role='user' WHERE id='yes'",
-        ),
-        (
-            "UPDATE record_revisions SET body=json_set(body,'$.review','candidate') WHERE record_id IN (SELECT id FROM records WHERE kind='decision')",
-            "UPDATE record_revisions SET body=json_set(body,'$.review','established') WHERE record_id IN (SELECT id FROM records WHERE kind='decision')",
-        ),
-    ] {
-        storage.connection.execute_batch(sql).unwrap();
-        assert!(storage.mutate_record(&request).is_err(), "{sql}");
-        assert_eq!(
-            storage
-                .record(&question.record_id, true)
-                .unwrap()
-                .current_revision,
-            1
-        );
-        assert!(
-            storage
-                .record(&question.record_id, true)
-                .unwrap()
-                .links
-                .is_empty()
-        );
-        storage.connection.execute_batch(undo).unwrap();
-    }
-    assert!(storage.mutate_record(&request).is_ok());
-}
-
-#[test]
-fn native_records_question_resolution_reopening_owner_and_private_text_guards() {
-    let (_directory, mut storage) = database();
-    let question = body(Details::OpenQuestion {
-        state: QuestionState::Open,
-        answer: None,
-    });
-    let created = storage
-        .mutate_record(&create_request("question", question.clone()))
-        .unwrap();
-    let resolved = storage
-        .mutate_record(&Mutation {
-            operation_id: "resolve".into(),
-            change: Change::Resolve {
-                expected: expected(&created),
-                answer: "Use Qdrant".into(),
-                resolved_by: None,
-                evidence: vec![citation("yes", "yes")],
-            },
-        })
-        .unwrap();
-    assert!(
-        storage
-            .records(&List::default())
-            .unwrap()
-            .records
-            .is_empty()
-    );
-    storage
-        .mutate_record(&Mutation {
-            operation_id: "reopen".into(),
-            change: Change::Revise {
-                expected: expected(&resolved),
-                body: question,
-                evidence: vec![citation("yes", "yes")],
-            },
-        })
-        .unwrap();
-    assert_eq!(storage.records(&List::default()).unwrap().records.len(), 1);
-    let mut private = decision();
-    private.rationale = "<private>canary</private>".into();
-    assert!(
-        storage
-            .mutate_record(&create_request("private", private))
-            .is_err()
-    );
-    let created = storage
-        .mutate_record(&create_request("owned", decision()))
-        .unwrap();
-    storage
-        .connection
-        .execute(
-            "UPDATE records SET owner='other-owner' WHERE id=?1",
-            [&created.record_id],
-        )
-        .unwrap();
-    assert!(
-        storage
-            .mutate_record(&Mutation {
-                operation_id: "foreign".into(),
-                change: Change::Forget {
-                    expected: expected(&created)
-                }
-            })
-            .is_err()
-    );
-    assert!(storage.record(&created.record_id, false).is_ok());
-}
-
-#[test]
 fn native_records_old_approval_with_new_assistant_context_is_not_a_confirmation() {
     let (_directory, mut storage) = database();
     let created = storage
@@ -927,69 +690,6 @@ fn native_records_shared_delta_preserves_history_without_changing_chat_certifica
                 .get::<_, i64>(0))
             .unwrap(),
         0
-    );
-}
-
-#[test]
-fn native_records_shared_resolution_delta_carries_both_ends_and_rejects_invalid_links() {
-    let (_source_dir, mut source) = database();
-    let (_target_dir, target) = database();
-    let answer = source
-        .mutate_record(&create_request("answer", decision()))
-        .unwrap();
-    let question = source
-        .mutate_record(&create_request(
-            "question",
-            body(Details::OpenQuestion {
-                state: QuestionState::Open,
-                answer: None,
-            }),
-        ))
-        .unwrap();
-    apply_shared_rows(&target, shared_rows(&source, None), true).unwrap();
-    let base: i64 = source
-        .connection
-        .query_row("SELECT revision FROM shared_publication", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    let certificate = target.silver_certificate().unwrap();
-    source
-        .mutate_record(&Mutation {
-            operation_id: "link-answer".into(),
-            change: Change::Resolve {
-                expected: expected(&question),
-                answer: "Use Qdrant".into(),
-                resolved_by: Some(expected(&answer)),
-                evidence: vec![citation("yes", "yes")],
-            },
-        })
-        .unwrap();
-    let delta = shared_rows(&source, Some(base));
-    apply_shared_rows(&target, delta.clone(), false).unwrap();
-    assert_eq!(target.silver_certificate().unwrap(), certificate);
-    let linked = target.record(&question.record_id, true).unwrap();
-    assert_eq!(linked.current_revision, 2);
-    assert_eq!(linked.links.len(), 1);
-    assert_eq!(linked.links[0].source_id, answer.record_id);
-    let invalid = delta
-        .into_iter()
-        .map(|row| match row {
-            crate::records::transfer::Row::Link { mut link } => {
-                std::mem::swap(&mut link.source_id, &mut link.target_id);
-                crate::records::transfer::Row::Link { link }
-            }
-            row => row,
-        })
-        .collect();
-    let error = apply_shared_rows(&target, invalid, false).unwrap_err();
-    assert!(
-        error.error.message.contains("invalid resolution link"),
-        "{error:?}"
-    );
-    assert_eq!(
-        target.record(&question.record_id, true).unwrap().links[0].source_id,
-        answer.record_id
     );
 }
 

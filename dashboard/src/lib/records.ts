@@ -1,14 +1,11 @@
 import { read } from "./api";
 
-export const kinds = ["decision", "preference", "fact", "open_question"] as const;
+export const kinds = ["decision", "preference", "fact"] as const;
 export const states = [
   "proposed",
   "accepted",
   "active",
   "current",
-  "open",
-  "resolved",
-  "dropped",
   "superseded",
   "withdrawn",
   "retracted",
@@ -46,8 +43,7 @@ export type Details =
       state: "current" | "superseded" | "retracted";
       reportedBy: string;
       validUntil: number | null;
-    }
-  | { kind: "open_question"; state: "open" | "resolved" | "dropped"; answer: string | null };
+    };
 export interface Revision {
   revision: number;
   statement: string;
@@ -72,7 +68,7 @@ export interface NativeRecord {
   links: readonly {
     sourceId: string;
     targetId: string;
-    relation: "supersedes" | "resolves" | "supports" | "contradicts";
+    relation: "supersedes" | "supports" | "contradicts";
   }[];
   nextBeforeRevision: number | null;
   nextLinkOffset: number | null;
@@ -169,12 +165,6 @@ function details(value: unknown): Details {
         reportedBy: text(row.reported_by),
         validUntil: instant(row.valid_until),
       };
-    case "open_question":
-      return {
-        kind: row.kind,
-        state: member(row.state, ["open", "resolved", "dropped"]),
-        answer: row.answer === null ? null : text(row.answer),
-      };
     default:
       return invalid();
   }
@@ -229,7 +219,7 @@ export function parseRecord(value: unknown): NativeRecord {
       return {
         sourceId: text(link.source_id),
         targetId: text(link.target_id),
-        relation: member(link.relation, ["supersedes", "resolves", "supports", "contradicts"]),
+        relation: member(link.relation, ["supersedes", "supports", "contradicts"]),
       };
     }),
   };

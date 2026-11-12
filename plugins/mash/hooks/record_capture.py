@@ -69,8 +69,8 @@ def context(payload: Any) -> str | None:
         "Mash memory check, an occasional safety net: if earlier in this session "
         "something lasting was settled that you have not saved yet, save it while "
         "you handle this prompt. That means a preference, a decision the person "
-        "made or confirmed, a correction to how you work, an attributed fact or "
-        "an open question. To save, "
+        "made or confirmed, a correction to how you work or an attributed fact. "
+        "To save, "
         + saving
         + ". Inspect find_record_matches first and reuse duplicates; a new wording "
         "is not new knowledge. Establish decisions and preferences only with the "

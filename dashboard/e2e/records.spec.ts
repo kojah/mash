@@ -23,7 +23,6 @@ test("memory categories work from the rail even when chat history is unavailable
     ["decisions", "decision"],
     ["preferences", "preference"],
     ["facts", "fact"],
-    ["open questions", "open_question"],
   ] as const) {
     await followRail(page, label, "memory");
     await expect(page).toHaveURL(new RegExp(`kind=${kind}`));
@@ -57,7 +56,7 @@ test("records filter on submission, expose history and safe citations, and navig
     current_revision: 9,
     revisions: [{ ...revision, revision: 9, body: { ...revision?.body, statement } }],
     next_before_revision: 9,
-    links: [{ source_id: fact.id, target_id: "question-1", relation: "resolves" }],
+    links: [{ source_id: fact.id, target_id: "decision-1", relation: "supports" }],
     next_link_offset: 128,
   };
   await page.route("**/api/**", (route) => {
@@ -80,13 +79,12 @@ test("records filter on submission, expose history and safe citations, and navig
             fact,
             recordFixture("decision-1", "decision"),
             recordFixture("preference-1", "preference"),
-            recordFixture("question-1", "open_question"),
           ];
       return route.fulfill({ json: { records, next_offset: null } });
     }
     if (url.pathname === "/api/record") {
-      if (url.searchParams.get("id") === "question-1")
-        return route.fulfill({ json: recordFixture("question-1", "open_question") });
+      if (url.searchParams.get("id") === "decision-1")
+        return route.fulfill({ json: recordFixture("decision-1", "decision") });
       if (url.searchParams.has("before_revision"))
         return route.fulfill({
           json: {
@@ -110,7 +108,7 @@ test("records filter on submission, expose history and safe citations, and navig
   await page.goto("/");
   await followRail(page, "memory");
   await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible();
-  await expect(records(page)).toHaveCount(4);
+  await expect(records(page)).toHaveCount(3);
   await kindNav(page).getByRole("link", { name: "facts", exact: true }).click();
   await expect(records(page)).toHaveCount(1);
   const apply = page.getByRole("button", { name: "Apply filters" });
@@ -136,7 +134,7 @@ test("records filter on submission, expose history and safe citations, and navig
   await expect(page.getByRole("heading", { name: statement, exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Newest revisions" }).click();
   await expect(page.getByText(/^Revision 9 \(current\)/)).toBeVisible();
-  const related = page.getByRole("link", { name: /this record resolves.*question-1/ });
+  const related = page.getByRole("link", { name: /this record supports.*decision-1/ });
   await expect(related).toBeVisible();
   await page.getByRole("button", { name: "More relationships" }).click();
   // The second page of relationships is empty; the way back stays offered.
@@ -144,7 +142,7 @@ test("records filter on submission, expose history and safe citations, and navig
   await expect(related).toHaveCount(0);
   await page.getByRole("button", { name: "First relationships" }).click();
   await related.click();
-  await expect(page.getByText("The platform team owns the review.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Keep the old port", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "< memory" }).click();
   await expect(kindNav(page).getByRole("link", { name: "facts", exact: true })).toHaveAttribute(
     "aria-current",
