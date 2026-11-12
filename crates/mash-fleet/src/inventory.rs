@@ -126,19 +126,6 @@ fn absolute(path: &Path) -> bool {
             && matches!(bytes[2], b'/' | b'\\'))
 }
 
-impl Machine {
-    /// Whether the fleet can install or remove a watcher on this machine. It
-    /// does so with systemd or launchd through a POSIX shell there, which
-    /// Windows does not offer; a Windows watcher is a scheduled task listed as
-    /// one of the machine's services. Every other operation is a command the
-    /// controller runs, or goes through the machine's own `mash mcp`, so it
-    /// works on any platform.
-    #[must_use]
-    pub fn hosts_fleet_watcher(&self) -> bool {
-        self.history && self.platform != Platform::Windows
-    }
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Transport {
@@ -182,8 +169,7 @@ impl Machine {
         if let Some(watcher) = &self.watcher {
             let (manager, unit, plist, log) = match self.platform {
                 Platform::Linux => (Manager::SystemdUser, "mash-index-watch.service", None, None),
-                // Unreachable: validation refuses a fleet watcher on Windows,
-                // whose watcher is listed as one of the machine's services.
+                // A scheduled task that starts with the machine.
                 Platform::Windows => (Manager::WindowsTask, "mash-index-watch", None, None),
                 Platform::Darwin => (
                     Manager::Launchd,
@@ -301,10 +287,6 @@ impl Inventory {
             return Err("fleet action is not enabled in the controller inventory".into());
         }
         let history = self.machines.iter().filter(|machine| machine.history);
-        let watchable = self
-            .machines
-            .iter()
-            .filter(|machine| machine.hosts_fleet_watcher());
         let eligible: Vec<&str> = match action {
             Action::Status | Action::Preflight | Action::Deploy => self
                 .servers()
@@ -319,7 +301,7 @@ impl Inventory {
                 .map(|(_, service, _)| service.id.as_str())
                 .collect(),
             Action::WatchStart | Action::WatchStop | Action::WatchStatus | Action::WatchLogs => {
-                watchable
+                history
                     .filter(|machine| machine.watcher.is_some())
                     .map(|machine| machine.id.as_str())
                     .collect()
@@ -418,16 +400,19 @@ impl Inventory {
             if let Some(watcher) = &machine.watcher
                 && (!absolute(&watcher.home)
                     || !absolute(&watcher.launcher)
-                    || !machine.hosts_fleet_watcher()
-                    || !watcher
-                        .launcher
-                        .to_string_lossy()
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || b"/_.-".contains(&byte)))
+                    || !machine.history
+                    || !watcher.launcher.to_string_lossy().bytes().all(|byte| {
+                        // A Windows launcher is a drive-letter path.
+                        let separators: &[u8] = if machine.platform == Platform::Windows {
+                            b"\\:/_.-"
+                        } else {
+                            b"/_.-"
+                        };
+                        byte.is_ascii_alphanumeric() || separators.contains(&byte)
+                    }))
             {
                 return Err(
-                    "invalid watcher home or launcher, or a machine the fleet cannot install on"
-                        .into(),
+                    "invalid watcher home or launcher, or a machine that holds no history".into(),
                 );
             }
             let mut services = HashSet::new();
@@ -698,15 +683,33 @@ allow_control = true
             .clear();
         inventory.validate().unwrap();
 
-        // A fleet watcher is installed on the machine, so it is refused.
-        let watcher = inventory.machines[0].watcher.clone().or_else(|| {
-            Some(Watcher {
-                launcher: "/usr/local/bin/mash-watch".into(),
-                home: "/home/me".into(),
-                allow_control: false,
-            })
+        // Its watcher is a scheduled task the fleet installs from a
+        // drive-letter launcher, and the dashboard lists it as a service.
+        inventory.controller.allow_actions.push(Action::WatchStart);
+        inventory.machines.last_mut().unwrap().watcher = Some(Watcher {
+            launcher: r"C:\tools\mash-watch.ps1".into(),
+            home: r"C:\Users\me".into(),
+            allow_control: true,
         });
-        inventory.machines.last_mut().unwrap().watcher = watcher;
+        inventory.validate().unwrap();
+        assert!(
+            inventory
+                .targets(Action::WatchStart, &["ares".into()])
+                .is_ok()
+        );
+        let services = inventory.machines.last().unwrap().managed_services();
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].manager, Manager::WindowsTask);
+        assert_eq!(services[0].unit, "mash-index-watch");
+        // Shell punctuation in a launcher is refused on every platform.
+        inventory
+            .machines
+            .last_mut()
+            .unwrap()
+            .watcher
+            .as_mut()
+            .unwrap()
+            .launcher = r"C:\tools\watch.ps1; calc".into();
         assert!(inventory.validate().is_err());
     }
 

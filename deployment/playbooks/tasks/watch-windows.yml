@@ -1,0 +1,25 @@
+# A Windows watcher is a scheduled task. It is managed from the controller
+# over SSH, since the machine offers no POSIX shell for the modules the other
+# platforms use.
+- name: Manage the watcher's scheduled task
+  ansible.builtin.command:
+    argv:
+      - bash
+      - tools/watch-windows.sh
+      - "{{ ansible_host | default(inventory_hostname) }}"
+      - "{{ mash_operation }}"
+      - "{{ mash_watch_launcher }}"
+    chdir: "{{ mash_repository }}"
+  delegate_to: localhost
+  changed_when: mash_operation in ['watch-start', 'watch-stop']
+  register: mash_watch_query
+
+- ansible.builtin.set_fact:
+    mash_watch_state: "{{ mash_watch_query.stdout_lines | first | default('unknown') | trim }}"
+    mash_watch_logs: "{{ (mash_watch_query.stdout_lines[1:] | join('\n')) if mash_operation == 'watch-logs' else '' }}"
+
+- name: Require a running watcher after a start
+  ansible.builtin.assert:
+    that: mash_watch_state == 'active'
+    quiet: true
+  when: mash_operation == 'watch-start'

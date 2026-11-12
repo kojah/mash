@@ -11,6 +11,7 @@ revision=$(git rev-parse HEAD)
 transport=(-o ControlPath=none -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 script=$(cat <<POWERSHELL
 \$ErrorActionPreference = 'Stop'
+\$ProgressPreference = 'SilentlyContinue'
 \$env:Path = "\$env:USERPROFILE\\.cargo\\bin;C:\\Program Files\\nodejs;\$env:APPDATA\\npm;C:\\Program Files\\Git\\cmd;\$env:Path"
 foreach (\$tool in 'git', 'cargo', 'pnpm') {
     if (-not (Get-Command \$tool -ErrorAction SilentlyContinue)) { throw "build host has no \$tool" }

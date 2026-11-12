@@ -84,9 +84,10 @@ and publish its history, and rebuild its local search, because those need only
 the machine's `mcp` command. It can also deploy to it: there is no
 cross-built Windows binary, so the machine builds its own from the published
 code and the fleet swaps it in (see [fleet setup](../deployment/README.md)).
-It cannot install the watcher there. Run the watcher as a scheduled task and
-list it as one of the machine's services, so the dashboard can start and stop
-it.
+Its watcher is a scheduled task named `mash-index-watch` that starts with the
+machine: give the machine a `[machines.watcher]` whose `launcher` is the
+script or program to run, and the fleet's watcher operations install, start
+and stop it.
 
 A shared server is a service of the machine that runs it, not a machine of its
 own. Give its entry under that machine a `deployment` table and it appears

@@ -17,6 +17,7 @@ revision=$(git rev-parse HEAD)
 transport=(-o ControlPath=none -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 script=$(cat <<POWERSHELL
 \$ErrorActionPreference = 'Stop'
+\$ProgressPreference = 'SilentlyContinue'
 \$built = Join-Path '$checkout' 'target\\release'
 if ((Get-Content (Join-Path \$built 'mash.revision') -ErrorAction SilentlyContinue) -ne '$revision') {
     throw 'the staged build is not this revision; build it first'

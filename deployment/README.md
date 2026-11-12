@@ -135,9 +135,23 @@ which must already be pushed, builds the dashboard and both binaries, and
 leaves them staged. `install-dev-windows.sh` stops the named scheduled tasks,
 because Windows will not replace a running program, swaps the binaries in,
 keeping the previous ones beside them, and starts the tasks again. Leave
-`node_configs` empty for a Windows machine, and run its watcher as a scheduled
-task listed under `[[machines.services]]`: the fleet does not install a
-watcher there.
+`node_configs` empty for a Windows machine.
+
+A Windows watcher is the scheduled task `mash-index-watch`. Give the machine a
+watcher whose launcher is a script or program on it:
+
+```toml
+[machines.watcher]
+launcher = 'C:\tools\mash-watch.ps1'
+home = 'C:\Users\me'
+allow_control = true
+```
+
+Starting it registers the task to run at startup under the SSH account,
+whether or not anyone is signed in, and starts it; an unchanged running task
+is left alone. Stopping it stops the task and disables its startup. The
+launcher sets whatever the watcher needs, such as the node token, then runs
+`mash index --watch`.
 
 Canonical runners select and synchronize the locked controller runtime in
 `/home/james/scratch/mash-artifacts/ansible-venv`. Set `UV_PROJECT_ENVIRONMENT`

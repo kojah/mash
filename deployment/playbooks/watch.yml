@@ -2,16 +2,23 @@
 
 - name: Manage explicitly configured history watchers
   hosts: mash_available:&mash_history
-  gather_facts: true
+  gather_facts: false
   tasks:
+    # Facts need Python on the machine, which a Windows one does not offer;
+    # its watcher is managed from the controller instead.
+    - name: Read the account's home on a POSIX machine
+      ansible.builtin.setup:
+      when: mash_platform != 'windows'
     - name: Validate opt-in watcher configuration
       ansible.builtin.assert:
         that:
           - mash_watch_enabled | default(false) | bool
-          - mash_platform in ['linux', 'darwin']
+          - mash_platform in ['linux', 'darwin', 'windows']
           - mash_watch_launcher is defined
-          - mash_watch_launcher is match('^/[A-Za-z0-9_./-]+$')
-          - mash_watch_home is not defined or mash_watch_home == ansible_facts.user_dir
+          - >-
+            (mash_platform == 'windows' and mash_watch_launcher is match('^[A-Za-z]:[\\\\/][A-Za-z0-9\\\\/._-]+$'))
+            or (mash_platform != 'windows' and mash_watch_launcher is match('^/[A-Za-z0-9_./-]+$'))
+          - mash_platform == 'windows' or mash_watch_home is not defined or mash_watch_home == ansible_facts.user_dir
         fail_msg: Configure mash_watch_enabled and an absolute mash_watch_launcher before managing this watcher.
 
     - name: Manage watcher and record failures
