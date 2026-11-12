@@ -3,8 +3,9 @@ use super::config::Build;
 use crate::silver::certificate::Certificate;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "ViewsManifest")]
 pub(crate) struct Manifest {
     pub(crate) schema_version: u32,
     pub(crate) build: Build,

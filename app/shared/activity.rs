@@ -3,14 +3,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Instant;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ActivityKind")]
 pub(crate) enum Kind {
     Publication,
     Attachment,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Phase {
     WaitingForCapacity,
@@ -27,7 +28,7 @@ pub(crate) enum Phase {
     Attachment,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Unit {
     Bytes,
@@ -35,7 +36,7 @@ pub(crate) enum Unit {
     Chats,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Active {
     operation_id: u64,
     node_id: String,
@@ -48,7 +49,8 @@ pub(crate) struct Active {
     unit: Unit,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[schemars(rename = "ActivityReport")]
 pub(crate) struct Report {
     capacity: usize,
     occupied: usize,

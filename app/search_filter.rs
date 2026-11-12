@@ -62,7 +62,9 @@ pub(crate) struct Scope {
 }
 
 /// Predicate names only; diagnostics never echo filter values or the query.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Field {
     Provider,

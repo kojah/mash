@@ -38,14 +38,14 @@ pub(crate) struct ResolvedConfig {
     pub(crate) destination: IndexDestination,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum IndexDestination {
     Local,
     Both,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SharedConfig {
     pub(crate) group_id: String,
@@ -57,7 +57,7 @@ pub(crate) struct SharedConfig {
     pub(crate) publication_redaction: crate::redaction::Policy,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ConfigurationStatus {
     embeddings: Embeddings,
     qdrant: QdrantConfig,
@@ -72,12 +72,12 @@ pub(crate) struct ConfigurationStatus {
     index: IndexStatus,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 struct ProviderStatus {
     roots: Vec<PathBuf>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 struct IndexStatus {
     since_days: Option<u32>,
     destination: IndexDestination,

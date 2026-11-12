@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AppError, ErrorKind};
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "DatabaseOperation")]
 pub(crate) enum Operation {
     Unspecified,
     OpenCatalog,
@@ -28,7 +29,7 @@ impl Operation {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct DatabaseDetails {
     operation: Operation,
     #[serde(skip_serializing_if = "Option::is_none")]

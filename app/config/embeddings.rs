@@ -2,7 +2,7 @@
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "backend", rename_all = "lowercase", deny_unknown_fields)]
 pub(crate) enum Embeddings {
     Local {},

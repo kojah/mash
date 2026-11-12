@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// A checkpoint produced by another version cannot skip provider replay.
 pub(crate) const INTERPRETATION_VERSION: u32 = 3;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Completeness {
     Unverified,
@@ -14,7 +14,7 @@ pub(crate) enum Completeness {
     Complete,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Certificate {
     pub(crate) revision: u64,

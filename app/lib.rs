@@ -170,7 +170,7 @@ struct AppError {
     code: i32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 struct ErrorBody {
     kind: ErrorKind,
     message: String,
@@ -181,7 +181,7 @@ struct ErrorBody {
     database: Option<database_error::DatabaseDetails>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 enum ErrorKind {
     SharedIndex,
@@ -218,7 +218,8 @@ impl ErrorKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+#[schemars(rename = "RecommendedAction")]
 enum Action {
     #[serde(rename = "init")]
     Init,

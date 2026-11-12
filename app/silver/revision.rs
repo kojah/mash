@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 
 const SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "IdentityState")]
 pub(crate) struct State {
     pub(crate) schema_version: u32,
     pub(crate) revision: u64,

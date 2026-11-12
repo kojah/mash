@@ -3,8 +3,9 @@ use super::silver_revision::State;
 use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "SharedViewsManifest")]
 pub(super) struct Manifest {
     pub(super) schema_version: u32,
     pub(super) interpretation_version: u32,

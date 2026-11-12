@@ -199,8 +199,9 @@ impl Store {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "CollectionSettings")]
 pub(crate) struct Settings {
     pub(crate) version: String,
     pub(crate) build: crate::views::config::Build,

@@ -61,7 +61,7 @@ pub(crate) struct StatusSnapshot {
     pub(crate) counts: Counts,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<crate::search_results::lookup::Lookup>,
@@ -94,7 +94,7 @@ pub(crate) struct SearchHit {
     pub(crate) node_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Message {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) attachments: Vec<crate::attachments::Metadata>,

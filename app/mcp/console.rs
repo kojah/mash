@@ -16,7 +16,7 @@ pub(crate) struct Console {
 }
 
 /// What the server publishes about itself: the same listing an agent reads.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, schemars::JsonSchema)]
 pub(crate) struct Catalogue {
     build_revision: &'static str,
     contract_fingerprint: String,
@@ -25,7 +25,7 @@ pub(crate) struct Catalogue {
 
 /// A tool's answer as an agent receives it: the structured reply and the text
 /// beside it. `failed` covers tool errors and rejected arguments alike.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, schemars::JsonSchema)]
 pub(crate) struct Answer {
     failed: bool,
     reply: Option<serde_json::Value>,

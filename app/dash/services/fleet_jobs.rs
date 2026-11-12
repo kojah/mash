@@ -7,22 +7,22 @@ use mash_fleet::jobs::{self, Admission, Request};
 use serde::Serialize;
 use std::sync::Arc;
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 struct AvailableAction {
     action: Action,
     targets: Vec<String>,
 }
 
 /// A target that is a shared server rather than a machine.
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 struct ServerTarget {
     id: String,
     name: String,
     machine: String,
 }
 
-#[derive(Serialize)]
-struct Catalog {
+#[derive(Serialize, schemars::JsonSchema)]
+pub(super) struct Catalog {
     enabled: bool,
     revision: Option<String>,
     actions: Vec<AvailableAction>,

@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Lookup {
     pub(crate) view: View,
     pub(crate) list_attachments: Attachments,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct View {
     pub(crate) id: String,
@@ -19,7 +19,7 @@ pub(crate) struct View {
     pub(crate) shared: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Attachments {
     pub(crate) message_id: String,

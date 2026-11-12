@@ -174,8 +174,23 @@ fn error(status: StatusCode, message: &str) -> Response {
     (status, axum::Json(crate::AppError::configuration(message))).into_response()
 }
 
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub(super) struct Access {
+    authentication_required: bool,
+    local_node: String,
+}
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub(super) struct Machines {
+    machines: Vec<model::Machine>,
+}
+
 pub(super) async fn access(State(state): State<Arc<super::Dash>>) -> Response {
-    axum::Json(serde_json::json!({"authentication_required":state.services.token_hash.is_some(), "local_node":state.services.local_id()})).into_response()
+    axum::Json(Access {
+        authentication_required: state.services.token_hash.is_some(),
+        local_node: state.services.local_id().to_owned(),
+    })
+    .into_response()
 }
 
 pub(super) async fn local(State(state): State<Arc<super::Dash>>) -> Response {
@@ -212,10 +227,10 @@ pub(super) async fn fleet(State(state): State<Arc<super::Dash>>) -> Response {
         .collect::<Vec<_>>();
     let (local, mut machines) = tokio::join!(local, remotes);
     machines.insert(0, local);
-    axum::Json(serde_json::json!({"machines":machines})).into_response()
+    axum::Json(Machines { machines }).into_response()
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Selection {
     machine: String,
@@ -275,8 +290,8 @@ pub(super) async fn logs(
     }
 }
 
-#[derive(Deserialize, serde::Serialize)]
-struct Log {
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub(super) struct Log {
     text: String,
     checked_at: u64,
 }
@@ -360,7 +375,7 @@ pub(super) async fn action(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct MachineSelection {
     machine: String,
@@ -448,4 +463,104 @@ pub(super) async fn history(
             "Could not read operation history",
         ),
     }
+}
+
+/// Adds the service routes, each with what it answers.
+pub(super) fn routes(
+    router: aide::axum::ApiRouter<Arc<super::Dash>>,
+) -> aide::axum::ApiRouter<Arc<super::Dash>> {
+    use super::contract::{changes, reads};
+    use aide::axum::routing::{get_with, post_with};
+    router
+        .api_route(
+            "/api/services/access",
+            get_with(
+                access,
+                reads::<Access>(
+                    "/api/services/access",
+                    "Whether service routes need a token, and this machine's ID.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/services",
+            get_with(
+                fleet,
+                reads::<Machines>(
+                    "/api/services",
+                    "This machine and its configured peers, with their services.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/services/local",
+            get_with(
+                local,
+                reads::<model::Machine>("/api/services/local", "This machine's services."),
+            ),
+        )
+        .api_route(
+            "/api/services/fleet",
+            get_with(
+                fleet_jobs::catalog,
+                reads::<fleet_jobs::Catalog>(
+                    "/api/services/fleet",
+                    "The fleet actions this dashboard may submit.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/services/fleet/jobs",
+            get_with(
+                fleet_jobs::history,
+                reads::<Vec<mash_fleet::jobs::Job>>(
+                    "/api/services/fleet/jobs",
+                    "Recent fleet jobs.",
+                ),
+            )
+            .post_with(
+                fleet_jobs::submit,
+                changes::<mash_fleet::jobs::Job>(
+                    "/api/services/fleet/jobs",
+                    "Submit one fleet action.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/services/log",
+            get_with(
+                logs,
+                reads::<Log>("/api/services/log", "Recent log lines of one service."),
+            ),
+        )
+        .api_route(
+            "/api/services/installation",
+            get_with(
+                installation,
+                reads::<crate::core::installation::Setup>(
+                    "/api/services/installation",
+                    "How each agent on a machine is set up to use Mash.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/services/operations",
+            get_with(
+                history,
+                reads::<Vec<operations::Operation>>(
+                    "/api/services/operations",
+                    "Recent service actions on a machine.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/services/action",
+            post_with(
+                action,
+                changes::<operations::Operation>(
+                    "/api/services/action",
+                    "Start, stop or restart one service.",
+                ),
+            ),
+        )
 }

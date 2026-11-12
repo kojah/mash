@@ -12,7 +12,7 @@ use super::document::{Edit, edit, parse_document};
 use crate::AppError;
 use crate::provider::{Provider, ProviderRoots};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct View {
     path: PathBuf,
     /// Names the file's contents. A change states the contents it was made
@@ -27,14 +27,15 @@ pub(crate) struct View {
     hide_credentials: crate::redaction::Settings,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+#[schemars(rename = "AgentSettings")]
 struct Agent {
     indexed: bool,
     /// The configured locations, or the ones found on this machine.
     roots: Vec<PathBuf>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Change {
     revision: String,

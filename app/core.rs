@@ -16,10 +16,11 @@ pub(crate) mod output;
 mod search;
 pub(crate) mod setup;
 
+pub(crate) use chats::DashboardCatalog;
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
     BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Reading, Request, Response,
-    SearchMode, SearchResponse, ViewResponse,
+    SearchMode, SearchResponse, StatusResponse, ViewResponse,
 };
 pub(crate) use setup::{InitRequest, MARKETPLACE};
 

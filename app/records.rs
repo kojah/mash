@@ -354,7 +354,8 @@ pub(crate) struct Receipt {
     pub reused: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(rename = "RecordEvidence")]
 pub(crate) struct Evidence {
     pub chat_id: String,
     pub message_id: String,
@@ -367,13 +368,13 @@ pub(crate) struct Evidence {
     pub source_role: Option<crate::role::Role>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct Confirmation {
     pub message_id: String,
     pub confirmed_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct RecordRevision {
     pub revision: i64,
     pub body: Body,
@@ -384,7 +385,7 @@ pub(crate) struct RecordRevision {
     pub confirmation_history: Vec<Confirmation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct Record {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
@@ -470,13 +471,13 @@ impl Body {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct Link {
     pub source_id: String,
     pub target_id: String,
     pub relation: Relation,
 }
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Relation {
     Supersedes,
@@ -515,7 +516,7 @@ pub(crate) struct List {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct Page {
     pub records: Vec<Record>,
     pub next_offset: Option<usize>,

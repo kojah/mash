@@ -16,7 +16,7 @@ pub(crate) struct Inference<'a> {
     pub(crate) local: Option<&'a crate::config::ResolvedConfig>,
 }
 
-#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub(crate) struct SnapshotWork {
     forwarded_embeddings: u64,
     pub(super) model_inferences: u64,

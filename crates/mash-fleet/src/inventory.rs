@@ -27,8 +27,9 @@ pub struct Controller {
     pub allow_actions: Vec<Action>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "FleetAction")]
 pub enum Action {
     Status,
     Preflight,

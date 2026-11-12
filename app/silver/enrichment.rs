@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "ChatEvidence")]
 pub(crate) struct Evidence {
     pub(crate) version: u32,
     pub(crate) title: Option<Origin>,
@@ -16,14 +17,14 @@ pub(crate) struct Evidence {
     pub(crate) timestamps: Option<Timestamps>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Timestamps {
     pub(crate) created_at: Option<TimestampOrigin>,
     pub(crate) updated_at: Option<TimestampOrigin>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum TimestampOrigin {
     Unknown,
@@ -38,14 +39,14 @@ pub(crate) enum TimestampOrigin {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Boundary {
     Minimum,
     Maximum,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) enum TimestampField {
     #[serde(rename = "session.time_created")]
     SessionTimeCreated,
@@ -129,7 +130,7 @@ impl Timestamps {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum Origin {
     Unknown,
@@ -142,7 +143,7 @@ pub(crate) enum Origin {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SourceField {
     Cwd,

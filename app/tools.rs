@@ -12,7 +12,7 @@ const MAX_LABEL_BYTES: usize = 4096;
 
 /// The tool calls a native entry makes and the results it reports.
 /// One provider message can carry several of each.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Activity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -22,7 +22,7 @@ pub(crate) struct Activity {
 }
 
 /// One requested tool invocation.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ToolCall {
     /// The provider's tool name; absent only where the provider omits it.
@@ -38,7 +38,7 @@ pub(crate) struct ToolCall {
 }
 
 /// One reported tool result. Its output stays in the entry's content.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ToolResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]

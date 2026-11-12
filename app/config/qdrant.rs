@@ -3,7 +3,7 @@ use crate::AppError;
 use crate::views::qdrant::{MemoryTier, VectorIndex};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct QdrantConfig {
     pub(crate) url: String,

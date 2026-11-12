@@ -13,6 +13,7 @@ use axum::response::{IntoResponse, Response};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+mod contract;
 mod services;
 
 mod assets {
@@ -71,46 +72,139 @@ pub(crate) async fn run(
         .map_err(|_| AppError::internal("dashboard server failed"))
 }
 
-fn router(state: Arc<Dash>) -> Router {
-    Router::new()
-        .route("/api/health", axum::routing::get(health))
-        .route("/api/services/access", axum::routing::get(services::access))
-        .route("/api/services", axum::routing::get(services::fleet))
-        .route("/api/services/local", axum::routing::get(services::local))
-        .route(
-            "/api/services/fleet",
-            axum::routing::get(services::fleet_jobs::catalog),
+/// Every API route with its description, and the contract document they add
+/// up to (see `contract`).
+fn api() -> (Router<Arc<Dash>>, aide::openapi::OpenApi) {
+    let mut document = aide::openapi::OpenApi {
+        info: aide::openapi::Info {
+            title: "mash dash".into(),
+            description: Some(
+                "The local dashboard's API. Generated from the server's routes; do not edit."
+                    .into(),
+            ),
+            version: "1".into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let router =
+        history_routes(services::routes(aide::axum::ApiRouter::new())).finish_api(&mut document);
+    (router, document)
+}
+
+/// The routes that read history, status and settings.
+fn history_routes(router: aide::axum::ApiRouter<Arc<Dash>>) -> aide::axum::ApiRouter<Arc<Dash>> {
+    use aide::axum::routing::get_with;
+    use contract::{changes, reads};
+    router
+        .api_route(
+            "/api/health",
+            get_with(
+                health,
+                reads::<Health>("/api/health", "The build this dashboard is running."),
+            ),
         )
-        .route(
-            "/api/services/fleet/jobs",
-            axum::routing::get(services::fleet_jobs::history).post(services::fleet_jobs::submit),
-        )
-        .route("/api/services/log", axum::routing::get(services::logs))
-        .route(
-            "/api/services/installation",
-            axum::routing::get(services::installation),
-        )
-        .route(
-            "/api/services/operations",
-            axum::routing::get(services::history),
-        )
-        .route(
-            "/api/services/action",
-            axum::routing::post(services::action),
-        )
-        .route(
+        .api_route(
             "/api/services/settings",
-            axum::routing::get(settings).post(change_settings),
+            get_with(
+                settings,
+                reads::<Settings>(
+                    "/api/services/settings",
+                    "The settings in this machine's configuration file.",
+                ),
+            )
+            .post_with(
+                change_settings,
+                changes::<Settings>("/api/services/settings", "Rewrite the configuration file."),
+            ),
         )
-        .route("/api/status", axum::routing::get(status))
-        .route("/api/chats", axum::routing::get(list_chats))
-        .route("/api/search", axum::routing::get(search))
-        .route("/api/view", axum::routing::get(view))
-        .route("/api/chat", axum::routing::get(chat))
-        .route("/api/records", axum::routing::get(list_records))
-        .route("/api/record", axum::routing::get(record))
-        .route("/api/console/tools", axum::routing::get(console_tools))
-        .route("/api/console/call", axum::routing::get(console_call))
+        .api_route(
+            "/api/status",
+            get_with(
+                status,
+                reads::<core::StatusResponse>(
+                    "/api/status",
+                    "Local readiness and the resolved configuration.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/chats",
+            get_with(
+                list_chats,
+                reads::<core::DashboardCatalog>(
+                    "/api/chats",
+                    "Every chat's metadata, newest first.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/search",
+            get_with(
+                search,
+                reads::<core::SearchResponse>("/api/search", "Chats that match a question."),
+            ),
+        )
+        .api_route(
+            "/api/view",
+            get_with(
+                view,
+                reads::<core::ViewResponse>("/api/view", "The messages around one message."),
+            ),
+        )
+        .api_route(
+            "/api/chat",
+            get_with(
+                chat,
+                reads::<core::ViewResponse>("/api/chat", "One page of a chat's messages."),
+            ),
+        )
+        .api_route(
+            "/api/records",
+            get_with(
+                list_records,
+                reads::<crate::records::Page>("/api/records", "Saved memories, newest first."),
+            ),
+        )
+        .api_route(
+            "/api/record",
+            get_with(
+                record,
+                reads::<crate::records::Record>("/api/record", "One memory with its history."),
+            ),
+        )
+        .api_route(
+            "/api/console/tools",
+            get_with(
+                console_tools,
+                reads::<crate::mcp::console::Catalogue>(
+                    "/api/console/tools",
+                    "The tools the MCP server offers, as an agent sees them.",
+                ),
+            ),
+        )
+        .api_route(
+            "/api/console/call",
+            get_with(
+                console_call,
+                reads::<crate::mcp::console::Answer>(
+                    "/api/console/call",
+                    "Run one read-only tool.",
+                ),
+            ),
+        )
+}
+
+/// The contract every route above keeps, as an `OpenAPI` document.
+async fn openapi() -> Response {
+    static DOCUMENT: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+    axum::Json(DOCUMENT.get_or_init(|| contract::document(&api().1))).into_response()
+}
+
+fn router(state: Arc<Dash>) -> Router {
+    api()
+        .0
+        .route("/api/openapi.json", axum::routing::get(openapi))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         // The chat catalogue is over a megabyte of JSON for a few thousand
@@ -259,8 +353,16 @@ async fn guard(
     response
 }
 
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct Health {
+    build: &'static str,
+}
+
 async fn health() -> Response {
-    axum::Json(serde_json::json!({ "build": env!("MASH_BUILD_REVISION") })).into_response()
+    axum::Json(Health {
+        build: env!("MASH_BUILD_REVISION"),
+    })
+    .into_response()
 }
 
 /// Local readiness and the resolved configuration, as `mash status` reports
@@ -331,17 +433,19 @@ async fn change_settings(
 }
 
 /// The settings, with whether this dashboard accepts changes to them.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct Settings {
+    #[serde(flatten)]
+    view: crate::config::settings::View,
+    editable: bool,
+}
+
 fn settings_result(
     view: Result<crate::config::settings::View, AppError>,
     editable: bool,
 ) -> Response {
-    match view.and_then(|view| {
-        serde_json::to_value(view).map_err(|_| AppError::internal("serialize settings"))
-    }) {
-        Ok(mut view) => {
-            view["editable"] = editable.into();
-            axum::Json(view).into_response()
-        }
+    match view {
+        Ok(view) => axum::Json(Settings { view, editable }).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             axum::Json(serde_json::json!({ "error": error.error })),
@@ -358,7 +462,7 @@ async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
     json_result(core::execute(request).await)
 }
 
-#[derive(serde::Deserialize, Default)]
+#[derive(serde::Deserialize, Default, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 struct RecordParams {
     q: Option<String>,
@@ -403,7 +507,7 @@ async fn list_records(
     )
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct RecordDetailParams {
     id: String,
@@ -434,7 +538,7 @@ async fn record(
     )
 }
 
-#[derive(serde::Deserialize, Default)]
+#[derive(serde::Deserialize, Default, schemars::JsonSchema)]
 #[serde(default)]
 struct SearchParams {
     q: String,
@@ -524,7 +628,7 @@ async fn search(
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ViewParams {
     id: String,
@@ -569,7 +673,7 @@ async fn view(
     )
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ChatParams {
     id: String,
     #[serde(default)]
@@ -614,7 +718,7 @@ async fn console_tools() -> Response {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ConsoleCall {
     name: String,
     /// The tool's arguments as a JSON object; absent means none.

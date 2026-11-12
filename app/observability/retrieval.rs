@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[repr(usize)]
 pub(crate) enum Stage {
@@ -25,13 +25,13 @@ pub(crate) enum Stage {
 const COUNT: usize = 10;
 
 /// Execution provider for contextual reranking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum RerankerEngine {
     Cpu,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Measurement {
     pub(crate) stage: Stage,
     #[serde(default, skip_serializing_if = "Option::is_none")]

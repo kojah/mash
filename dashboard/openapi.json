@@ -1,0 +1,6065 @@
+{
+  "components": {
+    "schemas": {
+      "Access": {
+        "properties": {
+          "authentication_required": {
+            "type": "boolean"
+          },
+          "local_node": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authentication_required",
+          "local_node"
+        ],
+        "type": "object"
+      },
+      "ActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ServiceAction"
+          },
+          "control_revision": {
+            "type": "string"
+          },
+          "machine": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine",
+          "service",
+          "action",
+          "request_id",
+          "control_revision"
+        ],
+        "type": "object"
+      },
+      "Active": {
+        "properties": {
+          "completed": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "elapsed_ms": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActivityKind"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "operation_id": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "phase_elapsed_ms": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "since_progress_ms": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/Unit"
+          }
+        },
+        "required": [
+          "operation_id",
+          "node_id",
+          "kind",
+          "phase",
+          "elapsed_ms",
+          "phase_elapsed_ms",
+          "since_progress_ms",
+          "completed",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "Activity": {
+        "additionalProperties": false,
+        "description": "The tool calls a native entry makes and the results it reports.\nOne provider message can carry several of each.",
+        "properties": {
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "type": "array"
+          },
+          "tool_results": {
+            "items": {
+              "$ref": "#/components/schemas/ToolResult"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ActivityKind": {
+        "enum": [
+          "publication",
+          "attachment"
+        ],
+        "type": "string"
+      },
+      "ActivityReport": {
+        "properties": {
+          "active": {
+            "items": {
+              "$ref": "#/components/schemas/Active"
+            },
+            "type": "array"
+          },
+          "available": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "capacity": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "occupied": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "capacity",
+          "occupied",
+          "available",
+          "active",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "AgentSettings": {
+        "properties": {
+          "indexed": {
+            "type": "boolean"
+          },
+          "roots": {
+            "description": "The configured locations, or the ones found on this machine.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "indexed",
+          "roots"
+        ],
+        "type": "object"
+      },
+      "AgentSetup": {
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/SetupAgent"
+          },
+          "connected": {
+            "description": "Expected, with nothing needing attention.",
+            "type": "boolean"
+          },
+          "expected": {
+            "description": "The machine has this agent's data or CLI, so an integration is expected.",
+            "type": "boolean"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent",
+          "expected",
+          "connected",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "Answer": {
+        "description": "A tool's answer as an agent receives it: the structured reply and the text\nbeside it. `failed` covers tool errors and rejected arguments alike.",
+        "properties": {
+          "failed": {
+            "type": "boolean"
+          },
+          "reply": true,
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "failed",
+          "text"
+        ],
+        "type": "object"
+      },
+      "Artifact": {
+        "enum": [
+          "metadata",
+          "lexical",
+          "dense"
+        ],
+        "type": "string"
+      },
+      "Artifacts": {
+        "properties": {
+          "dense": {
+            "$ref": "#/components/schemas/ReadinessState"
+          },
+          "lexical": {
+            "$ref": "#/components/schemas/ReadinessState"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ReadinessState"
+          }
+        },
+        "required": [
+          "metadata",
+          "lexical",
+          "dense"
+        ],
+        "type": "object"
+      },
+      "AttachmentConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_roots": {
+            "default": [],
+            "description": "Only explicit provider attachment references within these roots can be retained.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "share_files": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Attachments": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "shared": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "type": "object"
+      },
+      "Availability": {
+        "enum": [
+          "not_uploaded",
+          "retained",
+          "missing",
+          "not_allowed",
+          "too_large",
+          "invalid",
+          "external"
+        ],
+        "type": "string"
+      },
+      "AvailableAction": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/FleetAction"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "BaselineCoverage": {
+        "description": "Baseline coverage for one node, read from the transfer catalog.",
+        "properties": {
+          "covered": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "total": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "covered",
+          "total"
+        ],
+        "type": "object"
+      },
+      "Body": {
+        "additionalProperties": false,
+        "properties": {
+          "details": {
+            "$ref": "#/components/schemas/Details"
+          },
+          "effective_at": {
+            "description": "When the choice/claim applied, in Unix milliseconds; unknown stays null.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rationale": {
+            "default": "",
+            "type": "string"
+          },
+          "recorded_by": {
+            "description": "Attribution supplied by the caller, not authenticated human identity.",
+            "type": "string"
+          },
+          "review": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Review"
+              }
+            ],
+            "default": "candidate"
+          },
+          "statement": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "details",
+          "recorded_by"
+        ],
+        "type": "object"
+      },
+      "Boundary": {
+        "enum": [
+          "minimum",
+          "maximum"
+        ],
+        "type": "string"
+      },
+      "Build": {
+        "additionalProperties": false,
+        "properties": {
+          "dense_content": {
+            "$ref": "#/components/schemas/DenseContent"
+          },
+          "embedding_text": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddingText"
+              }
+            ],
+            "default": "dialogue"
+          },
+          "max_embedding_chars": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddingTextBudget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "representations": {
+            "$ref": "#/components/schemas/Representations"
+          },
+          "retrieval_unit": {
+            "$ref": "#/components/schemas/RetrievalUnit"
+          },
+          "text_preparation": {
+            "$ref": "#/components/schemas/TextPreparation"
+          }
+        },
+        "type": "object"
+      },
+      "Catalog": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableAction"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "services": {
+            "description": "Targets not listed here are machines.",
+            "items": {
+              "$ref": "#/components/schemas/ServerTarget"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "actions",
+          "services"
+        ],
+        "type": "object"
+      },
+      "Catalogue": {
+        "description": "What the server publishes about itself: the same listing an agent reads.",
+        "properties": {
+          "build_revision": {
+            "type": "string"
+          },
+          "contract_fingerprint": {
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "build_revision",
+          "contract_fingerprint",
+          "tools"
+        ],
+        "type": "object"
+      },
+      "Certificate": {
+        "additionalProperties": false,
+        "properties": {
+          "completeness": {
+            "$ref": "#/components/schemas/Completeness"
+          },
+          "interpretation_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected_sources": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "interpretation_version",
+          "completeness",
+          "rejected_sources"
+        ],
+        "type": "object"
+      },
+      "Change": {
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "additionalProperties": false,
+            "properties": {
+              "antigravity": {
+                "type": "boolean"
+              },
+              "claude-code": {
+                "type": "boolean"
+              },
+              "codex": {
+                "type": "boolean"
+              },
+              "copilot": {
+                "type": "boolean"
+              },
+              "cursor": {
+                "type": "boolean"
+              },
+              "opencode": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/IndexDestination"
+          },
+          "hide_credentials": {
+            "$ref": "#/components/schemas/RedactionSettings"
+          },
+          "memory_capture": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "since_days": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "revision",
+          "agents",
+          "destination",
+          "memory_capture",
+          "hide_credentials"
+        ],
+        "type": "object"
+      },
+      "Chat": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "enrichment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "chat_id",
+          "provider",
+          "node_id"
+        ],
+        "type": "object"
+      },
+      "ChatEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Origin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repository": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Origin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timestamps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamps"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Origin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "ChatHit": {
+        "properties": {
+          "chat_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "enrichment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "matches": {
+            "description": "Up to three distinct matching excerpts, ordered by relevance.",
+            "items": {
+              "$ref": "#/components/schemas/ChatMatch"
+            },
+            "type": "array"
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "format": "float",
+            "type": "number"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "chat_id",
+          "provider",
+          "score",
+          "matches"
+        ],
+        "type": "object"
+      },
+      "ChatMatch": {
+        "properties": {
+          "copies": {
+            "description": "Other indexed copies of this evidence, usable as view anchors.",
+            "items": {
+              "$ref": "#/components/schemas/MessageReference"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "fusion_score": {
+            "format": "float",
+            "type": "number"
+          },
+          "lexical_match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lookup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projection_span": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectionSpan"
+              }
+            ],
+            "description": "Primary message's search projection; excludes display ellipses."
+          },
+          "rerank_score": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "message_id",
+          "role",
+          "snippet",
+          "projection_span",
+          "fusion_score",
+          "copies"
+        ],
+        "type": "object"
+      },
+      "ChatMetadata": {
+        "properties": {
+          "created_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "enrichment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ChatParams": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "limit": {
+            "default": null,
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "node": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offset": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ClientSummary": {
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/SetupAgent"
+          },
+          "attention": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "connected": {
+            "description": "Configured for Mash with nothing needing attention.",
+            "type": "boolean"
+          },
+          "expected": {
+            "type": "boolean"
+          },
+          "missing": {
+            "description": "Parts of an expected integration that are not installed.",
+            "items": {
+              "$ref": "#/components/schemas/Component"
+            },
+            "type": "array"
+          },
+          "unverified": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent",
+          "expected",
+          "connected",
+          "missing",
+          "attention",
+          "unverified"
+        ],
+        "type": "object"
+      },
+      "CollectionSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "dimensions": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "vector_search": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Search"
+              }
+            ],
+            "default": {
+              "algorithm": "hnsw",
+              "ef_runtime": 200
+            }
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "build",
+          "generation",
+          "dimensions"
+        ],
+        "type": "object"
+      },
+      "Compatibility": {
+        "properties": {
+          "blocked": {
+            "type": "string"
+          },
+          "database_schema": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "next_step": {
+            "type": "string"
+          },
+          "observer_build": {
+            "type": "string"
+          },
+          "running_build": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ServiceState"
+          },
+          "supported_schema": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "running_build",
+          "observer_build",
+          "state",
+          "blocked",
+          "next_step"
+        ],
+        "type": "object"
+      },
+      "Completeness": {
+        "enum": [
+          "unverified",
+          "pending",
+          "incomplete",
+          "complete"
+        ],
+        "type": "string"
+      },
+      "Component": {
+        "enum": [
+          "configuration",
+          "plugin",
+          "skill",
+          "hooks",
+          "hook_trust",
+          "mcp",
+          "probe",
+          "index",
+          "runtime"
+        ],
+        "type": "string"
+      },
+      "ConfigurationStatus": {
+        "properties": {
+          "attachments": {
+            "$ref": "#/components/schemas/AttachmentConfiguration"
+          },
+          "embeddings": {
+            "$ref": "#/components/schemas/Embeddings"
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexStatus"
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "providers": {
+            "additionalProperties": false,
+            "properties": {
+              "antigravity": {
+                "$ref": "#/components/schemas/ProviderStatus"
+              },
+              "claude-code": {
+                "$ref": "#/components/schemas/ProviderStatus"
+              },
+              "codex": {
+                "$ref": "#/components/schemas/ProviderStatus"
+              },
+              "copilot": {
+                "$ref": "#/components/schemas/ProviderStatus"
+              },
+              "cursor": {
+                "$ref": "#/components/schemas/ProviderStatus"
+              },
+              "opencode": {
+                "$ref": "#/components/schemas/ProviderStatus"
+              }
+            },
+            "type": "object"
+          },
+          "qdrant": {
+            "$ref": "#/components/schemas/QdrantConfig"
+          },
+          "records": {
+            "$ref": "#/components/schemas/Policy"
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/RedactionSettings"
+          },
+          "shared": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "views": {
+            "$ref": "#/components/schemas/ViewsConfiguration"
+          }
+        },
+        "required": [
+          "embeddings",
+          "qdrant",
+          "attachments",
+          "redaction",
+          "records",
+          "path",
+          "loaded",
+          "views",
+          "providers",
+          "index"
+        ],
+        "type": "object"
+      },
+      "Confirmation": {
+        "properties": {
+          "confirmed_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "confirmed_at"
+        ],
+        "type": "object"
+      },
+      "ConsoleCall": {
+        "properties": {
+          "arguments": {
+            "description": "The tool's arguments as a JSON object; absent means none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CoverageReport": {
+        "properties": {
+          "absence_proven": {
+            "description": "False: scan success and retained rows do not prove complete provider history.",
+            "type": "boolean"
+          },
+          "limitations": {
+            "items": {
+              "$ref": "#/components/schemas/Limitation"
+            },
+            "type": "array"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CoverageScope"
+          },
+          "unavailable_nodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope",
+          "absence_proven",
+          "members",
+          "unavailable_nodes",
+          "limitations"
+        ],
+        "type": "object"
+      },
+      "CoverageScope": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "default": null,
+            "description": "Inclusive message timestamp in Unix seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "before": {
+            "default": null,
+            "description": "Exclusive message timestamp in Unix seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "node": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "provider": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Provider"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Cursor": {
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string"
+          },
+          "offset": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "node_id",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "DashboardCatalog": {
+        "description": "A bounded catalogue, retaining machine identity even for copied histories.",
+        "properties": {
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/Chat"
+            },
+            "type": "array"
+          },
+          "local_node": {
+            "type": "string"
+          },
+          "shared_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "chats",
+          "local_node",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "DatabaseDetails": {
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/DatabaseOperation"
+          },
+          "sqlite_code": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sqlite_extended_code": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "type": "object"
+      },
+      "DatabaseOperation": {
+        "enum": [
+          "unspecified",
+          "open-catalog",
+          "inspect-catalog",
+          "inspect-status",
+          "configure-writer",
+          "begin-writer"
+        ],
+        "type": "string"
+      },
+      "DecidedBy": {
+        "description": "Who made a decision. An agent may settle a choice of its own, such as how\nto structure code, by citing the message where it made and explained it.",
+        "enum": [
+          "user",
+          "agent"
+        ],
+        "type": "string"
+      },
+      "DecisionState": {
+        "enum": [
+          "proposed",
+          "accepted",
+          "superseded",
+          "withdrawn"
+        ],
+        "type": "string"
+      },
+      "DenseContent": {
+        "enum": [
+          "all-visible",
+          "user-messages"
+        ],
+        "type": "string"
+      },
+      "Details": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "alternatives": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "consequences": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "decided_by": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/DecidedBy"
+                  }
+                ],
+                "description": "Omit for the person's decision; `agent` for a choice the agent made."
+              },
+              "kind": {
+                "const": "decision",
+                "type": "string"
+              },
+              "state": {
+                "$ref": "#/components/schemas/DecisionState"
+              }
+            },
+            "required": [
+              "kind",
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "conditions": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "const": "preference",
+                "type": "string"
+              },
+              "state": {
+                "$ref": "#/components/schemas/PreferenceState"
+              }
+            },
+            "required": [
+              "kind",
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "fact",
+                "type": "string"
+              },
+              "reported_by": {
+                "type": "string"
+              },
+              "state": {
+                "$ref": "#/components/schemas/FactState"
+              },
+              "valid_until": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "reported_by"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Diagnostic": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "type": "object"
+      },
+      "Diagnostics": {
+        "properties": {
+          "completed_sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "type": "array"
+          },
+          "elapsed_ms": {
+            "description": "Core time includes configuration and model admission, excludes CLI startup.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filter_fields": {
+            "default": [],
+            "description": "Requested predicate names, not values, Boolean structure or removal counts.",
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": "array"
+          },
+          "fusion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fusion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intent": {
+            "$ref": "#/components/schemas/Intent"
+          },
+          "limit": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "policy_version": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ranking"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_scope": {
+            "$ref": "#/components/schemas/DiagnosticsScope"
+          },
+          "returned_results": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "selected_artifacts": {
+            "description": "Selection is policy, not a claim about candidate counts or inference calls.",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            },
+            "type": "array"
+          },
+          "shared_context_incomplete": {
+            "default": false,
+            "type": "boolean"
+          },
+          "shared_fallback": {
+            "type": "boolean"
+          },
+          "shared_vector_override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Search"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Requested shared override, not a claim that remote retrieval completed."
+          },
+          "stages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Measurement"
+            },
+            "type": "array"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/SearchUnit"
+          }
+        },
+        "required": [
+          "policy_version",
+          "intent",
+          "unit",
+          "limit",
+          "selected_artifacts",
+          "requested_scope",
+          "completed_sources",
+          "shared_fallback",
+          "returned_results",
+          "elapsed_ms"
+        ],
+        "type": "object"
+      },
+      "DiagnosticsScope": {
+        "enum": [
+          "local",
+          "shared",
+          "combined"
+        ],
+        "type": "string"
+      },
+      "EmbeddingText": {
+        "enum": [
+          "dialogue",
+          "title-and-dialogue"
+        ],
+        "type": "string"
+      },
+      "EmbeddingTextBudget": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "Embeddings": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "backend": {
+                "const": "local",
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "backend": {
+                "const": "remote",
+                "type": "string"
+              },
+              "local_below": {
+                "default": 0,
+                "description": "Batches with fewer new texts than this use the local model, so a\nroutine refresh does not wait for a remote worker to start. Zero\nsends every batch to the worker.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "timeout_seconds": {
+                "default": 120,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "token_env": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend",
+              "url",
+              "token_env"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ErrorBody": {
+        "properties": {
+          "database": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DatabaseDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ErrorKind"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendedAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "message",
+          "retryable"
+        ],
+        "type": "object"
+      },
+      "ErrorKind": {
+        "enum": [
+          "shared-index",
+          "qdrant-unavailable",
+          "qdrant-failure",
+          "configuration",
+          "usage",
+          "database-missing",
+          "index-busy",
+          "model-busy",
+          "database",
+          "io",
+          "internal",
+          "model",
+          "search-not-ready",
+          "schema-incompatible",
+          "remote-inference",
+          "conflict",
+          "source-changed",
+          "search-timeout"
+        ],
+        "type": "string"
+      },
+      "EvidenceUse": {
+        "oneOf": [
+          {
+            "enum": [
+              "context",
+              "report"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "endorsement",
+            "description": "Caller asserts this is the person's endorsement, not an injected report.",
+            "type": "string"
+          }
+        ]
+      },
+      "FactState": {
+        "enum": [
+          "current",
+          "superseded",
+          "retracted"
+        ],
+        "type": "string"
+      },
+      "Failure": {
+        "description": "What a failed request answers with, whatever the route.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "Field": {
+        "description": "Predicate names only; diagnostics never echo filter values or the query.",
+        "enum": [
+          "provider",
+          "node",
+          "role",
+          "chat",
+          "project",
+          "repository",
+          "after",
+          "before"
+        ],
+        "type": "string"
+      },
+      "FingerprintReport": {
+        "description": "Duplicate-history report across the group, keyed by canonical chat\nfingerprint. Fingerprints are content hashes; no plaintext is exposed.",
+        "properties": {
+          "duplicate_vector_bytes": {
+            "description": "Approximate duplicated vector storage in Qdrant (f32 per message at the\ngroup's embedding width). Text and index overhead are excluded.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "duplicated_chats": {
+            "description": "Chat identifiers that appear with the same fingerprint in more\nthan one node.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeFingerprintSummary"
+            },
+            "type": "array"
+          },
+          "redundant_copies": {
+            "description": "Extra copies beyond the first, per duplicated chat.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "redundant_messages": {
+            "description": "Messages carried by those redundant copies.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "duplicated_chats",
+          "redundant_copies",
+          "redundant_messages",
+          "duplicate_vector_bytes",
+          "nodes"
+        ],
+        "type": "object"
+      },
+      "FleetAction": {
+        "enum": [
+          "status",
+          "preflight",
+          "deploy",
+          "sync",
+          "local-views",
+          "replay-views",
+          "watch-start",
+          "watch-stop",
+          "watch-status",
+          "watch-logs"
+        ],
+        "type": "string"
+      },
+      "Freshness": {
+        "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaselineCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Most recent progressive baseline for the node, if one was started."
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "group_views": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeFreshness"
+            },
+            "type": "array"
+          },
+          "unpublished_nodes": {
+            "description": "Configured group members with no retained publication. None means the\nresponding service did not supply its configured membership scope.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "group_id",
+          "nodes"
+        ],
+        "type": "object"
+      },
+      "Fusion": {
+        "additionalProperties": false,
+        "description": "Query-only candidate fusion; independent of embedding/build identity.",
+        "properties": {
+          "lexical_weight": {
+            "default": 1,
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rank_constant": {
+            "default": 60,
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recency_weight": {
+            "default": 50,
+            "description": "How much newer messages move up the final order, as a percentage of\nrelevance's weight; 0 ranks by relevance alone.",
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "semantic_weight": {
+            "default": 1,
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Health": {
+        "properties": {
+          "build": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "build"
+        ],
+        "type": "object"
+      },
+      "Icon": {
+        "description": "A URL pointing to an icon resource or a base64-encoded data URI.\n\nClients that support rendering icons MUST support at least the following MIME types:\n- image/png - PNG images (safe, universal compatibility)\n- image/jpeg (and image/jpg) - JPEG images (safe, universal compatibility)\n\nClients that support rendering icons SHOULD also support:\n- image/svg+xml - SVG images (scalable but requires security precautions)\n- image/webp - WebP images (modern, efficient format)",
+        "properties": {
+          "mimeType": {
+            "description": "Optional override if the server's MIME type is missing or generic",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sizes": {
+            "description": "Size specification, each string should be in WxH format (e.g., `\\\"48x48\\\"`, `\\\"96x96\\\"`) or `\\\"any\\\"` for scalable formats like SVG",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "src": {
+            "description": "A standard URI pointing to an icon resource",
+            "type": "string"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IconTheme"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional specifier for the theme this icon is designed for\nIf not provided, the client should assume the icon can be used with any theme."
+          }
+        },
+        "required": [
+          "src"
+        ],
+        "type": "object"
+      },
+      "IconTheme": {
+        "description": "Icon themes supported by the MCP specification",
+        "oneOf": [
+          {
+            "const": "light",
+            "description": "Indicates the icon is designed to be used with a light background",
+            "type": "string"
+          },
+          {
+            "const": "dark",
+            "description": "Indicates the icon is designed to be used with a dark background",
+            "type": "string"
+          }
+        ]
+      },
+      "IdentityState": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schema_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_version",
+          "revision",
+          "fingerprint"
+        ],
+        "type": "object"
+      },
+      "Index": {
+        "enum": [
+          "local",
+          "shared"
+        ],
+        "type": "string"
+      },
+      "IndexDestination": {
+        "enum": [
+          "local",
+          "both"
+        ],
+        "type": "string"
+      },
+      "IndexStatus": {
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/IndexDestination"
+          },
+          "since_days": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "destination"
+        ],
+        "type": "object"
+      },
+      "Intent": {
+        "enum": [
+          "related-discussion",
+          "exact-mention"
+        ],
+        "type": "string"
+      },
+      "Job": {
+        "properties": {
+          "completed_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/JobOutcome"
+          },
+          "request": {
+            "$ref": "#/components/schemas/JobRequest"
+          },
+          "requested_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/Target"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "request",
+          "requested_at",
+          "outcome",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "JobOutcome": {
+        "enum": [
+          "running",
+          "succeeded",
+          "partial",
+          "failed",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "JobRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/FleetAction"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "targets",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "Kind": {
+        "enum": [
+          "decision",
+          "preference",
+          "fact"
+        ],
+        "type": "string"
+      },
+      "LexicalManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "representation_version": {
+            "description": "Qdrant lexical payloads and sparse retrieval, with literal verification.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schema_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "searchable_messages": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "silver": {
+            "$ref": "#/components/schemas/Certificate"
+          }
+        },
+        "required": [
+          "schema_version",
+          "representation_version",
+          "silver",
+          "searchable_messages"
+        ],
+        "type": "object"
+      },
+      "Lifecycle": {
+        "enum": [
+          "proposed",
+          "accepted",
+          "active",
+          "current",
+          "superseded",
+          "withdrawn",
+          "retracted"
+        ],
+        "type": "string"
+      },
+      "Limitation": {
+        "enum": [
+          "source-freshness-not-checked",
+          "historical-scan-scope-unrecorded",
+          "shared-provider-scan-state-unreported"
+        ],
+        "type": "string"
+      },
+      "Link": {
+        "properties": {
+          "relation": {
+            "$ref": "#/components/schemas/Relation"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "target_id",
+          "relation"
+        ],
+        "type": "object"
+      },
+      "Log": {
+        "properties": {
+          "checked_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "checked_at"
+        ],
+        "type": "object"
+      },
+      "Lookup": {
+        "additionalProperties": false,
+        "properties": {
+          "list_attachments": {
+            "$ref": "#/components/schemas/Attachments"
+          },
+          "view": {
+            "$ref": "#/components/schemas/View"
+          }
+        },
+        "required": [
+          "view",
+          "list_attachments"
+        ],
+        "type": "object"
+      },
+      "Machine": {
+        "properties": {
+          "checked_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/Service"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "checked_at",
+          "reachable",
+          "services",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "MachineSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "machine": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine"
+        ],
+        "type": "object"
+      },
+      "Machines": {
+        "properties": {
+          "machines": {
+            "items": {
+              "$ref": "#/components/schemas/Machine"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "machines"
+        ],
+        "type": "object"
+      },
+      "Manifest": {
+        "additionalProperties": false,
+        "properties": {
+          "interpretation_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "representation_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schema_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "silver": {
+            "$ref": "#/components/schemas/IdentityState"
+          }
+        },
+        "required": [
+          "schema_version",
+          "interpretation_version",
+          "representation_version",
+          "silver"
+        ],
+        "type": "object"
+      },
+      "MatchEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MatchKind"
+          },
+          "matched": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "matched"
+        ],
+        "type": "object"
+      },
+      "MatchKind": {
+        "enum": [
+          "exact",
+          "prefix",
+          "typo",
+          "prefix-and-typo"
+        ],
+        "type": "string"
+      },
+      "Measurement": {
+        "properties": {
+          "calls": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completed_calls": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filters_before_limit": {
+            "default": false,
+            "description": "Placement of metadata/scope predicates, independent of call completion.",
+            "type": "boolean"
+          },
+          "items_in": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "items_out": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_us": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reranker_engine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RerankerEngine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "total_us": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stage",
+          "calls",
+          "completed_calls",
+          "total_us",
+          "max_us"
+        ],
+        "type": "object"
+      },
+      "Member": {
+        "properties": {
+          "index": {
+            "$ref": "#/components/schemas/Index"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "providers": {
+            "description": "Local scan evidence only; null when the publisher does not report it.",
+            "items": {
+              "$ref": "#/components/schemas/Scan"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "retained": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Retained"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scoped canonical row counts; null when this source does not report them."
+          },
+          "source_silver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Certificate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "node_id",
+          "index"
+        ],
+        "type": "object"
+      },
+      "MemoryTier": {
+        "enum": [
+          "durable",
+          "cached",
+          "cold"
+        ],
+        "type": "string"
+      },
+      "Message": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/Metadata"
+            },
+            "type": "array"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "tools": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Activity"
+              }
+            ],
+            "description": "A native entry's structured tool calls and results."
+          }
+        },
+        "required": [
+          "id",
+          "ordinal",
+          "role",
+          "content"
+        ],
+        "type": "object"
+      },
+      "MessageReference": {
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "type": "object"
+      },
+      "MetaObject": {
+        "additionalProperties": true,
+        "description": "See [MCP general fields](https://modelcontextprotocol.io/specification/2026-07-28/basic#general-fields) for notes on _meta usage.",
+        "type": "object"
+      },
+      "Metadata": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/Availability"
+          },
+          "bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "redacted": {
+            "description": "Text is retained as a redacted UTF-8 view, never the original secret-bearing bytes.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "media_type",
+          "availability",
+          "redacted"
+        ],
+        "type": "object"
+      },
+      "ModelAvailability": {
+        "enum": [
+          "not-required",
+          "available",
+          "unavailable"
+        ],
+        "type": "string"
+      },
+      "NodeFingerprintSummary": {
+        "properties": {
+          "chats": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "duplicated": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "node_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "chats",
+          "duplicated"
+        ],
+        "type": "object"
+      },
+      "NodeFreshness": {
+        "properties": {
+          "artifacts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Artifacts"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None means the service did not report artifact publication states."
+          },
+          "chats": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance": {
+            "description": "The local database that owns this node's publications.",
+            "type": "string"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lexical_current": {
+            "default": false,
+            "type": "boolean"
+          },
+          "lexical_manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Manifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "silver_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentityState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_silver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Certificate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Retained source-node certificate, not the server-owned canonical revision."
+          },
+          "views_current": {
+            "default": false,
+            "type": "boolean"
+          },
+          "views_manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedViewsManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "node_id",
+          "instance",
+          "revision",
+          "chats",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "Origin": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "unknown",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "$ref": "#/components/schemas/SourceField"
+              },
+              "kind": {
+                "const": "source-metadata",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "field"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "first-visible-user-message",
+                "type": "string"
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "rule_version": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "message_id",
+              "rule_version"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Page": {
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_offset": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/Record"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "type": "object"
+      },
+      "Phase": {
+        "enum": [
+          "waiting_for_capacity",
+          "receiving",
+          "waiting_for_node",
+          "checking_views",
+          "applying_silver",
+          "finalizing_silver",
+          "committing_silver",
+          "writing_views",
+          "certifying_views",
+          "optimizing_views",
+          "checking_search",
+          "attachment"
+        ],
+        "type": "string"
+      },
+      "Policy": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill_since": {
+            "default": null,
+            "description": "Fixed setup cutoff for explicit backfill; absent uses the 3-day default.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "PreferenceState": {
+        "enum": [
+          "active",
+          "superseded",
+          "withdrawn"
+        ],
+        "type": "string"
+      },
+      "Progress": {
+        "properties": {
+          "progress": {
+            "format": "double",
+            "type": "number"
+          },
+          "total": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "progress"
+        ],
+        "type": "object"
+      },
+      "ProjectionSpan": {
+        "description": "Half-open Unicode-scalar character offsets, not bytes or canonical offsets.",
+        "properties": {
+          "end_char": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "start_char": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_char",
+          "end_char"
+        ],
+        "type": "object"
+      },
+      "Provider": {
+        "enum": [
+          "claude-code",
+          "codex",
+          "opencode",
+          "copilot",
+          "cursor",
+          "antigravity"
+        ],
+        "type": "string"
+      },
+      "ProviderStatus": {
+        "properties": {
+          "roots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roots"
+        ],
+        "type": "object"
+      },
+      "Publication": {
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preparation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotWork"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/PublicationState"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "PublicationState": {
+        "enum": [
+          "pending",
+          "published"
+        ],
+        "type": "string"
+      },
+      "QdrantConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key_env": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grpc_url": {
+            "default": "http://127.0.0.1:6334",
+            "type": "string"
+          },
+          "memory": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemoryTier"
+              }
+            ],
+            "default": "durable"
+          },
+          "url": {
+            "default": "http://127.0.0.1:6333",
+            "type": "string"
+          },
+          "vector_search": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Search"
+              }
+            ],
+            "default": {
+              "algorithm": "hnsw",
+              "ef_runtime": 200
+            }
+          }
+        },
+        "type": "object"
+      },
+      "Query": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness_warnings": {
+            "default": true,
+            "description": "Include read-only local indexing freshness warnings with search results.",
+            "type": "boolean"
+          },
+          "fusion": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fusion"
+              }
+            ],
+            "default": {
+              "lexical_weight": 1,
+              "rank_constant": 60,
+              "recency_weight": 50,
+              "semantic_weight": 1
+            }
+          },
+          "intent": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Intent"
+              }
+            ],
+            "default": "related-discussion"
+          },
+          "limit": {
+            "default": 20,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ranking": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ranking"
+              }
+            ],
+            "default": "contextual-rerank"
+          },
+          "unit": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SearchUnit"
+              }
+            ],
+            "default": "chats"
+          }
+        },
+        "type": "object"
+      },
+      "Ranking": {
+        "description": "Query-only ranking over the active lexical and dense candidate artifacts.",
+        "enum": [
+          "contextual-rerank",
+          "fusion"
+        ],
+        "type": "string"
+      },
+      "ReadinessState": {
+        "enum": [
+          "missing",
+          "stale",
+          "ready",
+          "disabled"
+        ],
+        "type": "string"
+      },
+      "RecommendedAction": {
+        "enum": [
+          "init",
+          "index",
+          "models install"
+        ],
+        "type": "string"
+      },
+      "Record": {
+        "properties": {
+          "conflicted": {
+            "type": "boolean"
+          },
+          "current_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": "array"
+          },
+          "next_before_revision": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "next_link_offset": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRevision"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RecordScope"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "scope",
+          "current_revision",
+          "revisions",
+          "links",
+          "conflicted"
+        ],
+        "type": "object"
+      },
+      "RecordDetailParams": {
+        "additionalProperties": false,
+        "properties": {
+          "before_revision": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "link_offset": {
+            "default": 0,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "node": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "RecordEvidence": {
+        "properties": {
+          "chat_id": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceUse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Unknown for records written before evidence provenance was retained."
+          },
+          "quote": {
+            "type": "string"
+          },
+          "source_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "chat_id",
+          "message_id",
+          "fingerprint",
+          "quote"
+        ],
+        "type": "object"
+      },
+      "RecordParams": {
+        "additionalProperties": false,
+        "properties": {
+          "chat": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cursor_node": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cursor_offset": {
+            "default": 0,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Kind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "node": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offset": {
+            "default": 0,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Review"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lifecycle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "RecordRevision": {
+        "properties": {
+          "body": {
+            "$ref": "#/components/schemas/Body"
+          },
+          "confirmation_history": {
+            "items": {
+              "$ref": "#/components/schemas/Confirmation"
+            },
+            "type": "array"
+          },
+          "confirmations": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/RecordEvidence"
+            },
+            "type": "array"
+          },
+          "evidence_current": {
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "body",
+          "recorded_at",
+          "evidence",
+          "evidence_current",
+          "confirmations",
+          "confirmation_history"
+        ],
+        "type": "object"
+      },
+      "RecordScope": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "personal",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "identity": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "repository",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "identity"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "local_project",
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "chat",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RedactionSettings": {
+        "additionalProperties": false,
+        "description": "Where a node masks recognizable credentials, configured under `[redaction]`.\nEach destination defaults on; credentials in canonical silver are never\nmasked (`<private>` spans never reach it: see [`private_text`]).",
+        "properties": {
+          "output": {
+            "default": true,
+            "description": "CLI and MCP output: search, view, chat listing and attachments.",
+            "type": "boolean"
+          },
+          "publication": {
+            "default": true,
+            "description": "History uploaded to the shared server. Changing it republishes everything.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Relation": {
+        "enum": [
+          "supersedes",
+          "supports",
+          "contradicts"
+        ],
+        "type": "string"
+      },
+      "Representations": {
+        "enum": [
+          "lexical-and-dense",
+          "lexical-only"
+        ],
+        "type": "string"
+      },
+      "RerankerEngine": {
+        "description": "Execution provider for contextual reranking.",
+        "enum": [
+          "cpu"
+        ],
+        "type": "string"
+      },
+      "Results": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/components/schemas/ChatHit"
+            },
+            "type": "array"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "Retained": {
+        "properties": {
+          "chats": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "earliest_message_at": {
+            "description": "Observed message bounds in Unix milliseconds, not a completeness interval.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "latest_message_at": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "messages": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chats",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "RetrievalUnit": {
+        "enum": [
+          "message",
+          "parent-and-message"
+        ],
+        "type": "string"
+      },
+      "Review": {
+        "enum": [
+          "candidate",
+          "established"
+        ],
+        "type": "string"
+      },
+      "Role": {
+        "type": "string"
+      },
+      "Scan": {
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          },
+          "rejected_sources": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Completeness"
+              }
+            ],
+            "description": "Completion of a recorded scan, not completeness of all historical chats."
+          }
+        },
+        "required": [
+          "provider",
+          "configured",
+          "state",
+          "rejected_sources"
+        ],
+        "type": "object"
+      },
+      "Search": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "const": "exact",
+                "type": "string"
+              }
+            },
+            "required": [
+              "algorithm"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "const": "hnsw",
+                "type": "string"
+              },
+              "ef_runtime": {
+                "default": 200,
+                "format": "uint",
+                "maximum": 4096,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "algorithm"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SearchHit": {
+        "properties": {
+          "chat_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReference"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "default": null,
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "fusion_score": {
+            "format": "float",
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lexical_match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lexical_score": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lookup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lookup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatMetadata"
+              }
+            ],
+            "default": {
+              "created_at": null,
+              "project": null,
+              "repository": null,
+              "title": null,
+              "updated_at": null
+            }
+          },
+          "node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          },
+          "rerank_score": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "semantic_score": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "Message position in its chat.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "provider",
+          "role",
+          "content",
+          "fusion_score"
+        ],
+        "type": "object"
+      },
+      "SearchMode": {
+        "enum": [
+          "lexical",
+          "local-lexical",
+          "merged-lexical",
+          "hybrid",
+          "local-hybrid",
+          "merged-hybrid",
+          "unavailable"
+        ],
+        "type": "string"
+      },
+      "SearchParams": {
+        "properties": {
+          "days": {
+            "default": null,
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "machine": {
+            "default": "",
+            "description": "Comma-separated machine (node) IDs.",
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "project": {
+            "default": "",
+            "description": "Comma-separated recorded working directories.",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "description": "Comma-separated provider names, such as `claude-code,codex`.",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Diagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "freshness_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "intent": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Intent"
+              }
+            ],
+            "default": "related-discussion"
+          },
+          "next_offset": {
+            "default": null,
+            "description": "Offset of the next page of the same ranked list; null on the last page.",
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "notice": {
+            "description": "Why an empty result may not mean the history lacks the subject.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "type": "string"
+          },
+          "realized_mode": {
+            "$ref": "#/components/schemas/SearchMode"
+          },
+          "results": {
+            "$ref": "#/components/schemas/Results"
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "shared_context_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shared_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "$ref": "#/components/schemas/SearchUnit"
+          }
+        },
+        "required": [
+          "query",
+          "realized_mode",
+          "unit",
+          "results",
+          "shared"
+        ],
+        "type": "object"
+      },
+      "SearchUnit": {
+        "enum": [
+          "chats",
+          "messages"
+        ],
+        "type": "string"
+      },
+      "Selection": {
+        "additionalProperties": false,
+        "properties": {
+          "machine": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine",
+          "service"
+        ],
+        "type": "object"
+      },
+      "ServerTarget": {
+        "description": "A target that is a shared server rather than a machine.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "machine": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "machine"
+        ],
+        "type": "object"
+      },
+      "Service": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceAction"
+            },
+            "type": "array"
+          },
+          "checked_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "compatibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Compatibility"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "control_note": {
+            "type": "string"
+          },
+          "control_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ServiceKind"
+          },
+          "logs_available": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pid": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ServiceState"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "state",
+          "summary",
+          "checked_at",
+          "actions",
+          "control_note",
+          "diagnostics",
+          "logs_available"
+        ],
+        "type": "object"
+      },
+      "ServiceAction": {
+        "enum": [
+          "start",
+          "stop",
+          "restart"
+        ],
+        "type": "string"
+      },
+      "ServiceKind": {
+        "enum": [
+          "qdrant",
+          "watcher",
+          "mcp",
+          "server",
+          "dashboard",
+          "sqlite"
+        ],
+        "type": "string"
+      },
+      "ServiceOperation": {
+        "properties": {
+          "completed_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ServiceOutcome"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ActionRequest"
+          },
+          "requested_at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request",
+          "requested_at",
+          "outcome",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ServiceOutcome": {
+        "enum": [
+          "pending",
+          "succeeded",
+          "failed",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "ServiceState": {
+        "enum": [
+          "healthy",
+          "degraded",
+          "stopped",
+          "failed",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "Settings": {
+        "description": "The settings, with whether this dashboard accepts changes to them.",
+        "properties": {
+          "agents": {
+            "additionalProperties": false,
+            "properties": {
+              "antigravity": {
+                "$ref": "#/components/schemas/AgentSettings"
+              },
+              "claude-code": {
+                "$ref": "#/components/schemas/AgentSettings"
+              },
+              "codex": {
+                "$ref": "#/components/schemas/AgentSettings"
+              },
+              "copilot": {
+                "$ref": "#/components/schemas/AgentSettings"
+              },
+              "cursor": {
+                "$ref": "#/components/schemas/AgentSettings"
+              },
+              "opencode": {
+                "$ref": "#/components/schemas/AgentSettings"
+              }
+            },
+            "type": "object"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/IndexDestination"
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "hide_credentials": {
+            "$ref": "#/components/schemas/RedactionSettings"
+          },
+          "memory_capture": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "revision": {
+            "description": "Names the file's contents. A change states the contents it was made\nagainst, so an edit made elsewhere in between is not overwritten.",
+            "type": "string"
+          },
+          "shared": {
+            "description": "Whether a shared server is configured, so history can go to it.",
+            "type": "boolean"
+          },
+          "since_days": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "revision",
+          "agents",
+          "destination",
+          "shared",
+          "memory_capture",
+          "hide_credentials",
+          "editable"
+        ],
+        "type": "object"
+      },
+      "Setup": {
+        "description": "One machine's agent integrations for a dashboard, step by step. A peer\ndashboard sends this to the one asking, so local paths are left out.",
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSetup"
+            },
+            "type": "array"
+          },
+          "build": {
+            "description": "The build of the Mash binary that inspected the machine.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "build",
+          "agents"
+        ],
+        "type": "object"
+      },
+      "SetupAgent": {
+        "enum": [
+          "codex",
+          "claude-code"
+        ],
+        "type": "string"
+      },
+      "SetupState": {
+        "enum": [
+          "present",
+          "missing",
+          "disabled",
+          "invalid",
+          "outdated",
+          "unverified",
+          "not_configured",
+          "passed",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "SharedConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "api_url": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "token_env": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "node_id",
+          "api_url",
+          "token_env"
+        ],
+        "type": "object"
+      },
+      "SharedViewsManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "interpretation_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model_generation": {
+            "type": "string"
+          },
+          "schema_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "silver": {
+            "$ref": "#/components/schemas/IdentityState"
+          }
+        },
+        "required": [
+          "schema_version",
+          "interpretation_version",
+          "build",
+          "model_generation",
+          "silver"
+        ],
+        "type": "object"
+      },
+      "SnapshotWork": {
+        "properties": {
+          "embedding_milliseconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "forwarded_embeddings": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model_inferences": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model_load_milliseconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "preparation_milliseconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "upload_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "forwarded_embeddings",
+          "model_inferences",
+          "model_load_milliseconds",
+          "embedding_milliseconds",
+          "preparation_milliseconds",
+          "upload_bytes"
+        ],
+        "type": "object"
+      },
+      "Source": {
+        "enum": [
+          "local",
+          "shared"
+        ],
+        "type": "string"
+      },
+      "SourceField": {
+        "enum": [
+          "cwd",
+          "session.title",
+          "threads.title",
+          "session.directory",
+          "project.worktree"
+        ],
+        "type": "string"
+      },
+      "Stage": {
+        "enum": [
+          "local-exact",
+          "shared-candidates",
+          "context",
+          "embed",
+          "rerank",
+          "fusion",
+          "local-metadata",
+          "shared-metadata",
+          "metadata-merge",
+          "local-candidates"
+        ],
+        "type": "string"
+      },
+      "StatusResponse": {
+        "properties": {
+          "chats": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/ConfigurationStatus"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverageReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "database_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duplicates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FingerprintReport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Duplicate-history report, only when `--shared` asked for it."
+          },
+          "embeddings": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "installation": {
+            "$ref": "#/components/schemas/Summary"
+          },
+          "lexical": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LexicalManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "local_artifacts": {
+            "$ref": "#/components/schemas/Artifacts"
+          },
+          "local_views_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messages": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "models_installed": {
+            "type": "boolean"
+          },
+          "query_models": {
+            "$ref": "#/components/schemas/ModelAvailability"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "realized_mode": {
+            "$ref": "#/components/schemas/SearchMode"
+          },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendedAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "searchable_messages": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "semantic_support": {
+            "type": "boolean"
+          },
+          "shared": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Publication"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shared_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shared_index": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Freshness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "silver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Certificate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stored_embeddings": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViewsManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "installation",
+          "local_artifacts",
+          "ready",
+          "chats",
+          "messages",
+          "searchable_messages",
+          "embeddings",
+          "stored_embeddings",
+          "models_installed",
+          "query_models",
+          "semantic_support",
+          "realized_mode",
+          "configuration"
+        ],
+        "type": "object"
+      },
+      "Step": {
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/Component"
+          },
+          "message": {
+            "type": "string"
+          },
+          "remediation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/SetupState"
+          }
+        },
+        "required": [
+          "component",
+          "state",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Summary": {
+        "properties": {
+          "attention": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSummary"
+            },
+            "type": "array"
+          },
+          "next_action": {
+            "description": "The command that would make progress, or null when nothing is left.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unconfigured": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unverified": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attention",
+          "unverified",
+          "unconfigured",
+          "clients"
+        ],
+        "type": "object"
+      },
+      "Target": {
+        "properties": {
+          "detail": {
+            "default": null,
+            "description": "One line on what the operation found or why it failed. These are the\nfixed sentences the probe and playbooks write, never command output.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/TargetState"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "TargetState": {
+        "enum": [
+          "waiting",
+          "running",
+          "succeeded",
+          "failed",
+          "skipped",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "TextPreparation": {
+        "enum": [
+          "preserve",
+          "collapse-whitespace"
+        ],
+        "type": "string"
+      },
+      "TimestampField": {
+        "enum": [
+          "session.time_created",
+          "session.time_updated",
+          "threads.created_at_ms",
+          "threads.updated_at_ms",
+          "threads.created_at",
+          "threads.updated_at"
+        ],
+        "type": "string"
+      },
+      "TimestampOrigin": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "unknown",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "$ref": "#/components/schemas/TimestampField"
+              },
+              "kind": {
+                "const": "source-metadata",
+                "type": "string"
+              },
+              "rule_version": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "field",
+              "rule_version"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "message-boundary",
+                "type": "string"
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "rule_version": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "selection": {
+                "$ref": "#/components/schemas/Boundary"
+              }
+            },
+            "required": [
+              "kind",
+              "message_id",
+              "selection",
+              "rule_version"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Timestamps": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "Tool": {
+        "description": "A tool that can be used by a model.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetaObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional additional metadata for this tool"
+          },
+          "annotations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolAnnotations"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional additional tool information."
+          },
+          "description": {
+            "description": "A description of what the tool does",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icons": {
+            "description": "Optional list of icons for the tool",
+            "items": {
+              "$ref": "#/components/schemas/Icon"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "inputSchema": {
+            "additionalProperties": true,
+            "description": "A JSON Schema object defining the expected parameters for the tool",
+            "type": "object"
+          },
+          "name": {
+            "description": "The name of the tool",
+            "type": "string"
+          },
+          "outputSchema": {
+            "additionalProperties": true,
+            "description": "An optional JSON Schema object defining the structure of the tool's output",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "A human-readable title for the tool",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "inputSchema"
+        ],
+        "type": "object"
+      },
+      "ToolAnnotations": {
+        "description": "Additional properties describing a Tool to clients.\n\nNOTE: all properties in ToolAnnotations are **hints**.\nThey are not guaranteed to provide a faithful description of\ntool behavior (including descriptive properties like `title`).\n\nClients should never make tool use decisions based on ToolAnnotations\nreceived from untrusted servers.",
+        "properties": {
+          "destructiveHint": {
+            "description": "If true, the tool may perform destructive updates to its environment.\nIf false, the tool performs only additive updates.\n\n(This property is meaningful only when `readOnlyHint == false`)\n\nDefault: true\nA human-readable description of the tool's purpose.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "idempotentHint": {
+            "description": "If true, calling the tool repeatedly with the same arguments\nwill have no additional effect on the its environment.\n\n(This property is meaningful only when `readOnlyHint == false`)\n\nDefault: false.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "openWorldHint": {
+            "description": "If true, this tool may interact with an \"open world\" of external\nentities. If false, the tool's domain of interaction is closed.\nFor example, the world of a web search tool is open, whereas that\nof a memory tool is not.\n\nDefault: true",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "readOnlyHint": {
+            "description": "If true, the tool does not modify its environment.\n\nDefault: false",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "A human-readable title for the tool.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ToolCall": {
+        "additionalProperties": false,
+        "description": "One requested tool invocation.",
+        "properties": {
+          "call_id": {
+            "description": "Links results to this call within the chat.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input": {
+            "description": "The provider's arguments, verbatim; a JSON string when the provider\nrecords encoded or free-form arguments."
+          },
+          "name": {
+            "description": "The provider's tool name; absent only where the provider omits it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ToolResult": {
+        "additionalProperties": false,
+        "description": "One reported tool result. Its output stays in the entry's content.",
+        "properties": {
+          "call_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_error": {
+            "description": "Present only where the provider records an error flag.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "Unit": {
+        "enum": [
+          "bytes",
+          "records",
+          "chats"
+        ],
+        "type": "string"
+      },
+      "View": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shared": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ViewParams": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "default": null,
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "node": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ViewResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "ViewsConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Build"
+              }
+            ],
+            "default": {
+              "embedding_text": "dialogue"
+            }
+          },
+          "query": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Query"
+              }
+            ],
+            "default": {
+              "freshness_warnings": true,
+              "fusion": {
+                "lexical_weight": 1,
+                "rank_constant": 60,
+                "recency_weight": 50,
+                "semantic_weight": 1
+              },
+              "intent": "related-discussion",
+              "limit": 20,
+              "ranking": "contextual-rerank",
+              "unit": "chats"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "ViewsManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "model_generation": {
+            "type": "string"
+          },
+          "schema_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "silver": {
+            "$ref": "#/components/schemas/Certificate"
+          }
+        },
+        "required": [
+          "schema_version",
+          "build",
+          "model_generation",
+          "silver"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The local dashboard's API. Generated from the server's routes; do not edit.",
+    "title": "mash dash",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/chat": {
+      "get": {
+        "operationId": "getApiChat",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "shared",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "One page of a chat's messages."
+      }
+    },
+    "/api/chats": {
+      "get": {
+        "operationId": "getApiChats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardCatalog"
+                }
+              }
+            },
+            "description": "A bounded catalogue, retaining machine identity even for copied histories."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Every chat's metadata, newest first."
+      }
+    },
+    "/api/console/call": {
+      "get": {
+        "operationId": "getApiConsoleCall",
+        "parameters": [
+          {
+            "description": "The tool's arguments as a JSON object; absent means none.",
+            "in": "query",
+            "name": "arguments",
+            "schema": {
+              "description": "The tool's arguments as a JSON object; absent means none.",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Answer"
+                }
+              }
+            },
+            "description": "A tool's answer as an agent receives it: the structured reply and the text\nbeside it. `failed` covers tool errors and rejected arguments alike."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Run one read-only tool."
+      }
+    },
+    "/api/console/tools": {
+      "get": {
+        "operationId": "getApiConsoleTools",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalogue"
+                }
+              }
+            },
+            "description": "What the server publishes about itself: the same listing an agent reads."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "The tools the MCP server offers, as an agent sees them."
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "getApiHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "The build this dashboard is running."
+      }
+    },
+    "/api/record": {
+      "get": {
+        "operationId": "getApiRecord",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before_revision",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "link_offset",
+            "schema": {
+              "default": 0,
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Record"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "One memory with its history."
+      }
+    },
+    "/api/records": {
+      "get": {
+        "operationId": "getApiRecords",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "chat",
+            "schema": {
+              "default": null,
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "cursor_node",
+            "schema": {
+              "default": null,
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "cursor_offset",
+            "schema": {
+              "default": 0,
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "$ref": "#/components/schemas/Kind",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "default": null,
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "default": null,
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "review",
+            "schema": {
+              "$ref": "#/components/schemas/Review",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "shared",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "$ref": "#/components/schemas/Lifecycle",
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Saved memories, newest first."
+      }
+    },
+    "/api/search": {
+      "get": {
+        "operationId": "getApiSearch",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Comma-separated machine (node) IDs.",
+            "in": "query",
+            "name": "machine",
+            "schema": {
+              "default": "",
+              "description": "Comma-separated machine (node) IDs.",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Comma-separated recorded working directories.",
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "default": "",
+              "description": "Comma-separated recorded working directories.",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Comma-separated provider names, such as `claude-code,codex`.",
+            "in": "query",
+            "name": "provider",
+            "schema": {
+              "default": "",
+              "description": "Comma-separated provider names, such as `claude-code,codex`.",
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "default": "",
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Chats that match a question."
+      }
+    },
+    "/api/services": {
+      "get": {
+        "operationId": "getApiServices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machines"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "This machine and its configured peers, with their services."
+      }
+    },
+    "/api/services/access": {
+      "get": {
+        "operationId": "getApiServicesAccess",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Access"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Whether service routes need a token, and this machine's ID."
+      }
+    },
+    "/api/services/action": {
+      "post": {
+        "operationId": "postApiServicesAction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceOperation"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to parse the request body as JSON"
+          },
+          "415": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Expected request with `Content-Type: application/json`"
+          },
+          "422": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to deserialize the JSON body into the target type"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Start, stop or restart one service."
+      }
+    },
+    "/api/services/fleet": {
+      "get": {
+        "operationId": "getApiServicesFleet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "The fleet actions this dashboard may submit."
+      }
+    },
+    "/api/services/fleet/jobs": {
+      "get": {
+        "operationId": "getApiServicesFleetJobs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Job"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Recent fleet jobs."
+      },
+      "post": {
+        "operationId": "postApiServicesFleetJobs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to parse the request body as JSON"
+          },
+          "415": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Expected request with `Content-Type: application/json`"
+          },
+          "422": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to deserialize the JSON body into the target type"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Submit one fleet action."
+      }
+    },
+    "/api/services/installation": {
+      "get": {
+        "operationId": "getApiServicesInstallation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "machine",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Setup"
+                }
+              }
+            },
+            "description": "One machine's agent integrations for a dashboard, step by step. A peer\ndashboard sends this to the one asking, so local paths are left out."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "How each agent on a machine is set up to use Mash."
+      }
+    },
+    "/api/services/local": {
+      "get": {
+        "operationId": "getApiServicesLocal",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machine"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "This machine's services."
+      }
+    },
+    "/api/services/log": {
+      "get": {
+        "operationId": "getApiServicesLog",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "machine",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Log"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Recent log lines of one service."
+      }
+    },
+    "/api/services/operations": {
+      "get": {
+        "operationId": "getApiServicesOperations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "machine",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceOperation"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Recent service actions on a machine."
+      }
+    },
+    "/api/services/settings": {
+      "get": {
+        "operationId": "getApiServicesSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "The settings, with whether this dashboard accepts changes to them."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "The settings in this machine's configuration file."
+      },
+      "post": {
+        "operationId": "postApiServicesSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Change"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "The settings, with whether this dashboard accepts changes to them."
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to parse the request body as JSON"
+          },
+          "415": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Expected request with `Content-Type: application/json`"
+          },
+          "422": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to deserialize the JSON body into the target type"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Rewrite the configuration file."
+      }
+    },
+    "/api/status": {
+      "get": {
+        "operationId": "getApiStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Local readiness and the resolved configuration."
+      }
+    },
+    "/api/view": {
+      "get": {
+        "operationId": "getApiView",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "context",
+            "schema": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "shared",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "The messages around one message."
+      }
+    }
+  }
+}

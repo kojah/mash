@@ -37,15 +37,17 @@ impl Mode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "MatchEvidence")]
 pub(crate) struct Evidence {
     pub(crate) kind: Kind,
     pub(crate) matched: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "MatchKind")]
 pub(crate) enum Kind {
     Exact,
     Prefix,

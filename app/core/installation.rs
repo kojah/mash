@@ -8,15 +8,19 @@ mod resources;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "SetupAgent")]
 pub(crate) enum Agent {
     Codex,
     ClaudeCode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "SetupState")]
 pub(crate) enum State {
     Present,
     Missing,
@@ -38,7 +42,7 @@ impl State {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Component {
     Configuration,
@@ -103,7 +107,7 @@ pub(crate) struct Report {
     resources: Option<resources::Report>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct Summary {
     attention: usize,
     unverified: usize,
@@ -113,7 +117,7 @@ pub(crate) struct Summary {
     next_action: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 struct ClientSummary {
     agent: Agent,
     expected: bool,
@@ -292,14 +296,14 @@ impl Environment {
 
 /// One machine's agent integrations for a dashboard, step by step. A peer
 /// dashboard sends this to the one asking, so local paths are left out.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct Setup {
     /// The build of the Mash binary that inspected the machine.
     pub(crate) build: String,
     pub(crate) agents: Vec<AgentSetup>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct AgentSetup {
     pub(crate) agent: Agent,
     /// The machine has this agent's data or CLI, so an integration is expected.
@@ -309,7 +313,7 @@ pub(crate) struct AgentSetup {
     pub(crate) steps: Vec<Step>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct Step {
     pub(crate) component: Component,
     pub(crate) state: State,

@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Where a node masks recognizable credentials, configured under `[redaction]`.
 /// Each destination defaults on; credentials in canonical silver are never
 /// masked (`<private>` spans never reach it: see [`private_text`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
+#[schemars(rename = "RedactionSettings")]
 pub(crate) struct Settings {
     /// CLI and MCP output: search, view, chat listing and attachments.
     pub(crate) output: bool,

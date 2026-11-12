@@ -7,22 +7,23 @@ use crate::core::SearchResponse;
 use crate::search_results::{Results, SearchUnit};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "DiagnosticsScope")]
 pub(crate) enum Scope {
     Local,
     Shared,
     Combined,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Source {
     Local,
     Shared,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Artifact {
     Metadata,
@@ -30,7 +31,7 @@ pub(crate) enum Artifact {
     Dense,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Diagnostics {
     pub(crate) policy_version: u16,
     pub(crate) intent: Intent,

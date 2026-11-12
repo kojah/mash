@@ -11,8 +11,9 @@ use std::{
 pub(crate) const MAX_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const MAX_FILES: usize = 32;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "AttachmentConfiguration")]
 pub(crate) struct Configuration {
     #[serde(default)]
     pub(crate) share_files: bool,
@@ -85,7 +86,7 @@ impl Source {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Availability {
     NotUploaded,
@@ -159,7 +160,7 @@ pub(crate) fn write_bytes(root: &Path, metadata: &Metadata, bytes: &[u8]) -> Res
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Metadata {
     pub(crate) id: String,

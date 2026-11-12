@@ -42,7 +42,8 @@ impl Scope {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+#[schemars(rename = "CoverageReport")]
 pub(crate) struct Report {
     pub(crate) scope: Scope,
     /// False: scan success and retained rows do not prove complete provider history.
@@ -52,7 +53,7 @@ pub(crate) struct Report {
     pub(super) limitations: Vec<Limitation>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum Limitation {
     SourceFreshnessNotChecked,
@@ -60,14 +61,14 @@ pub(super) enum Limitation {
     SharedProviderScanStateUnreported,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Index {
     Local,
     Shared,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct Member {
     pub(crate) node_id: String,
     pub(crate) index: Index,
@@ -78,7 +79,7 @@ pub(crate) struct Member {
     pub(crate) providers: Option<Vec<Scan>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct Retained {
     pub(crate) chats: u64,
     pub(crate) messages: u64,
@@ -87,7 +88,7 @@ pub(crate) struct Retained {
     pub(crate) latest_message_at: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct Scan {
     pub(super) provider: Provider,
     pub(super) configured: bool,

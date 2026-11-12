@@ -271,7 +271,7 @@ impl IndexResponse {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SearchMode {
     Lexical,
@@ -283,7 +283,7 @@ pub(crate) enum SearchMode {
     Unavailable,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct SearchResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) freshness_warnings: Vec<String>,
@@ -308,13 +308,13 @@ pub(crate) struct SearchResponse {
     pub(crate) notice: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ViewResponse {
     pub(crate) id: String,
     pub(crate) messages: Vec<crate::storage::Message>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct StatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) local_views_error: Option<String>,
@@ -350,7 +350,7 @@ pub(crate) struct StatusResponse {
     pub(super) duplicates: Option<shared::FingerprintReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum ModelAvailability {
     NotRequired,

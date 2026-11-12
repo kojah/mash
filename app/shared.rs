@@ -42,14 +42,14 @@ pub(crate) use publication::write_event;
 pub(crate) use publication::{publish, status};
 pub(crate) use retrieval::{SearchOutcome, require_dense, search};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum PublicationState {
     Pending,
     Published,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Publication {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     preparation: Option<publication::SnapshotWork>,
@@ -84,7 +84,7 @@ impl Publication {
 
 /// Duplicate-history report across the group, keyed by canonical chat
 /// fingerprint. Fingerprints are content hashes; no plaintext is exposed.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct FingerprintReport {
     /// Chat identifiers that appear with the same fingerprint in more
     /// than one node.
@@ -99,7 +99,7 @@ pub(crate) struct FingerprintReport {
     pub(crate) nodes: Vec<NodeFingerprintSummary>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct NodeFingerprintSummary {
     pub(crate) node_id: String,
     pub(crate) chats: u64,
@@ -107,7 +107,7 @@ pub(crate) struct NodeFingerprintSummary {
 }
 
 /// Baseline coverage for one node, read from the transfer catalog.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct BaselineCoverage {
     pub(crate) id: String,
     pub(crate) state: String,
@@ -115,7 +115,7 @@ pub(crate) struct BaselineCoverage {
     pub(crate) total: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct Freshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     activity: Option<activity::Report>,
@@ -132,7 +132,7 @@ pub(crate) struct Freshness {
     pub(crate) nodes: Vec<NodeFreshness>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct NodeFreshness {
     /// None means the service did not report artifact publication states.
     #[serde(default, skip_serializing_if = "Option::is_none")]

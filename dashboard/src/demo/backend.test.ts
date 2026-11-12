@@ -5,11 +5,11 @@ import { parseRecord, parseRecordPage } from "../lib/records";
 import { parseFleetCatalog, parseMachines, parseSetup } from "../lib/services.svelte";
 import { parseSettings } from "../lib/settings";
 import { parseStatus } from "../lib/status";
-import { type Answer, respond, terms } from "./backend";
+import { type Reply, respond, terms } from "./backend";
 import { chats, localMachine, records } from "./history";
 
 const now = Date.UTC(2026, 10, 12);
-function get(path: string): Answer {
+function get(path: string): Reply {
   return respond(path, "GET", now);
 }
 function body(path: string): unknown {

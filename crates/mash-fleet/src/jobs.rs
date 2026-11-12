@@ -5,8 +5,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "JobRequest")]
 pub struct Request {
     pub id: String,
     pub action: Action,
@@ -14,8 +15,9 @@ pub struct Request {
     pub revision: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "JobOutcome")]
 pub enum Outcome {
     Running,
     Succeeded,
@@ -24,7 +26,7 @@ pub enum Outcome {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetState {
     Waiting,
@@ -35,7 +37,7 @@ pub enum TargetState {
     Unknown,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct Target {
     pub id: String,
     pub state: TargetState,
@@ -46,13 +48,13 @@ pub struct Target {
     pub detail: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct Progress {
     pub progress: f64,
     pub total: Option<f64>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct Job {
     pub request: Request,
     pub requested_at: u64,

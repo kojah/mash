@@ -97,7 +97,7 @@ pub(crate) struct Collected {
     pub(crate) next_offset: Option<usize>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ChatMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
@@ -108,7 +108,7 @@ pub(crate) struct ChatMetadata {
     pub(crate) updated_at: Option<i64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub(crate) enum Results {
     Chats(Vec<ChatHit>),
@@ -129,7 +129,7 @@ impl Results {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ChatHit {
     pub(crate) chat_id: String,
     pub(crate) provider: crate::provider::Provider,
@@ -141,7 +141,7 @@ pub(crate) struct ChatHit {
     pub(crate) matches: Vec<ChatMatch>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ChatMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<lookup::Lookup>,
@@ -163,13 +163,13 @@ pub(crate) struct ChatMatch {
 }
 
 /// Half-open Unicode-scalar character offsets, not bytes or canonical offsets.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ProjectionSpan {
     pub(crate) start_char: usize,
     pub(crate) end_char: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct MessageReference {
     pub(crate) message_id: String,
     pub(crate) node_id: Option<String>,

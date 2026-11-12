@@ -7,7 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(in crate::dash) struct ActionRequest {
     pub machine: String,
@@ -17,8 +17,9 @@ pub(in crate::dash) struct ActionRequest {
     pub control_revision: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ServiceOutcome")]
 pub(super) enum Outcome {
     Pending,
     Succeeded,
@@ -26,7 +27,8 @@ pub(super) enum Outcome {
     Unknown,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
+#[schemars(rename = "ServiceOperation")]
 pub(super) struct Operation {
     pub request: ActionRequest,
     pub requested_at: u64,

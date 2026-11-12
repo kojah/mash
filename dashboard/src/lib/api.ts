@@ -1,3 +1,4 @@
+import type { Answer, ReadPath } from "./routes";
 import { send } from "./transport";
 import type { Agent, ChatSummary, Message, SearchFilters, SearchHit } from "./types";
 
@@ -60,11 +61,11 @@ function chat(value: unknown, localNode: string): ChatSummary {
     ...(updatedMs === undefined ? {} : { updatedMs }),
   };
 }
-export async function read(
-  path: string,
+export async function read<P extends ReadPath>(
+  path: P,
   params: URLSearchParams,
   signal: AbortSignal,
-): Promise<unknown> {
+): Promise<Answer<P>> {
   const response = await send(`${path}?${params}`, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
     cache: "no-store",
@@ -87,8 +88,9 @@ export async function read(
     }
     throw new Error(`Mash request failed (${response.status}). ${detail}`);
   }
-  const body: unknown = await response.json();
-  return body;
+  // The server generates the contract these types come from. The parsers that
+  // receive this still check what they use, in case the two are out of step.
+  return (await response.json()) as Answer<P>;
 }
 export function parseCatalog(value: unknown): Catalog {
   const body = object(value);

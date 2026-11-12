@@ -22,7 +22,9 @@ pub(crate) use evidence::{ProjectionEvidence, Projections};
 pub(crate) use read::validate_search;
 pub(crate) use views::{Documents, NodeViews};
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum MemoryTier {
     #[default]

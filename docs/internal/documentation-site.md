@@ -66,12 +66,36 @@ installs a transport that answers in the browser from a made-up history
 outside `dashboard/src/demo/` knows the demo exists, and the real build
 carries none of it.
 
-- **Keeping it honest.** `dashboard/src/demo/backend.test.ts` passes every
-  demo answer through the dashboard's own response checks. When a response
-  shape changes, update `backend.ts` until that test passes.
+- **Keeping it honest.** Every demo answer is typed against the dashboard's
+  API contract (see below), so a route or field the server changes stops
+  `backend.ts` compiling until the demo follows. `backend.test.ts` also passes
+  each answer through the dashboard's own response checks.
 - **Search.** The demo matches words only and says so on the results page.
 - **The tool list.** `dashboard/src/demo/tools.json` is a copy of what a
   running dashboard serves at `/api/console/tools`. Refresh it with
   `curl -s http://127.0.0.1:8790/api/console/tools > dashboard/src/demo/tools.json`.
 - **History.** Every project, machine and conversation is invented. Never add
   real history to it.
+
+## The dashboard's API contract
+
+`mash dash` describes its own API. Its routes are registered with `aide`
+(`app/dash.rs`, `app/dash/services.rs`), which builds the router and an
+OpenAPI 3.1 document together from the handlers' extractors and the Rust types
+each route answers with. A running dashboard serves the document at
+`/api/openapi.json`.
+
+- `dashboard/openapi.json` is the committed copy. The Rust test
+  `committed_contract_matches_the_routes` fails when it is out of date;
+  rewrite it by running that test with `MASH_WRITE_CONTRACT=1`.
+- `dashboard/src/lib/contract.ts` holds the TypeScript types generated from
+  it with `pnpm contract` in `dashboard/`. A dashboard test fails when they
+  are out of date.
+- `read()` in `dashboard/src/lib/api.ts` takes its path and answer type from
+  those types. The hand-written checks that follow still validate what they
+  use, in case a dashboard and its server are from different builds.
+- A type that answers a route needs `schemars::JsonSchema`. Types the MCP
+  tools also publish must keep their schema names: renaming one changes the
+  MCP contract.
+- `aide` is pinned to a pre-release (`0.16.0-alpha.4`), the first line that
+  reads `schemars` 1 schemas. Move to the stable release when there is one.

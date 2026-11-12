@@ -1,8 +1,9 @@
 use super::config::Kind;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ServiceState")]
 pub(super) enum State {
     Healthy,
     Degraded,
@@ -11,15 +12,16 @@ pub(super) enum State {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ServiceAction")]
 pub(in crate::dash) enum Action {
     Start,
     Stop,
     Restart,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(super) struct Compatibility {
     pub database_schema: Option<i64>,
     pub supported_schema: Option<i64>,
@@ -30,7 +32,7 @@ pub(super) struct Compatibility {
     pub next_step: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(super) struct Service {
     pub id: String,
     pub name: String,
@@ -47,13 +49,13 @@ pub(super) struct Service {
     pub control_revision: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(super) struct Diagnostic {
     pub label: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub(super) struct Machine {
     pub id: String,
     pub platform: String,

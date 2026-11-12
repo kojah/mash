@@ -6,14 +6,15 @@ use crate::{
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
+#[schemars(rename = "ViewsConfiguration")]
 pub(crate) struct Configuration {
     pub(crate) build: Build,
     pub(crate) query: Query,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Build {
     #[serde(skip_serializing_if = "RetrievalUnit::is_default")]
@@ -29,7 +30,9 @@ pub(crate) struct Build {
     pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum RetrievalUnit {
     #[default]
@@ -44,7 +47,9 @@ impl RetrievalUnit {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum DenseContent {
     #[default]
@@ -59,7 +64,9 @@ impl DenseContent {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum TextPreparation {
     #[default]
@@ -88,7 +95,9 @@ impl TextPreparation {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Representations {
     #[default]
@@ -104,7 +113,7 @@ impl Representations {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(try_from = "u32", into = "u32")]
 pub(crate) struct EmbeddingTextBudget(u32);
 
@@ -125,7 +134,9 @@ impl From<EmbeddingTextBudget> for u32 {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum EmbeddingText {
     #[default]
@@ -203,7 +214,7 @@ impl Build {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Query {
     /// Include read-only local indexing freshness warnings with search results.
@@ -236,7 +247,7 @@ pub(crate) enum Ranking {
 }
 
 /// Query-only candidate fusion; independent of embedding/build identity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Fusion {
     pub(crate) rank_constant: u16,

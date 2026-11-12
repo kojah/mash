@@ -56,8 +56,9 @@ pub(super) struct Service {
     pub allow_control: bool,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(rename = "ServiceKind")]
 pub(super) enum Kind {
     Qdrant,
     Watcher,

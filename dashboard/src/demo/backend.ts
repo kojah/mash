@@ -1,6 +1,7 @@
 // Answers the dashboard's requests in the browser, in the shapes `mash dash`
 // sends, from the made-up history. The dashboard's own parsers read every
 // answer, so a shape that drifts from the real one fails the tests here.
+import type { Answer, ReadPath } from "../lib/routes";
 import type { Transport } from "../lib/transport";
 import { chats, type DemoChat, type DemoMessage, localMachine, records } from "./history";
 import tools from "./tools.json";
@@ -8,16 +9,20 @@ import tools from "./tools.json";
 const DAY = 86_400_000;
 const MINUTE = 60_000;
 
-export interface Answer {
+/** What the demo sends back: a status and a JSON body. */
+export interface Reply {
   readonly status: number;
   readonly body: unknown;
 }
-const ok = (body: unknown): Answer => ({ status: 200, body });
-const refuse = (status: number, message: string): Answer => ({
-  status,
-  body: { error: { message } },
-});
-const notInDemo = (what: string): Answer =>
+/** A request the demo turns down, with the reason shown to the reader. */
+class Refusal {
+  constructor(
+    readonly status: number,
+    readonly message: string,
+  ) {}
+}
+const refuse = (status: number, message: string): Refusal => new Refusal(status, message);
+const notInDemo = (what: string): Refusal =>
   refuse(403, `${what} is switched off in the demo. Install Mash to use it on your own history.`);
 
 function updatedAt(chat: DemoChat, now: number): number {
@@ -26,7 +31,7 @@ function updatedAt(chat: DemoChat, now: number): number {
 function createdAt(chat: DemoChat, now: number): number {
   return updatedAt(chat, now) - chat.messages.length * 2 * MINUTE;
 }
-function row(chat: DemoChat, now: number) {
+function row(chat: DemoChat, now: number): Answer<"/api/chats">["chats"][number] {
   return {
     chat_id: chat.id,
     provider: chat.agent,
@@ -40,7 +45,12 @@ function row(chat: DemoChat, now: number) {
 }
 const messageId = (chat: DemoChat, position: number): string => `${chat.id}-${position}`;
 const callId = (chat: DemoChat, position: number): string => `${chat.id}-call-${position}`;
-function message(chat: DemoChat, entry: DemoMessage, position: number, now: number) {
+function message(
+  chat: DemoChat,
+  entry: DemoMessage,
+  position: number,
+  now: number,
+): Answer<"/api/chat">["messages"][number] {
   return {
     id: messageId(chat, position),
     ordinal: position,
@@ -89,7 +99,7 @@ function list(params: URLSearchParams, key: string): string[] {
   return (params.get(key) ?? "").split(",").filter(Boolean);
 }
 
-function search(params: URLSearchParams, now: number): Answer {
+function search(params: URLSearchParams, now: number): Answer<"/api/search"> {
   const wanted = terms(params.get("q") ?? "");
   const agents = list(params, "provider");
   const machines = list(params, "machine");
@@ -124,11 +134,17 @@ function search(params: URLSearchParams, now: number): Answer {
           score: inTitle * 3 + (best?.found ?? 0) * 2 + scored.length - chat.daysAgo / 100,
           result: {
             ...row(chat, now),
+            score: 0,
             matches: [
               {
                 message_id: messageId(chat, shown.position),
                 node_id: chat.machine,
                 role: shown.entry.role,
+                created_at: createdAt(chat, now) + shown.position * 2 * MINUTE,
+                copies: [{ message_id: messageId(chat, shown.position), node_id: chat.machine }],
+                fusion_score: 0,
+                rerank_score: null,
+                projection_span: { start_char: 0, end_char: shown.entry.content.length },
                 snippet: best
                   ? snippet(shown.entry.content, wanted)
                   : shown.entry.content.slice(0, 220),
@@ -140,44 +156,49 @@ function search(params: URLSearchParams, now: number): Answer {
     })
     .sort((a, b) => b.score - a.score)
     .map((scored) => scored.result);
-  return ok({
+  return {
+    query: params.get("q") ?? "",
+    intent: "related-discussion",
+    realized_mode: "lexical",
+    unit: "chats",
+    shared: true,
     results,
     next_offset: null,
     notice:
       "The demo matches the words in your question. Mash itself also matches by meaning, so it finds chats that say the same thing differently.",
-  });
+  };
 }
 
 function chatOf(id: string | null): DemoChat | undefined {
   return chats.find((chat) => chat.id === id);
 }
-function transcript(params: URLSearchParams, now: number): Answer {
+function transcript(params: URLSearchParams, now: number): Answer<"/api/chat"> | Refusal {
   const chat = chatOf(params.get("id"));
   if (!chat) return refuse(404, "That chat is not in the demo's history.");
   const offset = Number(params.get("offset") ?? 0);
   const limit = Number(params.get("limit") ?? 100);
-  return ok({ messages: messages(chat, now).slice(offset, offset + limit) });
+  return { id: chat.id, messages: messages(chat, now).slice(offset, offset + limit) };
 }
-function view(params: URLSearchParams, now: number): Answer {
+function view(params: URLSearchParams, now: number): Answer<"/api/view"> | Refusal {
   const id = params.get("id") ?? "";
   const chat = chats.find((candidate) => id.startsWith(`${candidate.id}-`));
   if (!chat) return refuse(404, "That message is not in the demo's history.");
-  return ok({ messages: messages(chat, now) });
+  return { id, messages: messages(chat, now) };
 }
 
-function record(entry: (typeof records)[number], now: number) {
+function record(entry: (typeof records)[number], now: number): Answer<"/api/record"> {
   const chat = chatOf(entry.source.chat);
   const details =
     entry.kind === "decision"
       ? {
           kind: entry.kind,
-          state: "accepted",
-          alternatives: entry.alternatives ?? [],
-          consequences: entry.consequences ?? [],
+          state: "accepted" as const,
+          alternatives: [...(entry.alternatives ?? [])],
+          consequences: [...(entry.consequences ?? [])],
         }
       : entry.kind === "preference"
-        ? { kind: entry.kind, state: "active", conditions: [] }
-        : { kind: entry.kind, state: "current", reported_by: "Sam", valid_until: null };
+        ? { kind: entry.kind, state: "active" as const, conditions: [] }
+        : { kind: entry.kind, state: "current" as const, reported_by: "Sam", valid_until: null };
   return {
     id: entry.id,
     owner: "sam",
@@ -217,14 +238,14 @@ function record(entry: (typeof records)[number], now: number) {
     next_link_offset: null,
   };
 }
-function recordList(params: URLSearchParams, now: number): Answer {
+function recordList(params: URLSearchParams, now: number): Answer<"/api/records"> {
   const wanted = terms(params.get("q") ?? "");
   const kind = params.get("kind");
   const review = params.get("review");
   const chat = params.get("chat");
   const state = params.get("state");
   const current = ["accepted", "active", "current"];
-  return ok({
+  return {
     records: records
       .filter(
         (entry) =>
@@ -238,20 +259,30 @@ function recordList(params: URLSearchParams, now: number): Answer {
       )
       .map((entry) => record(entry, now)),
     next_offset: null,
-  });
+  };
 }
 
-const roots: Readonly<Record<string, readonly string[]>> = {
+const roots = {
   "claude-code": ["/home/sam/.claude/projects"],
   codex: ["/home/sam/.codex/sessions"],
   cursor: ["/home/sam/.config/Cursor/User/workspaceStorage"],
   copilot: ["/home/sam/.copilot/session-state"],
   opencode: ["/home/sam/.local/share/opencode"],
 };
-function status(): Answer {
+type Rooted = keyof typeof roots;
+function perAgent<T>(entry: (paths: string[]) => T): Record<Rooted, T> {
+  return {
+    "claude-code": entry(roots["claude-code"]),
+    codex: entry(roots.codex),
+    cursor: entry(roots.cursor),
+    copilot: entry(roots.copilot),
+    opencode: entry(roots.opencode),
+  };
+}
+function status(): Answer<"/api/status"> {
   const local = chats.filter((chat) => chat.machine === localMachine);
   const count = local.reduce((sum, chat) => sum + chat.messages.length, 0);
-  return ok({
+  return {
     ready: true,
     chats: local.length,
     messages: count,
@@ -260,39 +291,65 @@ function status(): Answer {
     realized_mode: "hybrid",
     database_path: "/home/sam/.local/share/mash/mash.sqlite",
     recommended_action: null,
+    embeddings: count,
+    stored_embeddings: count,
+    query_models: "available",
+    semantic_support: true,
+    installation: { attention: 0, unverified: 0, unconfigured: 0, clients: [] },
+    local_artifacts: { metadata: "ready", lexical: "ready", dense: "ready" },
+    lexical: null,
+    views: null,
     configuration: {
       path: "/home/sam/.config/mash/config.toml",
       loaded: true,
-      providers: Object.fromEntries(
-        Object.entries(roots).map(([name, paths]) => [name, { roots: paths }]),
-      ),
+      providers: perAgent((paths) => ({ roots: paths })),
+      attachments: { share_files: false, allowed_roots: [] },
       index: { since_days: 90, destination: "both" },
       embeddings: { backend: "local" },
-      qdrant: { url: "http://127.0.0.1:6333", vector_search: { algorithm: "hnsw" } },
-      views: { query: { ranking: "contextual-rerank" } },
-      records: { enabled: true },
+      qdrant: {
+        url: "http://127.0.0.1:6333",
+        grpc_url: "http://127.0.0.1:6334",
+        api_key_env: null,
+        memory: "durable",
+        vector_search: { algorithm: "hnsw", ef_runtime: 200 },
+      },
+      views: {
+        build: { embedding_text: "dialogue" },
+        query: {
+          freshness_warnings: true,
+          intent: "related-discussion",
+          unit: "chats",
+          limit: 20,
+          fusion: { rank_constant: 60, lexical_weight: 1, semantic_weight: 1, recency_weight: 50 },
+          ranking: "contextual-rerank",
+        },
+      },
+      records: { enabled: true, backfill_since: null },
       redaction: { output: true, publication: true },
-      shared: { group_id: "harbor", node_id: localMachine, api_url: "https://mash.harbor.example" },
+      shared: {
+        group_id: "harbor",
+        node_id: localMachine,
+        api_url: "https://mash.harbor.example",
+        token_env: "MASH_NODE_TOKEN",
+      },
     },
-  });
+  };
 }
-function settings(): Answer {
-  return ok({
+function settings(): Answer<"/api/services/settings"> {
+  return {
     path: "/home/sam/.config/mash/config.toml",
     revision: "demo",
     editable: false,
-    agents: Object.fromEntries(
-      Object.entries(roots).map(([name, paths]) => [name, { indexed: true, roots: paths }]),
-    ),
+    agents: perAgent((paths) => ({ indexed: true, roots: paths })),
     since_days: 90,
     destination: "both",
     shared: true,
     memory_capture: true,
     hide_credentials: { output: true, publication: true },
-  });
+  };
 }
 /** What a dashboard with no service management reports: this machine's index, nothing to control. */
-function machine(now: number) {
+function machine(now: number): Answer<"/api/services/local"> {
   const checked = Math.round(now / 1000);
   return {
     id: localMachine,
@@ -320,65 +377,70 @@ function machine(now: number) {
   };
 }
 
+type Read<P extends ReadPath> = (params: URLSearchParams, now: number) => Answer<P> | Refusal;
+
+// One entry for every route the contract lists, each answering with that
+// route's type: a route added to the server does not compile here until the
+// demo answers it or declines to.
+const reads: { readonly [P in ReadPath]: Read<P> } = {
+  "/api/health": () => ({ build: tools.build_revision }),
+  "/api/chats": (_, now) => ({
+    local_node: localMachine,
+    truncated: false,
+    shared_error: null,
+    chats: chats.map((chat) => row(chat, now)),
+  }),
+  "/api/search": search,
+  "/api/chat": transcript,
+  "/api/view": view,
+  "/api/records": recordList,
+  "/api/record": (params, now) => {
+    const entry = records.find((candidate) => candidate.id === params.get("id"));
+    return entry ? record(entry, now) : refuse(404, "That memory is not in the demo.");
+  },
+  "/api/status": status,
+  "/api/console/tools": () => tools,
+  "/api/console/call": () => notInDemo("Running tools"),
+  "/api/services/access": () => ({ authentication_required: false, local_node: localMachine }),
+  "/api/services": (_, now) => ({ machines: [machine(now)] }),
+  "/api/services/local": (_, now) => machine(now),
+  "/api/services/settings": settings,
+  "/api/services/fleet": () => ({ enabled: false, revision: null, actions: [], services: [] }),
+  "/api/services/fleet/jobs": () =>
+    refuse(400, "Fleet jobs are only available on the configured controller"),
+  "/api/services/operations": () => [],
+  "/api/services/log": () => refuse(404, "No configured log source for this service"),
+  "/api/services/installation": () => ({
+    build: tools.build_revision,
+    agents: (["claude-code", "codex"] as const).map((name) => ({
+      agent: name,
+      expected: true,
+      connected: true,
+      steps: (["plugin", "skill", "mcp"] as const).map((component) => ({
+        component,
+        state: "present" as const,
+        message: "Installed and readable.",
+        remediation: null,
+      })),
+    })),
+  }),
+};
+function isRead(path: string): path is ReadPath {
+  return Object.hasOwn(reads, path);
+}
+
 /** The answer `mash dash` would give to one request, from the demo's history. */
-export function respond(url: string, method: string, now: number): Answer {
+export function respond(url: string, method: string, now: number): Reply {
   const { pathname, searchParams } = new URL(url, "http://demo.invalid");
-  if (method !== "GET") return notInDemo("Changing anything");
-  switch (pathname) {
-    case "/api/chats":
-      return ok({
-        local_node: localMachine,
-        truncated: false,
-        chats: chats.map((chat) => row(chat, now)),
-      });
-    case "/api/search":
-      return search(searchParams, now);
-    case "/api/chat":
-      return transcript(searchParams, now);
-    case "/api/view":
-      return view(searchParams, now);
-    case "/api/records":
-      return recordList(searchParams, now);
-    case "/api/record": {
-      const entry = records.find((candidate) => candidate.id === searchParams.get("id"));
-      return entry ? ok(record(entry, now)) : refuse(404, "That memory is not in the demo.");
-    }
-    case "/api/status":
-      return status();
-    case "/api/console/tools":
-      return ok(tools);
-    case "/api/console/call":
-      return notInDemo("Running tools");
-    case "/api/services/access":
-      return ok({ authentication_required: false, local_node: localMachine });
-    case "/api/services":
-      return ok({ machines: [machine(now)] });
-    case "/api/services/local":
-      return ok(machine(now));
-    case "/api/services/settings":
-      return settings();
-    case "/api/services/fleet":
-      return ok({ enabled: false, revision: null, actions: [], services: [] });
-    case "/api/services/operations":
-      return ok([]);
-    case "/api/services/installation":
-      return ok({
-        build: tools.build_revision,
-        agents: (["claude-code", "codex"] as const).map((name) => ({
-          agent: name,
-          expected: true,
-          connected: true,
-          steps: (["plugin", "skill", "mcp"] as const).map((component) => ({
-            component,
-            state: "present",
-            message: "Installed and readable.",
-            remediation: null,
-          })),
-        })),
-      });
-    default:
-      return refuse(404, "This part of Mash is not in the demo.");
-  }
+  const answer =
+    method !== "GET"
+      ? notInDemo("Changing anything")
+      : isRead(pathname)
+        ? reads[pathname](searchParams, now)
+        : refuse(404, "This part of Mash is not in the demo.");
+  return answer instanceof Refusal
+    ? { status: answer.status, body: { error: { message: answer.message } } }
+    : { status: 200, body: answer };
 }
 
 /** Installed by the demo's entry point in place of requests to `mash dash`. */

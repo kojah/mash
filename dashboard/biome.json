@@ -6,6 +6,8 @@
       "!dist",
       "!dist-demo",
       "!src/demo/tools.json",
+      "!src/lib/contract.ts",
+      "!openapi.json",
       "!node_modules",
       "!.svelte-check"
     ]

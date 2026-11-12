@@ -39,7 +39,7 @@ pub(crate) struct Diagnostics {
 }
 
 /// A bounded catalogue, retaining machine identity even for copied histories.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct DashboardCatalog {
     pub(crate) chats: Vec<Chat>,
     pub(crate) local_node: String,
