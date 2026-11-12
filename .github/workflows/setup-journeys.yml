@@ -80,7 +80,8 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /README.md
-            /assets/mash-logo.png
+            /assets/mash-logo-dark.svg
+            /assets/mash-logo-light.svg
             /docs/*.md
             !/docs/internal/
             /.github/scripts/setup-journey.mjs

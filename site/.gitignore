@@ -2,6 +2,5 @@ node_modules/
 .astro/
 dist/
 src/content/docs/
-public/mash-logo.png
 test-results/
 playwright-report/

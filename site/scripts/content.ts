@@ -15,11 +15,6 @@ routes.set("README.md", "/quick-start/");
 routes.set("docs/home.mdx", "/");
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-await mkdir(new URL("../public/", import.meta.url), { recursive: true });
-await copyFile(
-  new URL("assets/mash-logo.png", repo),
-  new URL("../public/mash-logo.png", import.meta.url),
-);
 for (const source of [...names.map((name) => `docs/${name}`), "README.md"]) {
   let body = await readFile(new URL(source, repo), "utf8");
   const title = source === "README.md" ? "Quick start" : body.match(/^# (.+)$/m)?.[1];

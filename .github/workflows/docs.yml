@@ -3,10 +3,10 @@ name: Documentation
 on:
   push:
     branches: [main]
-    paths: ['docs/**', 'site/**', 'README.md', 'assets/mash-logo.png', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', 'README.md', '.github/workflows/docs.yml']
   pull_request:
     branches: [main]
-    paths: ['docs/**', 'site/**', 'README.md', 'assets/mash-logo.png', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', 'README.md', '.github/workflows/docs.yml']
   workflow_dispatch:
   # A release adds packages to the apt repository; republish so they are served.
   workflow_run:
