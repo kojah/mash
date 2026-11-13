@@ -259,7 +259,7 @@ async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
     assert_eq!(waiting["method"], "notifications/progress");
     assert_eq!(waiting["params"]["progressToken"], "index-one");
     assert_eq!(
-        waiting["params"]["_meta"]["dev.jamesqo.mash/index-progress"]["phase"],
+        waiting["params"]["_meta"]["dev.kojah.mash/index-progress"]["phase"],
         "waiting-for-index"
     );
     assert!(
@@ -294,7 +294,7 @@ async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
         );
         previous = event.progress;
         let metadata: crate::progress::Event =
-            serde_json::from_value(event.meta.unwrap()["dev.jamesqo.mash/index-progress"].clone())
+            serde_json::from_value(event.meta.unwrap()["dev.kojah.mash/index-progress"].clone())
                 .unwrap();
         if metadata.phase == crate::progress::Phase::Complete {
             complete = true;

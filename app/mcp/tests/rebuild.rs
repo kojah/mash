@@ -73,7 +73,7 @@ async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_sh
         }
         assert_eq!(message["params"]["progressToken"], "views");
         let event: crate::progress::Event = serde_json::from_value(
-            message["params"]["_meta"]["dev.jamesqo.mash/index-progress"].clone(),
+            message["params"]["_meta"]["dev.kojah.mash/index-progress"].clone(),
         )
         .unwrap();
         rebuilt |= event.phase == crate::progress::Phase::SearchRebuild;

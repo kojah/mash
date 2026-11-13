@@ -17,7 +17,7 @@ pub(crate) fn load(explicit_path: Option<&Path>) -> Result<ResolvedConfig, AppEr
 }
 
 pub(crate) fn default_path() -> Result<PathBuf, AppError> {
-    let path = ProjectDirs::from("dev", "jamesqo", "mash")
+    let path = ProjectDirs::from("dev", "kojah", "mash")
         .ok_or_else(|| AppError::configuration("platform configuration directory is unavailable"))?
         .config_dir()
         .join("config.toml");

@@ -45,7 +45,7 @@ mash models install
 
 This downloads about 177 MB from `https://huggingface.co` into
 `~/.local/share/mash/models` on Linux or
-`~/Library/Application Support/dev.jamesqo.mash/models` on macOS (Apple
+`~/Library/Application Support/dev.kojah.mash/models` on macOS (Apple
 silicon also downloads a Core ML embedding model). Set
 `HF_ENDPOINT` to download from a Hugging Face mirror instead, or pass
 `--models-dir PATH` to use another directory.

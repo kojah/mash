@@ -210,7 +210,7 @@ impl Layout {
         })?;
         let directories = directories::BaseDirs::new()
             .ok_or_else(|| install_error("could not determine the home directory"))?;
-        let root = directories::ProjectDirs::from("dev", "jamesqo", "mash")
+        let root = directories::ProjectDirs::from("dev", "kojah", "mash")
             .ok_or_else(|| install_error("could not determine Mash's data directory"))?
             .data_local_dir()
             .join("qdrant");

@@ -276,7 +276,7 @@ impl Mash {
                         .with_message(crate::progress::display(&event));
                 let mut meta = rmcp::model::NotificationMetaObject::new();
                 if let Ok(event) = serde_json::to_value(&event) {
-                    meta.insert("dev.jamesqo.mash/index-progress".to_owned(), event);
+                    meta.insert("dev.kojah.mash/index-progress".to_owned(), event);
                 }
                 notification.meta = Some(meta);
                 if !matches!(

@@ -620,14 +620,14 @@ pub(crate) fn publication_config(configuration: &ResolvedConfig) -> Option<&conf
 }
 
 pub(crate) fn default_database_path() -> PathBuf {
-    ProjectDirs::from("dev", "jamesqo", "mash").map_or_else(
+    ProjectDirs::from("dev", "kojah", "mash").map_or_else(
         || PathBuf::from("mash.sqlite3"),
         |directories| directories.data_local_dir().join("mash.sqlite3"),
     )
 }
 
 pub(crate) fn default_models_path() -> PathBuf {
-    ProjectDirs::from("dev", "jamesqo", "mash").map_or_else(
+    ProjectDirs::from("dev", "kojah", "mash").map_or_else(
         || PathBuf::from("models"),
         |directories| directories.data_local_dir().join("models"),
     )

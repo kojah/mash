@@ -862,7 +862,7 @@ fn the_windows_logon_task_needs_no_administrator_and_opens_no_window() {
     let home = Path::new("C:\\Users\\ada");
     let layout = Layout::for_platform(
         Platform::WindowsX86_64,
-        "C:\\Users\\ada\\AppData\\Local\\jamesqo\\mash\\data\\qdrant".into(),
+        "C:\\Users\\ada\\AppData\\Local\\kojah\\mash\\data\\qdrant".into(),
         home,
         home,
         None,

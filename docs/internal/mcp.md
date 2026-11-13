@@ -77,7 +77,7 @@ To stream an `index` tool call's progress, include a string or numeric
 standard `notifications/progress` with the same token while the job runs,
 including when it waits for another mutation. `message` contains the phase,
 counts, elapsed time, and phase ETA. Structured progress fields are also available
-under `params._meta["dev.jamesqo.mash/index-progress"]` in each notification.
+under `params._meta["dev.kojah.mash/index-progress"]` in each notification.
 The numeric `progress` is an increasing update counter across all phases;
 `total` is omitted because the whole job's work is unknown. Phase-specific
 totals and `eta_seconds` are in the structured metadata. Unknown ETAs are `null`.

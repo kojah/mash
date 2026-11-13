@@ -130,11 +130,11 @@ you log in. The JSON result has `"outcome": "installed"`; next, run `mash init`.
 | Platform | Runs as | Qdrant's output |
 | --- | --- | --- |
 | Linux | systemd user service `mash-qdrant.service` | `journalctl --user --unit mash-qdrant.service` |
-| macOS | LaunchAgent `dev.mash.qdrant` | `~/Library/Application Support/dev.jamesqo.mash/qdrant/qdrant.log` |
-| Windows | logon task `MashQdrant` | `%LOCALAPPDATA%\jamesqo\mash\data\qdrant\qdrant.log` |
+| macOS | LaunchAgent `dev.mash.qdrant` | `~/Library/Application Support/dev.kojah.mash/qdrant/qdrant.log` |
+| Windows | logon task `MashQdrant` | `%LOCALAPPDATA%\kojah\mash\data\qdrant\qdrant.log` |
 
 Qdrant keeps its data next to the program, in `~/.local/share/mash/qdrant` on
-Linux and `~/Library/Application Support/dev.jamesqo.mash/qdrant` on macOS. On
+Linux and `~/Library/Application Support/dev.kojah.mash/qdrant` on macOS. On
 Windows the data goes to `C:\mash-qdrant`, because Qdrant fails with longer
 data paths there. `mash status` shows the installed version and whether the
 service is running, under `local_qdrant.installed`.

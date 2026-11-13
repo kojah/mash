@@ -126,7 +126,7 @@ def state_dir() -> Path:
     if explicit := os.environ.get("MASH_RECALL_STATE_DIR", "").strip():
         return Path(explicit)
     if sys.platform == "darwin":
-        return Path.home() / "Library/Application Support/dev.jamesqo.mash/recall"
+        return Path.home() / "Library/Application Support/dev.kojah.mash/recall"
     data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local/share")
     return Path(data) / "mash" / "recall"
 
