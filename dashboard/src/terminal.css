@@ -1566,16 +1566,19 @@ h1:focus {
      where it cannot cover the text. */
   .cp {
     position: static;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 32px;
     margin-left: auto;
+    background: none;
     opacity: 0.7;
   }
+  /* Pull it up into the gap the message already leaves below its text. */
   .msg > .cp {
-    margin-top: -8px;
+    margin-top: -18px;
+    margin-bottom: -10px;
   }
   .you > .cp {
-    margin-top: 6px;
+    margin: 2px -6px -6px auto;
   }
 }
 @keyframes skp {
