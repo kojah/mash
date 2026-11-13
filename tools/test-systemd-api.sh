@@ -13,6 +13,10 @@ mkdir -p "$scratch/bin" "$scratch/logs" "$scratch/silver/group" "$scratch/silver
 trap 'if [[ -f $scratch/pid ]]; then kill "$(cat "$scratch/pid")" 2>/dev/null || true; fi' EXIT
 cat > "$scratch/fixture.rs" <<'RS'
 fn main() {
+    // This stands in for a release from before --version-info, which rejects it.
+    if std::env::args().any(|a| a == "--version-info") {
+        std::process::exit(2);
+    }
     if std::env::args().any(|a| a == "--version") {
         println!("{{\"silver_schema\":{},\"silver_schema_min\":{}}}", std::env::var("TEST_SYSTEMD_SCHEMA").unwrap(), std::env::var("TEST_SYSTEMD_BASELINE").unwrap());
         return;

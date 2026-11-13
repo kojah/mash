@@ -17,6 +17,10 @@ trap cleanup EXIT
 cat > "$scratch/server.rs" <<'SERVER'
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // This stands in for a release from before --version-info, which rejects it.
+    if args.first().is_some_and(|arg| arg == "--version-info") {
+        std::process::exit(2);
+    }
     if args.first().is_some_and(|arg| arg == "--version") {
         println!("{{\"version\":\"test\",\"silver_schema\":51}}");
         return;
@@ -150,6 +154,8 @@ for name, version in (("old", 46), ("current", 51), ("migratable", 50)):
 PYTHON
 cat > "$scratch/release" <<'RELEASE'
 #!/usr/bin/env bash
+# A release from before --version-info rejects it instead of serving.
+if [[ ${1:-} == --version-info ]]; then exit 2; fi
 if [[ ${1:-} == --version ]]; then echo '{"version":"test","silver_schema":51,"silver_schema_min":49}'; exit 0; fi
 printf '%s\n' "$@" > "$TEST_API_ARGUMENTS"
 while :; do sleep 0.1; done
