@@ -687,6 +687,8 @@ struct SearchParams {
     project: String,
     days: Option<u32>,
     offset: usize,
+    /// relevance (default) or recent: newest first within each page of matching chats.
+    sort: crate::search_filter::Sort,
 }
 
 fn split(list: &str) -> Vec<String> {
@@ -728,6 +730,7 @@ fn search_operation(params: SearchParams, shared_only: bool) -> Result<Operation
         node: split(&params.machine),
         project: split(&params.project),
         days: params.days,
+        sort: params.sort,
         ..Default::default()
     };
     Ok(Operation::Search {
@@ -1426,6 +1429,7 @@ mod tests {
             q: "backfill".into(),
             project: "/p".into(),
             days: Some(7),
+            sort: crate::search_filter::Sort::Recent,
             ..Default::default()
         };
         let searched = search_operation(query(), false).unwrap();
@@ -1452,6 +1456,7 @@ mod tests {
         assert_eq!(query_text, "backfill");
         assert_eq!(filters.project, ["/p"]);
         assert_eq!(filters.days, Some(7));
+        assert_eq!(filters.sort, crate::search_filter::Sort::Recent);
         assert!(
             search_operation(
                 SearchParams {

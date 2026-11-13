@@ -14,6 +14,7 @@ let {
   options,
   selected,
   choose,
+  optionIcon,
 }: {
   label: string;
   icon: Snippet;
@@ -23,6 +24,8 @@ let {
   options: readonly { value: string; label: string; count?: number }[];
   selected: readonly string[];
   choose: (value: string) => void;
+  /** Each option's icon, given its value; options otherwise repeat the chip's icon. */
+  optionIcon?: Snippet<[string]>;
 } = $props();
 let open = $state(false);
 let root: HTMLDivElement;
@@ -54,6 +57,7 @@ let root: HTMLDivElement;
           }}
         >
           <span style:flex="none" style:width="16px" style:display="inline-flex">{#if on}<Check size={14} color="var(--clay2)" aria-hidden="true" />{/if}</span>
+          <span class="oi">{#if optionIcon}{@render optionIcon(option.value)}{:else}{@render icon()}{/if}</span>
           <span class="g">{option.label}</span>
           {#if option.count !== undefined}<span class="n">{option.count.toLocaleString()}</span>{/if}
         </button>

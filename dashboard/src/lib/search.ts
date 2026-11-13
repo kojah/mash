@@ -12,6 +12,12 @@ export const sorts = [
   { value: "old", label: "oldest" },
 ] as const;
 export type Sort = (typeof sorts)[number]["value"];
+/** How results for a query are ordered: newest sorts each page of the best matches. */
+export const rankings = [
+  { value: "relevance", label: "best match" },
+  { value: "recent", label: "newest" },
+] as const;
+export type Ranking = (typeof rankings)[number]["value"];
 
 /**
  * A search as the address bar states it. Results are read from this, so the
@@ -23,8 +29,10 @@ export interface Applied {
   readonly machines: readonly string[];
   readonly projects: readonly string[];
   readonly days: number | null;
-  /** Order for a chat list; a query is always ranked by relevance. */
+  /** Order for a chat list without a query. */
   readonly sort: Sort;
+  /** Order for a query's results. */
+  readonly rank: Ranking;
   /** Zero-based position of the first result shown. */
   readonly offset: number;
 }
@@ -44,6 +52,7 @@ export function parseApplied(params: string): Applied {
     projects: list(values, "project"),
     days: dateRanges.some((range) => range.days === days) && days > 0 ? days : null,
     sort: values.get("sort") === "old" ? "old" : "new",
+    rank: values.get("rank") === "recent" ? "recent" : "relevance",
     offset: Number.isSafeInteger(offset) && offset > 0 ? offset : 0,
   };
 }
@@ -57,6 +66,7 @@ export function appliedHref(applied: Applied, base = "#/search"): string {
   if (applied.projects.length) params.set("project", applied.projects.join(","));
   if (applied.days !== null) params.set("days", String(applied.days));
   if (applied.sort !== "new") params.set("sort", applied.sort);
+  if (applied.rank !== "relevance") params.set("rank", applied.rank);
   if (applied.offset) params.set("offset", String(applied.offset));
   return params.size ? `${base}?${params}` : base;
 }

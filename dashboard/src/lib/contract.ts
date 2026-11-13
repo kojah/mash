@@ -1517,6 +1517,11 @@ export interface components {
             provider: string;
             /** @default  */
             q: string;
+            /**
+             * @description relevance (default) or recent: newest first within each page of matching chats.
+             * @default relevance
+             */
+            sort: components["schemas"]["Sort"];
         };
         SearchResponse: {
             diagnostics?: components["schemas"]["Diagnostics"] | null;
@@ -1677,6 +1682,8 @@ export interface components {
             /** Format: uint64 */
             upload_bytes: number;
         };
+        /** @description The order of results that qualify as evidence. */
+        Sort: "relevance" | "recent";
         /** @enum {string} */
         Source: "local" | "shared";
         /** @enum {string} */
@@ -2196,6 +2203,8 @@ export interface operations {
                 /** @description Comma-separated provider names, such as `claude-code,codex`. */
                 provider?: string;
                 q?: string;
+                /** @description relevance (default) or recent: newest first within each page of matching chats. */
+                sort?: components["schemas"]["Sort"];
             };
             header?: never;
             path?: never;

@@ -207,6 +207,7 @@ async function copy(): Promise<void> {
   <div class="chips" role="group" aria-label="Filters">
     <FilterMenu label={chipLabel("agents", "agent")} active={applied.agents.length > 0} multiple options={options.agents} selected={applied.agents} choose={(value) => toggleFilter("agents", value)}>
       {#snippet icon()}<Bot size={15} aria-hidden="true" />{/snippet}
+      {#snippet optionIcon(value: string)}{#if isAgent(value)}<AgentMark agent={value} size={15} />{:else}<Bot size={15} aria-hidden="true" />{/if}{/snippet}
     </FilterMenu>
     <FilterMenu label={chipLabel("machines", "machine")} active={applied.machines.length > 0} multiple options={options.machines} selected={applied.machines} choose={(value) => toggleFilter("machines", value)}>
       {#snippet icon()}<Laptop size={15} aria-hidden="true" />{/snippet}

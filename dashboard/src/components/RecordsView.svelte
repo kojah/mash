@@ -1,8 +1,11 @@
 <script lang="ts">
 import BadgeCheck from "@lucide/svelte/icons/badge-check";
+import CircleDashed from "@lucide/svelte/icons/circle-dashed";
 import Database from "@lucide/svelte/icons/database";
 import Laptop from "@lucide/svelte/icons/laptop";
 import ListChecks from "@lucide/svelte/icons/list-checks";
+import Network from "@lucide/svelte/icons/network";
+import Server from "@lucide/svelte/icons/server";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
 import { whenLabel } from "../lib/browse";
@@ -127,9 +130,11 @@ const dirty = $derived(
   </FilterMenu>
   <FilterMenu label={review || "any review"} active={!!review} draft={review !== (initial.get("review") ?? "")} options={[{ value: "", label: "any review" }, { value: "established", label: "established" }, { value: "candidate", label: "candidate (unconfirmed)" }]} selected={[review]} choose={(value) => (review = value)}>
     {#snippet icon()}<BadgeCheck size={15} aria-hidden="true" />{/snippet}
+    {#snippet optionIcon(value: string)}{#if value === "candidate"}<CircleDashed size={15} aria-hidden="true" />{:else}<BadgeCheck size={15} aria-hidden="true" />{/if}{/snippet}
   </FilterMenu>
   <FilterMenu label={source === "" ? "this machine" : source === "shared" ? "all shared" : source.slice(5)} active={!!source} options={[{ value: "", label: "this machine" }, { value: "shared", label: "all shared machines" }, ...nodes.map((node) => ({ value: `node:${node}`, label: `${node} (shared)` }))]} selected={[source]} choose={(value) => (source = value)}>
     {#snippet icon()}<Database size={15} aria-hidden="true" />{/snippet}
+    {#snippet optionIcon(value: string)}{#if value === ""}<Laptop size={15} aria-hidden="true" />{:else if value === "shared"}<Network size={15} aria-hidden="true" />{:else}<Server size={15} aria-hidden="true" />{/if}{/snippet}
   </FilterMenu>
   {#if dirty}<button class="a" id="applyf" type="submit" style:min-height="30px" style:padding="0 6px" style:font-size="13.5px">Apply filters</button>{/if}
   <button class="a meta" type="button" disabled={page.isFetching} onclick={() => page.refetch()} style:min-height="30px" style:margin-left="auto">{page.isFetching ? "checking…" : "check for updates"}</button>

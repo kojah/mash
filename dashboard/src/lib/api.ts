@@ -106,6 +106,7 @@ export async function search(
   offset: number,
   localNode: string,
   signal: AbortSignal,
+  sort: "relevance" | "recent" = "relevance",
 ): Promise<SearchPage> {
   const params = new URLSearchParams({
     q: query,
@@ -115,6 +116,7 @@ export async function search(
     offset: String(offset),
   });
   if (filters.days !== null) params.set("days", String(filters.days));
+  if (sort !== "relevance") params.set("sort", sort);
   return parseSearch(await read("/api/search", params, signal), localNode);
 }
 

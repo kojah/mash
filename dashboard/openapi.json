@@ -3989,6 +3989,15 @@
           "q": {
             "default": "",
             "type": "string"
+          },
+          "sort": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sort"
+              }
+            ],
+            "default": "relevance",
+            "description": "relevance (default) or recent: newest first within each page of matching chats."
           }
         },
         "type": "object"
@@ -4558,6 +4567,21 @@
           "upload_bytes"
         ],
         "type": "object"
+      },
+      "Sort": {
+        "description": "The order of results that qualify as evidence.",
+        "oneOf": [
+          {
+            "const": "relevance",
+            "description": "Most relevant first, with newer messages favoured among comparable ones.",
+            "type": "string"
+          },
+          {
+            "const": "recent",
+            "description": "Newest first within the returned page; a chat sorts by its latest matching message.",
+            "type": "string"
+          }
+        ]
       },
       "Source": {
         "enum": [
@@ -5807,6 +5831,17 @@
             "schema": {
               "default": "",
               "type": "string"
+            },
+            "style": "form"
+          },
+          {
+            "description": "relevance (default) or recent: newest first within each page of matching chats.",
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "$ref": "#/components/schemas/Sort",
+              "default": "relevance",
+              "description": "relevance (default) or recent: newest first within each page of matching chats."
             },
             "style": "form"
           }

@@ -1,10 +1,13 @@
 <script lang="ts">
 import Bot from "@lucide/svelte/icons/bot";
 import Clock from "@lucide/svelte/icons/clock";
+import ClockArrowDown from "@lucide/svelte/icons/clock-arrow-down";
+import ClockArrowUp from "@lucide/svelte/icons/clock-arrow-up";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
 import SearchIcon from "@lucide/svelte/icons/search";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
+import Sparkles from "@lucide/svelte/icons/sparkles";
 import Terminal from "@lucide/svelte/icons/terminal";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
@@ -20,6 +23,7 @@ import {
   dateRanges,
   filtersOf,
   parseApplied,
+  rankings,
   type Sort,
   sameSearch,
   sorts,
@@ -76,6 +80,7 @@ const result = createQuery(() => ({
         applied.offset,
         data.localNode,
         signal,
+        applied.rank,
       );
       return { ...page, total: null, first: applied.offset };
     }
@@ -141,6 +146,7 @@ const rangeLabel = $derived.by(() => {
 <div class="chips" role="group" aria-label="Filters">
   <FilterMenu label={chipLabel("agents", "agent")} active={draft.agents.length > 0} draft={changed("agents")} multiple options={options.agent} selected={draft.agents} choose={(value) => toggle("agents", value)}>
     {#snippet icon()}<Bot size={15} aria-hidden="true" />{/snippet}
+    {#snippet optionIcon(value: string)}{#if isAgent(value)}<AgentMark agent={value} size={15} />{:else}<Bot size={15} aria-hidden="true" />{/if}{/snippet}
   </FilterMenu>
   <FilterMenu label={chipLabel("machines", "machine")} active={draft.machines.length > 0} draft={changed("machines")} multiple options={options.machine} selected={draft.machines} choose={(value) => toggle("machines", value)}>
     {#snippet icon()}<Laptop size={15} aria-hidden="true" />{/snippet}
@@ -167,9 +173,19 @@ const rangeLabel = $derived.by(() => {
       choose={chooseSort}
     >
       {#snippet icon()}<SlidersHorizontal size={15} aria-hidden="true" />{/snippet}
+      {#snippet optionIcon(value: string)}{#if value === "old"}<ClockArrowUp size={15} aria-hidden="true" />{:else}<ClockArrowDown size={15} aria-hidden="true" />{/if}{/snippet}
     </FilterMenu>
   {:else}
-    <span class="meta">sorted by best match</span>
+    <FilterMenu
+      label="sort: {rankings.find((ranking) => ranking.value === draft.rank)?.label}"
+      draft={draft.rank !== applied.rank}
+      options={rankings}
+      selected={[draft.rank]}
+      choose={(value) => (draft = { ...draft, rank: value === "recent" ? "recent" : "relevance" })}
+    >
+      {#snippet icon()}<SlidersHorizontal size={15} aria-hidden="true" />{/snippet}
+      {#snippet optionIcon(value: string)}{#if value === "recent"}<ClockArrowDown size={15} aria-hidden="true" />{:else}<Sparkles size={15} aria-hidden="true" />{/if}{/snippet}
+    </FilterMenu>
   {/if}
   {#if dirty}<button class="a" id="applyf" type="button" onclick={apply} style:min-height="30px" style:padding="0 6px" style:margin-left="6px" style:font-size="13.5px">Apply filters</button>{/if}
 </div>

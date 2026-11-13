@@ -6,15 +6,20 @@ const view: ProjectView = $state({ find: "", agent: "", machine: "", sort: "rece
 </script>
 
 <script lang="ts">
+import ArrowDownAZ from "@lucide/svelte/icons/arrow-down-a-z";
 import ArrowDownWideNarrow from "@lucide/svelte/icons/arrow-down-wide-narrow";
 import Bot from "@lucide/svelte/icons/bot";
+import Clock from "@lucide/svelte/icons/clock";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
+import MessagesSquare from "@lucide/svelte/icons/messages-square";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
+import { isAgent } from "../lib/api";
 import { arrangeProjects, groupChats, projectLabel, whenLabel } from "../lib/browse";
 import { catalogOptions } from "../lib/queries";
 import { projectHref } from "../lib/route.svelte";
+import AgentMark from "./AgentMark.svelte";
 import FilterMenu from "./FilterMenu.svelte";
 import QueryError from "./QueryError.svelte";
 import Skeleton from "./Skeleton.svelte";
@@ -65,9 +70,11 @@ const now = Date.now();
     <input class="field" type="search" aria-label="Find a project" placeholder="find a project" autocomplete="off" bind:value={view.find} style:flex="1 1 220px" style:max-width="360px" />
     <FilterMenu label={sorts.find((sort) => sort.value === view.sort)?.label ?? "sort"} options={sorts} selected={[view.sort]} choose={(value) => { const sort = sorts.find((sort) => sort.value === value); if (sort) view.sort = sort.value; }}>
       {#snippet icon()}<ArrowDownWideNarrow size={15} aria-hidden="true" />{/snippet}
+      {#snippet optionIcon(value: string)}{#if value === "chats"}<MessagesSquare size={15} aria-hidden="true" />{:else if value === "name"}<ArrowDownAZ size={15} aria-hidden="true" />{:else}<Clock size={15} aria-hidden="true" />{/if}{/snippet}
     </FilterMenu>
     <FilterMenu label={chosenAgent ? agentInfo[chosenAgent].name : "any agent"} active={!!view.agent} options={[{ value: "", label: "any agent" }, ...agentChoices.map((agent) => ({ value: agent, label: agentInfo[agent].name }))]} selected={[view.agent]} choose={(value) => (view.agent = value)}>
       {#snippet icon()}<Bot size={15} aria-hidden="true" />{/snippet}
+      {#snippet optionIcon(value: string)}{#if isAgent(value)}<AgentMark agent={value} size={15} />{:else}<Bot size={15} aria-hidden="true" />{/if}{/snippet}
     </FilterMenu>
     <FilterMenu label={view.machine || "any machine"} active={!!view.machine} options={[{ value: "", label: "any machine" }, ...machineChoices.map((machine) => ({ value: machine, label: machine }))]} selected={[view.machine]} choose={(value) => (view.machine = value)}>
       {#snippet icon()}<Laptop size={15} aria-hidden="true" />{/snippet}

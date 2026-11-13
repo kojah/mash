@@ -1635,6 +1635,11 @@ h1:focus {
 .fmenu button:hover {
   background: var(--soft);
 }
+.fmenu .oi {
+  display: inline-flex;
+  flex: none;
+  color: var(--dim);
+}
 .fmenu .g {
   flex: 1;
   min-width: 0;
