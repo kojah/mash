@@ -456,6 +456,8 @@ mod tests {
         assert!(read_token(&directory.path().join("missing")).is_err());
     }
 
+    // A systemd unit is written from Unix paths.
+    #[cfg(unix)]
     #[test]
     fn the_service_serves_loopback_under_the_tailnet_name_with_the_token() {
         let layout = Layout {
