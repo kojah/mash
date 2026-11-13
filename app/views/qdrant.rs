@@ -240,6 +240,16 @@ pub(crate) async fn reachability(config: &crate::config::QdrantConfig) -> Servic
     }
 }
 
+/// The `qdrant-unavailable` message for the configured `url`, with an
+/// optional `note` and the caller's own next step `then` instead of a bare
+/// retry. `None` when `url` is not a valid endpoint, which never reaches
+/// Qdrant and so never yields that error.
+pub(crate) fn unavailable_message(url: &str, note: Option<&str>, then: &str) -> Option<String> {
+    api::endpoint(url)
+        .ok()
+        .map(|url| api::unavailable_message(&url, note, then))
+}
+
 /// The typed error behind [`reachability`]; unreachable is `qdrant-unavailable`.
 pub(crate) async fn check(config: &crate::config::QdrantConfig) -> Result<(), AppError> {
     let key = config

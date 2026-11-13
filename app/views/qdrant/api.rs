@@ -33,15 +33,28 @@ pub(crate) fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
     Ok(url)
 }
 
+/// The local-setup section of the installation guide.
+const START_GUIDE: &str = "https://getmash.io/installation/#start-the-local-search-service";
+
 /// How to start Qdrant, readable offline. Only the default local endpoint
 /// gets the documented commands; any other endpoint is the user's own service.
 pub(super) fn start_instruction(url: &reqwest::Url) -> &'static str {
     let local = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
     if local && url.port_or_known_default() == Some(6333) {
-        "Start it on this machine: `docker start mash-local-qdrant` if you created the documented container, otherwise `docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.20.0`; without Docker, run a downloaded Qdrant 1.20 release from its folder with `QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant`. Then retry. Guide: https://getmash.io/installation/#start-the-local-search-service"
+        "Start it on this machine with `docker start mash-local-qdrant` if you created the documented container, otherwise create it with `docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.20.0`, or without Docker run `QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant` in a downloaded Qdrant 1.20 release folder."
     } else {
-        "Start the configured Qdrant service and check its HTTP port, then retry. Guide: https://getmash.io/installation/#start-the-local-search-service"
+        "Start the configured Qdrant service and check its HTTP port."
     }
+}
+
+/// One sequence for an unreachable Qdrant: what failed, `note` (if any), how
+/// to start it, the single next step `then`, and the guide.
+pub(super) fn unavailable_message(url: &reqwest::Url, note: Option<&str>, then: &str) -> String {
+    let note = note.map(|note| format!(" {note}")).unwrap_or_default();
+    format!(
+        "Could not reach Qdrant at {url}; indexing and every search need it.{note} {} Then {then}. Guide: {START_GUIDE}",
+        start_instruction(url)
+    )
 }
 
 #[derive(Clone)]
@@ -589,11 +602,7 @@ impl Client {
         AppError::new(
             11,
             crate::ErrorKind::QdrantUnavailable,
-            format!(
-                "Could not reach Qdrant at {}; Mash needs this search service running for indexing and every search. {}",
-                self.url,
-                start_instruction(&self.url)
-            ),
+            unavailable_message(&self.url, None, "retry"),
             true,
         )
     }

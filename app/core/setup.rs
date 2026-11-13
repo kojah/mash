@@ -100,15 +100,51 @@ pub(super) async fn preflight(paths: &Paths, request: &InitRequest) -> Result<()
         crate::config::QdrantConfig::default()
     };
     crate::views::qdrant::check(&qdrant).await.map_err(|mut error| {
-        if error.error.kind == crate::ErrorKind::QdrantUnavailable {
-            error.error.recommended_action = Some(crate::Action::StartQdrant);
-        }
-        error.error.message = format!(
-            "`mash init` changed nothing: indexing needs the local Qdrant service. {} Then rerun `mash init`, or run `mash init --no-index` to save configuration and connect agents now and index later.",
-            error.error.message
-        );
+        let rerun = "rerun `mash init`, or run `mash init --no-index` to save configuration and connect agents now and index later";
+        let unavailable = (error.error.kind == crate::ErrorKind::QdrantUnavailable)
+            .then(|| crate::views::qdrant::unavailable_message(&qdrant.url, None, rerun))
+            .flatten();
+        error.error.message = match unavailable {
+            Some(message) => {
+                error.error.recommended_action = Some(crate::Action::StartQdrant);
+                format!("`mash init` changed nothing. {message}")
+            }
+            None => format!(
+                "`mash init` changed nothing: indexing needs the local Qdrant service. {} Then {rerun}.",
+                error.error.message
+            ),
+        };
         error
     })
+}
+
+/// The `--no-index` step: index now, or start Qdrant first.
+fn index_later(observed: Option<crate::views::qdrant::ServiceStatus>) -> String {
+    use crate::views::qdrant::Reachability;
+    match observed {
+        Some(observed) if observed.state == Reachability::Reachable => {
+            "Index your history: mash index".to_owned()
+        }
+        Some(observed) => {
+            let unreachable = (observed.state == Reachability::Unreachable)
+                .then(|| {
+                    crate::views::qdrant::unavailable_message(
+                        &observed.url,
+                        None,
+                        "index your history with `mash index`",
+                    )
+                })
+                .flatten();
+            unreachable.unwrap_or_else(|| {
+                format!(
+                    "Index your history with `mash index` once Qdrant answers at {}; indexing and every search need it. {}",
+                    observed.url,
+                    observed.message.unwrap_or_default()
+                )
+            })
+        }
+        None => "Index your history: mash index".to_owned(),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -217,16 +253,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             Ok(loaded) => Some(crate::views::qdrant::reachability(&loaded.qdrant).await),
             Err(_) => None,
         };
-        next.push(match observed {
-            Some(observed) if observed.state != crate::views::qdrant::Reachability::Reachable => {
-                format!(
-                    "Index your history with `mash index` once Qdrant answers at {}; indexing and every search need it. {}",
-                    observed.url,
-                    observed.message.unwrap_or_default()
-                )
-            }
-            _ => "Index your history: mash index".to_owned(),
-        });
+        next.push(index_later(observed));
     }
     Ok(InitResponse {
         config,

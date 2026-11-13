@@ -349,10 +349,14 @@ fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
     for part in [
         "changed nothing",
         "http://127.0.0.1:9/",
-        "mash init --no-index",
+        "Then rerun `mash init`, or run `mash init --no-index`",
+        "Guide: https://getmash.io/installation/#start-the-local-search-service",
     ] {
         assert!(message.contains(part), "{message}");
     }
+    // One sequence: start Qdrant, then one next step.
+    assert_eq!(message.matches("Then ").count(), 1, "{message}");
+    assert!(!message.contains("retry"), "{message}");
     // No agent CLI ran, no history was read and the configuration is intact.
     assert!(!home.join("calls.log").exists());
     assert!(!home.join(".local/share/mash/mash.sqlite3").exists());
@@ -384,12 +388,39 @@ fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
     // Setup without indexing still works, and says what indexing needs.
     let (code, configured, _) = mash(&env, &["init", "--yes", "--no-index"]);
     assert_eq!(code, 0, "{configured}");
-    let next = configured["next"].to_string();
+    let next = configured["next"].as_array().unwrap();
+    let step = next
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|step| step.contains("Could not reach Qdrant at http://127.0.0.1:9/"))
+        .unwrap_or_else(|| panic!("{next:?}"));
     assert!(
-        next.contains("once Qdrant answers at http://127.0.0.1:9"),
-        "{next}"
+        step.contains("Then index your history with `mash index`."),
+        "{step}"
     );
-    assert!(!next.contains("search works"), "{next}");
+    assert_eq!(step.matches("Then ").count(), 1, "{step}");
+    assert!(!configured["next"].to_string().contains("search works"));
+
+    // B-010: once history is saved, search still fails closed but names the
+    // saved chats and the commands that read them without Qdrant.
+    let (code, _, _) = mash(&env, &["index"]);
+    assert_eq!(code, 11);
+    let (code, stdout, error) = mash(&env, &["search", "initneedle"]);
+    assert_eq!(code, 11, "{error}");
+    assert!(stdout.is_null(), "{stdout}");
+    assert_eq!(error["error"]["kind"], "qdrant-unavailable", "{error}");
+    assert_eq!(error["error"]["recommended_action"], "start-qdrant");
+    let message = error["error"]["message"].as_str().unwrap();
+    for part in [
+        "Your 1 indexed chat is saved on this machine",
+        "`mash list-chats` and `mash view <message id>`",
+        "Then search again.",
+    ] {
+        assert!(message.contains(part), "{message}");
+    }
+    let (code, listed, error) = mash(&env, &["list-chats"]);
+    assert_eq!(code, 0, "{error}");
+    assert_eq!(listed["chats"].as_array().unwrap().len(), 1, "{listed}");
 }
 
 /// Answers every HTTP request as Qdrant 1.20 would answer its root, so the

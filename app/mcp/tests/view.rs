@@ -35,8 +35,15 @@ fn chat(id: &str, messages: &[&str]) -> crate::silver::Chat {
 async fn client(
     directory: &std::path::Path,
 ) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
+    client_with(directory, "version = 1\nproviders = {}\n").await
+}
+
+async fn client_with(
+    directory: &std::path::Path,
+    configuration: &str,
+) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
     let config = directory.join("config.toml");
-    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    std::fs::write(&config, configuration).unwrap();
     let database = directory.join("index.sqlite3");
     let mut writer = crate::storage::Storage::open_writer(&database).unwrap();
     writer.begin_silver_scan(Provider::Codex).unwrap();
@@ -136,4 +143,41 @@ async fn sdk_view_rejects_chat_and_unknown_ids_as_not_found() {
         let message = error["message"].as_str().unwrap();
         assert!(message.contains(expected), "{id}: {message}");
     }
+}
+
+/// B-010: search fails closed without Qdrant, but says the saved history is
+/// still readable through `list_chats` and `view`, which keep working.
+#[tokio::test]
+async fn sdk_search_without_qdrant_names_the_saved_history_and_working_tools() {
+    let directory = tempfile::tempdir().unwrap();
+    let client = client_with(
+        directory.path(),
+        concat!(
+            "version = 1\nproviders = {}\n",
+            "[views.build]\nrepresentations = 'lexical-only'\n",
+            "[views.query]\nintent = 'exact-mention'\n",
+            "[qdrant]\nurl = 'http://127.0.0.1:9'\ngrpc_url = 'http://127.0.0.1:9'\n",
+        ),
+    )
+    .await;
+    let searched = call(&client, "search", json!({"query": "rotation"})).await;
+    assert_eq!(searched.is_error, Some(true), "{searched:?}");
+    let error = searched.structured_content.unwrap();
+    assert_eq!(error["error"]["kind"], "qdrant-unavailable", "{error}");
+    assert_eq!(error["error"]["recommended_action"], "start-qdrant");
+    let message = error["error"]["message"].as_str().unwrap();
+    for part in [
+        "Could not reach Qdrant at http://127.0.0.1:9/",
+        "Your 2 indexed chats are saved on this machine",
+        "MCP `list_chats` and `view`",
+        "Then search again.",
+        "Guide: https://getmash.io/installation/#start-the-local-search-service",
+    ] {
+        assert!(message.contains(part), "{message}");
+    }
+    assert_eq!(message.matches("Then ").count(), 1, "{message}");
+    let listed = call(&client, "list_chats", json!({"local": true})).await;
+    assert_ne!(listed.is_error, Some(true), "{listed:?}");
+    let viewed = call(&client, "view", json!({"id": "first-message"})).await;
+    assert_ne!(viewed.is_error, Some(true), "{viewed:?}");
 }
