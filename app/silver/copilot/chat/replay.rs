@@ -1,5 +1,6 @@
 //! Decode mutation values into their target Rust type, never a mutable JSON map.
 use super::{
+    super::Unreadable,
     invalid,
     models::{Prompt, Snapshot, Turn},
 };
@@ -114,6 +115,7 @@ fn set_request(
         "agent" => request.agent = decode(value)?,
         "timestamp" => request.timestamp = decode(value)?,
         "responseTimestamp" => request.response_timestamp = decode(value)?,
+        "modelState" => request.model_state = decode(value)?,
         "isHidden" => request.is_hidden = if delete { false } else { required(value)? },
         "hiddenFromTranscript" => {
             request.hidden_from_transcript = if delete { false } else { required(value)? }
@@ -195,7 +197,7 @@ fn apply(state: &mut Snapshot, operation: &Operation) -> Result<(), AppError> {
     Ok(())
 }
 
-pub(super) fn read(path: &Path) -> Result<Snapshot, AppError> {
+pub(super) fn read(path: &Path, unreadable: &mut Unreadable) -> Result<Snapshot, AppError> {
     if !path.metadata().map_err(AppError::io)?.is_file() {
         return Err(invalid("log must be a regular file"));
     }
@@ -204,11 +206,9 @@ pub(super) fn read(path: &Path) -> Result<Snapshot, AppError> {
         return Err(invalid("log must be a regular file"));
     }
     let mut state = None;
-    for line in records::Lines::new(BufReader::new(file)) {
+    // Index-addressed mutations after an unreadable line cannot be replayed.
+    for line in unreadable.lines(path, records::Lines::new(BufReader::new(file))) {
         let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
         let operation: Operation = records::decode(line.as_bytes())?;
         if matches!(operation.kind, Kind::Initial) {
             state = Some(required(operation.v.as_deref())?);

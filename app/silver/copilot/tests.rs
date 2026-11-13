@@ -291,7 +291,11 @@ fn malformed_refresh_preserves_history_and_checkpoint_until_retry() {
         .write_all(b"{\"type\":")
         .unwrap();
     let mut storage = Storage::open_writer(&database).unwrap();
-    assert!(index(&mut storage, &options(&history)).is_err());
+    let partial = index(&mut storage, &options(&history)).unwrap();
+    assert_eq!(
+        (partial.rejected_sources, partial.malformed_records),
+        (1, 1)
+    );
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 10);
     assert!(
@@ -497,4 +501,47 @@ async fn core_retrieves_native_copilot_prose_with_real_models() {
         assert_eq!(threads.len(), 1, "{query}");
         assert_eq!(threads[0].provider, Provider::Copilot);
     }
+}
+
+#[test]
+fn torn_event_lines_reject_the_snapshot_instead_of_failing_the_index() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    let complete = fixture();
+    assert!(parse(file.path()).is_err(), "an empty file has no header");
+    for (records, tail, line) in [
+        (&complete[..0], r#"{"type":"session.st"#, 1),
+        (
+            &complete[..],
+            r#"{"id":"late","type":"assistant.mess"#,
+            complete.len() + 1,
+        ),
+    ] {
+        write(file.path(), records);
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(file.path())
+            .unwrap()
+            .write_all(tail.as_bytes())
+            .unwrap();
+        let parsed = parse(file.path()).unwrap();
+        assert!(parsed.chat.is_none());
+        assert_eq!(parsed.malformed_records, 1);
+        assert_eq!(parsed.first_record_issue.unwrap().line, line);
+    }
+    // Damage between records is counted once; later records are not applied.
+    let mut damaged = complete[..2].to_vec();
+    damaged.push(json!("placeholder"));
+    damaged.extend_from_slice(&complete[2..]);
+    write(file.path(), &damaged);
+    let text =
+        std::fs::read_to_string(file.path())
+            .unwrap()
+            .replacen("\"placeholder\"", "{\"type\":", 1);
+    std::fs::write(file.path(), text).unwrap();
+    let parsed = parse(file.path()).unwrap();
+    assert!(parsed.chat.is_none());
+    assert_eq!(parsed.malformed_records, 1);
+    assert_eq!(parsed.first_record_issue.unwrap().line, 3);
+    write(file.path(), &complete);
+    assert!(parse(file.path()).unwrap().chat.is_some());
 }

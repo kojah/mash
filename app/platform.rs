@@ -124,6 +124,17 @@ pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
     uri_path(&percent_decode(url.path())?)
 }
 
+/// The path a VS Code remote workspace URI names on its remote machine
+/// (`vscode-remote://ssh-remote%2Bhost/home/me/repo` is `/home/me/repo`).
+/// The authority identifies the SSH host, container or Codespace instead.
+pub(crate) fn remote_uri_path(uri: &str) -> Option<String> {
+    let url = reqwest::Url::parse(uri).ok()?;
+    if url.scheme() != "vscode-remote" || url.host_str().is_none_or(str::is_empty) {
+        return None;
+    }
+    uri_path(&percent_decode(url.path())?)
+}
+
 /// The local path for a decoded URI path, as structured editor URIs carry
 /// it: always `/`-rooted. On Windows a drive path (`/c:/...`) becomes native
 /// (`C:\...`); any other rooted path keeps its POSIX form.
@@ -248,6 +259,32 @@ mod tests {
                 file_uri_path("file:///work/my%20repo").as_deref(),
                 Some("/work/my repo")
             );
+        }
+    }
+
+    #[test]
+    fn remote_workspace_uris_name_their_remote_paths() {
+        use super::remote_uri_path;
+        for (uri, path) in [
+            (
+                "vscode-remote://ssh-remote%2Bbuild-host/home/ada/scratch/lockfile",
+                "/home/ada/scratch/lockfile",
+            ),
+            (
+                "vscode-remote://codespaces%2Bfriendly-space-tribble-1234/workspaces/my%20repo",
+                "/workspaces/my repo",
+            ),
+        ] {
+            assert_eq!(remote_uri_path(uri).as_deref(), Some(path), "{uri}");
+        }
+        for uri in [
+            "file:///home/ada/repo",
+            "vscode-remote:///home/ada/repo",
+            "vscode-remote://ssh-remote%2Bhost",
+            "vscode-vfs://github/ada/repo",
+            "not a uri",
+        ] {
+            assert_eq!(remote_uri_path(uri), None, "{uri}");
         }
     }
 

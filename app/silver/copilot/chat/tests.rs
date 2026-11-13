@@ -4,6 +4,7 @@ use crate::storage::Storage;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+mod appended;
 mod legacy;
 
 struct Fixture {
@@ -224,7 +225,11 @@ fn indexing_refreshes_wal_catalog_and_transcript_with_atomic_retry() {
         .unwrap();
     drop(storage);
     let mut storage = Storage::open_writer(&database).unwrap();
-    assert!(index(&mut storage, &options).is_err());
+    let partial = index(&mut storage, &options).unwrap();
+    assert_eq!(
+        (partial.rejected_sources, partial.malformed_records),
+        (1, 1)
+    );
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, prior);
     assert!(

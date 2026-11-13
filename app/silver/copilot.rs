@@ -23,6 +23,65 @@ pub(super) fn parse_source(source: &super::HistorySource) -> Result<ParsedFile, 
     }
 }
 
+/// Report unreadable lines instead of an error they may have caused, such as
+/// a missing header when the only line is still being written.
+fn guarded(
+    parse: impl FnOnce(&mut Unreadable) -> Result<ParsedFile, AppError>,
+) -> Result<ParsedFile, AppError> {
+    let mut unreadable = Unreadable::default();
+    let parsed = parse(&mut unreadable);
+    unreadable.rejected().map_or(parsed, Ok)
+}
+
+/// Copilot appends to its logs while a chat runs, so the last line can be a
+/// partial write. Any line that is not JSON leaves the snapshot unprovable:
+/// interpretation stops there, and the source keeps its previous
+/// contribution while the unreadable lines are reported.
+#[derive(Default)]
+struct Unreadable {
+    count: u64,
+    first: Option<super::diagnostics::RecordIssue>,
+}
+
+impl Unreadable {
+    /// Non-blank lines before the first unreadable one; later lines are
+    /// only checked so that every unreadable line is counted.
+    fn lines<'a>(
+        &'a mut self,
+        path: &'a Path,
+        lines: impl Iterator<Item = Result<String, AppError>> + 'a,
+    ) -> impl Iterator<Item = Result<String, AppError>> + 'a {
+        lines.enumerate().filter_map(move |(index, line)| {
+            let line = match line {
+                Ok(line) if line.trim().is_empty() => return None,
+                Ok(line) => line,
+                Err(error) => return Some(Err(error)),
+            };
+            if let Err(error) = serde_json::from_str::<serde::de::IgnoredAny>(&line) {
+                self.count += 1;
+                self.first.get_or_insert_with(|| {
+                    super::diagnostics::RecordIssue::json(
+                        Provider::Copilot,
+                        path,
+                        index + 1,
+                        &error,
+                    )
+                });
+                return None;
+            }
+            (self.count == 0).then_some(Ok(line))
+        })
+    }
+
+    fn rejected(self) -> Option<ParsedFile> {
+        self.first.map(|first| ParsedFile {
+            chat: None,
+            malformed_records: self.count,
+            first_record_issue: Some(first),
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Event {
@@ -345,11 +404,14 @@ fn read_header(
 }
 
 pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
-    let mut lines = records::Lines::new(BufReader::new(File::open(path).map_err(AppError::io)?))
-        .filter(|line| match line {
-            Ok(line) => !line.trim().is_empty(),
-            Err(_) => true,
-        });
+    guarded(|unreadable| events(path, unreadable))
+}
+
+fn events(path: &Path, unreadable: &mut Unreadable) -> Result<ParsedFile, AppError> {
+    let mut lines = unreadable.lines(
+        path,
+        records::Lines::new(BufReader::new(File::open(path).map_err(AppError::io)?)),
+    );
     let (first_id, start) = read_header(&mut lines)?;
     let created_at = timestamp(&start.created_at)?;
     let mut updated_at = created_at;

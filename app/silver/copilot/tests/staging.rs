@@ -109,8 +109,10 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
         .unwrap()
         .write_all(b"{\"type\":")
         .unwrap();
+    let rejected = parse(file.path()).unwrap();
     assert!(
-        parse(file.path()).is_err(),
+        rejected.chat.is_none(),
         "late malformed data must reject a spilled source"
     );
+    assert_eq!(rejected.malformed_records, 1);
 }

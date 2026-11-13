@@ -38,6 +38,13 @@ fn read<T: DeserializeOwned>(path: &Path) -> Result<T, AppError> {
 }
 
 pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
+    super::guarded(|unreadable| snapshot(source, unreadable))
+}
+
+fn snapshot(
+    source: &HistorySource,
+    unreadable: &mut super::Unreadable,
+) -> Result<ParsedFile, AppError> {
     let db = &source.identity.path;
     let id = source
         .identity
@@ -58,7 +65,7 @@ pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
         return Err(AppError::source_changed());
     }
     let session: models::Snapshot = if path.extension().is_some_and(|e| e == "jsonl") {
-        replay::read(&path)?
+        replay::read(&path, unreadable)?
     } else {
         read(&path)?
     };
@@ -74,7 +81,7 @@ pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
         .working_directory
         .as_deref()
         .or(entry.working_directory.as_deref())
-        .and_then(|s| super::super::native::location(std::iter::once(s)))
+        .and_then(discovery::location)
         .or(discovery::project(db)?);
     let repository = session
         .repo_data
@@ -118,13 +125,14 @@ fn normalize(
         if request.request_id.trim().is_empty()
             || !identities.insert(request.request_id.clone())
             || request.timestamp.is_some_and(|t| t < 0)
-            || request.response_timestamp.is_some_and(|t| t < 0)
+            || request.completed_at().is_some_and(|t| t < 0)
         {
             return Err(invalid("invalid request identity or timestamp"));
         }
         let visible = !request.hidden_from_transcript
             && !request.is_hidden
             && request.agent.as_ref().is_none_or(models::Agent::copilot);
+        let completed_at = request.completed_at();
         let user = request.message.text();
         let mut rows = vec![(
             Role::User,
@@ -154,7 +162,7 @@ fn normalize(
             Role::Assistant,
             canonical.join("\n"),
             crate::silver::dialogue::visible(&Role::Assistant, &prose.join("\n")).into_owned(),
-            request.response_timestamp.or(request.timestamp),
+            completed_at.or(request.timestamp),
         ));
         for (role, content, projection, created_at) in rows {
             if content.trim().is_empty() {

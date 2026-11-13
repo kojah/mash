@@ -50,6 +50,9 @@ pub(super) struct Turn {
     pub timestamp: Option<i64>,
     pub response_timestamp: Option<i64>,
     pub response: Option<Response>,
+    /// Current VS Code records the response's completion here instead of
+    /// `responseTimestamp`.
+    pub model_state: Option<ModelState>,
     pub agent: Option<Agent>,
     #[serde(default)]
     pub is_hidden: bool,
@@ -60,6 +63,19 @@ pub(super) struct Turn {
     pub prompt_hidden: bool,
     #[serde(default)]
     pub is_system_initiated: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ModelState {
+    pub completed_at: Option<i64>,
+}
+
+impl Turn {
+    pub fn completed_at(&self) -> Option<i64> {
+        self.response_timestamp
+            .or_else(|| self.model_state.as_ref().and_then(|s| s.completed_at))
+    }
 }
 
 #[derive(Deserialize)]

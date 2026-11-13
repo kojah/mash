@@ -156,8 +156,12 @@ pub(super) fn project(db: &Path) -> Result<Option<String>, AppError> {
         return Ok(None);
     }
     let workspace: super::models::Workspace = read(&path)?;
-    Ok(workspace
-        .folder
-        .as_deref()
-        .and_then(|s| crate::silver::native::location(std::iter::once(s))))
+    Ok(workspace.folder.as_deref().and_then(location))
+}
+
+/// A workspace URI's folder: local, or on the SSH host, container or
+/// Codespace of a remote window, whose chats VS Code stores locally.
+pub(super) fn location(uri: &str) -> Option<String> {
+    crate::silver::native::location(std::iter::once(uri))
+        .or_else(|| crate::platform::remote_uri_path(uri))
 }
