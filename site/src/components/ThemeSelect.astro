@@ -1,12 +1,13 @@
 ---
-// One button in place of Starlight's three-way menu: light or dark, as the
+// A switch in place of Starlight's three-way menu: light or dark, as the
 // dashboard offers. The choice is kept under the key Starlight itself reads
 // when a page loads, so it holds across pages and visits.
 ---
 
-<button class="mash-theme" type="button" aria-label="Switch between light and dark mode" title="Switch between light and dark mode">
-  <svg class="sun" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
-  <svg class="moon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"></path></svg>
+<button class="mash-theme" type="button" role="switch" aria-checked="false" aria-label="Dark mode" title="Switch between light and dark mode">
+  <svg class="sun" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+  <svg class="moon" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"></path></svg>
+  <span class="knob" aria-hidden="true"></span>
 </button>
 
 <script>
@@ -20,10 +21,17 @@
       return null;
     }
   };
+  // The switch is on in dark mode.
+  const reflect = (): void => {
+    for (const control of document.querySelectorAll(".mash-theme")) {
+      control.setAttribute("aria-checked", String(root.dataset.theme !== "light"));
+    }
+  };
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Element) || !event.target.closest(".mash-theme")) return;
     const next = root.dataset.theme === "light" ? "dark" : "light";
     root.dataset.theme = next;
+    reflect();
     try {
       localStorage.setItem("starlight-theme", next);
     } catch {
@@ -35,31 +43,64 @@
     const choice = kept();
     if (choice === "light" || choice === "dark") root.dataset.theme = choice;
   });
+  document.addEventListener("astro:page-load", reflect);
+  reflect();
 </script>
 
 <style>
+  /* A track with the sun at one end and the moon at the other; the knob
+     rests on the mode in use. */
   .mash-theme {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    justify-content: space-between;
+    width: 3.5rem;
+    height: 1.875rem;
+    padding: 0 0.4375rem;
     border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.5rem;
-    background: transparent;
-    color: var(--sl-color-gray-2);
+    border-radius: 999px;
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-gray-3);
     cursor: pointer;
   }
   .mash-theme:hover {
     border-color: var(--sl-color-gray-4);
-    color: var(--sl-color-accent-high);
   }
-  /* The icon shows what the button switches to. */
-  .moon,
-  :global([data-theme="light"]) .sun {
-    display: none;
+  .sun,
+  .moon {
+    position: relative;
+    z-index: 1;
+    transition: color 0.2s ease;
+  }
+  .knob {
+    position: absolute;
+    top: 50%;
+    left: 0.1875rem;
+    width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 50%;
+    background: var(--sl-color-gray-4);
+    translate: 1.625rem -50%;
+    transition: translate 0.2s ease;
+  }
+  .moon {
+    color: var(--sl-color-white);
+  }
+  :global([data-theme="light"]) .knob {
+    translate: 0 -50%;
   }
   :global([data-theme="light"]) .moon {
-    display: block;
+    color: var(--sl-color-gray-3);
+  }
+  :global([data-theme="light"]) .sun {
+    color: var(--sl-color-white);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .knob,
+    .sun,
+    .moon {
+      transition: none;
+    }
   }
 </style>

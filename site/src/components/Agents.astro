@@ -13,9 +13,9 @@ const shown = ["claude-code", "codex", "copilot", "cursor", "opencode", "antigra
       const agent = agents[key];
       const mask = `url(${agent.logo})`;
       return (
-        <li title={agent.name}>
+        <li>
           <span class="mark" aria-hidden="true" style={{ backgroundColor: agent.tint, maskImage: mask, WebkitMaskImage: mask }} />
-          <span class="sr-only">{agent.name}</span>
+          <span class="name">{agent.name}</span>
         </li>
       );
     })}
@@ -47,7 +47,30 @@ const shown = ["claude-code", "codex", "copilot", "cursor", "opencode", "antigra
     list-style: none;
   }
   li {
+    position: relative;
     display: flex;
+  }
+  /* Under the pointer the mark dims and its agent's name shows over it. */
+  .name {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 1;
+    translate: -50% -50%;
+    color: var(--sl-color-white);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  li:hover .name {
+    opacity: 1;
+  }
+  /* Names are wider than marks, so every mark dims to keep the name legible. */
+  ul:has(li:hover) .mark {
+    opacity: 0.18;
   }
   .mark {
     display: block;
@@ -55,6 +78,7 @@ const shown = ["claude-code", "codex", "copilot", "cursor", "opencode", "antigra
     height: 1.875rem;
     mask: center / contain no-repeat;
     -webkit-mask: center / contain no-repeat;
+    transition: opacity 0.18s ease;
   }
   /* The marks are tinted for a dark ground; flip their lightness, keep the hue. */
   :global([data-theme="light"]) .mark {

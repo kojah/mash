@@ -10,8 +10,8 @@ const home = Astro.locals.starlightRoute.entry.data.template === "splash";
   home ? (
     <footer class="mash-footer">
       <span class="name">
-        <img class="dark" src="/mash-mark.svg" alt="" width="20" height="20" />
-        <img class="light" src="/mash-mark-light.svg" alt="" width="20" height="20" />
+        <img class="dark" src="/mash-mark.svg" alt="" width="26" height="26" />
+        <img class="light" src="/mash-mark-light.svg" alt="" width="26" height="26" />
         mash
       </span>
       <nav aria-label="Footer">
@@ -42,8 +42,15 @@ const home = Astro.locals.starlightRoute.entry.data.template === "splash";
     align-items: center;
     gap: 0.5rem;
     color: var(--mash-name);
-    font-family: var(--sl-font-mono);
+    font-size: var(--sl-text-lg);
     font-weight: 600;
+  }
+  /* As in the header: the name is followed by the fading cursor. */
+  .name::after {
+    content: "_";
+    margin-inline-start: -0.35em;
+    color: var(--mash-cursor);
+    animation: mash-cursor 1.6s ease-in-out infinite;
   }
   .light,
   :global([data-theme="light"]) .dark {

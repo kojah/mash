@@ -8,7 +8,7 @@ test("the light and dark button holds its choice across pages and visits", async
   const page = await context.newPage();
   await page.goto("/quick-start/");
   const html = page.locator("html");
-  const button = page.getByRole("button", { name: "Switch between light and dark mode" });
+  const button = page.getByRole("switch", { name: "Dark mode" });
   await expect(html).toHaveAttribute("data-theme", "dark");
   await button.click();
   await expect(html).toHaveAttribute("data-theme", "light");
