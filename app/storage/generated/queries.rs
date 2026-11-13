@@ -2755,6 +2755,60 @@ impl<'a> AttachmentCandidatesBuilder<'a, ()> {
         AttachmentCandidates {}
     }
 }
+pub struct RetainedAttachmentsRow {
+    pub attachments: String,
+}
+impl RetainedAttachmentsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            attachments: row.get(0)?,
+        })
+    }
+}
+pub struct RetainedAttachments;
+impl RetainedAttachments {
+    pub const QUERY: &'static str = r"SELECT attachments FROM messages WHERE attachments<>'[]'";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl RetainedAttachments {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<RetainedAttachmentsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), RetainedAttachmentsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl RetainedAttachments {
+    pub const fn builder() -> RetainedAttachmentsBuilder<'static, ()> {
+        RetainedAttachmentsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct RetainedAttachmentsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> RetainedAttachmentsBuilder<'a, ()> {
+    pub fn build(self) -> RetainedAttachments {
+        let () = self.fields;
+        RetainedAttachments {}
+    }
+}
 pub struct AttachmentPolicyRow {
     pub fingerprint: String,
 }

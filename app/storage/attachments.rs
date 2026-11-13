@@ -262,10 +262,10 @@ impl Storage {
     fn retained_attachment_digests(&self) -> Result<BTreeSet<String>, AppError> {
         let mut statement = self
             .connection
-            .prepare(sql::AttachmentCandidates::QUERY)
+            .prepare(sql::RetainedAttachments::QUERY)
             .map_err(AppError::database)?;
         let rows = statement
-            .query_map([], sql::AttachmentCandidatesRow::from_row)
+            .query_map([], sql::RetainedAttachmentsRow::from_row)
             .map_err(AppError::database)?;
         let mut digests = BTreeSet::new();
         for row in rows {

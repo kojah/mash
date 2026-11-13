@@ -104,6 +104,11 @@ SELECT attachments FROM messages WHERE id=?1;
 -- name: AttachmentCandidates :many
 SELECT id,attachments FROM messages WHERE attachments<>'[]' ORDER BY id;
 
+-- name: RetainedAttachments :many
+-- Unordered: a full scan reads table pages in storage order, whereas ORDER BY id
+-- looks every row up through the id index, several times slower when cold.
+SELECT attachments FROM messages WHERE attachments<>'[]';
+
 -- name: AttachmentPolicy :one
 SELECT fingerprint FROM attachment_policy WHERE singleton=1;
 
