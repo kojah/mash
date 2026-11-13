@@ -112,6 +112,41 @@ async fn status(url: &str) -> Option<reqwest::StatusCode> {
     Some(client.get(url).send().await.ok()?.status())
 }
 
+/// Stop the server and take its address down. The configuration, the added
+/// nodes and the history under `~/.mash/server` are kept, so `--setup` brings
+/// the same server back.
+pub(crate) async fn remove(port: u16) -> Result<(), AppError> {
+    let Some(supervisor) = Supervisor::current() else {
+        return Err(AppError::usage(
+            "`mash-server --setup` manages a user service and is available on Linux and macOS",
+        ));
+    };
+    let home = Home::resolve()?;
+    let layout = Layout::resolve(
+        supervisor,
+        SERVICE,
+        home.environment.clone(),
+        home.log.clone(),
+    )?;
+    // The address to take down is the one the server was set up on.
+    let port = if home.configuration.exists() {
+        configuration::load(&home.configuration)
+            .await?
+            .listen
+            .port()
+    } else {
+        port
+    };
+    remote::uninstall(&layout, port).await?;
+    crate::write_json(
+        &mut std::io::stdout(),
+        &serde_json::json!({
+            "removed": layout.service(),
+            "kept": home.configuration.parent(),
+        }),
+    )
+}
+
 /// Set up or repair the server, and add `node` (`GROUP/NODE`) if it is new.
 pub(crate) async fn run(node: &str, port: u16) -> Result<(), AppError> {
     let Some(supervisor) = Supervisor::current() else {

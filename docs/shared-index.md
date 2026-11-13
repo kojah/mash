@@ -56,7 +56,9 @@ mash init --join 'mash-join.…'
 ```
 
 Run the first command again with another name for each further computer; a
-rerun with a name already added just repairs the service. The join value
+rerun with a name already added just repairs the service.
+`mash-server --setup --remove` stops the server and takes its address down,
+keeping its configuration and history so the same command brings it back. The join value
 contains that computer's token, so pass it privately. To browse everything
 from a phone, add [`mash dash remote`](dashboard.md#open-it-from-your-phone-or-another-computer)
 on any machine that has joined, or `mash dash remote --shared-only` on the

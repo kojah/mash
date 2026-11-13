@@ -26,10 +26,13 @@ struct Arguments {
     /// --add-node for the first machine, a running Qdrant and Tailscale.
     #[arg(
         long,
-        requires = "add_node",
         conflicts_with_all = ["server_config", "api_url", "retire_node", "replay_views", "activate_views", "activate_query", "activate_memory"]
     )]
     setup: bool,
+    /// With --setup: stop the server and take its address down. Its
+    /// configuration, nodes and history are kept.
+    #[arg(long, requires = "setup", conflicts_with = "add_node")]
+    remove: bool,
     /// Port for the server on this machine and in its tailnet address.
     #[arg(long, default_value_t = 8787, requires = "setup")]
     port: u16,
@@ -123,6 +126,10 @@ where
     let models = args
         .models_dir
         .unwrap_or_else(crate::core::default_models_path);
+    if args.setup && args.remove {
+        runtime.block_on(server::setup::remove(args.port))?;
+        return Ok(None);
+    }
     if args.setup {
         let node = args
             .add_node
