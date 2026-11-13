@@ -66,7 +66,7 @@ jobs:
       RUSTFLAGS: -Zunstable-options --jobs-frontend=4 -C link-arg=-fuse-ld=mold
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: jamesqo/gha-workflows/actions/setup-rust@v2
+      - uses: kojah/gha-workflows/actions/setup-rust@v2
         with:
           toolchain: nightly
           cache-prefix: mash
@@ -101,7 +101,7 @@ jobs:
       RUSTFLAGS: -Zunstable-options --jobs-frontend=4
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: jamesqo/gha-workflows/actions/setup-rust@v2
+      - uses: kojah/gha-workflows/actions/setup-rust@v2
         with:
           toolchain: nightly
           cache-prefix: mash
