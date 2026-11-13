@@ -414,6 +414,8 @@ fn finding(client: &Client, component: Component) -> &Finding {
         .unwrap()
 }
 
+// The stand-in agent CLIs are Unix executables.
+#[cfg(unix)]
 #[test]
 fn installation_expects_recorded_agents_whose_registration_disappeared() {
     let root = tempfile::tempdir().unwrap();

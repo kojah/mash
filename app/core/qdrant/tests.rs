@@ -454,8 +454,12 @@ async fn a_fresh_install_verifies_places_registers_and_starts_qdrant() {
         );
     }
     assert!(layout.storage().is_dir() && layout.snapshots().is_dir());
-    let unit = std::fs::read_to_string(layout.definition()).unwrap();
-    assert!(unit.contains(&format!("ExecStart=\"{}\" --config-path", binary.display())));
+    // The test host is supervised by systemd, whose unit holds Unix paths.
+    #[cfg(unix)]
+    {
+        let unit = std::fs::read_to_string(layout.definition()).unwrap();
+        assert!(unit.contains(&format!("ExecStart=\"{}\" --config-path", binary.display())));
+    }
     let qdrant = std::fs::read_to_string(layout.qdrant_config()).unwrap();
     assert!(qdrant.contains("host: 127.0.0.1"));
     assert!(qdrant.contains(&format!("http_port: {}", fixture.ports.http)));
@@ -555,8 +559,11 @@ async fn an_earlier_version_is_stopped_replaced_and_removed() {
     assert_eq!(fixture.fake.steps(), [Step::Start, Step::Stop, Step::Start]);
     assert!(layout.binary(VERSION).is_file());
     assert!(!layout.root.join("bin/1.19.0").exists());
-    let unit = std::fs::read_to_string(layout.definition()).unwrap();
-    assert!(unit.contains(&format!("/bin/{VERSION}/qdrant")));
+    #[cfg(unix)]
+    {
+        let unit = std::fs::read_to_string(layout.definition()).unwrap();
+        assert!(unit.contains(&format!("/bin/{VERSION}/qdrant")));
+    }
     fixture.fake.shutdown().await;
 }
 
@@ -758,6 +765,8 @@ fn a_windows_zip_unpacks_its_executable() {
     assert_eq!(std::fs::read(&target).unwrap(), b"MZ fake");
 }
 
+// Rendered only on Unix hosts, from Unix paths.
+#[cfg(unix)]
 #[test]
 fn the_systemd_unit_runs_the_pinned_binary_as_a_user_service() {
     let home = Path::new("/home/ada");
@@ -817,6 +826,8 @@ fn the_systemd_unit_runs_the_pinned_binary_as_a_user_service() {
     assert!(supervisor::definition(&quoted, &quoted.binary(VERSION)).is_err());
 }
 
+// Rendered only on Unix hosts, from Unix paths.
+#[cfg(unix)]
 #[test]
 fn the_launch_agent_starts_at_login_and_keeps_qdrant_running() {
     let home = Path::new("/Users/ada & co");
