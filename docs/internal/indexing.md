@@ -218,9 +218,29 @@ quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `mash models install` once to install the FP32 asset and compile its Core ML
 cache.
 
-Contextual reranking uses the quantized ONNX CPU model on every platform, with
-bounded four-candidate batches. Search never downloads model assets. Retrieval
-diagnostics report `reranker_engine: "cpu"` for the rerank stage.
+Contextual reranking uses the FP32 ONNX CPU model on every platform by default,
+with bounded four-candidate batches. Search never downloads model assets.
+
+An opt-in `[reranking]` remote worker (`deployment/reranking/`) scores a whole
+pass in one bounded request using the same model revision and FastEmbed's
+tokenization, so its raw logits are interchangeable with CPU logits. The client
+validates the recipe (which pins the installed reranker revision), request ID,
+document IDs and score bounds. If the installed revision differs, the token is
+unset, the inputs exceed the worker limits, or the worker fails or misses
+`timeout_milliseconds`, the entire pass reranks on CPU; engines are never mixed
+within a pass and requests are never retried. The remote call is awaited on the
+async runtime; CPU inference stays on a blocking worker.
+
+Retrieval diagnostics report `reranker_engine` on the rerank stage: `cpu`,
+`remote`, or `cpu-fallback` with `reranker_fallback` (`timeout`, `unavailable`,
+`invalid-response`, `credential-missing`, `recipe-mismatch`, `input-limit`).
+
+Warm-ups send an empty batch (no query or chat text). MCP and dashboard start
+warm in the background unless `MASH_RERANK_WARMUP=off`. A non-watch `mash index`
+warms only with `MASH_RERANK_WARMUP=on`, which the plugin's throttled
+SessionStart catch-up sets; it waits up to 120 s for the warm-up after indexing
+so its exit does not abandon a cold start. Fleet and manual indexing never warm
+the worker.
 
 Core ML cache construction is serialized across processes for each shape.
 If an SDK compilation fails, mash tries one fresh cache directory and publishes

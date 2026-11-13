@@ -80,10 +80,26 @@ fn reranker_diagnostics_report_cpu() {
     super::on_blocking_thread(Some(capture.clone()), || {
         let _: Result<Vec<()>, crate::AppError> =
             super::measure_vec(super::Stage::Rerank, Some(0), || Ok(vec![]));
-        super::record_reranker(super::RerankerEngine::Cpu);
+        super::record_reranker(super::RerankerEngine::Cpu, None);
     });
     assert_eq!(
         capture.finish()[0].reranker_engine,
         Some(super::RerankerEngine::Cpu)
     );
+}
+
+#[test]
+fn reranker_diagnostics_report_a_fallback_and_its_reason() {
+    let capture = super::Capture::default();
+    super::on_blocking_thread(Some(capture.clone()), || {
+        let _: Result<Vec<()>, crate::AppError> =
+            super::measure_vec(super::Stage::Rerank, Some(0), || Ok(vec![]));
+        super::record_reranker(
+            super::RerankerEngine::CpuFallback,
+            Some(super::RerankerFallback::Timeout),
+        );
+    });
+    let measured = serde_json::to_value(&capture.finish()[0]).unwrap();
+    assert_eq!(measured["reranker_engine"], "cpu-fallback");
+    assert_eq!(measured["reranker_fallback"], "timeout");
 }

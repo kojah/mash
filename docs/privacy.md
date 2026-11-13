@@ -9,7 +9,9 @@ your indexed chats.
 Sharing across machines uploads history to your configured Mash server.
 Embedding inference runs locally by default. Opting into a remote embedding
 worker sends prepared searchable text to that endpoint; this text may contain
-sensitive history. Query embeddings and reranking stay local.
+sensitive history. Query embeddings stay local. Reranking stays local unless
+you opt into a remote reranking worker, which receives each query and the
+excerpts being ranked.
 
 The local dashboard has no login. Keep its default address or restrict access
 to a trusted private network.

@@ -1139,6 +1139,9 @@
           "redaction": {
             "$ref": "#/components/schemas/RedactionSettings"
           },
+          "reranking": {
+            "$ref": "#/components/schemas/Reranking"
+          },
           "shared": {
             "anyOf": [
               {
@@ -1155,6 +1158,7 @@
         },
         "required": [
           "embeddings",
+          "reranking",
           "qdrant",
           "attachments",
           "redaction",
@@ -2433,6 +2437,16 @@
               }
             ]
           },
+          "reranker_fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RerankerFallback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "stage": {
             "$ref": "#/components/schemas/Stage"
           },
@@ -3429,11 +3443,105 @@
         "type": "string"
       },
       "RerankerEngine": {
-        "description": "Execution provider for contextual reranking.",
-        "enum": [
-          "cpu"
-        ],
-        "type": "string"
+        "description": "Where contextual reranking ran. One search pass uses one engine.",
+        "oneOf": [
+          {
+            "enum": [
+              "cpu"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "remote",
+            "description": "The configured remote reranking worker.",
+            "type": "string"
+          },
+          {
+            "const": "cpu-fallback",
+            "description": "The local CPU, because the configured remote worker did not answer.",
+            "type": "string"
+          }
+        ]
+      },
+      "RerankerFallback": {
+        "description": "Why a search configured for remote reranking used the local CPU.",
+        "oneOf": [
+          {
+            "const": "timeout",
+            "description": "No reply within the configured bound, typically a cold worker.",
+            "type": "string"
+          },
+          {
+            "const": "unavailable",
+            "description": "The connection failed or the worker returned an HTTP error.",
+            "type": "string"
+          },
+          {
+            "const": "invalid-response",
+            "description": "The reply did not match the request, recipe or score bounds.",
+            "type": "string"
+          },
+          {
+            "const": "credential-missing",
+            "description": "The configured token environment variable is unset in this process.",
+            "type": "string"
+          },
+          {
+            "const": "recipe-mismatch",
+            "description": "The installed reranker differs from the worker's pinned model.",
+            "type": "string"
+          },
+          {
+            "const": "input-limit",
+            "description": "The query or candidates exceed the worker's request limits.",
+            "type": "string"
+          }
+        ]
+      },
+      "Reranking": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "backend": {
+                "const": "local",
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "backend": {
+                "const": "remote",
+                "type": "string"
+              },
+              "timeout_milliseconds": {
+                "default": 1500,
+                "description": "How long a search waits for the worker before it reranks on the\nlocal CPU instead. A cold worker takes far longer than this.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "token_env": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend",
+              "url",
+              "token_env"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "Results": {
         "anyOf": [

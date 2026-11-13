@@ -46,6 +46,7 @@ pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError>
 pub(crate) async fn search(
     config: &SharedConfig,
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
+    reranking: &crate::config::Reranking,
     models_dir: &Path,
     query: &str,
     options: Options,
@@ -53,9 +54,15 @@ pub(crate) async fn search(
 ) -> Result<SearchOutcome, AppError> {
     filters.filter.validate()?;
     crate::search_query::validate(query)?;
-    let prepared = prepare_search(local_database, models_dir, query, options.ranking)
-        .boxed()
-        .await?;
+    let prepared = prepare_search(
+        local_database,
+        reranking,
+        models_dir,
+        query,
+        options.ranking,
+    )
+    .boxed()
+    .await?;
     search_prepared(
         config,
         local_database.map(|(path, _)| path),
@@ -78,11 +85,13 @@ pub(super) struct PreparedSearch {
 #[tracing::instrument(name = "prepare_search", skip_all)]
 pub(super) async fn prepare_search(
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
+    reranking: &crate::config::Reranking,
     models_dir: &Path,
     query: &str,
     ranking: crate::views::config::Ranking,
 ) -> Result<PreparedSearch, AppError> {
     let root = models_dir.to_path_buf();
+    let reranking = reranking.clone();
     let text = query.to_owned();
     let local = match local_database {
         Some((path, configuration)) => {
@@ -92,7 +101,7 @@ pub(super) async fn prepare_search(
     };
     let generation = semantic::SHARED_EMBEDDING_GENERATION.to_owned();
     crate::blocking(move || {
-        let models = Models::new(root);
+        let models = Models::new(root).with_reranking(reranking);
         models.require_installed()?;
         let mut backend = models
             .load_search(ranking)?
@@ -177,7 +186,7 @@ pub(super) async fn search_prepared(
     // display their projection, which also omits embedded tool results.
     apply_projections(lexical.iter_mut().chain(&mut semantic), &documents);
     let query = query.to_owned();
-    let (mut backend, selection) = crate::blocking(move || {
+    let (backend, selection) = crate::blocking(move || {
         let fused = combine_candidates(lexical, semantic, local_hits, options);
         let selection = if ranking == crate::views::config::Ranking::Fusion {
             crate::search_ranking::Selection {
@@ -201,15 +210,15 @@ pub(super) async fn search_prepared(
     )
     .await?;
     documents.extend(context);
-    crate::blocking(move || {
-        let fused = rerank_combined(&mut backend, &query, selection, &documents, options)?;
-        Ok(SearchOutcome {
-            hits: fused,
-            retrieval,
-            context_error,
-        })
+    let pending = rerank_combined(&query, selection, &documents, options)?;
+    let hits =
+        crate::search_ranking::finish(backend, crate::search_ranking::Ranked::Rerank(pending))
+            .await?;
+    Ok(SearchOutcome {
+        hits,
+        retrieval,
+        context_error,
     })
-    .await
 }
 
 fn combine_candidates(
@@ -434,12 +443,11 @@ async fn retrieve_local_candidates(
 
 #[tracing::instrument(name = "rerank", skip_all)]
 fn rerank_combined(
-    backend: &mut semantic::Backend,
     query: &str,
     selection: crate::search_ranking::Selection,
     documents: &HashMap<(String, String), String>,
     options: Options,
-) -> Result<Vec<SearchHit>, AppError> {
+) -> Result<crate::search_ranking::Pending, AppError> {
     let Options { unit, fusion, .. } = options;
     let selected = selection.hits[..selection.count]
         .iter()
@@ -450,5 +458,5 @@ fn rerank_combined(
                 .ok_or_else(|| AppError::shared("shared candidate has no search projection"))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    crate::search_ranking::score(backend, query, selection, &selected, unit, fusion)
+    crate::search_ranking::Pending::new(query, selection, &selected, unit, fusion)
 }

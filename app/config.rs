@@ -10,6 +10,7 @@ mod embeddings;
 pub(crate) mod init;
 mod loading;
 mod qdrant;
+mod reranking;
 pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
@@ -18,6 +19,7 @@ pub(crate) use document::validate_identifier;
 pub(crate) use embeddings::Embeddings;
 pub(crate) use loading::{default_path, load};
 pub(crate) use qdrant::QdrantConfig;
+pub(crate) use reranking::Reranking;
 
 const DEFAULT_SINCE_DAYS: u32 = 90;
 const MAX_SINCE_DAYS: u32 = 36_500;
@@ -25,6 +27,7 @@ const MAX_SINCE_DAYS: u32 = 36_500;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedConfig {
     pub(crate) embeddings: Embeddings,
+    pub(crate) reranking: Reranking,
     pub(crate) qdrant: QdrantConfig,
     pub(crate) attachments: crate::attachments::Configuration,
     pub(crate) redaction: crate::redaction::Settings,
@@ -60,6 +63,7 @@ pub(crate) struct SharedConfig {
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ConfigurationStatus {
     embeddings: Embeddings,
+    reranking: Reranking,
     qdrant: QdrantConfig,
     attachments: crate::attachments::Configuration,
     redaction: crate::redaction::Settings,
@@ -87,6 +91,7 @@ impl ResolvedConfig {
     pub(crate) fn status(&self) -> ConfigurationStatus {
         ConfigurationStatus {
             embeddings: self.embeddings.clone(),
+            reranking: self.reranking.clone(),
             qdrant: self.qdrant.clone(),
             attachments: self.attachments.clone(),
             redaction: self.redaction,

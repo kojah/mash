@@ -24,11 +24,33 @@ pub(crate) enum Stage {
 }
 const COUNT: usize = 10;
 
-/// Execution provider for contextual reranking.
+/// Where contextual reranking ran. One search pass uses one engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum RerankerEngine {
     Cpu,
+    /// The configured remote reranking worker.
+    Remote,
+    /// The local CPU, because the configured remote worker did not answer.
+    CpuFallback,
+}
+
+/// Why a search configured for remote reranking used the local CPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum RerankerFallback {
+    /// No reply within the configured bound, typically a cold worker.
+    Timeout,
+    /// The connection failed or the worker returned an HTTP error.
+    Unavailable,
+    /// The reply did not match the request, recipe or score bounds.
+    InvalidResponse,
+    /// The configured token environment variable is unset in this process.
+    CredentialMissing,
+    /// The installed reranker differs from the worker's pinned model.
+    RecipeMismatch,
+    /// The query or candidates exceed the worker's request limits.
+    InputLimit,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
@@ -36,6 +58,8 @@ pub(crate) struct Measurement {
     pub(crate) stage: Stage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reranker_engine: Option<RerankerEngine>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reranker_fallback: Option<RerankerFallback>,
     /// Placement of metadata/scope predicates, independent of call completion.
     #[serde(default)]
     pub(crate) filters_before_limit: bool,
@@ -132,6 +156,7 @@ impl Drop for Guard {
             let item = items[active.stage as usize].get_or_insert(Measurement {
                 stage: active.stage,
                 reranker_engine: None,
+                reranker_fallback: None,
                 filters_before_limit: matches!(
                     active.stage,
                     Stage::LocalExact
@@ -165,12 +190,13 @@ impl Drop for Guard {
     }
 }
 
-pub(crate) fn record_reranker(engine: RerankerEngine) {
+pub(crate) fn record_reranker(engine: RerankerEngine, fallback: Option<RerankerFallback>) {
     if let Some(capture) = current()
         && let Ok(mut items) = capture.0.lock()
         && let Some(item) = &mut items[Stage::Rerank as usize]
     {
         item.reranker_engine = Some(engine);
+        item.reranker_fallback = fallback;
     }
 }
 

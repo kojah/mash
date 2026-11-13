@@ -663,6 +663,7 @@ export interface components {
             qdrant: components["schemas"]["QdrantConfig"];
             records: components["schemas"]["Policy"];
             redaction: components["schemas"]["RedactionSettings"];
+            reranking: components["schemas"]["Reranking"];
             shared?: components["schemas"]["SharedConfig"] | null;
             views: components["schemas"]["ViewsConfiguration"];
         };
@@ -1060,6 +1061,7 @@ export interface components {
             /** Format: uint64 */
             max_us: number;
             reranker_engine?: components["schemas"]["RerankerEngine"] | null;
+            reranker_fallback?: components["schemas"]["RerankerFallback"] | null;
             stage: components["schemas"]["Stage"];
             /** Format: uint64 */
             total_us: number;
@@ -1355,11 +1357,26 @@ export interface components {
         Relation: "supersedes" | "supports" | "contradicts";
         /** @enum {string} */
         Representations: "lexical-and-dense" | "lexical-only";
-        /**
-         * @description Execution provider for contextual reranking.
-         * @enum {string}
-         */
-        RerankerEngine: "cpu";
+        /** @description Where contextual reranking ran. One search pass uses one engine. */
+        RerankerEngine: "cpu" | "remote" | "cpu-fallback";
+        /** @description Why a search configured for remote reranking used the local CPU. */
+        RerankerFallback: "timeout" | "unavailable" | "invalid-response" | "credential-missing" | "recipe-mismatch" | "input-limit";
+        Reranking: {
+            /** @constant */
+            backend: "local";
+        } | {
+            /** @constant */
+            backend: "remote";
+            /**
+             * Format: uint32
+             * @description How long a search waits for the worker before it reranks on the
+             *     local CPU instead. A cold worker takes far longer than this.
+             * @default 1500
+             */
+            timeout_milliseconds: number;
+            token_env: string;
+            url: string;
+        };
         Results: components["schemas"]["ChatHit"][] | components["schemas"]["SearchHit"][];
         Retained: {
             /** Format: uint64 */

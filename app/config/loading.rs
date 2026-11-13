@@ -51,6 +51,7 @@ pub(super) fn load_from_paths(
             let providers = built_in_providers()?;
             return Ok(ResolvedConfig {
                 embeddings: super::Embeddings::default(),
+                reranking: super::Reranking::default(),
                 qdrant: super::QdrantConfig::default(),
                 attachments: crate::attachments::Configuration::default(),
                 redaction: crate::redaction::Settings::default(),
@@ -102,6 +103,7 @@ pub(super) fn load_from_paths(
     }
     Ok(ResolvedConfig {
         embeddings: parsed.embeddings,
+        reranking: parsed.reranking,
         qdrant: parsed.qdrant,
         attachments: parsed.attachments,
         redaction: parsed.redaction,

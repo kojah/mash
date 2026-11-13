@@ -61,28 +61,7 @@ impl Embeddings {
         else {
             return Ok(());
         };
-        let url = reqwest::Url::parse(url)
-            .map_err(|_| AppError::configuration("invalid embedding service URL"))?;
-        let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-        if !(url.scheme() == "https" || (url.scheme() == "http" && loopback))
-            || url.host_str().is_none()
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-        {
-            return Err(AppError::configuration(
-                "embedding service requires HTTPS (HTTP only on loopback), without URL credentials, query or fragment",
-            ));
-        }
-        if token_env.is_empty()
-            || token_env.as_bytes()[0].is_ascii_digit()
-            || !token_env
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        {
-            return Err(AppError::configuration("invalid embedding token_env"));
-        }
+        validate_service(url, token_env, "embedding")?;
         if !(1..=120).contains(timeout_seconds) {
             return Err(AppError::configuration(
                 "embedding timeout_seconds must be between 1 and 120",
@@ -95,4 +74,34 @@ impl Embeddings {
         }
         Ok(())
     }
+}
+
+/// An authenticated inference service: HTTPS (HTTP only on loopback), no URL
+/// credentials, query or fragment, and a token named by an environment variable.
+pub(super) fn validate_service(url: &str, token_env: &str, service: &str) -> Result<(), AppError> {
+    let url = reqwest::Url::parse(url)
+        .map_err(|_| AppError::configuration(format!("invalid {service} service URL")))?;
+    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    if !(url.scheme() == "https" || (url.scheme() == "http" && loopback))
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(AppError::configuration(format!(
+            "{service} service requires HTTPS (HTTP only on loopback), without URL credentials, query or fragment"
+        )));
+    }
+    if token_env.is_empty()
+        || token_env.as_bytes()[0].is_ascii_digit()
+        || !token_env
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Err(AppError::configuration(format!(
+            "invalid {service} token_env"
+        )));
+    }
+    Ok(())
 }

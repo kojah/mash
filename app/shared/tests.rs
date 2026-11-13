@@ -590,6 +590,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     // subsequent candidate retrieval stage whose concurrency is under test.
     let prepared = prepare_search(
         Some((&path, &gold.configuration)),
+        &crate::config::Reranking::default(),
         &models_dir,
         "hello",
         crate::views::config::Ranking::default(),
@@ -654,6 +655,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     let fallback = search(
         &config,
         Some((&path, &gold.configuration)),
+        &crate::config::Reranking::default(),
         &models_dir,
         "hello",
         options,
@@ -667,9 +669,17 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         serde_json::to_value(hits).unwrap()
     );
     assert!(
-        search(&config, None, &models_dir, "hello", options, &filters,)
-            .await
-            .is_err()
+        search(
+            &config,
+            None,
+            &crate::config::Reranking::default(),
+            &models_dir,
+            "hello",
+            options,
+            &filters,
+        )
+        .await
+        .is_err()
     );
     gold.cleanup().await;
     server.abort();

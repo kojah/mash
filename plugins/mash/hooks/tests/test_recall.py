@@ -30,7 +30,8 @@ if data.get("fail", {}).get(command):
 if command == "list-chats":
     print(json.dumps({"chats": data["chats"], "next_offset": None}))
 elif command == "index":
-    open(path + ".auto-index", "a").write("index\\n")
+    warm_up = os.environ.get("MASH_RERANK_WARMUP", "")
+    open(path + ".auto-index", "a").write(f"index warm-up={warm_up}\\n")
 """
 
 
@@ -105,9 +106,20 @@ class Recall(unittest.TestCase):
         while not log.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         time.sleep(0.2)
-        self.assertEqual(log.read_text(), "index\n")
+        self.assertEqual(log.read_text(), "index warm-up=on\n")
         state = json.loads((self.state / "auto-index.json").read_text())
         self.assertLessEqual(time.time() - state["started_at"], 10)
+
+    def test_background_index_respects_the_warm_up_opt_out(self) -> None:
+        self.env["MASH_AUTO_INDEX"] = "on"
+        self.env["MASH_RERANK_WARMUP"] = "off"
+        log = self.root / "fake.json.auto-index"
+        self.hook()
+        deadline = time.monotonic() + 5
+        while not log.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.2)
+        self.assertEqual(log.read_text(), "index warm-up=off\n")
 
     def test_deadline(self) -> None:
         self.fake(chats=[chat("other", str(self.repo))], sleep=10)

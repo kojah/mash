@@ -602,6 +602,20 @@ where
         .enable_all()
         .build()
         .map_err(|_| AppError::internal("failed to start async runtime"))?;
+    // Warm an opted-in remote reranker when this process makes a search
+    // likely. Detached for long-running processes; a catch-up index waits
+    // for it (bounded) so its exit does not abandon a cold start.
+    let warm_up = {
+        use crate::semantic::remote_reranker::{Occasion, warm_up_task};
+        let occasion = match &cli.command {
+            Command::Mcp | Command::Dash { .. } => Some(Occasion::LongRunning),
+            Command::Index { watch: false, .. } => Some(Occasion::CatchUp),
+            _ => None,
+        };
+        occasion
+            .and_then(|occasion| warm_up_task(occasion, cli.config.clone()))
+            .map(|task| runtime.spawn(task))
+    };
     if let Command::Dash {
         listen,
         services_config,
@@ -631,7 +645,13 @@ where
         runtime.block_on(crate::mcp::run(paths))?;
         Ok(Response::McpStopped)
     } else {
-        runtime.block_on(run_parsed(cli))
+        runtime.block_on(async {
+            let response = run_parsed(cli).await;
+            if let Some(warm_up) = warm_up {
+                let _ = warm_up.await;
+            }
+            response
+        })
     }
 }
 

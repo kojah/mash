@@ -25,11 +25,23 @@ pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
 
 pub(crate) struct Models {
     root: PathBuf,
+    reranking: crate::config::Reranking,
 }
+
+/// The configured remote reranker, or why this search cannot use it.
+type RemoteReranker = Option<
+    Result<
+        std::sync::Arc<super::remote_reranker::Client>,
+        crate::observability::retrieval::RerankerFallback,
+    >,
+>;
 
 pub(crate) struct Backend {
     embedding: TextEmbedding,
     reranker: Option<reranker::Reranker>,
+    // Resolved on every load: configuration and credentials can change while
+    // a cached backend is idle.
+    remote_reranker: RemoteReranker,
     // Retained with cached models and lazy Core ML sessions until their drop.
     assets_lease: Option<fs::File>,
 }
@@ -97,7 +109,16 @@ pub(crate) struct InstallSummary {
 
 impl Models {
     pub(crate) fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            reranking: crate::config::Reranking::default(),
+        }
+    }
+
+    /// Contextual reranking placement for searches loaded by this handle.
+    pub(crate) fn with_reranking(mut self, reranking: crate::config::Reranking) -> Self {
+        self.reranking = reranking;
+        self
     }
 
     pub(crate) fn require_indexer(&self) -> Result<(), AppError> {
@@ -157,6 +178,12 @@ impl Models {
         let mut backend = match cached {
             Some(cached) if cached.key == key => cached.backend,
             _ => Backend::load_local_search(&asset_root, ranking)?,
+        };
+        backend.remote_reranker = match ranking {
+            crate::views::config::Ranking::ContextualRerank => {
+                super::remote_reranker::connect(&self.reranking, &asset_root)
+            }
+            crate::views::config::Ranking::Fusion => None,
         };
         backend.assets_lease = selected.lease;
         Ok(Some(LoadedBackend {
@@ -256,6 +283,7 @@ impl Backend {
         Ok(Self {
             embedding,
             reranker,
+            remote_reranker: None,
             assets_lease: None,
         })
     }
@@ -290,9 +318,30 @@ impl Backend {
         if self.reranker.is_some() {
             crate::observability::retrieval::record_reranker(
                 crate::observability::retrieval::RerankerEngine::Cpu,
+                None,
             );
         }
         result
+    }
+
+    pub(crate) fn remote_reranker(&self) -> RemoteReranker {
+        self.remote_reranker.clone()
+    }
+
+    /// Raw CPU logits in input order, for one complete reranking pass.
+    pub(crate) fn rerank_cpu(
+        &mut self,
+        query: &str,
+        documents: &[&str],
+    ) -> Result<Vec<f32>, AppError> {
+        let mut scores = vec![f32::NEG_INFINITY; documents.len()];
+        for result in self.rerank_batched(query, documents, 4)? {
+            *scores
+                .get_mut(result.index)
+                .ok_or_else(|| AppError::model("reranker returned an invalid document index"))? =
+                result.score;
+        }
+        Ok(scores)
     }
 
     fn rerank_batched<S: AsRef<str> + Send + Sync>(
@@ -339,6 +388,7 @@ impl Backend {
 
     /// Focus long candidates on query evidence before the tokenizer truncates
     /// them. Keep the model's raw logits: they are not calibrated probabilities.
+    #[cfg(test)]
     pub(crate) fn rerank_search(
         &mut self,
         query: &str,

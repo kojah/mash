@@ -11,14 +11,16 @@ pub(super) struct QuantizedVector {
     pub(super) values: Vec<u8>,
 }
 
+/// Fuse candidates and gather reranking context; inference happens in
+/// `search_ranking::finish`, where a remote worker can be awaited.
 pub(crate) fn finish_hybrid(
     storage: &Storage,
-    backend: &mut Backend,
     query: &str,
     options: Options,
     lexical: Vec<SearchHit>,
     semantic_hits: Vec<SearchHit>,
-) -> Result<Vec<SearchHit>, AppError> {
+) -> Result<crate::search_ranking::Ranked, AppError> {
+    use crate::search_ranking::Ranked;
     let Options {
         unit,
         fusion,
@@ -28,11 +30,15 @@ pub(crate) fn finish_hybrid(
     if semantic_hits.is_empty() {
         let mut lexical = lexical;
         crate::search_ranking::favour_recent(&mut lexical, fusion);
-        return Ok(crate::search_results::diversify(lexical, unit));
+        return Ok(Ranked::Finished(crate::search_results::diversify(
+            lexical, unit,
+        )));
     }
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
     if ranking == crate::views::config::Ranking::Fusion {
-        return Ok(crate::search_ranking::finish_fusion(fused, fusion));
+        return Ok(Ranked::Finished(crate::search_ranking::finish_fusion(
+            fused, fusion,
+        )));
     }
     let selection = crate::search_ranking::select(fused, unit);
     let documents =
@@ -51,7 +57,8 @@ pub(crate) fn finish_hybrid(
                 })
                 .collect::<Result<Vec<_>, AppError>>()
         })?;
-    crate::search_ranking::score(backend, query, selection, &documents, unit, fusion)
+    crate::search_ranking::Pending::new(query, selection, &documents, unit, fusion)
+        .map(Ranked::Rerank)
 }
 
 pub(crate) const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";

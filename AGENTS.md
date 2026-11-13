@@ -55,7 +55,10 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;
   MCP must not construct CLI arguments or call CLI handlers.
-- Keep cosine search, RRF, and bounded CPU reranking. Embedding inference defaults
+- Keep cosine search, RRF, and bounded reranking. CPU reranking is the default
+  and the offline path; an opt-in remote reranking worker may score a whole pass
+  within a short bound, falling back to CPU for that pass with the reason in
+  search diagnostics. Embedding inference defaults
   to local FastEmbed/Core ML; support explicitly configured remote batch inference
   through the same typed embedding contract. Keep query embeddings local and
   offline-capable. Remote inference must use authenticated bounded requests,

@@ -650,3 +650,40 @@ fn redaction_switches_default_on_and_reach_each_destination() {
         &parse_document(format!("{VALID}\n[redaction]\nlogs=false\n").as_bytes()).unwrap_err(),
     );
 }
+
+#[test]
+fn remote_reranking_is_explicit_strict_and_keeps_credentials_unresolved() {
+    let prefix = "version = 1\n[providers]\n";
+    assert_eq!(
+        parse_document(prefix.as_bytes()).unwrap().reranking,
+        Reranking::Local {}
+    );
+    let base = format!(
+        "{prefix}[reranking]\nbackend = 'remote'\nurl = 'https://example.com/rerank'\ntoken_env = 'MASH_TEST_NOT_PRESENT'\n"
+    );
+    assert_eq!(
+        parse_document(base.as_bytes()).unwrap().reranking,
+        Reranking::Remote {
+            url: "https://example.com/rerank".into(),
+            token_env: "MASH_TEST_NOT_PRESENT".into(),
+            timeout_milliseconds: 1500,
+        }
+    );
+    assert!(parse_document(format!("{base}timeout_milliseconds = 100\n").as_bytes()).is_ok());
+    for setting in [
+        base.replace("https://example.com/rerank", "http://example.com/rerank"),
+        base.replace(
+            "https://example.com/rerank",
+            "https://user:secret@example.com/rerank",
+        ),
+        base.replace("MASH_TEST_NOT_PRESENT", "1BAD"),
+        format!("{base}timeout_milliseconds = 99\n"),
+        format!("{base}timeout_milliseconds = 10001\n"),
+        format!("{base}timeout_seconds = 1\n"),
+        format!("{base}token = 'secret'\n"),
+        format!("{prefix}[reranking]\nbackend = 'gpu'\n"),
+        base.replace("backend = 'remote'", "backend = 'local'"),
+    ] {
+        assert!(parse_document(setting.as_bytes()).is_err(), "{setting}");
+    }
+}

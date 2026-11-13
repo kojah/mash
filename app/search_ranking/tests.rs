@@ -85,8 +85,7 @@ fn reranking_ranks_a_selected_threads_fourth_message_first() {
         .iter()
         .map(|hit| search_results::contextual_document(hit, query, &[]))
         .collect::<Vec<_>>();
-    let hits = score(
-        &mut backend,
+    let pending = Pending::new(
         query,
         selection,
         &documents,
@@ -94,6 +93,13 @@ fn reranking_ranks_a_selected_threads_fourth_message_first() {
         Fusion::default(),
     )
     .unwrap();
+    let refs = pending
+        .windows
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let scores = backend.rerank_cpu(query, &refs).unwrap();
+    let hits = pending.order(&scores);
     assert_eq!(hits[0].id, "warm-cache");
 }
 
@@ -177,4 +183,98 @@ fn chat_selection_takes_the_best_fused_threads_without_inference() {
         ids(&selection.hits[selection.count..]),
         ["t10-0", "t11-0", "t0-6", "t0-7", "t11-1"]
     );
+}
+
+#[test]
+fn one_pass_uses_every_remote_score_or_reranks_entirely_on_cpu() {
+    use crate::semantic::remote_reranker::Scores;
+    let remote = || {
+        Some(Ok(Scores {
+            scores: vec![3.0, 2.0],
+            inference_milliseconds: 1,
+        }))
+    };
+    let (scores, engine, fallback) = choose(remote(), || panic!("CPU must not run")).unwrap();
+    assert_eq!(
+        (scores, engine, fallback),
+        (vec![3.0, 2.0], RerankerEngine::Remote, None)
+    );
+    let (scores, engine, fallback) = choose(Some(Err(RerankerFallback::Timeout)), || {
+        Ok(vec![-1.0, -2.0])
+    })
+    .unwrap();
+    assert_eq!(
+        (scores, engine, fallback),
+        (
+            vec![-1.0, -2.0],
+            RerankerEngine::CpuFallback,
+            Some(RerankerFallback::Timeout)
+        )
+    );
+    let (_, engine, fallback) = choose(None, || Ok(vec![0.0, 0.0])).unwrap();
+    assert_eq!((engine, fallback), (RerankerEngine::Cpu, None));
+    assert!(
+        choose(Some(Err(RerankerFallback::Unavailable)), || Err(
+            AppError::model("cpu")
+        ))
+        .is_err()
+    );
+}
+
+#[tokio::test]
+async fn a_timed_out_remote_pass_is_reranked_and_ordered_by_cpu_scores_alone() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::post(|| async {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                Vec::<u8>::new()
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+    let root = tempfile::tempdir().unwrap();
+    let repository = root.path().join(crate::semantic::RERANKER_REPOSITORY);
+    let revision = crate::semantic::remote_reranker::REVISION;
+    std::fs::create_dir_all(repository.join("snapshots").join(revision)).unwrap();
+    std::fs::create_dir_all(repository.join("refs")).unwrap();
+    std::fs::write(repository.join("refs/main"), revision).unwrap();
+    let configuration = crate::config::Reranking::Remote {
+        url,
+        token_env: "HOME".into(),
+        timeout_milliseconds: 100,
+    };
+    let client = crate::semantic::remote_reranker::connect(&configuration, root.path())
+        .unwrap()
+        .unwrap();
+    let hits = vec![
+        candidate("a", "first", "one"),
+        candidate("b", "second", "two"),
+    ];
+    let selection = select(hits, SearchUnit::Messages);
+    let documents = vec!["one".to_owned(), "two".to_owned()];
+    let pending = Pending::new(
+        "query",
+        selection,
+        &documents,
+        SearchUnit::Messages,
+        Fusion::default(),
+    )
+    .unwrap();
+    let refs = pending
+        .windows
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let attempt = Some(client.rerank(&pending.query, &refs).await);
+    server.abort();
+    let (scores, engine, fallback) = choose(attempt, || Ok(vec![-5.0, 5.0])).unwrap();
+    assert_eq!(engine, RerankerEngine::CpuFallback);
+    assert_eq!(fallback, Some(RerankerFallback::Timeout));
+    let ordered = pending.order(&scores);
+    assert_eq!(ids(&ordered), vec!["second", "first"]);
+    assert_eq!(ordered[0].rerank_score, Some(5.0));
+    assert_eq!(ordered[1].rerank_score, Some(-5.0));
 }

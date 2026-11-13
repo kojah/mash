@@ -60,7 +60,7 @@ HTTPS is required except for a worker on loopback.
 
 This opt-in sends prepared searchable text to the worker, which may contain
 sensitive conversation content. It does not grant the worker database access.
-Search-query embeddings and reranking remain local; install local models with
+Search-query embeddings remain local; install local models with
 `mash models install` for offline semantic searches.
 
 A worker that shuts down when idle can take minutes to start, and search waits
@@ -78,6 +78,33 @@ be at most 1024, and leaving it out sends every batch to the worker. Each
 `mash index` result reports how many texts the worker embedded
 (`remote_inferences`, out of `model_inferences`) and how long its requests took
 (`remote_milliseconds`).
+
+## Remote reranking
+
+Searches rerank their best candidates on your CPU by default. To score them on
+an authenticated Mash reranking worker instead, add:
+
+```toml
+[reranking]
+backend = "remote"
+url = "https://YOUR-RERANKING-WORKER.modal.run"
+token_env = "MASH_RERANKING_TOKEN"
+timeout_milliseconds = 1500
+```
+
+Set the named variable in every process that searches: MCP servers, the
+dashboard and your shell. A Modal proxy token for the embedding worker also
+works here. Keep `mash models install` in place: when the worker does not
+answer within `timeout_milliseconds` (100 to 10000; a cold worker takes much
+longer), or the token is missing, that search reranks on your CPU instead.
+`mash search --diagnostics` reports `reranker_engine` as `remote`, `cpu` or
+`cpu-fallback`, with a `reranker_fallback` reason. Failed requests are never
+retried.
+
+This sends the query and the excerpts being ranked to the worker. MCP and
+dashboard start, and the agent plugin's session-start refresh, send a
+text-free warm-up request so the worker is ready when you search; set
+`MASH_RERANK_WARMUP=off` to disable warm-ups.
 
 Existing matching vectors are reused. Failed remote requests return an error;
 Mash does not automatically retry the request or silently switch to local

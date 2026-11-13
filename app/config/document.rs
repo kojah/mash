@@ -11,6 +11,7 @@ use crate::provider::{Provider, ProviderRoots};
 #[derive(Debug)]
 pub(super) struct ParsedDocument {
     pub(super) embeddings: super::Embeddings,
+    pub(super) reranking: super::Reranking,
     pub(super) qdrant: super::QdrantConfig,
     pub(super) attachments: crate::attachments::Configuration,
     pub(super) redaction: crate::redaction::Settings,
@@ -27,6 +28,8 @@ pub(super) struct ParsedDocument {
 struct RawDocument {
     #[serde(default)]
     embeddings: super::Embeddings,
+    #[serde(default)]
+    reranking: super::Reranking,
     #[serde(default)]
     records: crate::records::capture::Policy,
     #[serde(default)]
@@ -150,6 +153,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     }
     raw.qdrant.validate()?;
     raw.embeddings.validate()?;
+    raw.reranking.validate()?;
     raw.views.validate()?;
     raw.attachments.validate()?;
     if raw.index.all_history && raw.index.since_days.is_some() {
@@ -203,6 +207,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     }
     Ok(ParsedDocument {
         embeddings: raw.embeddings,
+        reranking: raw.reranking,
         qdrant: raw.qdrant,
         attachments: raw.attachments,
         redaction: raw.redaction,

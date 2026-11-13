@@ -379,6 +379,7 @@ async fn shared_hybrid(
     } = shared::search(
         required_shared(configuration)?,
         database.map(|database| (database, configuration)),
+        &configuration.reranking,
         models,
         &query,
         options,
@@ -495,7 +496,8 @@ async fn local_search(
     (options, page): (crate::views::config::Options, crate::search_results::Page),
     filters: &crate::search_filter::Scope,
 ) -> Result<SearchResponse, AppError> {
-    let models = Models::new(models_dir.to_path_buf());
+    let models =
+        Models::new(models_dir.to_path_buf()).with_reranking(configuration.reranking.clone());
     // Check assets/configuration before database or backend access, but defer
     // loading models and inference until gold has passed its freshness guard.
     let models = crate::blocking(move || {
@@ -505,7 +507,7 @@ async fn local_search(
     .await?;
     let local = crate::views::local::Local::open_current(database_path, configuration).await?;
     let text = query.clone();
-    let (mut backend, vector) = crate::blocking(move || {
+    let (backend, vector) = crate::blocking(move || {
         let mut backend = models
             .load_search(options.ranking)?
             .ok_or_else(AppError::models_missing)?;
@@ -531,19 +533,20 @@ async fn local_search(
     }
     let database = database_path.to_path_buf();
     let text = query.clone();
-    let results = crate::blocking(move || {
+    let (backend, ranked) = crate::blocking(move || {
         let storage =
             Storage::open_silver(&database)?.with_output_redaction(options.output_redaction);
-        semantic::finish_hybrid(
+        let ranked = semantic::finish_hybrid(
             &storage,
-            &mut backend,
             &text,
             options,
             candidates.lexical,
             candidates.semantic,
-        )
+        )?;
+        Ok((backend, ranked))
     })
     .await?;
+    let results = crate::search_ranking::finish(backend, ranked).await?;
     let collected = crate::search_results::collect(
         results,
         options.unit,

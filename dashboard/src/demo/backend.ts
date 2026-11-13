@@ -307,6 +307,7 @@ function status(): Answer<"/api/status"> {
       attachments: { share_files: false, allowed_roots: [] },
       index: { since_days: 90, destination: "both" },
       embeddings: { backend: "local" },
+      reranking: { backend: "local" },
       qdrant: {
         url: "http://127.0.0.1:6333",
         grpc_url: "http://127.0.0.1:6334",
