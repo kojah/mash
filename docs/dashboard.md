@@ -148,7 +148,7 @@ machines appear in the dashboard through [sharing](shared-index.md).
 
 ## Open it from your phone or another computer
 
-By default, only your machine can reach the dashboard. On Linux with
+By default, only your machine can reach the dashboard. On Linux or macOS with
 [Tailscale](https://tailscale.com) connected, one command makes it reachable
 from your other devices, and only from them:
 
@@ -156,9 +156,9 @@ from your other devices, and only from them:
 mash dash remote
 ```
 
-It keeps the dashboard running as a user service behind a sign-in, gives it an
-HTTPS address inside your tailnet, and prints the address, a one-time code and
-a QR code:
+It keeps the dashboard running as a user service behind a sign-in (a systemd
+user service on Linux, a LaunchAgent on macOS), gives it an HTTPS address
+inside your tailnet, and prints the address, a one-time code and a QR code:
 
 ```json
 {
@@ -190,7 +190,9 @@ The dashboard searches whatever that machine can search: its own history and,
 with a [shared index](shared-index.md), your other machines' history too. For
 the shared index the service needs the node token: run `mash dash remote` in a
 shell where that variable is set, and it is saved for the service in
-`~/.mash/dashboard.env`, readable only by you.
+`~/.mash/dashboard.env`, readable only by you. On macOS the LaunchAgent's
+property list (`~/Library/LaunchAgents/dev.mash.dash.plist`) holds the same
+tokens and is just as private; its output goes to `~/.mash/dashboard.log`.
 
 A machine with no agent history of its own, such as the server that holds the
 shared index, can still host the dashboard: with `--shared-only`, chats, search
@@ -206,7 +208,7 @@ sign-in for everyone, you included. Prefer the default unless you need this.
 
 ### Set it up by hand
 
-On macOS or Windows, or behind another HTTPS reverse proxy such as Caddy:
+On Windows, or behind another HTTPS reverse proxy such as Caddy:
 
 1. Choose a token of at least 32 characters and put it in an environment
    variable, for example `MASH_DASH_TOKEN`.
