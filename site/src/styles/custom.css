@@ -22,7 +22,6 @@
   /* The name's colour in the project logo: clay on dark, ink on light. */
   --mash-name: #e8926f;
   --mash-turn: #f3e6c4;
-  --mash-mound: #f3e6c4;
 }
 :root[data-theme="light"] {
   --sl-color-white: #2a2419;
@@ -41,7 +40,6 @@
   --mash-cursor: #9a948a;
   --mash-name: #2a2419;
   --mash-turn: #a84a26;
-  --mash-mound: #2a2419;
 }
 h1,
 h2,
@@ -104,16 +102,16 @@ h4 {
 .hero h1 .mash-turn {
   color: var(--sl-color-accent);
 }
-/* The main action is the one clay button on the page. */
-/* The actions are one tight stack, each button as wide as the widest. */
+/* The main action is the one clay button on the page; the two sit side by side. */
 .hero .actions {
-  display: grid;
-  align-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 0.5rem;
 }
 @media (min-width: 50rem) {
   .hero .actions {
-    align-self: flex-start;
+    justify-content: flex-start;
   }
 }
 .hero .sl-link-button {
@@ -126,12 +124,6 @@ h4 {
 }
 .hero .sl-link-button.secondary {
   border-color: var(--sl-color-gray-4);
-}
-/* The demo's button is filled with the colour of the mash in the logo. */
-.hero .sl-link-button.mash-demo {
-  background: var(--mash-mound);
-  border-color: var(--mash-mound);
-  color: var(--sl-color-black);
 }
 /* Landing page tiles: one quiet surface, each with its icon in clay. */
 .card-grid .card {

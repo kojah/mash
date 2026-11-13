@@ -16,7 +16,14 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
     <div class="sl-flex stack">
       <div class="sl-flex copy">
         <h1 id="_top" data-page-title set:html={title} />
-        {tagline && <div class="tagline" set:html={tagline} />}
+        {
+          tagline && (
+            <p class="tagline">
+              <Fragment set:html={tagline} />{" "}
+              <a class="mash-try" href="/demo/" data-astro-reload>Try it →</a>
+            </p>
+          )
+        }
       </div>
       <div class="mash-install">
         <div class="command">
@@ -94,6 +101,16 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
   .tagline {
     font-size: clamp(var(--sl-text-base), calc(0.0625rem + 2vw), var(--sl-text-xl));
     color: var(--sl-color-gray-2);
+  }
+  .mash-try {
+    color: var(--sl-color-accent);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .mash-try:hover {
+    color: var(--sl-color-accent-high);
+    text-decoration: underline;
   }
 
   .mash-install {

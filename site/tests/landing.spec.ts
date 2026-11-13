@@ -15,11 +15,8 @@ test("the landing page says what Mash is and which agents it reads", async ({ pa
     expect((await page.request.get(file)).ok()).toBe(true);
   }
   await expect(page.locator(".card-grid .card")).toHaveCount(4);
-  await expect(page.locator(".hero .actions a")).toHaveText([
-    "Get started",
-    "Try it",
-    "Explore the docs",
-  ]);
+  await expect(page.locator(".hero .actions a")).toHaveText(["Get started", "Explore the docs"]);
+  await expect(page.locator(".hero .tagline a")).toHaveText("Try it →");
   await expect(page.getByRole("navigation", { name: "Footer" }).getByRole("link")).toHaveText([
     "Docs",
     "Try it",
@@ -32,6 +29,15 @@ test("the landing page fits a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("the hero's two actions sit side by side", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  const [first, second] = await page
+    .locator(".hero .actions a")
+    .evaluateAll((links) => links.map((link) => link.getBoundingClientRect().top));
+  expect(second).toBe(first);
 });
 
 test("the hero draws its surface in the theme's ink", async ({ page }) => {
