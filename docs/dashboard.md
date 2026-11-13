@@ -177,6 +177,8 @@ and type the code. Either way the browser stays signed in for 30 days.
 | Sign another device in | `mash dash remote --code` |
 | Show the QR code again | `mash dash remote --qr` |
 | Use another port | `mash dash remote --port 8791` (with every command) |
+| Host it on a machine with no history of its own | `mash dash remote --shared-only` |
+| Reach it without Tailscale on the device | `mash dash remote --public --port 8443` |
 | Stop serving | `mash dash remote --remove` |
 
 A code works once, within ten minutes. The QR code holds the long-lived token
@@ -191,8 +193,16 @@ shell where that variable is set, and it is saved for the service in
 `~/.mash/dashboard.env`, readable only by you.
 
 A machine with no agent history of its own, such as the server that holds the
-shared index, can still host the dashboard: start it with `--shared-only`, and
-chats, search and memories come from the shared index alone.
+shared index, can still host the dashboard: with `--shared-only`, chats, search
+and memories come from the shared index alone.
+
+`--public` publishes the address on the internet with
+[Tailscale Funnel](https://tailscale.com/kb/1223/funnel), so a phone or
+borrowed computer that is not on your tailnet can open it. Tailscale must allow
+Funnel for the machine, and only ports 443, 8443 and 10000 can be published.
+Anyone can then reach the sign-in page: the token and one-time codes are all
+that protect your full chat history, and ten wrong attempts in a minute pause
+sign-in for everyone, you included. Prefer the default unless you need this.
 
 ### Set it up by hand
 

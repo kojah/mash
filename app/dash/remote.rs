@@ -11,6 +11,20 @@ use std::path::{Path, PathBuf};
 const UNIT: &str = "mash-dash.service";
 const TOKEN_VARIABLE: &str = "MASH_DASH_TOKEN";
 
+/// Where the dashboard is served and what it shows.
+#[derive(Clone, Copy)]
+pub(crate) struct Options {
+    pub(crate) port: u16,
+    /// Show only the shared index: this machine has no history of its own.
+    pub(crate) shared_only: bool,
+    /// Reachable from the public internet through Tailscale Funnel, not only
+    /// from the user's own tailnet.
+    pub(crate) public: bool,
+}
+
+/// The ports Tailscale Funnel can publish.
+const FUNNEL_PORTS: [u16; 3] = [443, 8443, 10000];
+
 pub(crate) enum Action {
     /// Set up or repair the service and print how to open it.
     Setup,
@@ -26,6 +40,11 @@ pub(crate) enum Action {
 struct Report {
     dashboard: String,
     service: &'static str,
+    /// Who can open the address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reach: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,10 +74,16 @@ impl Layout {
     }
 }
 
-pub(crate) async fn run(paths: Paths, port: u16, action: Action) -> Result<(), AppError> {
+pub(crate) async fn run(paths: Paths, options: Options, action: Action) -> Result<(), AppError> {
+    let Options { port, public, .. } = options;
     if !cfg!(target_os = "linux") {
         return Err(AppError::usage(
             "`mash dash remote` manages a systemd user service and is available on Linux; on other systems follow https://getmash.io/dashboard/#open-it-from-your-phone-or-another-computer",
+        ));
+    }
+    if public && !FUNNEL_PORTS.contains(&port) {
+        return Err(AppError::usage(
+            "a public address needs --port 443, 8443 or 10000, the ports Tailscale Funnel can publish",
         ));
     }
     let layout = Layout::resolve()?;
@@ -69,54 +94,14 @@ pub(crate) async fn run(paths: Paths, port: u16, action: Action) -> Result<(), A
     let host = format!("{name}:{port}");
     let dashboard = format!("https://{host}/");
     match action {
-        Action::Setup => {
-            let configuration = crate::config::load(paths.config.as_deref())?;
-            let shared = configuration
-                .shared
-                .as_ref()
-                .map(|shared| shared.token_env.clone());
-            let token = ensure_environment(&layout.token_file, shared.as_deref())?;
-            let exe = std::env::current_exe().map_err(AppError::io)?;
-            write_private(
-                &layout.unit_file,
-                &unit(&exe, &paths, &layout, port, &host)?,
-                0o644,
-            )?;
-            for arguments in [
-                vec!["--user", "daemon-reload"],
-                vec!["--user", "enable", "--quiet", UNIT],
-                vec!["--user", "restart", UNIT],
-            ] {
-                command("systemctl", &arguments).await?;
-            }
-            let forward = format!("http://127.0.0.1:{port}");
-            let https = format!("--https={port}");
-            command("tailscale", &["serve", "--bg", &https, &forward]).await?;
-            wait_ready(port).await?;
-            let code = new_code(port, &token.dashboard).await?;
-            show_qr(&dashboard, &token.dashboard);
-            report(&Report {
-                dashboard,
-                service: UNIT,
-                code: Some(code),
-                code_minutes: Some(10),
-                shared_index: shared.map(|_| {
-                    if token.shared {
-                        "included"
-                    } else {
-                        "token variable not set here; the dashboard shows only this machine"
-                    }
-                }),
-                next: Some(
-                    "On a device signed in to your tailnet, scan the QR code, or open the address and type the code.",
-                ),
-            })
-        }
+        Action::Setup => setup(&paths, &layout, options, &host, dashboard).await,
         Action::Code => {
             let token = read_token(&layout.token_file)?;
             report(&Report {
                 dashboard,
                 service: UNIT,
+                reach: None,
+                warning: None,
                 code: Some(new_code(port, &token).await?),
                 code_minutes: Some(10),
                 shared_index: None,
@@ -128,6 +113,8 @@ pub(crate) async fn run(paths: Paths, port: u16, action: Action) -> Result<(), A
             report(&Report {
                 dashboard,
                 service: UNIT,
+                reach: None,
+                warning: None,
                 code: None,
                 code_minutes: None,
                 shared_index: None,
@@ -136,6 +123,73 @@ pub(crate) async fn run(paths: Paths, port: u16, action: Action) -> Result<(), A
         }
         Action::Remove => unreachable!("handled above"),
     }
+}
+
+/// Write the token and the service, publish the address, and say how to open it.
+async fn setup(
+    paths: &Paths,
+    layout: &Layout,
+    options: Options,
+    host: &str,
+    dashboard: String,
+) -> Result<(), AppError> {
+    let Options {
+        port,
+        shared_only,
+        public,
+    } = options;
+    let configuration = crate::config::load(paths.config.as_deref())?;
+    let shared = configuration
+        .shared
+        .as_ref()
+        .map(|shared| shared.token_env.clone());
+    let token = ensure_environment(&layout.token_file, shared.as_deref())?;
+    let exe = std::env::current_exe().map_err(AppError::io)?;
+    write_private(
+        &layout.unit_file,
+        &unit(&exe, paths, layout, (port, host), shared_only)?,
+        0o644,
+    )?;
+    for arguments in [
+        vec!["--user", "daemon-reload"],
+        vec!["--user", "enable", "--quiet", UNIT],
+        vec!["--user", "restart", UNIT],
+    ] {
+        command("systemctl", &arguments).await?;
+    }
+    let forward = format!("http://127.0.0.1:{port}");
+    let https = format!("--https={port}");
+    let publish = if public { "funnel" } else { "serve" };
+    command("tailscale", &[publish, "--bg", &https, &forward]).await?;
+    wait_ready(port).await?;
+    let code = new_code(port, &token.dashboard).await?;
+    show_qr(&dashboard, &token.dashboard);
+    report(&Report {
+        dashboard,
+        service: UNIT,
+        reach: Some(if public {
+            "the public internet"
+        } else {
+            "devices signed in to your tailnet"
+        }),
+        warning: public.then_some(
+            "anyone on the internet can reach the sign-in page; the token and one-time codes are all that protect your history",
+        ),
+        code: Some(code),
+        code_minutes: Some(10),
+        shared_index: shared.map(|_| {
+            if token.shared {
+                "included"
+            } else {
+                "token variable not set here; the dashboard shows only this machine"
+            }
+        }),
+        next: Some(if public {
+            "On any device, scan the QR code, or open the address and type the code."
+        } else {
+            "On a device signed in to your tailnet, scan the QR code, or open the address and type the code."
+        }),
+    })
 }
 
 fn report(report: &Report) -> Result<(), AppError> {
@@ -152,7 +206,9 @@ async fn remove(layout: &Layout, port: u16) -> Result<(), AppError> {
     }
     let _ = command("systemctl", &["--user", "daemon-reload"]).await;
     let https = format!("--https={port}");
-    let _ = command("tailscale", &["serve", &https, "off"]).await;
+    for publish in ["serve", "funnel"] {
+        let _ = command("tailscale", &[publish, &https, "off"]).await;
+    }
     crate::write_json(
         &mut std::io::stdout(),
         &serde_json::json!({
@@ -285,8 +341,8 @@ fn unit(
     exe: &Path,
     paths: &Paths,
     layout: &Layout,
-    port: u16,
-    host: &str,
+    (port, host): (u16, &str),
+    shared_only: bool,
 ) -> Result<String, AppError> {
     let quote = |path: &Path| {
         let text = path.to_str().filter(|text| {
@@ -312,6 +368,7 @@ fn unit(
             let _ = write!(start, " {flag} {}", quote(&absolute)?);
         }
     }
+    let shared = if shared_only { " --shared-only" } else { "" };
     Ok(format!(
         "[Unit]\n\
          Description=Mash dashboard for this tailnet\n\
@@ -319,7 +376,7 @@ fn unit(
          \n\
          [Service]\n\
          EnvironmentFile={}\n\
-         ExecStart={start} dash --listen 127.0.0.1:{port} --allow-host {host} --access-token-env {TOKEN_VARIABLE}\n\
+         ExecStart={start} dash --listen 127.0.0.1:{port} --allow-host {host} --access-token-env {TOKEN_VARIABLE}{shared}\n\
          Restart=on-failure\n\
          RestartSec=10\n\
          \n\
@@ -468,12 +525,13 @@ mod tests {
             config: Some("/home/me/.mash/config.toml".into()),
             ..Paths::default()
         };
+        let host = (8790, "laptop.tail1234.ts.net:8790");
         let text = unit(
             Path::new("/usr/local/bin/mash"),
             &paths,
             &layout,
-            8790,
-            "laptop.tail1234.ts.net:8790",
+            host,
+            false,
         )
         .unwrap();
         assert!(text.contains("EnvironmentFile=/home/me/.mash/dashboard.env\n"));
@@ -481,7 +539,33 @@ mod tests {
             "ExecStart=\"/usr/local/bin/mash\" --config \"/home/me/.mash/config.toml\" dash --listen 127.0.0.1:8790 --allow-host laptop.tail1234.ts.net:8790 --access-token-env MASH_DASH_TOKEN\n"
         ));
         // A path systemd would reinterpret is refused, not written.
-        assert!(unit(Path::new("/opt/ma$h"), &paths, &layout, 8790, "h:1").is_err());
+        assert!(unit(Path::new("/opt/ma$h"), &paths, &layout, host, false).is_err());
+        // A machine without history of its own serves the shared index alone.
+        let server = unit(
+            Path::new("/usr/local/bin/mash"),
+            &paths,
+            &layout,
+            host,
+            true,
+        )
+        .unwrap();
+        assert!(server.contains("--access-token-env MASH_DASH_TOKEN --shared-only\n"));
+    }
+
+    #[tokio::test]
+    async fn a_public_address_is_refused_on_a_port_funnel_cannot_publish() {
+        let options = Options {
+            port: 8790,
+            shared_only: false,
+            public: true,
+        };
+        if cfg!(target_os = "linux") {
+            let error = run(Paths::default(), options, Action::Setup)
+                .await
+                .unwrap_err();
+            assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+            assert!(error.error.message.contains("8443"));
+        }
     }
 
     #[test]

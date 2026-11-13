@@ -316,9 +316,18 @@ enum DashCommand {
     /// Tailscale, behind a sign-in. Prints the address, a one-time code and a
     /// QR code to scan.
     Remote {
-        /// Port for the dashboard on this machine and in its tailnet address.
+        /// Port for the dashboard on this machine and in its address.
         #[arg(long, default_value_t = 8790)]
         port: u16,
+        /// Show only the shared index, for a machine with no agent history of
+        /// its own, such as the server that holds the shared index.
+        #[arg(long)]
+        shared_only: bool,
+        /// Make the address reachable from the public internet with Tailscale
+        /// Funnel, for devices that are not on your tailnet. The sign-in is
+        /// then all that protects your history. Needs --port 443, 8443 or 10000.
+        #[arg(long)]
+        public: bool,
         /// Print a fresh one-time code for signing another device in.
         #[arg(long, conflicts_with_all = ["qr", "remove"])]
         code: bool,
@@ -677,6 +686,8 @@ fn dash(runtime: &tokio::runtime::Runtime, paths: Paths, command: Command) -> Re
             command:
                 Some(DashCommand::Remote {
                     port,
+                    shared_only,
+                    public,
                     code,
                     qr,
                     remove,
@@ -684,7 +695,11 @@ fn dash(runtime: &tokio::runtime::Runtime, paths: Paths, command: Command) -> Re
             ..
         } => runtime.block_on(crate::dash::remote(
             paths,
-            port,
+            crate::dash::RemoteOptions {
+                port,
+                shared_only,
+                public,
+            },
             remote_action(code, qr, remove),
         )),
         Command::Dash {
