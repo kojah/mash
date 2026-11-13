@@ -37,11 +37,15 @@ pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
             "platform home directory is not absolute",
         ));
     }
-    let variable = |name: &str| {
-        std::env::var_os(name)
-            .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
-    };
+    Ok(detect_in(home, |name| {
+        std::env::var_os(name).map(PathBuf::from)
+    }))
+}
+
+/// Default history locations under `home` that exist, reading absolute
+/// location overrides through `environment`.
+fn detect_in(home: &Path, environment: impl Fn(&str) -> Option<PathBuf>) -> ProviderRoots {
+    let variable = |name: &str| environment(name).filter(|path| path.is_absolute());
     let config_home = variable("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"));
     let data_home = variable("XDG_DATA_HOME").unwrap_or_else(|| home.join(".local/share"));
     // VS Code-family editors keep per-user state here.
@@ -101,7 +105,12 @@ pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
         ),
         (
             Provider::Antigravity,
-            vec![Some(home.join(".gemini/antigravity-ide/conversations"))],
+            // The Antigravity app keeps conversations here; IDE 2.5 used the
+            // second location.
+            vec![
+                Some(home.join(".gemini/antigravity/conversations")),
+                Some(home.join(".gemini/antigravity-ide/conversations")),
+            ],
         ),
     ];
     let mut found = ProviderRoots::new();
@@ -120,7 +129,7 @@ pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
             found.insert(provider, roots);
         }
     }
-    Ok(found)
+    found
 }
 
 /// A configuration for `providers`; without installed models, lexical-only
@@ -334,5 +343,24 @@ mod tests {
         choices.since_days = Some(90);
         choices.providers.clear();
         assert!(configure(&original, &choices).is_err());
+    }
+
+    #[test]
+    fn init_detects_both_antigravity_conversation_locations() {
+        let home = tempfile::tempdir().unwrap();
+        let none = |_: &str| None;
+        assert!(!detect_in(home.path(), none).contains_key(&Provider::Antigravity));
+        let app = home.path().join(".gemini/antigravity/conversations");
+        std::fs::create_dir_all(&app).unwrap();
+        assert_eq!(
+            detect_in(home.path(), none)[&Provider::Antigravity],
+            vec![app.clone()]
+        );
+        let ide = home.path().join(".gemini/antigravity-ide/conversations");
+        std::fs::create_dir_all(&ide).unwrap();
+        assert_eq!(
+            detect_in(home.path(), none)[&Provider::Antigravity],
+            vec![app, ide]
+        );
     }
 }
