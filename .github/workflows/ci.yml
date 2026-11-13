@@ -43,11 +43,15 @@ jobs:
           make protocol-check DEV_RUN=
 
   rust:
-    # Cancel obsolete validation jobs, without canceling an active deployment.
+    # Cancel obsolete validation jobs on branches, without canceling an active
+    # deployment. On main a run that has started finishes: with several pushes
+    # an hour, canceling meant no commit was ever validated, and a release
+    # needs a passing run for its exact commit. A newer push waits its turn and
+    # replaces any run still waiting.
     # The reusable deploy workflow holds its own noncanceling lock and head gate.
     concurrency:
       group: mash-ci-rust-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
