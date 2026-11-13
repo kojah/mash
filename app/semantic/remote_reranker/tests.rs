@@ -313,6 +313,27 @@ async fn warm_up_sends_an_empty_batch_without_chat_text() {
 }
 
 #[test]
+fn the_worker_is_woken_only_when_the_default_search_reranks_on_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let load = |text: &str| {
+        let path = directory.path().join("config.toml");
+        std::fs::write(&path, format!("version=1\nproviders={{}}\n{text}")).unwrap();
+        crate::config::load(Some(&path)).unwrap()
+    };
+    let remote = "[reranking]\nbackend='remote'\nurl='https://example.com/rerank'\ntoken_env='MASH_TEST_RERANK'\n";
+    // Word search is the default: nothing to wake, whatever is configured.
+    assert!(!warms(&load(remote)));
+    assert!(!warms(&load("")));
+    let meaning = "[views.query]\nintent='related-discussion'\n";
+    assert!(warms(&load(&format!("{remote}{meaning}"))));
+    // Meaning by default, but ranked without the reranker, or on this CPU.
+    assert!(!warms(&load(&format!(
+        "{remote}{meaning}ranking='fusion'\n"
+    ))));
+    assert!(!warms(&load(meaning)));
+}
+
+#[test]
 fn connect_uses_remote_only_for_the_pinned_installed_reranker_and_a_credential() {
     let root = tempfile::tempdir().unwrap();
     let repository = root.path().join(crate::semantic::RERANKER_REPOSITORY);

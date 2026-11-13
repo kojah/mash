@@ -145,9 +145,11 @@ This sends the query and the excerpts being ranked to the worker.
   never retried.
 - `mash search --diagnostics` reports `reranker_engine` as `remote`, `cpu` or
   `cpu-fallback`, with a `reranker_fallback` reason.
-- MCP and dashboard start, and the agent plugin's session-start refresh, send a
-  text-free warm-up request to the worker. Set `MASH_RERANK_WARMUP=off` to
-  disable warm-ups.
+- When searching by meaning is your default (`intent = "related-discussion"`
+  with reranking), MCP and dashboard start, and the agent plugin's
+  session-start refresh, send a text-free warm-up request to the worker. With
+  word search as the default the worker is left alone until a search by
+  meaning needs it. Set `MASH_RERANK_WARMUP=off` to disable warm-ups.
 
 ## Memory capture
 

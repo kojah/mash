@@ -159,10 +159,20 @@ pub(crate) fn warm_up_task(
         else {
             return;
         };
-        if !matches!(configuration.reranking, Reranking::Local {}) {
+        if warms(&configuration) {
             let _ = warm_up(&configuration.reranking).await;
         }
     })
+}
+
+/// Whether a search here is likely to use the remote worker: one is
+/// configured, and the default search reranks. With word search as the
+/// default the worker is not woken (or billed) for searches that never use
+/// it; an explicit search by meaning then starts it, or falls back to CPU.
+fn warms(configuration: &crate::config::ResolvedConfig) -> bool {
+    !matches!(configuration.reranking, Reranking::Local {})
+        && configuration.views.query.intent.semantic()
+        && configuration.views.query.ranking == crate::views::config::Ranking::ContextualRerank
 }
 
 impl Client {
