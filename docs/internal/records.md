@@ -139,6 +139,48 @@ Preserve non-destructive duplicate suggestions and explicit supersession history
 Historical extraction is explicit, bounded and checkpointed; it does not silently
 promote inferred decisions.
 
+## Read limits and paging
+
+Detail kept out of the user guide (`docs/records.md`):
+
+- Recall ranks established current records first, with bounded boosts for
+  distinct confirmations and recent recording dates. It scans at most 256
+  recent records in the scope, as does `find_record_matches`.
+- File recall matches the exact relative path in record text or retained
+  quotes: `src/main.rs` does not match `other/src/main.rs` or
+  `src/main.rs.bak`. Personal scope expansion is disabled for file requests.
+- Plugin hooks call the same local recall API with a short deadline and
+  continue without record context if it fails. The safety-net reminder rides
+  on the next prompt; the agent never takes a turn only to report that there
+  was nothing to save.
+- `get_record` history returns up to eight revisions per page, newest first
+  (`limit` 1 to 20 with `history: true`). `next_before_revision` is passed back
+  as `before_revision`; new revisions do not shift that cursor. Links are paged
+  separately in 128s: `next_link_offset` is passed back as `link_offset`.
+- Link and list offsets describe current data; a traversal restarts if
+  concurrent edits change relationships or list order. Pages also have size
+  limits, locally and shared, so a short page is not necessarily the last.
+  Shared list pages visit nodes in order and can be empty when a node's
+  records are inactive.
+- Each revision's `confirmation_history` lists distinct supporting message IDs
+  with the dates the confirmations were recorded. A correction starts a new
+  revision with its own confirmations; earlier history stays with the earlier
+  interpretation.
+- An exact duplicate requires all interpretation fields to agree, including
+  state, review and effective time, but ignores which agent recorded it.
+  Reuse leaves the original attribution unchanged.
+- Retained evidence stores its stated purpose and the source message's role at
+  recording time. Older records without these fields show them as unknown;
+  Mash does not guess whether an old quote was an endorsement.
+  A changed or unknown source role makes the evidence stale even when the
+  quoted text still matches; such records are reviewed with `include_inactive`
+  and revised with verified sources.
+- Links describe record identities, not current wording. Adding or retrying a
+  link never adds confirmations.
+- Backfill skips completed source versions through extraction checkpoints;
+  changed sources become eligible again and nothing is delegated to later
+  conversations.
+
 ## Acceptance evidence
 
 Required tests cover all four kinds and illegal states; scope/owner rejection;

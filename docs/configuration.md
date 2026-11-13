@@ -1,22 +1,8 @@
 # Configure Mash
 
-Start with the TOML file created by `mash init`. Run `mash status` to see its
-resolved location, or select a file explicitly with `mash --config PATH status`.
-Use TOML for this file.
-
-To change history selection, coverage, or sharing interactively, rerun
-`mash init` in a terminal and choose **Review and edit settings**. The wizard
-preserves your other settings and keeps the previous file as a backup; comments
-and formatting are regenerated when saving edits.
-
-For one machine, keep the local setup created by `mash init`. Choose your
-history folders and search preferences below; shared connection settings are
-only needed when you enable multi-machine sharing.
-
-## Choose histories and an age limit
-
-Each configured provider is enabled. Roots must be absolute paths to that
-provider's history, not to the source-code project you want to search.
+`mash init` creates the configuration file. Run `mash status` to see its
+location, or select another file with `mash --config PATH status`. The file
+must be TOML. A single machine needs only this:
 
 ```toml
 version = 1
@@ -32,12 +18,20 @@ since_days = 90
 destination = "local"
 ```
 
-Use the paths detected on your machine by `mash init` or
-`mash status --installation`; the paths above are examples. Original provider
-files are never modified.
+To change history selection, coverage or sharing interactively, rerun
+`mash init` in a terminal and choose **Review and edit settings**. The wizard
+preserves your other settings and keeps the previous file as a backup; comments
+and formatting are regenerated.
 
-To include all ages permanently, replace `since_days = 90` with
-`all_history = true`. Do not set both. One-off indexing flags such as
+## Choose histories and an age limit
+
+Each provider listed under `[providers]` is indexed. Roots must be absolute
+paths to that provider's history, not to the source-code project you want to
+search. Use the paths detected by `mash init` or `mash status --installation`;
+those above are examples. Original provider files are never modified.
+
+`since_days` defaults to 90. To include all ages, replace it with
+`all_history = true`; do not set both. One-off indexing flags such as
 `--all-history` override the configured age selection.
 
 ## Connected agents
@@ -49,15 +43,36 @@ To include all ages permanently, replace `since_days = 90` with
 connected = ["claude-code", "codex"]
 ```
 
-`mash status --installation` then reports a listed agent as needing repair if
-its Mash registration later disappears, instead of treating it as unused. Remove
-an agent from the list when you disconnect it on purpose. A configuration
-without this table keeps the older behaviour: an agent is expected only while
-its own settings register Mash. `mash init --no-agents` leaves the list as it is.
+`mash status --installation` reports a listed agent as needing repair if its
+Mash registration disappears, so remove an agent you disconnect on purpose.
+Without this table, an agent is expected only while its own settings register
+Mash. `mash init --no-agents` leaves the list as it is.
+
+## Search defaults
+
+```toml
+[views.query]
+unit = "chats"
+limit = 20
+intent = "exact-mention"
+```
+
+CLI and MCP arguments override these for one request. Changes take effect
+without rebuilding. To search by meaning, follow
+[semantic model setup](indexing.md#enable-semantic-search); changing `intent`
+alone does not create dense search data.
+
+## Local embeddings
+
+Semantic search uses the all-MiniLM-L6-v2 model (384 dimensions) for local and
+shared search. Indexing and search never download models; run
+`mash models install` for the embedding and reranking models. See
+[model setup](indexing.md#enable-semantic-search). A server needs the model
+assets to rebuild shared views from saved history.
 
 ## Embedding inference
 
-Embedding generation runs locally by default. To send indexing batches to an
+Embeddings are generated locally by default. To send indexing batches to an
 authenticated Mash embedding worker, add:
 
 ```toml
@@ -68,36 +83,45 @@ token_env = "MASH_EMBEDDING_TOKEN"
 timeout_seconds = 120
 ```
 
-Set the named environment variable in the process running `mash index`, including
-watchers. Use a Modal proxy token in `TOKEN_ID.TOKEN_SECRET` form, not your Modal
-account API key. The credential value is never written to configuration or status.
-HTTPS is required except for a worker on loopback.
+This sends prepared searchable text to the worker, which may contain sensitive
+conversation content. The worker gets no database access. Search-query
+embeddings stay local, so semantic search still needs `mash models install`.
 
-This opt-in sends prepared searchable text to the worker, which may contain
-sensitive conversation content. It does not grant the worker database access.
-Search-query embeddings remain local; install local models with
-`mash models install` for offline semantic searches.
+- Set the variable named by `token_env` in every process that runs
+  `mash index`, including watchers. Use a Modal proxy token in
+  `TOKEN_ID.TOKEN_SECRET` form, not your Modal account API key. The value is
+  never written to configuration or status.
+- `url` must be HTTPS unless the worker is on loopback.
+- A failed request returns an error; Mash neither retries it nor switches to
+  local inference. A timed-out request may still have incurred GPU cost, so
+  check the worker before retrying indexing. Existing matching vectors are
+  reused.
+- To return to local inference, remove the table or set only
+  `backend = "local"`.
 
-A worker that shuts down when idle can take minutes to start, and search waits
-for new messages to be embedded. To keep routine refreshes quick, add
+The worker must implement Mash's model-specific contract; an arbitrary
+embedding API is not interchangeable. Changing the embedding recipe can require
+rebuilding search data. Deployment instructions are in
+`deployment/embeddings/README.md` in the source repository.
+
+An idle worker can take minutes to start. To keep routine refreshes quick, add
 `local_below` to the table:
 
 ```toml
 local_below = 256
 ```
 
-A batch with fewer new texts than this is embedded by the local model, which
-needs `mash models install`; larger batches, such as a first index or a
-backfill, still go to the worker. Both produce the same vectors. The value can
-be at most 1024, and leaving it out sends every batch to the worker. Each
-`mash index` result reports how many texts the worker embedded
-(`remote_inferences`, out of `model_inferences`) and how long its requests took
+Batches with fewer new texts than this use the local model, which needs
+`mash models install`; larger ones, such as a first index, go to the worker.
+Both produce the same vectors. The maximum is 1024; without the key, every
+batch goes to the worker. Each `mash index` result reports the texts the worker
+embedded (`remote_inferences`, out of `model_inferences`) and its request time
 (`remote_milliseconds`).
 
 ## Remote reranking
 
 Searches rerank their best candidates on your CPU by default. To score them on
-an authenticated Mash reranking worker instead, add:
+an authenticated Mash reranking worker, add:
 
 ```toml
 [reranking]
@@ -107,50 +131,41 @@ token_env = "MASH_RERANKING_TOKEN"
 timeout_milliseconds = 1500
 ```
 
-Set the named variable in every process that searches: MCP servers, the
-dashboard and your shell. A Modal proxy token for the embedding worker also
-works here. Keep `mash models install` in place: when the worker does not
-answer within `timeout_milliseconds` (100 to 10000; a cold worker takes much
-longer), or the token is missing, that search reranks on your CPU instead.
-`mash search --diagnostics` reports `reranker_engine` as `remote`, `cpu` or
-`cpu-fallback`, with a `reranker_fallback` reason. Failed requests are never
-retried.
+This sends the query and the excerpts being ranked to the worker.
 
-This sends the query and the excerpts being ranked to the worker. MCP and
-dashboard start, and the agent plugin's session-start refresh, send a
-text-free warm-up request so the worker is ready when you search; set
-`MASH_RERANK_WARMUP=off` to disable warm-ups.
-
-Existing matching vectors are reused. Failed remote requests return an error;
-Mash does not automatically retry the request or silently switch to local
-inference. A timed-out request may still have incurred GPU cost. Check the worker
-before explicitly retrying indexing. To return to local inference, remove the
-table or set only `backend = "local"`.
-
-The worker must implement Mash's model-specific contract; an arbitrary embedding
-API is not interchangeable. Changing the embedding recipe can require rebuilding
-search data. Deployment instructions live in `deployment/embeddings/README.md`
-in the source repository.
+- Set the variable named by `token_env` in every process that searches: MCP
+  servers, the dashboard and your shell. A Modal proxy token for the embedding
+  worker also works here.
+- `timeout_milliseconds` accepts 100 to 10000. A cold worker takes much longer
+  than that.
+- Keep `mash models install` in place. When the worker does not answer in time
+  or the token is missing, that search reranks on your CPU. Failed requests are
+  never retried.
+- `mash search --diagnostics` reports `reranker_engine` as `remote`, `cpu` or
+  `cpu-fallback`, with a `reranker_fallback` reason.
+- MCP and dashboard start, and the agent plugin's session-start refresh, send a
+  text-free warm-up request to the worker. Set `MASH_RERANK_WARMUP=off` to
+  disable warm-ups.
 
 ## Memory capture
 
-Automatic capture of new outcomes is enabled by default when using the current
-agent plugin. To disable capture and explicit backfill:
+With the current agent plugin, new outcomes are captured automatically. To
+disable capture and explicit backfill:
 
 ```toml
 [records]
 enabled = false
 ```
 
-The optional `backfill_since` is a setup-time cutoff in Unix milliseconds. It
-does not schedule work. Historical chats are reviewed only during an explicitly
-requested [memory backfill](records.md#backfill-earlier-memory), never as part
-of a newer conversation. Recall of existing memory remains available.
+Recall of existing memory remains available. The optional `backfill_since` is a
+setup-time cutoff in Unix milliseconds; it does not schedule work. Historical
+chats are reviewed only during an explicitly requested
+[memory backfill](records.md#backfill-earlier-memory).
 
 ## Local Qdrant
 
-The defaults use HTTP port 6333 and gRPC port 6334 on localhost. For an existing
-service at another address, edit:
+The defaults are HTTP port 6333 and gRPC port 6334 on localhost. For a service
+at another address, edit:
 
 ```toml
 [qdrant]
@@ -164,23 +179,9 @@ Both endpoints must reach the same Qdrant 1.20+ instance. If an API key is
 required, put it in the named environment variable, not in the URL.
 
 `mash qdrant install` serves the ports configured here, so set them before
-running it (or run it again after changing them). It accepts only plain `http`
+running it, or run it again after changing them. It accepts only plain `http`
 addresses on this machine without `api_key_env`; any other endpoint is a
 service you run yourself.
-
-## Search defaults
-
-```toml
-[views.query]
-unit = "chats"
-limit = 20
-intent = "exact-mention"
-```
-
-CLI and MCP arguments override these defaults for one request. Query defaults
-take effect without rebuilding. To search by meaning, follow
-[semantic model setup](indexing.md#enable-semantic-search); changing intent alone
-does not create dense search data.
 
 ## Share across your machines
 
@@ -190,12 +191,3 @@ A local-only setup needs no `[shared]` table. To publish as well, follow
 
 Each machine publishes its own indexed history. Use a different node ID and
 token on each machine, with the same group ID and server URL.
-
-## Local embeddings
-
-Semantic search uses the installed all-MiniLM-L6-v2 model (384 dimensions).
-Run `mash models install` explicitly to install embedding and reranking models;
-indexing and search never download models. See [model setup](indexing.md#enable-semantic-search).
-
-The same embedding space is used for local and shared search. A server needs
-local model assets when rebuilding shared views from saved history.
