@@ -28,7 +28,9 @@ class Mash < Formula
 
   def caveats
     <<~EOS
-      Set Mash up for the agent histories on this machine:
+      Start the local search service, then set Mash up for the agent
+      histories on this machine:
+        mash qdrant install
         mash init
       For semantic search, first run:
         mash models install

@@ -10,7 +10,7 @@
         }
     },
     "bin": ["mash.exe", "mash-server.exe"],
-    "notes": "Set Mash up for the agent histories on this machine: mash init",
+    "notes": "Start the local search service, then set Mash up for the agent histories on this machine: mash qdrant install, then mash init",
     "checkver": "github",
     "autoupdate": {
         "architecture": {
