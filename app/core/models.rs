@@ -144,6 +144,12 @@ pub(crate) enum Operation {
         node: Option<String>,
     },
     ModelsInstall,
+    /// Download, verify and start the pinned local Qdrant service.
+    QdrantInstall,
+    /// Stop and unregister it; its storage stays unless asked.
+    QdrantUninstall {
+        delete_storage: bool,
+    },
     ExportSilver {
         directory: PathBuf,
     },
@@ -185,6 +191,8 @@ pub(crate) enum Response {
     Forget(ForgetResponse),
     Query(serde_json::Value),
     ModelsInstall(ModelsInstallResponse),
+    QdrantInstall(super::qdrant::InstallResponse),
+    QdrantUninstall(super::qdrant::UninstallResponse),
     ExportSilver(crate::export::Exported),
     ImportSilver(crate::export::Imported),
     ListAttachments(crate::attachments::Listing),

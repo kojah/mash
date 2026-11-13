@@ -36,7 +36,12 @@ answered at the configured URL) or `rejected` (it answered but refused the
 request or is not a supported version, with the reason). While Qdrant is
 unreachable, `recommended_action` is `start-qdrant`.
 
-For a native install, restart Qdrant from its original folder and inspect its
+If you installed it with `mash qdrant install`, run that command again: it
+restarts a stopped service and repairs missing files. `local_qdrant.installed`
+in `mash status` shows the service's state and where its output is, such as
+`journalctl --user --unit mash-qdrant.service` on Linux.
+
+If you run Qdrant yourself, restart it from its original folder and inspect its
 terminal output. If you chose Docker, start the existing container and inspect
 its logs:
 

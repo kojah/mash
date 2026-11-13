@@ -113,13 +113,66 @@ cargo binstall --git https://github.com/kojah/mash mash
 
 ## Start the local search service
 
-Run Qdrant directly using the instructions for your platform below. It powers
-both word and semantic search. Alternatively, use the
-[official Qdrant Docker image](#optional-qdrant-docker-image). Mash and the
-dashboard run directly on your machine in either setup.
+Indexing and every search use a local [Qdrant](https://qdrant.tech) service.
+Install and start it with one command:
 
-An existing Qdrant 1.20+ service also works. Both HTTP and gRPC ports must reach
+```sh
+mash qdrant install
+```
+
+This downloads Qdrant 1.20.0 for your platform (about 30 MB) from
+[Qdrant's GitHub releases](https://github.com/qdrant/qdrant/releases/tag/v1.20.0),
+checks it against a SHA-256 checksum built into Mash, and starts it in the
+background as your user. It needs no administrator rights or Docker, listens
+only on this machine (`127.0.0.1`, ports 6333 and 6334), and starts again when
+you log in. The JSON result has `"outcome": "installed"`; next, run `mash init`.
+
+| Platform | Runs as | Qdrant's output |
+| --- | --- | --- |
+| Linux | systemd user service `mash-qdrant.service` | `journalctl --user --unit mash-qdrant.service` |
+| macOS | LaunchAgent `dev.mash.qdrant` | `~/Library/Application Support/dev.jamesqo.mash/qdrant/qdrant.log` |
+| Windows | logon task `MashQdrant` | `%LOCALAPPDATA%\jamesqo\mash\data\qdrant\qdrant.log` |
+
+Qdrant keeps its data next to the program, in `~/.local/share/mash/qdrant` on
+Linux and `~/Library/Application Support/dev.jamesqo.mash/qdrant` on macOS. On
+Windows the data goes to `C:\mash-qdrant`, because Qdrant fails with longer
+data paths there. `mash status` shows the installed version and whether the
+service is running, under `local_qdrant.installed`.
+
+Run `mash qdrant install` again at any time. It restarts a stopped service,
+restores missing files, and upgrades Qdrant when a newer Mash pins a newer
+release, without changing Qdrant's data. When nothing needs doing, the outcome
+is `current`. If a compatible Qdrant already answers on those ports, such as
+the Docker container below, the outcome is `already_running` and nothing is
+installed. If another program holds a port, the command stops and says which.
+
+On Linux, a systemd user service runs while you are logged in. To keep it
+running on a machine nobody logs in to, enable lingering for your account with
+`loginctl enable-linger` (some systems allow this only for administrators).
+The command needs a systemd user session; where there is none, as in some
+containers and WSL setups, run Qdrant yourself as described below.
+
+Only `mash qdrant install` downloads Qdrant: `mash init` checks that it
+answers, but never downloads or starts it. To use other ports, set `url` and
+`grpc_url` in the [Qdrant configuration](configuration.md#local-qdrant) to
+`127.0.0.1` addresses before installing.
+
+To remove it, run `mash qdrant uninstall`. It stops the service, removes it from
+your login items and deletes the program, but keeps Qdrant's data. Add
+`--delete-storage` to delete the data too; it holds only Mash's search data,
+which `mash index --rebuild-local-views --full` rebuilds from your index.
+
+### Run Qdrant yourself
+
+You can run Qdrant directly with the instructions below, or use the
+[official Qdrant Docker image](#optional-qdrant-docker-image). An existing
+Qdrant 1.20+ service also works. Both HTTP and gRPC ports must reach
 the same instance. For nondefault endpoints, see [Qdrant configuration](configuration.md#local-qdrant).
+Mash and the dashboard run directly on your machine in either setup.
+
+If you later switch to `mash qdrant install`, stop your own Qdrant first. The
+installed service starts with empty storage; populate it with
+`mash index --rebuild-local-views --full`.
 
 ### Native Windows without Docker
 

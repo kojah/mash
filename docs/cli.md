@@ -2,6 +2,7 @@
 
 | I want to… | Command |
 | --- | --- |
+| Install the local search service | `mash qdrant install` |
 | Set up Mash | `mash init` |
 | Set up without interactive prompts | `mash init --yes` |
 | Find a conversation | `mash search 'a word you remember'` |
@@ -15,6 +16,7 @@
 | Check setup | `mash status --installation` |
 | Check search readiness | `mash status` |
 | Download optional search models | `mash models install` |
+| Remove the local search service | `mash qdrant uninstall` |
 | Back up my history | `mash export /path/to/new-backup` |
 
 Replace `MESSAGE_ID` with `lookup.view.id` from a search result or a

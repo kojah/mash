@@ -409,6 +409,8 @@ pub(crate) fn render(
             );
             json(&mut out, "Next action", &value.recommended_action)?;
         }
+        Response::QdrantInstall(value) => json(&mut out, "Qdrant install", value)?,
+        Response::QdrantUninstall(value) => json(&mut out, "Qdrant uninstall", value)?,
         Response::ExportSilver(value) => operations::exported(&mut out, value)?,
         Response::ImportSilver(value) => operations::imported(&mut out, value)?,
         Response::ListAttachments(value) => operations::attachments(&mut out, value)?,

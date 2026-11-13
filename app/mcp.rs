@@ -310,6 +310,8 @@ impl Mash {
                 | Operation::ExtractRecords(_)
                 | Operation::Forget { .. }
                 | Operation::ModelsInstall
+                | Operation::QdrantInstall
+                | Operation::QdrantUninstall { .. }
                 | Operation::ExportSilver { .. }
                 | Operation::ImportSilver { .. }
         ) {

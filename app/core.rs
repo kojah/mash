@@ -13,6 +13,7 @@ pub(crate) mod installation;
 mod maintenance;
 mod models;
 pub(crate) mod output;
+pub(crate) mod qdrant;
 mod search;
 pub(crate) mod setup;
 
@@ -63,6 +64,8 @@ async fn execute_admitted(
         | Operation::QueryStructured { .. }
         | Operation::QueryShared { .. } => "query",
         Operation::ModelsInstall => "models_install",
+        Operation::QdrantInstall => "qdrant_install",
+        Operation::QdrantUninstall { .. } => "qdrant_uninstall",
         Operation::ExportSilver { .. } => "export_silver",
         Operation::ImportSilver { .. } => "import_silver",
         Operation::ListAttachments { .. } => "list_attachments",
@@ -586,6 +589,18 @@ async fn dispatch(
         Operation::ModelsInstall => maintenance::install_models(models)
             .await
             .map(Response::ModelsInstall),
+        Operation::QdrantInstall => qdrant::install(
+            &qdrant::Host::system()?,
+            &configuration.qdrant,
+            configuration.loaded,
+        )
+        .await
+        .map(Response::QdrantInstall),
+        Operation::QdrantUninstall { delete_storage } => {
+            qdrant::uninstall(&qdrant::Host::system()?, delete_storage)
+                .await
+                .map(Response::QdrantUninstall)
+        }
         Operation::Init(_) => Err(AppError::internal("init runs before configuration loads")),
     }
 }

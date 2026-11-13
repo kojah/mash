@@ -124,7 +124,8 @@ pub(super) async fn status(
     let db = database.to_path_buf();
     let models = models.to_path_buf();
     let config = configuration.clone();
-    let qdrant = crate::views::qdrant::reachability(&configuration.qdrant).await;
+    let mut qdrant = crate::views::qdrant::reachability(&configuration.qdrant).await;
+    qdrant.installed = super::qdrant::report().await;
     let mut response = crate::blocking(move || local_status(&db, &models, &config, qdrant)).await?;
     if response.silver.is_some() {
         if response.local_qdrant.state == Reachability::Reachable {
@@ -429,6 +430,7 @@ mod tests {
             url: "http://127.0.0.1:6333".into(),
             state: Reachability::Reachable,
             message: None,
+            installed: None,
         }
     }
 

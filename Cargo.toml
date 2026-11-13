@@ -88,6 +88,10 @@ prost = "0.14.4"
 qdrant-client = { version = "=1.20.0", default-features = false, features = ["serde"] }
 tonic = { version = "0.14.9", features = ["transport", "tls-native-roots"] }
 zstd = "0.13.3"
+# `mash qdrant install` unpacks one pinned, checksum-verified release archive.
+flate2 = "1.1"
+tar = { version = "0.4.46", default-features = false }
+zip = { version = "9.5.1", default-features = false, features = ["deflate-flate2"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
 schemars = "1.2"

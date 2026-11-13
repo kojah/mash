@@ -1773,7 +1773,8 @@
           "conflict",
           "source-changed",
           "search-timeout",
-          "not-found"
+          "not-found",
+          "qdrant-install"
         ],
         "type": "string"
       },
@@ -2357,6 +2358,48 @@
         },
         "required": [
           "machines"
+        ],
+        "type": "object"
+      },
+      "Managed": {
+        "description": "A Qdrant installed by `mash qdrant install`, as `mash status` reports it.",
+        "properties": {
+          "binary": {
+            "type": "string"
+          },
+          "definition": {
+            "type": "string"
+          },
+          "logs": {
+            "description": "Where Qdrant's own output goes: a file, or the command that shows it.",
+            "type": "string"
+          },
+          "service": {
+            "description": "The systemd unit, launchd label or scheduled task name.",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ServiceState2"
+          },
+          "storage": {
+            "type": "string"
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/Supervisor"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "state",
+          "supervisor",
+          "service",
+          "definition",
+          "binary",
+          "storage",
+          "logs"
         ],
         "type": "object"
       },
@@ -4216,9 +4259,48 @@
         ],
         "type": "string"
       },
+      "ServiceState2": {
+        "description": "What the supervisor reports about the installed service.",
+        "oneOf": [
+          {
+            "enum": [
+              "running",
+              "starting",
+              "stopped"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "not_installed",
+            "description": "The supervisor has no such service.",
+            "type": "string"
+          },
+          {
+            "const": "failed",
+            "description": "The supervisor gave up after it exited with an error.",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "The supervisor could not be asked.",
+            "type": "string"
+          }
+        ]
+      },
       "ServiceStatus": {
         "description": "The configured local Qdrant service, as one bounded request observed it.",
         "properties": {
+          "installed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Managed"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Qdrant `mash qdrant install` set up on this machine, if any."
+          },
           "message": {
             "description": "Why it is not reachable, and how to start it.",
             "type": [
@@ -4722,6 +4804,14 @@
           "clients"
         ],
         "type": "object"
+      },
+      "Supervisor": {
+        "enum": [
+          "systemd_user",
+          "launch_agent",
+          "scheduled_task"
+        ],
+        "type": "string"
       },
       "Target": {
         "properties": {

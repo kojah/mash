@@ -163,6 +163,11 @@ memory = "durable"
 Both endpoints must reach the same Qdrant 1.20+ instance. If an API key is
 required, put it in the named environment variable, not in the URL.
 
+`mash qdrant install` serves the ports configured here, so set them before
+running it (or run it again after changing them). It accepts only plain `http`
+addresses on this machine without `api_key_env`; any other endpoint is a
+service you run yourself.
+
 ## Search defaults
 
 ```toml

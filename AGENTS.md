@@ -5,12 +5,14 @@
 mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`, `view`,
-`status`, `forget`, `export`, `import`, `models install`, `mcp`, and `dash`
+`status`, `forget`, `export`, `import`, `models install`, `qdrant install`
+(with its matching `qdrant uninstall`), `mcp`, and `dash`
 (the local web dashboard: history is read-only; service management is opt-in).
 The shared HTTP service has its own `mash-server` executable; keep its process
 arguments separate from the local CLI and share the typed server implementation.
 `init` is first-run setup: it writes configuration for detected histories, registers
-Mash with agent CLIs through their own commands, and indexes; it never downloads models.
+Mash with agent CLIs through their own commands, and indexes; it never downloads models
+and never downloads or starts Qdrant.
 
 - Use Rusqlite as the sole SQLite library.
 - Use the common Qdrant engine and collection schema for local and shared lexical/vector search.
@@ -93,6 +95,11 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
   collection shared by configuration, routing, watching, and ingestion. Do not
   add provider traits, registries, plugin systems, or guessed format aliases.
 - Never download models outside the explicit `models install` command.
+- Never download Qdrant outside the explicit `qdrant install` command. It installs
+  the pinned, SHA-256-verified release for the host under Mash's data directory,
+  bound to loopback, under the user's own supervisor (systemd user unit,
+  LaunchAgent, logon task); reruns repair or upgrade it without touching storage.
+  Qdrant remains the one search engine, and local operations stay offline once installed.
 - Unsafe Rust is forbidden.
 
 ## Codebase discovery

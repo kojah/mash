@@ -839,7 +839,7 @@ export interface components {
             retryable: boolean;
         };
         /** @enum {string} */
-        ErrorKind: "shared-index" | "qdrant-unavailable" | "qdrant-failure" | "configuration" | "usage" | "database-missing" | "index-busy" | "model-busy" | "database" | "io" | "internal" | "model" | "search-not-ready" | "schema-incompatible" | "remote-inference" | "conflict" | "source-changed" | "search-timeout" | "not-found";
+        ErrorKind: "shared-index" | "qdrant-unavailable" | "qdrant-failure" | "configuration" | "usage" | "database-missing" | "index-busy" | "model-busy" | "database" | "io" | "internal" | "model" | "search-not-ready" | "schema-incompatible" | "remote-inference" | "conflict" | "source-changed" | "search-timeout" | "not-found" | "qdrant-install";
         EvidenceUse: ("context" | "report") | "endorsement";
         /** @enum {string} */
         FactState: "current" | "superseded" | "retracted";
@@ -1031,6 +1031,19 @@ export interface components {
         };
         Machines: {
             machines: components["schemas"]["Machine"][];
+        };
+        /** @description A Qdrant installed by `mash qdrant install`, as `mash status` reports it. */
+        Managed: {
+            binary: string;
+            definition: string;
+            /** @description Where Qdrant's own output goes: a file, or the command that shows it. */
+            logs: string;
+            /** @description The systemd unit, launchd label or scheduled task name. */
+            service: string;
+            state: components["schemas"]["ServiceState2"];
+            storage: string;
+            supervisor: components["schemas"]["Supervisor"];
+            version: string;
         };
         Manifest: {
             /** Format: uint32 */
@@ -1573,8 +1586,12 @@ export interface components {
         ServiceOutcome: "pending" | "succeeded" | "failed" | "unknown";
         /** @enum {string} */
         ServiceState: "healthy" | "degraded" | "stopped" | "failed" | "unknown";
+        /** @description What the supervisor reports about the installed service. */
+        ServiceState2: ("running" | "starting" | "stopped") | "not_installed" | "failed" | "unknown";
         /** @description The configured local Qdrant service, as one bounded request observed it. */
         ServiceStatus: {
+            /** @description The Qdrant `mash qdrant install` set up on this machine, if any. */
+            installed?: components["schemas"]["Managed"] | null;
             /** @description Why it is not reachable, and how to start it. */
             message?: string | null;
             state: components["schemas"]["Reachability"];
@@ -1707,6 +1724,8 @@ export interface components {
             /** Format: uint */
             unverified: number;
         };
+        /** @enum {string} */
+        Supervisor: "systemd_user" | "launch_agent" | "scheduled_task";
         Target: {
             /**
              * @description One line on what the operation found or why it failed. These are the

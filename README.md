@@ -38,8 +38,9 @@ terminal, or browse conversations in the dashboard.
 Start with Mash on one machine. This is the default setup: your agent histories,
 index, and search service stay on that machine. You can add sharing later.
 
-You’ll need some existing agent history and a running local Qdrant search service.
-Qdrant powers both word search and semantic search; semantic models are optional.
+You’ll need some existing agent history and the local Qdrant search service,
+which step 2 installs. Qdrant powers both word search and semantic search;
+semantic models are optional.
 
 ### 1. Install Mash
 
@@ -71,12 +72,18 @@ details for each channel.
 
 ### 2. Start the local search service
 
-Run Qdrant directly on your machine—Docker is not required. Follow the short
-instructions for [macOS/Linux](docs/installation.md#native-macos-or-linux-without-docker)
-or [Windows](docs/installation.md#native-windows-without-docker), then leave it
-running while you use Mash.
+```bash
+mash qdrant install
+```
 
-Prefer a container? [Run the official Qdrant Docker image](docs/installation.md#optional-qdrant-docker-image).
+This downloads Qdrant (about 30 MB, checked against a checksum built into Mash)
+and runs it in the background as your user, reachable only from this machine.
+It starts again when you log in; Docker and administrator rights are not needed.
+[Search service setup](docs/installation.md#start-the-local-search-service)
+explains where it lives and how to remove it.
+
+Prefer to run Qdrant yourself? Use [the official Docker image](docs/installation.md#optional-qdrant-docker-image)
+or [start it by hand](docs/installation.md#run-qdrant-yourself).
 
 ### 3. Connect your histories
 
@@ -100,8 +107,8 @@ In a terminal, Mash asks about local or shared search, history folders, coverage
 and agent integrations, then shows a confirmation before changing anything.
 Choose **Just this computer** for the default local setup. Use `mash init --yes`
 to accept defaults without prompts; non-terminal runs are also non-interactive.
-Setup checks that Qdrant answers before changing anything; if it does not, start
-Qdrant as the message shows. To read your chats before Qdrant runs, use
+Setup checks that Qdrant answers before changing anything; if it does not, run
+`mash qdrant install`, or start your own Qdrant as the message shows. To read your chats before Qdrant runs, use
 `mash init --no-index`, then `mash index`: indexing saves your history first, and
 `mash list-chats` and `mash view` work without Qdrant. Search waits for Qdrant.
 

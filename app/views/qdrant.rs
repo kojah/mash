@@ -221,6 +221,9 @@ pub(crate) struct ServiceStatus {
     /// Why it is not reachable, and how to start it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) message: Option<String>,
+    /// The Qdrant `mash qdrant install` set up on this machine, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) installed: Option<crate::core::qdrant::Managed>,
 }
 
 /// Ask the configured Qdrant for its version, waiting at most a few seconds.
@@ -237,6 +240,7 @@ pub(crate) async fn reachability(config: &crate::config::QdrantConfig) -> Servic
         url: config.url.clone(),
         state,
         message,
+        installed: None,
     }
 }
 

@@ -212,6 +212,7 @@ enum ErrorKind {
     SourceChanged,
     SearchTimeout,
     NotFound,
+    QdrantInstall,
 }
 
 impl ErrorKind {
