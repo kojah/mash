@@ -242,18 +242,50 @@ pub(crate) fn merge_copies(existing: &mut SearchHit, other: SearchHit) {
     }
 }
 
+/// A fork copies its parent's messages into a new chat with their original
+/// times. The same words from the same role at the same instant in another
+/// chat are that one message again, not more evidence.
+fn fork_key(hit: &SearchHit, unit: SearchUnit) -> Option<ForkKey> {
+    let HitKey::Evidence((provider, _, role, text)) = hit_key(hit, unit) else {
+        return None;
+    };
+    Some((provider, role, text, hit.created_at?))
+}
+
+type ForkKey = (
+    crate::provider::Provider,
+    crate::role::Role,
+    blake3::Hash,
+    i64,
+);
+
 pub(crate) fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
     let hits = eligible(hits);
     let mut positions = HashMap::new();
+    let mut forks = HashMap::new();
     let mut unique = Vec::<SearchHit>::new();
-    for hit in hits {
+    for mut hit in hits {
         // Message mode preserves repeated content with different canonical IDs,
         // but copies of the same message on other nodes occupy one result slot.
         let key = hit_key(&hit, unit);
-        if let Some(&index) = positions.get(&key) {
+        let fork = fork_key(&hit, unit);
+        let seen: Option<usize> = positions
+            .get(&key)
+            .or_else(|| fork.as_ref().and_then(|fork| forks.get(fork)))
+            .copied();
+        if let Some(index) = seen {
+            // One chat stands for all forks, chosen the same way in every
+            // candidate list so lexical and semantic evidence still fuse.
+            if hit.chat_id < unique[index].chat_id {
+                std::mem::swap(&mut unique[index], &mut hit);
+                positions.insert(key, index);
+            }
             merge_copies(&mut unique[index], hit);
         } else {
             positions.insert(key, unique.len());
+            if let Some(fork) = fork {
+                forks.insert(fork, unique.len());
+            }
             unique.push(hit);
         }
     }

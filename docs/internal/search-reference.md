@@ -123,6 +123,12 @@ so a positive filter does not match it and a negated filter does. Date filters d
 not match messages without timestamps. Incompatible schemas are rejected untouched; follow the
 [upgrade guide](../upgrades.md) to preserve retained history.
 
+Chat results fold copies. A message copied into forked chats (same provider,
+role, text and message time) earns one chat result; the chat with the smallest
+ID stands for the forks so lexical and semantic candidates fuse, and the other
+copies are listed under the match's `copies`. A fork still appears by itself
+for messages only it holds. Message results keep every canonical message.
+
 ## Tune semantic ranking
 
 Optional `[views.query]` settings select the default `unit` (`"chats"` or

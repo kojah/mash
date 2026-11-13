@@ -370,9 +370,11 @@ fn replicas_and_context_do_not_shift_other_threads_or_hide_real_requests() {
     }
     assert_eq!(actual[0].matches[0].copies.len(), 1);
     assert_eq!(actual[0].matches[0].snippet, "first");
-    // Independently asked identical questions remain distinct chats.
+    // Independently asked identical questions remain distinct chats; only a
+    // fork's copy carries the original message's time.
     let mut independent = hit("independent", "new-message");
     independent.content = "first".into();
+    independent.created_at = Some(456);
     assert_eq!(threads(vec![hit("a", "first"), independent], 20).len(), 2);
 }
 
@@ -589,4 +591,63 @@ fn pages_partition_the_ranked_window_and_skip_abstaining_candidates() {
         assert!(Page::new(0, 0, unit).is_err());
         assert!(Page::new(Page::MAX_LIMIT + 1, 0, unit).is_err());
     }
+}
+
+#[test]
+fn a_message_copied_into_forked_chats_takes_one_chat_result() {
+    let hits = || {
+        // Three forks of one chat hold the same message, written at the same time.
+        let mut hits = ["fork-c", "fork-a", "fork-b"]
+            .map(|chat| {
+                let mut copy = hit(chat, &format!("{chat}-message"));
+                copy.content = "the shared question".into();
+                copy.created_at = Some(1_000);
+                copy
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        // The same words at another time in another chat are a different message.
+        let mut later = hit("unrelated", "later");
+        later.content = "the shared question".into();
+        later.created_at = Some(2_000);
+        // A message only one fork has still earns that fork a result.
+        let mut own = hit("fork-b", "own");
+        own.content = "only this fork went on to ask this".into();
+        own.created_at = Some(3_000);
+        hits.extend([later, own]);
+        hits
+    };
+
+    let unique = deduplicate(hits(), SearchUnit::Chats);
+    assert_eq!(
+        unique
+            .iter()
+            .map(|hit| hit.chat_id.as_str())
+            .collect::<Vec<_>>(),
+        ["fork-a", "unrelated", "fork-b"]
+    );
+    let mut copies = unique[0]
+        .copies
+        .iter()
+        .map(|copy| copy.message_id.as_str())
+        .collect::<Vec<_>>();
+    copies.sort_unstable();
+    assert_eq!(copies, ["fork-b-message", "fork-c-message"]);
+    // Any order of the candidates names the same chat, so lists agree.
+    let mut reversed = hits();
+    reversed.reverse();
+    let reversed = deduplicate(reversed, SearchUnit::Chats);
+    assert!(reversed.iter().any(|hit| hit.id == "fork-a-message"));
+    assert_eq!(reversed.len(), 3);
+    // Message results keep every canonical message.
+    assert_eq!(deduplicate(hits(), SearchUnit::Messages).len(), 5);
+    // A chat result names the surviving fork once.
+    let chats = threads(hits(), 20);
+    assert_eq!(
+        chats
+            .iter()
+            .filter(|chat| chat.chat_id.starts_with("fork"))
+            .count(),
+        2
+    );
 }
