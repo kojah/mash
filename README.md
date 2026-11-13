@@ -165,4 +165,4 @@ troubleshooting, and the CLI and MCP references.
 Upgrading an existing installation? Read [the upgrade guide](docs/upgrades.md)
 before replacing it.
 
-[License](LICENSE)
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)

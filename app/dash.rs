@@ -1208,8 +1208,8 @@ mod tests {
         for host in ["evil.example:8790", "localhost:9999", "127.0.0.1"] {
             assert!(!hosts.iter().any(|allowed| allowed == host), "{host}");
         }
-        let tailnet = allowed_hosts("100.97.52.20:8790".parse().unwrap());
-        assert_eq!(tailnet, vec!["100.97.52.20:8790".to_owned()]);
+        let tailnet = allowed_hosts("100.64.0.20:8790".parse().unwrap());
+        assert_eq!(tailnet, vec!["100.64.0.20:8790".to_owned()]);
     }
 
     #[test]

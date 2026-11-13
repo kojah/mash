@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in Mash does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Your chats are private. Do not paste real conversation text, tokens or
+        exported history here. Describe the data or use a made-up example.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran, what you expected and what you got.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mash version
+      description: Output of `mash --version`.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Operating system, architecture and how you installed Mash.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Status output
+      description: For setup, indexing or search problems, the output of `mash status` with paths you consider private removed.
+      render: json
