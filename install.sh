@@ -5,6 +5,14 @@
 # choose the directory (default ~/.local/bin). Verifies the release checksum.
 set -eu
 
+case "${1:-}" in
+  "") ;;
+  -h | --help)
+    sed -n '2,5s/^# \{0,1\}//p' "$0" 2> /dev/null || echo 'Installs the latest Mash release; see https://getmash.io/installation/'
+    exit 0 ;;
+  *) echo "mash: install.sh takes no arguments; set MASH_VERSION or MASH_INSTALL_DIR instead" >&2; exit 2 ;;
+esac
+
 repository=kojah/mash
 directory=${MASH_INSTALL_DIR:-$HOME/.local/bin}
 case "$(uname -s)-$(uname -m)" in
