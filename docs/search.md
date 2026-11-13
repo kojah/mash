@@ -43,6 +43,9 @@ mash view MESSAGE_ID --shared NODE_ID --context 3
 mash list-chats --title-contains 'authentication' --limit 10
 ```
 
+A Claude Code session that has a name is listed under that name; other chats
+use their first message. Names appear as each session is next indexed.
+
 This lists chat metadata without models or a working search index. Each chat
 carries `lookup.view` for its first message, so you can start reading it:
 

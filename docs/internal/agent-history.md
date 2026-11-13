@@ -10,6 +10,9 @@ writing to the agent's files or databases.
 A chat has a provider, stable identity, title, project, repository, and activity
 times. A message belongs to a chat and has a stable identity, dialogue role,
 canonical content, interpreted searchable text, tool activity, and attachments.
+A Claude Code chat's title is the latest name on its `custom-title` records,
+falling back to the first visible user message; the title's recorded origin is
+`unknown` for a name, because per-source origins are not stored.
 Display order is separate from identity. Explicit branch ancestry refers to
 message IDs, so inserting earlier history does not redirect existing branches.
 

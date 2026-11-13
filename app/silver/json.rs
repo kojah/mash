@@ -98,6 +98,9 @@ pub(super) struct Record {
     #[serde(rename = "parentUuid", default, deserialize_with = "parent_link")]
     pub parent: ParentLink,
     pub subtype: Option<SystemSubtype>,
+    /// Claude Code's own name for the session, on its `custom-title` records.
+    #[serde(rename = "customTitle")]
+    pub custom_title: Option<String>,
     #[serde(rename = "logicalParentUuid")]
     pub logical_parent: Option<String>,
     #[serde(rename = "compactMetadata")]

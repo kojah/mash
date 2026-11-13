@@ -108,6 +108,7 @@ fn parse_jsonl(
     let mut project = None;
     let mut repository = None;
     let mut claude_identity = claude::Identity::default();
+    let mut named = None;
     for line in lines {
         let (number, line) = line?;
         if line.trim().is_empty() {
@@ -124,6 +125,15 @@ fn parse_jsonl(
         // the damage is permanent, not a write still in progress.
         rejected.readable_after = rejected.count != 0;
         capture_metadata(&raw, &mut project, &mut repository);
+        // The agent renames a session as it goes; the latest name stands.
+        if provider == Provider::ClaudeCode
+            && let Some(title) = raw
+                .custom_title
+                .as_deref()
+                .and_then(crate::silver::dialogue::title)
+        {
+            named = Some(title);
+        }
         if provider == Provider::ClaudeCode
             && let Err(error) = claude_identity.observe(&raw)
         {
@@ -205,7 +215,9 @@ fn parse_jsonl(
             source: super::SourceIdentity::file(path),
             repository: repository.or_else(|| project.as_deref().and_then(repository_origin)),
             project,
-            title: summary.title,
+            // A session's own name says what it was about; its first message
+            // is the fallback for sessions that were never named.
+            title: named.or(summary.title),
             created_at: summary.created_at,
             updated_at: summary.updated_at,
             messages,

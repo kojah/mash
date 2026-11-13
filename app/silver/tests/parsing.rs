@@ -570,3 +570,39 @@ fn codex_parser_keeps_custom_tool_calls() {
     assert_eq!(chat.messages.inline()[1].content, "created diagram.png");
     assert_eq!(chat.messages.inline()[1].dialogue_text.as_deref(), Some(""));
 }
+
+#[test]
+fn claude_sessions_take_their_own_latest_name_and_fall_back_to_the_first_message() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    let message = serde_json::json!({
+        "type":"user", "sessionId":"named", "uuid":"first",
+        "message":{"role":"user","content":"hey can you look at why this is slow"}
+    });
+    fs::write(&path, format!("{message}\n")).unwrap();
+    let unnamed = parse_claude(&path).unwrap().chat.unwrap();
+    assert_eq!(
+        unnamed.title.as_deref(),
+        Some("hey can you look at why this is slow")
+    );
+
+    let name = |title: &str| serde_json::json!({"type":"custom-title","customTitle":title,"sessionId":"named"});
+    fs::write(
+        &path,
+        format!(
+            "{}\n{message}\n{}\n{}\n",
+            name("Draft name"),
+            name("Profile slow search startup"),
+            name("  ")
+        ),
+    )
+    .unwrap();
+    let named = parse_claude(&path).unwrap().chat.unwrap();
+    assert_eq!(named.title.as_deref(), Some("Profile slow search startup"));
+    // Naming a session adds no message and leaves its identity alone.
+    assert_eq!(named.id, unnamed.id);
+    assert_eq!(named.messages.len(), 1);
+    // The name is recorded as selected metadata, not as a message summary.
+    let evidence = crate::silver::enrichment::Evidence::capture(&named).unwrap();
+    assert!(evidence.is_current_for(Provider::ClaudeCode));
+}
