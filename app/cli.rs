@@ -1088,6 +1088,7 @@ mod tests {
                 "export",
                 "import",
                 "models",
+                "qdrant",
                 "mcp",
                 "dash"
             ]
