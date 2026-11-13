@@ -349,3 +349,14 @@ h4 {
     grid-template-columns: 1fr;
   }
 }
+
+/* A subtree's heading reads as a menu item like its siblings; only the two
+   top sections are set as headings. */
+.sidebar-content ul ul summary .large {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  font-weight: 400;
+}
+.sidebar-content ul ul summary:hover .large {
+  color: var(--sl-color-white);
+}
