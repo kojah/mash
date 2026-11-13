@@ -9,37 +9,13 @@ a release that uses a different database schema.
 
 ## Install the CLI
 
-No release has been published yet. Today, build from source with a stable Rust
-toolchain:
-
-```bash
-cargo +stable install --locked --git https://github.com/kojah/mash mash
-mash --version
-```
-
-CLI output is JSON, including `--version` and `--help`.
-
-If your shell cannot find `mash`, add Cargo's binary directory to `PATH`:
-`export PATH="$HOME/.cargo/bin:$PATH"` on macOS/Linux, or
-`$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` in PowerShell. Add it
-to your shell profile or Windows environment settings to keep it.
-
-This installs the CLI and MCP server without the web dashboard's pages:
-`mash dash` says the dashboard has not been built. To include it, install [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/), then build
-from a checkout:
-
-```bash
-git clone https://github.com/kojah/mash
-cd mash/dashboard
-pnpm install --frozen-lockfile
-pnpm build
-cd ..
-cargo +stable install --locked --path .
-```
+> The first release is not published yet. Until it is, the installers and
+> package managers below have nothing to download:
+> [build from source](#build-from-source) instead.
 
 ### Recommended release installers
 
-These work from the first release and need no Rust. Prebuilt binaries cover
+These need no Rust. Prebuilt binaries cover
 Linux x86-64 and ARM64, macOS Apple silicon, and Windows x64. Choose **one**
 method.
 
@@ -63,8 +39,6 @@ published tag to pin a release, or `MASH_INSTALL_DIR` to choose another
 directory. They do not modify your shell profile or download models.
 
 ### Package manager alternatives
-
-These also work from the first release.
 
 **Homebrew, macOS or Linux**
 
@@ -97,6 +71,36 @@ mise use -g github:kojah/mash
 
 ```sh
 cargo binstall --git https://github.com/kojah/mash mash
+```
+
+### Build from source
+
+For platforms without a prebuilt release, or to run an unreleased revision,
+build with a stable Rust toolchain. The first build takes several minutes:
+
+```bash
+cargo +stable install --locked --git https://github.com/kojah/mash mash
+mash --version
+```
+
+CLI output is JSON, including `--version` and `--help`.
+
+If your shell cannot find `mash`, add Cargo's binary directory to `PATH`:
+`export PATH="$HOME/.cargo/bin:$PATH"` on macOS/Linux, or
+`$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` in PowerShell. Add it
+to your shell profile or Windows environment settings to keep it.
+
+This installs the CLI and MCP server without the web dashboard's pages:
+`mash dash` says the dashboard has not been built. To include it, install [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/), then build
+from a checkout:
+
+```bash
+git clone https://github.com/kojah/mash
+cd mash/dashboard
+pnpm install --frozen-lockfile
+pnpm build
+cd ..
+cargo +stable install --locked --path .
 ```
 
 ## Start the local search service

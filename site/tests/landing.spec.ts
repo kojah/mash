@@ -64,12 +64,15 @@ test("the hero draws its surface in the theme's ink", async ({ page }) => {
 test("the hero's install command copies to the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
-  const command = await page.locator(".mash-install code").textContent();
-  expect(command).toMatch(/^cargo \+stable install /);
+  const command = page.locator(".mash-install code");
+  // The browser under test runs on Linux, so the picker opens on the shell script.
+  await expect(command).toHaveText(/^curl .*install\.sh \| sh$/);
   const copy = page.getByRole("button", { name: "Copy the install command" });
   await copy.click();
   await expect(copy).toHaveText("Copied");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    await command.textContent(),
+  );
 });
 
 test("the hero's install picker follows the chosen system and method", async ({
@@ -81,20 +84,35 @@ test("the hero's install picker follows the chosen system and method", async ({
   const install = page.locator(".mash-install");
   const command = install.locator("code");
   await install.getByRole("button", { name: "Windows", exact: true }).click();
-  // Until a release exists, each system opens on the source build.
-  await expect(command).toHaveText(/^cargo \+stable install /);
-  await install.getByRole("button", { name: "PowerShell", exact: true }).click();
   await expect(command).toHaveText(/^irm .*install\.ps1 \| iex$/);
   await expect(install.locator(".prompt")).toHaveText(">");
   await expect(install.locator(".note")).toContainText("Works from the first release");
+  await install.getByRole("button", { name: "Cargo", exact: true }).click();
+  await expect(command).toHaveText(/^cargo \+stable install /);
   await page.getByRole("button", { name: "Copy the install command" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     await command.textContent(),
   );
+  // The method carries over to another system, and the choice is kept for the next visit.
   await install.getByRole("button", { name: "macOS", exact: true }).click();
-  await expect(command).toHaveText(/^curl .*install\.sh \| sh$/);
-  // The choice is kept for the next visit.
+  await expect(command).toHaveText(/^cargo \+stable install /);
   await page.reload();
-  await expect(command).toHaveText(/^curl .*install\.sh \| sh$/);
+  await expect(command).toHaveText(/^cargo \+stable install /);
   await expect(install.getByRole("button", { name: "Homebrew", exact: true })).toBeVisible();
+});
+
+test("the hero offers a prompt that hands setup to a coding agent", async ({
+  page,
+  context,
+  request,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Copy the prompt for your agent" }).click();
+  const prompt = await page.evaluate(() => navigator.clipboard.readText());
+  expect(prompt).toBe("Read https://getmash.io/setup.md and set up Mash on this machine.");
+  // The file the prompt names is published as plain Markdown.
+  const setup = await request.get("/setup.md");
+  expect(setup.ok()).toBe(true);
+  expect(await setup.text()).toContain("mash init --yes");
 });

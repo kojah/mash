@@ -859,6 +859,27 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
 mod tests {
     use super::*;
 
+    /// The setup page agents follow (getmash.io/setup.md) names only commands
+    /// this binary accepts.
+    #[test]
+    fn agent_setup_page_commands_parse() {
+        let page = include_str!("../site/public/setup.md");
+        let commands: Vec<&str> = page
+            .lines()
+            .filter(|line| line.starts_with("mash "))
+            .collect();
+        assert!(commands.len() >= 6, "{commands:?}");
+        for command in commands {
+            if let Err(error) = Cli::try_parse_from(command.split_whitespace()) {
+                assert_eq!(
+                    error.kind(),
+                    clap::error::ErrorKind::DisplayVersion,
+                    "{command}: {error}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn mcp_rejects_retired_watch_options() {
         assert!(Cli::try_parse_from(["mash", "mcp", "--watch"]).is_err());

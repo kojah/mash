@@ -78,7 +78,7 @@ function remember(system: string, method: string): void {
   }
 }
 
-/** Wires one picker. Until a release exists it opens on the source build, which works today. */
+/** Wires one picker. It opens on the install script for the visitor's own system. */
 export function mountInstall(picker: HTMLElement): void {
   const systems = parseSystems(picker.dataset.systems);
   const systemRow = picker.querySelector<HTMLElement>('[data-pick="system"]');
@@ -93,13 +93,12 @@ export function mountInstall(picker: HTMLElement): void {
   const [fallback] = systems;
   if (!fallback) return;
   picker.dataset.mounted = "true";
-  const released = picker.dataset.released !== undefined;
   const saved = remembered();
 
   function show(systemId: string, methodId: string | undefined, keep: boolean): void {
     const system = systems.find((candidate) => candidate.id === systemId) ?? fallback;
     if (!system) return;
-    const preferred = released ? system.methods[0] : system.methods.at(-1);
+    const [preferred] = system.methods;
     const method = system.methods.find((candidate) => candidate.id === methodId) ?? preferred;
     if (!method) return;
     for (const button of systemRow?.querySelectorAll("button") ?? []) {

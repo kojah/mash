@@ -44,31 +44,40 @@ semantic models are optional.
 
 ### 1. Install Mash
 
-Public release packages have not been published yet, so today Mash is built
-from source with Rust. The first build can take several minutes:
+macOS (Apple silicon) or Linux (x86-64 or ARM64), including WSL:
 
 ```bash
-cargo +stable install --locked --git https://github.com/kojah/mash mash
+curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
 ```
 
-Every channel below installs a prebuilt binary without Rust, and starts working
-with the first published release. Choose one.
+Windows x64, in PowerShell:
 
-| Channel | Command | Works |
-| --- | --- | --- |
-| Build from source | `cargo +stable install --locked --git https://github.com/kojah/mash mash` | today |
-| Shell script, macOS and Linux | `curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh \| sh` | from the first release |
-| PowerShell script, Windows x64 | `irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 \| iex` | from the first release |
-| Homebrew | `brew install kojah/tap/mash` | from the first release |
-| apt, Debian and Ubuntu | [add the Mash repository](docs/installation.md#package-manager-alternatives), then `sudo apt install mash` | from the first release |
-| Scoop | `scoop bucket add kojah https://github.com/kojah/mash`, then `scoop install kojah/mash` | from the first release |
-| mise | `mise use -g github:kojah/mash` | from the first release |
-| cargo-binstall | `cargo binstall --git https://github.com/kojah/mash mash` | from the first release |
+```powershell
+irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
+```
 
-The two scripts are the recommended way to install a release. They verify
-release checksums and install to your user’s `.local/bin` directory; add it to
-`PATH` if needed. [Install Mash](docs/installation.md#install-the-cli) has the
-details for each channel.
+Both download a prebuilt release, verify its checksum and install to your
+user’s `.local/bin` directory; add it to `PATH` if needed. No Rust, Docker or
+administrator rights are required.
+
+> The first release is not published yet. Until it is, these commands and the
+> package managers below have nothing to download:
+> [build from source](#build-from-source) instead.
+
+Prefer a package manager?
+
+| Channel | Command |
+| --- | --- |
+| Homebrew | `brew install kojah/tap/mash` |
+| apt, Debian and Ubuntu | [add the Mash repository](docs/installation.md#package-manager-alternatives), then `sudo apt install mash` |
+| Scoop | `scoop bucket add kojah https://github.com/kojah/mash`, then `scoop install kojah/mash` |
+| mise | `mise use -g github:kojah/mash` |
+| cargo-binstall | `cargo binstall --git https://github.com/kojah/mash mash` |
+
+Already have a coding agent open? Paste this and let it do steps 1 to 3,
+asking you before each download:
+
+> Read https://getmash.io/setup.md and set up Mash on this machine.
 
 ### 2. Start the local search service
 
@@ -155,6 +164,18 @@ Mash masks recognizable credentials in results by default, but detection is
 best effort. Local history and exports can contain sensitive text;
 treat backups like the original chats. Mash never modifies the agent’s source
 history. [Privacy and redaction →](docs/privacy.md)
+
+## Build from source
+
+For platforms without a prebuilt release, or to run an unreleased revision.
+You need a stable Rust toolchain; the first build takes several minutes:
+
+```bash
+cargo +stable install --locked --git https://github.com/kojah/mash mash
+```
+
+This build leaves out the web dashboard’s pages.
+[Install Mash](docs/installation.md#install-the-cli) shows how to include them.
 
 ## Documentation
 

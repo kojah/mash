@@ -1,0 +1,30 @@
+# Mash
+
+> Mash is a local command-line tool, MCP server and dashboard that indexes a person's past chats with coding agents (Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, Antigravity) and searches them by words or by meaning. History stays on the machine unless the person sets up sharing between their own computers.
+
+To install and set up Mash for someone, follow [the setup instructions for agents](https://getmash.io/setup.md).
+
+## Start here
+
+- [Quick start](https://getmash.io/quick-start/): install, start the search service, connect histories
+- [Installation](https://getmash.io/installation/): every install channel, Qdrant options, `mash init`
+- [Introduction to Mash search](https://getmash.io/search/): word search, search by meaning, filters, reading results
+- [Use Mash with your agent](https://getmash.io/agents/): what connecting an agent adds and how to check it
+- [Navigating the dashboard](https://getmash.io/dashboard/): the local web interface
+
+## Reference
+
+- [Useful commands](https://getmash.io/cli/): every CLI command
+- [MCP tool reference](https://getmash.io/tools/): every MCP tool and its parameters
+- [Configure Mash](https://getmash.io/configuration/): the configuration file
+- [Connect another MCP client](https://getmash.io/mcp/)
+
+## More
+
+- [Record what you worked out](https://getmash.io/records/): saved decisions, preferences and facts
+- [Keep history up to date](https://getmash.io/synchronization/)
+- [Include older chats and search by meaning](https://getmash.io/indexing/)
+- [Search across your machines](https://getmash.io/shared-index/)
+- [Back up, restore, and upgrade](https://getmash.io/upgrades/)
+- [Your history and privacy](https://getmash.io/privacy/)
+- [Troubleshooting](https://getmash.io/troubleshooting/)
