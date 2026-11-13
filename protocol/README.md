@@ -354,10 +354,17 @@ preserve admitted work. With fair polling and operation completion, the CLI
 watcher eventually stops after replacement. MCP itself stays available for reads;
 the polling/liveness portion applies only to CLI watching.
 
+After the old watcher stops, its process starts the replacement executable in
+place (Unix `exec`, after the old lease is dropped and the replacement's
+identity has settled). That is a fresh runtime that registers and admits work
+under the new identity, the same as a supervisor restart, so it adds no
+interleaving to this model: the stopped phase is final for the old runtime.
+
 Source mapping: [runtime.rs](../app/runtime.rs) `Lease::ensure_current`,
 [mcp.rs](../app/mcp.rs) `Mash::perform_response` (and `Mash::record_within`,
 which checks after both the gate and local writer admission), and
-[cli.rs](../app/cli.rs) `run_parsed`. Registry liveness uses held OS locks;
+[cli.rs](../app/cli.rs) `run_parsed` (with `runtime::restart` from
+[lib.rs](../app/lib.rs) `execute` after it returns). Registry liveness uses held OS locks;
 filesystem metadata identity, lock correctness, successful registration and
 eventual operation completion are assumptions, not modeled proofs. Older binaries
 without these checks are outside the contract. The model excludes source data,

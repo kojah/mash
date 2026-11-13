@@ -114,9 +114,22 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    match cli::run(args) {
+    let arguments: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    match cli::run(arguments.clone()) {
         // MCP owns stdout for its entire session, including shutdown.
         Ok(cli::Response::McpStopped) => 0,
+        // The async runtime and its lease are gone; start the replacement.
+        Ok(cli::Response::WatchReplaced { reason, executable }) => {
+            let _ = write_json(stderr, &reason);
+            if cfg!(unix) {
+                let _ = write_json(stderr, &WatchRestart::event());
+                let error = runtime::restart(&executable, &arguments);
+                let _ = write_json(stderr, &error);
+                error.code
+            } else {
+                reason.code
+            }
+        }
         Ok(response) => match write_json(stdout, &response) {
             // A reader that stopped early (`mash ... | head`) is not a failure.
             Err(error) if error.code == BROKEN_PIPE => 0,
@@ -144,6 +157,22 @@ where
         Err(error) => {
             let _ = write_json(stderr, &error);
             error.code
+        }
+    }
+}
+
+/// Logged before a replaced watcher starts its replacement in place.
+#[derive(Serialize)]
+struct WatchRestart {
+    event: &'static str,
+    reason: &'static str,
+}
+
+impl WatchRestart {
+    const fn event() -> Self {
+        Self {
+            event: "watch-restart",
+            reason: "executable-replaced",
         }
     }
 }

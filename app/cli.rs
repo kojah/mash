@@ -414,6 +414,13 @@ pub(super) enum Response {
     WatchStopped {
         watching: bool,
     },
+    /// The watcher stopped because its executable was replaced; the caller
+    /// starts the replacement in this process once the runtime is gone.
+    #[serde(skip)]
+    WatchReplaced {
+        reason: AppError,
+        executable: PathBuf,
+    },
     McpStopped,
     InitCancelled {
         cancelled: bool,
@@ -836,8 +843,13 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
             })
             .await;
         signal.abort();
+        // The monitor holds the lease; it must be gone before a restart.
+        let _ = signal.await;
         result?;
-        crate::blocking(move || lease.ensure_current()).await?;
+        let executable = lease.executable().to_path_buf();
+        if let Err(reason) = crate::blocking(move || lease.ensure_current()).await {
+            return Ok(Response::WatchReplaced { reason, executable });
+        }
         return Ok(Response::WatchStopped { watching: false });
     }
     core::execute(cli.into_request()?)

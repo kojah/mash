@@ -13,6 +13,11 @@
     - "{{ ansible_facts.user_dir }}/Library/Logs"
   when: mash_operation == 'watch-start'
 
+# KeepAlive restarts a crashed watcher, but launchd defers keep-alive spawns,
+# indefinitely, while the GUI domain is in on-demand-only mode ("pending spawn,
+# domain in on-demand-only mode"). An upgraded watcher therefore starts its
+# replacement in its own process rather than exiting, and starting an idle
+# job below uses kickstart, an explicit demand launchd honors in that mode.
 - name: Install opt-in login watcher
   ansible.builtin.copy:
     dest: "{{ mash_watch_plist }}"

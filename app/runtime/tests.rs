@@ -171,3 +171,40 @@ fn runtime_inventory_distinguishes_a_different_unchanged_build_from_replacement(
     assert_eq!(inspect(&paths).processes[0].state, State::DifferentBuild);
     lease.ensure_current().unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn a_restart_waits_for_the_replacement_to_settle() {
+    let root = tempfile::tempdir().unwrap();
+    let executable = root.path().join("mash");
+    let short = std::time::Duration::from_millis(20);
+    assert!(
+        !settled(&executable, short, short),
+        "a missing replacement is never started"
+    );
+    std::fs::write(&executable, "replacement").unwrap();
+    assert!(settled(&executable, short, short));
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = {
+        let (executable, stop) = (executable.clone(), stop.clone());
+        std::thread::spawn(move || {
+            let mut length = 2;
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                std::fs::write(&executable, "x".repeat(length)).unwrap();
+                length += 1;
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        })
+    };
+    assert!(
+        !settled(&executable, short, std::time::Duration::ZERO),
+        "a replacement still being written is not started"
+    );
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    writer.join().unwrap();
+    assert!(settled(
+        &executable,
+        short,
+        std::time::Duration::from_secs(5)
+    ));
+}

@@ -129,6 +129,67 @@ fn qdrant_runtime_upgrade_stops_idle_and_standby_cli_watchers() {
     cleanup_local_gold(&root.path().join("index.sqlite3"), "local");
 }
 
+// A supervisor may never respawn an exited job (launchd defers keep-alive
+// spawns while a domain is in on-demand-only mode), so a replaced watcher
+// starts its replacement in its own process. No Qdrant: passes fail and retry.
+#[cfg(unix)]
+#[test]
+fn a_replaced_watcher_starts_its_replacement_in_the_same_process() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let sources = root.path().join("history");
+    std::fs::create_dir(&sources).unwrap();
+    history(&sources.join("session.jsonl"), "before upgrade");
+    let unreachable = "http://127.0.0.1:9";
+    std::fs::write(
+        root.path().join("config.toml"),
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {codex = {roots = [(sources.to_str().unwrap())]}}
+            index = {destination = "local"}
+            qdrant = {url = unreachable, grpc_url = unreachable}
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let executable = root.path().join("mash");
+    std::os::unix::fs::symlink(assert_cmd::cargo::cargo_bin!("mash"), &executable).unwrap();
+    let mut watcher = Watching::start_binary(root.path(), &[], &executable);
+    let runtimes = root.path().join("index.sqlite3.runtimes");
+    let deadline = std::time::Instant::now() + HANG_GUARD;
+    while std::fs::read_dir(&runtimes).map_or(0, Iterator::count) < 2 {
+        assert!(std::time::Instant::now() < deadline, "watcher registered");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let marker = root.path().join("restarted");
+    let replacement = root.path().join("replacement");
+    std::fs::write(
+        &replacement,
+        format!(
+            "#!/bin/sh\n{{ echo \"$$\"; echo \"$*\"; ls -A {runtimes:?} | wc -l; }} > {marker:?}.tmp\nmv {marker:?}.tmp {marker:?}\n",
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&replacement, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::rename(replacement, &executable).unwrap();
+    let status = loop {
+        if let Some(status) = watcher.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(std::time::Instant::now() < deadline, "replacement started");
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    assert!(status.success(), "the replacement ran instead of an exit");
+    let report = std::fs::read_to_string(&marker).unwrap();
+    let lines: Vec<&str> = report.lines().map(str::trim).collect();
+    assert_eq!(lines[0], watcher.child.id().to_string(), "same process");
+    assert!(
+        lines[1].ends_with("index --watch --debounce-ms 200"),
+        "{report}"
+    );
+    assert_eq!(lines[2], "0", "the old runtime's lease was released first");
+}
+
 impl Drop for Watching {
     fn drop(&mut self) {
         let _ = self.child.kill();

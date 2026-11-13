@@ -208,6 +208,72 @@ impl Lease {
             Err(superseded())
         }
     }
+
+    /// The invocation path whose replacement supersedes this runtime.
+    pub(crate) fn executable(&self) -> &Path {
+        &self.record.executable
+    }
+}
+
+/// How long a replaced executable must keep one identity before a stopped
+/// watcher starts it, so an installer still writing it is not executed.
+const SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
+/// After this long without a settled replacement, the watcher exits instead.
+const SETTLE_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// A stopped `index --watch` starts the executable that replaced it in its own
+/// process: same arguments, environment, working directory and process ID.
+/// Its supervisor sees no exit, so the restart needs neither its respawn
+/// (which launchd can defer indefinitely) nor a deploy step. The old runtime
+/// has already stopped and released its lease; the new image registers as a
+/// fresh runtime. Returns only when that is impossible.
+#[cfg(unix)]
+pub(crate) fn restart(executable: &Path, arguments: &[std::ffi::OsString]) -> AppError {
+    use std::os::unix::process::CommandExt;
+    if !settled(executable, SETTLE, SETTLE_LIMIT) {
+        return cannot_restart(executable, "it did not settle");
+    }
+    let mut command = std::process::Command::new(executable);
+    if let Some((first, rest)) = arguments.split_first() {
+        command.arg0(first).args(rest);
+    }
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    let error = command.exec();
+    cannot_restart(executable, &error.to_string())
+}
+
+/// Windows cannot replace a running process image; its scheduled task starts
+/// the replacement instead.
+#[cfg(not(unix))]
+pub(crate) fn restart(_executable: &Path, _arguments: &[std::ffi::OsString]) -> AppError {
+    superseded()
+}
+
+#[cfg(unix)]
+fn cannot_restart(executable: &Path, reason: &str) -> AppError {
+    AppError::configuration(format!(
+        "This Mash watcher stopped because its executable was replaced, but it could not start the replacement at {} ({reason}). Restart `mash index --watch` or its service.",
+        executable.display()
+    ))
+}
+
+/// Whether `path` exists with one identity across a `settle` interval within
+/// `limit`.
+#[cfg(unix)]
+fn settled(path: &Path, settle: std::time::Duration, limit: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + limit;
+    let mut previous = identity(path).ok();
+    loop {
+        std::thread::sleep(settle);
+        let current = identity(path).ok();
+        if current.is_some() && current == previous {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        previous = current;
+    }
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]

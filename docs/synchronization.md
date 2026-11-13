@@ -29,6 +29,11 @@ mash index --watch
 It indexes once, then refreshes after history changes settle. Leave the process
 running; Ctrl-C lets the active pass finish and stops watching. Closing the terminal stops ongoing updates.
 
+When you upgrade Mash, the watcher finishes its active pass and then starts the
+new `mash` in the same process, with the same options, so a terminal or service
+keeps watching without a restart. If it cannot start the new executable, it
+exits with an error instead; start it again yourself.
+
 Existing provider, age, and local/shared settings still apply. To include older
 history as you work:
 
