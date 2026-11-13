@@ -62,6 +62,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "attachments": {"allowed_roots": [], "share_files": false},
             "embeddings": {"backend": "local"},
             "redaction": {"output": true, "publication": true},
+            "reranking": {"backend": "local"},
             "shared": null,
             "qdrant": {
                 "url": "http://127.0.0.1:6333", "api_key_env": null,
