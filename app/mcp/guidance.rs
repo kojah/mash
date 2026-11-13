@@ -438,16 +438,14 @@ pub(super) async fn help(request: Help) -> CallToolResult {
         let examples = examples()?
             .into_iter()
             .filter(|example| {
-                request.tool.as_ref().map_or_else(
-                    || {
-                        if matches!(request.topic, Some(Topic::Records)) {
-                            matches!(
-                                example.tool,
-                                "record" | "list_records" | "get_record" | "recall_records"
-                            )
-                        } else {
-                            matches!(example.tool, "list_chats" | "view")
-                        }
+                request.tool.as_ref().map_or(
+                    if matches!(request.topic, Some(Topic::Records)) {
+                        matches!(
+                            example.tool,
+                            "record" | "list_records" | "get_record" | "recall_records"
+                        )
+                    } else {
+                        matches!(example.tool, "list_chats" | "view")
                     },
                     |name| example.tool == name,
                 )
