@@ -49,6 +49,11 @@ fn fixture() -> Vec<Value> {
             json!({"messageId":"answer","content":"Validate mutation metadata before importing.","reasoningText":"privatereasoningmarker","toolRequests":[{"toolCallId":"call","name":"read_file","arguments":{"path":"privatetoolmarker"}}]}),
         ),
         record(
+            "execution",
+            "tool.execution_start",
+            json!({"toolCallId":"call","toolName":"read_file","arguments":{"path":"privatetoolmarker"}}),
+        ),
+        record(
             "result",
             "tool.execution_complete",
             json!({"success":true,"toolCallId":"call","result":{"content":"shortresultmarker","detailedContent":"privateoutputmarker"}}),
@@ -128,7 +133,7 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     assert_eq!(chat.title.as_deref(), Some("Fix the cBioPortal importer"));
     assert_eq!(chat.project.as_deref(), Some("/work/cbioportal"));
     assert_eq!(chat.repository.as_deref(), Some("team/cbioportal"));
-    assert_eq!(chat.messages.len(), 10);
+    assert_eq!(chat.messages.len(), 12);
     let canonical = chat
         .messages
         .inline()
@@ -162,18 +167,18 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     }
     assert!(projection.contains("cBioPortal"));
     assert!(projection.contains("Validate mutation metadata"));
-    assert_eq!(chat.messages.inline()[5].context, MessageContext::Root);
-    assert_eq!(
-        chat.messages.inline()[6].context,
-        MessageContext::Parent {
-            id: chat.messages.inline()[5].id.clone()
-        }
-    );
     assert_eq!(chat.messages.inline()[7].context, MessageContext::Root);
     assert_eq!(
         chat.messages.inline()[8].context,
         MessageContext::Parent {
-            id: chat.messages.inline()[4].id.clone()
+            id: chat.messages.inline()[7].id.clone()
+        }
+    );
+    assert_eq!(chat.messages.inline()[9].context, MessageContext::Root);
+    assert_eq!(
+        chat.messages.inline()[10].context,
+        MessageContext::Parent {
+            id: chat.messages.inline()[6].id.clone()
         }
     );
     assert_eq!(std::fs::read(file.path()).unwrap(), original);
@@ -200,6 +205,48 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
 }
 
 #[test]
+fn assistant_events_split_reasoning_replies_and_tool_calls() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    write(file.path(), &fixture());
+    let chat = parse(file.path()).unwrap().chat.unwrap();
+    // Reasoning, the reply and the tool request are separate messages, and
+    // the tool call and its output carry the same call identity.
+    let inline = chat.messages.inline();
+    assert_eq!(inline[1].role, Role::Assistant);
+    assert_eq!(inline[1].content, "[Thinking] privatereasoningmarker");
+    assert!(inline[1].tools.is_empty());
+    assert_eq!(
+        inline[2].content,
+        "Validate mutation metadata before importing."
+    );
+    assert!(inline[2].tools.is_empty());
+    assert_eq!(inline[3].role, Role::Assistant);
+    assert_eq!(inline[3].tools.tool_calls.len(), 1);
+    assert_eq!(
+        inline[3].tools.tool_calls[0].name.as_deref(),
+        Some("read_file")
+    );
+    assert_eq!(
+        inline[3].tools.tool_calls[0].call_id.as_deref(),
+        Some("call")
+    );
+    assert_eq!(inline[4].role, Role::Tool);
+    assert_eq!(
+        inline[4].tools.tool_results[0].call_id.as_deref(),
+        Some("call")
+    );
+    assert_eq!(inline[4].tools.tool_results[0].is_error, Some(false));
+    // The execution start repeats the request, so it adds no message.
+    assert_eq!(
+        inline
+            .iter()
+            .filter(|m| m.content.contains("privatetoolmarker"))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
     let dir = tempfile::tempdir().unwrap();
     let history = dir.path().join("events.jsonl");
@@ -217,7 +264,7 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options(dir.path())).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().messages, 10);
+    assert_eq!(storage.counts().unwrap().messages, 12);
     assert_eq!(storage.counts().unwrap().searchable_messages, 3);
     let chat = parse(&history).unwrap().chat.unwrap();
     let followup = crate::storage::test_support::projections_with_text(
@@ -244,7 +291,7 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
                 let crate::shared::protocol::Batch::Messages { records } = batch else {
                     panic!("message batch")
                 };
-                assert_eq!(records.len(), 10);
+                assert_eq!(records.len(), 12);
                 for record in records {
                     let native = chat
                         .messages
@@ -265,7 +312,7 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
     let summary = index(&mut storage, &options(&history)).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(summary.removed_messages, 8);
-    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert_eq!(storage.counts().unwrap().messages, 4);
     assert!(
         crate::storage::test_support::projections_with_text(&storage, "structural", None)
             .is_empty()
@@ -297,7 +344,7 @@ fn malformed_refresh_preserves_history_and_checkpoint_until_retry() {
         (1, 1)
     );
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().messages, 10);
+    assert_eq!(storage.counts().unwrap().messages, 12);
     assert!(
         storage
             .source_checkpoint_matches(Provider::Copilot, &source, &stamp)
@@ -319,7 +366,7 @@ fn malformed_refresh_preserves_history_and_checkpoint_until_retry() {
         1
     );
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().messages, 11);
+    assert_eq!(storage.counts().unwrap().messages, 13);
 }
 
 #[test]

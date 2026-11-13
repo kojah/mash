@@ -3,7 +3,12 @@
 use super::{Chat, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use serde::Deserialize;
-use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::File,
+    io::BufReader,
+    path::Path,
+};
 
 #[cfg(test)]
 mod tests;
@@ -213,7 +218,9 @@ struct Assistant {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ToolRequest {
+    tool_call_id: Option<String>,
     name: String,
     // Arbitrary tool arguments are the opaque boundary of the native schema.
     arguments: Option<serde_json::Value>,
@@ -222,6 +229,7 @@ struct ToolRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ToolStart {
+    tool_call_id: Option<String>,
     tool_name: String,
     arguments: Option<serde_json::Value>,
     parent_tool_call_id: Option<String>,
@@ -230,6 +238,8 @@ struct ToolStart {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ToolComplete {
+    tool_call_id: Option<String>,
+    success: Option<bool>,
     result: Option<ToolResult>,
     error: Option<ToolError>,
     parent_tool_call_id: Option<String>,
@@ -251,6 +261,21 @@ struct Text {
     role: Role,
     canonical: String,
     projection: String,
+    tools: crate::tools::Activity,
+}
+
+/// One stored message from an event. An assistant event can hold reasoning,
+/// a reply and tool requests; each becomes its own message, and only the reply
+/// keeps the event's own identity.
+struct Part {
+    suffix: Option<String>,
+    text: Text,
+}
+
+impl Part {
+    fn whole(text: Text) -> Self {
+        Self { suffix: None, text }
+    }
 }
 
 impl Text {
@@ -259,6 +284,20 @@ impl Text {
             role,
             canonical,
             projection: String::new(),
+            tools: crate::tools::Activity::default(),
+        }
+    }
+
+    /// Model reasoning, shown as thinking rather than as the reply.
+    fn thinking(content: &str) -> Self {
+        Self::context(Role::Assistant, format!("[Thinking] {content}"))
+    }
+
+    fn call(id: Option<&str>, name: &str, arguments: Option<serde_json::Value>) -> Self {
+        let tools = crate::tools::Activity::call(Some(name), id, arguments.as_ref());
+        Self {
+            tools,
+            ..Self::context(Role::Assistant, tool_text(name, arguments))
         }
     }
 
@@ -272,6 +311,7 @@ impl Text {
             role,
             canonical,
             projection,
+            tools: crate::tools::Activity::default(),
         }
     }
 }
@@ -298,31 +338,49 @@ impl Payload {
         }
     }
 
-    fn text(self, main: bool) -> Option<Text> {
+    /// The messages an event contributes. `requested` holds the tool calls
+    /// already shown from assistant requests, so an execution start that
+    /// repeats one adds nothing.
+    fn parts(self, main: bool, requested: &mut HashSet<String>) -> Vec<Part> {
         match self {
-            Self::User { data } => Some(Text::prose(
+            Self::User { data } => vec![Part::whole(Text::prose(
                 Role::User,
                 data.content,
                 main && !data.is_autopilot_continuation
                     && data.source.as_ref().is_none_or(Source::human),
-            )),
+            ))],
             Self::Assistant { data } => {
-                let mut text = Text::prose(Role::Assistant, data.content, main);
-                if let Some(reasoning) = data.reasoning_text.filter(|s| !s.is_empty()) {
-                    text.canonical.push_str("\nReasoning: ");
-                    text.canonical.push_str(&reasoning);
+                let mut parts = Vec::new();
+                if let Some(reasoning) = data.reasoning_text.filter(|s| !s.trim().is_empty()) {
+                    parts.push(Part {
+                        suffix: Some("reasoning".to_owned()),
+                        text: Text::thinking(&reasoning),
+                    });
                 }
-                for tool in data.tool_requests {
-                    text.canonical.push('\n');
-                    text.canonical
-                        .push_str(&tool_text(&tool.name, tool.arguments));
+                parts.push(Part::whole(Text::prose(
+                    Role::Assistant,
+                    data.content,
+                    main,
+                )));
+                for (index, tool) in data.tool_requests.into_iter().enumerate() {
+                    let suffix = tool
+                        .tool_call_id
+                        .as_ref()
+                        .map_or_else(|| format!("tool:{index}"), |id| format!("tool:{id}"));
+                    if let Some(id) = &tool.tool_call_id {
+                        requested.insert(id.clone());
+                    }
+                    parts.push(Part {
+                        suffix: Some(suffix),
+                        text: Text::call(tool.tool_call_id.as_deref(), &tool.name, tool.arguments),
+                    });
                 }
-                Some(text)
+                parts
             }
             Self::Reasoning {
                 data: Content { content },
-            }
-            | Self::System {
+            } => vec![Part::whole(Text::thinking(&content))],
+            Self::System {
                 data: Content { content },
             }
             | Self::Compaction {
@@ -335,24 +393,42 @@ impl Payload {
                 data: Clear {
                     initial_message: Some(content),
                 },
-            } => Some(Text::context(Role::System, content)),
-            Self::ToolStart { data } => Some(Text::context(
-                Role::Tool,
-                tool_text(&data.tool_name, data.arguments),
-            )),
+            } => vec![Part::whole(Text::context(Role::System, content))],
+            // Logs that record the request already showed this call.
+            Self::ToolStart { data }
+                if data
+                    .tool_call_id
+                    .as_ref()
+                    .is_some_and(|id| requested.contains(id)) =>
+            {
+                Vec::new()
+            }
+            Self::ToolStart { data } => vec![Part::whole(Text::call(
+                data.tool_call_id.as_deref(),
+                &data.tool_name,
+                data.arguments,
+            ))],
             Self::ToolComplete { data } => {
                 let mut content = data
                     .result
                     .map_or_else(String::new, |r| r.detailed_content.unwrap_or(r.content));
+                let failed = data.error.is_some();
                 if let Some(error) = data.error {
                     if !content.is_empty() {
                         content.push('\n');
                     }
                     content.push_str(&error.message);
                 }
-                Some(Text::context(Role::Tool, content))
+                let is_error = data
+                    .success
+                    .map(|success| !success)
+                    .or(failed.then_some(true));
+                vec![Part::whole(Text {
+                    tools: crate::tools::Activity::result(data.tool_call_id.as_deref(), is_error),
+                    ..Text::context(Role::Tool, content)
+                })]
             }
-            _ => None,
+            _ => Vec::new(),
         }
     }
 }
@@ -419,6 +495,7 @@ fn events(path: &Path, unreadable: &mut Unreadable) -> Result<ParsedFile, AppErr
     let mut ids = super::identities::Identities::default();
     ids.insert(&first_id)?;
     let mut heads = HashMap::<Option<String>, String>::new();
+    let mut requested = HashSet::new();
     let mut messages = super::messages::Builder::default();
     for line in lines {
         let record = event(&line?)?;
@@ -448,34 +525,33 @@ fn events(path: &Path, unreadable: &mut Unreadable) -> Result<ParsedFile, AppErr
         if matches!(record.payload, Payload::Cleared { .. }) {
             heads.remove(&lane);
         }
-        let Some(text) = record
-            .payload
-            .text(lane.is_none())
-            .filter(|t| !t.canonical.trim().is_empty())
-        else {
-            continue;
-        };
-        let ordinal = i64::try_from(messages.len())
-            .map_err(|_| AppError::internal("too many Copilot messages"))?;
-        let id = super::parsers::stable_id(
-            "message",
-            &[Provider::Copilot.as_str(), &start.session_id, &record.id],
-        );
-        messages.push(NormalizedMessage {
-            attachments: Vec::new(),
-            id: id.clone(),
-            ordinal,
-            context: heads
-                .get(&lane)
-                .cloned()
-                .map_or(MessageContext::Root, |id| MessageContext::Parent { id }),
-            role: text.role,
-            content: text.canonical,
-            dialogue_text: Some(text.projection),
-            created_at: Some(time),
-            tools: crate::tools::Activity::default(),
-        })?;
-        heads.insert(lane, id);
+        for Part { suffix, text } in record.payload.parts(lane.is_none(), &mut requested) {
+            if text.canonical.trim().is_empty() {
+                continue;
+            }
+            let ordinal = i64::try_from(messages.len())
+                .map_err(|_| AppError::internal("too many Copilot messages"))?;
+            let mut identity = vec![Provider::Copilot.as_str(), &start.session_id, &record.id];
+            if let Some(suffix) = &suffix {
+                identity.push(suffix);
+            }
+            let id = super::parsers::stable_id("message", &identity);
+            messages.push(NormalizedMessage {
+                attachments: Vec::new(),
+                id: id.clone(),
+                ordinal,
+                context: heads
+                    .get(&lane)
+                    .cloned()
+                    .map_or(MessageContext::Root, |id| MessageContext::Parent { id }),
+                role: text.role,
+                content: text.canonical,
+                dialogue_text: Some(text.projection),
+                created_at: Some(time),
+                tools: text.tools,
+            })?;
+            heads.insert(lane.clone(), id);
+        }
     }
     let messages = messages.finish()?;
     let title = messages.summary()?.title;

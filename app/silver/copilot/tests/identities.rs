@@ -47,7 +47,7 @@ fn late_operational_duplicate_preserves_snapshot_and_checkpoint_until_repair() {
         .expect("reject duplicate after spill");
     assert!(error.error.message.contains("duplicate"));
     storage.commit_writer().unwrap();
-    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert_eq!(storage.counts().unwrap().messages, 4);
     assert!(
         storage
             .source_checkpoint_matches(Provider::Copilot, &identity, &stamp)
@@ -63,7 +63,7 @@ fn late_operational_duplicate_preserves_snapshot_and_checkpoint_until_repair() {
     let summary = index(&mut storage, &options(&source)).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(summary.changed_messages, 0);
-    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert_eq!(storage.counts().unwrap().messages, 4);
     assert!(
         storage
             .source_checkpoint_matches(
