@@ -7,6 +7,8 @@
 #   tools/dashboard-remote.sh            set up (or repair) and print the address
 #   tools/dashboard-remote.sh --token    print the sign-in token again
 #   tools/dashboard-remote.sh --qr       show the sign-in QR code again
+#   tools/dashboard-remote.sh --code     print a six-character code to type on
+#                                        another device; one use, ten minutes
 #   tools/dashboard-remote.sh --remove   stop serving and remove the service
 #
 # Linux with systemd user services and Tailscale only. Elsewhere, follow
@@ -15,7 +17,8 @@ set -euo pipefail
 
 port=${MASH_DASH_PORT:-8790}
 unit=mash-dash.service
-config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/mash
+# Mash keeps its own files under ~/.mash on every platform.
+config_dir=$HOME/.mash
 token_file=$config_dir/dashboard.env
 unit_file=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$unit
 
@@ -39,7 +42,21 @@ segno.make(sys.argv[1], error="m").terminal(compact=True, border=1)' "$link" 2>/
     fi
 }
 
+# Ask the running dashboard for a one-time code, shown as ABC-DEF.
+new_code() {
+    local token
+    token=$(sed -n 's/^MASH_DASH_TOKEN=//p' "$token_file")
+    curl --silent --fail --max-time 5 -X POST "http://127.0.0.1:$port/api/session/code" \
+        -H "Authorization: Bearer $token" |
+        python3 -c 'import json, sys; code = json.load(sys.stdin)["code"]; print(code[:3] + "-" + code[3:])'
+}
+
 case ${1:-} in
+    --code)
+        [[ -r $token_file ]] || { echo 'No dashboard token yet; run this script without arguments first.' >&2; exit 1; }
+        new_code || { echo "The dashboard is not answering; see: journalctl --user -u $unit" >&2; exit 1; }
+        exit 0
+        ;;
     --token)
         [[ -r $token_file ]] || { echo 'No dashboard token yet; run this script without arguments first.' >&2; exit 1; }
         sed -n 's/^MASH_DASH_TOKEN=//p' "$token_file"
@@ -61,7 +78,9 @@ case ${1:-} in
 esac
 
 for dependency in systemctl tailscale python3; do need "$dependency"; done
-mash=$(command -v mash) || { echo 'mash is not on PATH; install it first.' >&2; exit 2; }
+# MASH_BIN names a wrapper when searches need more environment than the
+# service has, such as the shared index's node token.
+mash=${MASH_BIN:-$(command -v mash)} || { echo 'mash is not on PATH; install it first.' >&2; exit 2; }
 
 # The name other devices use for this machine, without the trailing dot.
 name=$(tailscale status --json | python3 -c '
@@ -109,7 +128,8 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
         token=$(sed -n 's/^MASH_DASH_TOKEN=//p' "$token_file")
         echo "Dashboard: https://$host/"
         echo "Sign-in token: $token"
-        echo 'On a device signed in to your tailnet, scan this code, or open the address and enter the token once.'
+        echo "One-time code (10 minutes): $(new_code || echo unavailable)"
+        echo 'On a device signed in to your tailnet, scan the QR code, or open the address and type the one-time code.'
         show_qr "https://$host/#signin=$token"
         exit 0
     fi

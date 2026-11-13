@@ -11,10 +11,18 @@ const COOKIE: &str = "mash_dash";
 const ATTEMPTS: u32 = 10;
 const WINDOW: Duration = Duration::from_secs(60);
 const COOKIE_SECONDS: u64 = 30 * 24 * 60 * 60;
+/// How long a one-time code can be used after it is issued.
+const CODE_LIFETIME: Duration = Duration::from_mins(10);
+/// Letters and digits that are not mistaken for one another when read aloud
+/// or typed on a phone.
+const CODE_ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const CODE_LENGTH: usize = 6;
 
 pub(super) struct Access {
     credentials: Option<Credentials>,
     failures: Mutex<(Instant, u32)>,
+    /// The one code a person may type instead of the token, and its expiry.
+    code: Mutex<Option<(String, Instant)>>,
 }
 
 struct Credentials {
@@ -51,7 +59,48 @@ impl Access {
                     }),
             }),
             failures: Mutex::new((Instant::now(), 0)),
+            code: Mutex::new(None),
         }
+    }
+
+    /// A short code that signs one browser in, once, within ten minutes. It
+    /// replaces any earlier code. Only a signed-in caller may ask for one.
+    pub(super) fn issue_code(&self) -> Result<String, AppError> {
+        let mut random = [0_u8; CODE_LENGTH];
+        getrandom::fill(&mut random).map_err(|_| AppError::internal("create sign-in code"))?;
+        // 32 symbols divide 256 evenly, so every symbol is equally likely.
+        let code: String = random
+            .iter()
+            .map(|byte| char::from(CODE_ALPHABET[usize::from(byte % 32)]))
+            .collect();
+        *self
+            .code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some((code.clone(), Instant::now() + CODE_LIFETIME));
+        Ok(code)
+    }
+
+    /// Whether `typed` is the live code, however it was spaced or cased. A
+    /// match uses the code up.
+    fn redeem(&self, typed: &str) -> bool {
+        let typed: String = typed
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '-')
+            .map(|c| c.to_ascii_uppercase())
+            .collect();
+        let mut code = self
+            .code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let matched = code.as_ref().is_some_and(|(expected, expires)| {
+            Instant::now() < *expires
+                && blake3::hash(typed.as_bytes()) == blake3::hash(expected.as_bytes())
+        });
+        if matched {
+            *code = None;
+        }
+        matched
     }
 
     pub(super) fn required(&self) -> bool {
@@ -83,8 +132,8 @@ impl Access {
                 })
     }
 
-    /// The `Set-Cookie` value for a correct token. Wrong tokens are counted so
-    /// the token cannot be guessed at network speed.
+    /// The `Set-Cookie` value for a correct token or one-time code. Wrong ones
+    /// are counted so neither can be guessed at network speed.
     pub(super) fn sign_in(&self, token: &str, secure: bool) -> Result<String, Refusal> {
         let Some(credentials) = &self.credentials else {
             return Err(Refusal::Wrong);
@@ -99,7 +148,7 @@ impl Access {
         if failures.1 >= ATTEMPTS {
             return Err(Refusal::TooMany);
         }
-        if blake3::hash(token.as_bytes()) != credentials.token {
+        if blake3::hash(token.as_bytes()) != credentials.token && !self.redeem(token) {
             failures.1 += 1;
             return Err(Refusal::Wrong);
         }
@@ -156,6 +205,27 @@ mod tests {
         let other = Access::new(Some("ffffffffffffffffffffffffffffffff"));
         assert!(!other.signed_in(&headers(header::COOKIE, pair)));
         assert!(Access::sign_out(false).contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn a_one_time_code_signs_in_once_however_it_is_typed_and_then_expires() {
+        let access = Access::new(Some(TOKEN));
+        let code = access.issue_code().unwrap();
+        assert_eq!(code.len(), CODE_LENGTH);
+        assert!(code.bytes().all(|byte| CODE_ALPHABET.contains(&byte)));
+        let typed = format!(" {}-{} ", code[..3].to_lowercase(), &code[3..]);
+        assert!(access.sign_in(&typed, false).is_ok());
+        assert_eq!(access.sign_in(&code, false), Err(Refusal::Wrong), "used up");
+        // A newer code replaces an older one, and a stale one stops working.
+        let first = access.issue_code().unwrap();
+        let second = access.issue_code().unwrap();
+        if first != second {
+            assert_eq!(access.sign_in(&first, false), Err(Refusal::Wrong));
+        }
+        access.code.lock().unwrap().as_mut().unwrap().1 = Instant::now();
+        assert_eq!(access.sign_in(&second, false), Err(Refusal::Wrong));
+        // Without a token there is nothing to sign in to.
+        assert_eq!(Access::new(None).sign_in(&code, false), Err(Refusal::Wrong));
     }
 
     #[test]

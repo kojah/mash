@@ -25,17 +25,18 @@ async function submit(event: SubmitEvent): Promise<void> {
   <form class="state-c" onsubmit={submit}>
     <h1 class="h1"><KeyRound size={18} aria-hidden="true" /> Sign in to Mash</h1>
     <p class="meta">
-      This dashboard can be reached from other devices, so it asks for its access token. The person who started it
-      chose the token.
+      This dashboard can be reached from other devices, so it asks you to sign in. Enter a one-time code from the
+      machine that runs it, or its access token.
     </p>
-    <label class="meta" for="signin-token">Access token</label>
+    <label class="meta" for="signin-token">Code or access token</label>
     <!-- svelte-ignore a11y_autofocus: the token is the only thing to do on this screen. -->
     <input
       id="signin-token"
       class="field"
-      type="password"
-      autocomplete="current-password"
+      type="text"
+      autocomplete="one-time-code"
       autocapitalize="off"
+      autocorrect="off"
       spellcheck="false"
       autofocus
       bind:value={token}

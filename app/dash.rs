@@ -240,6 +240,7 @@ fn router(state: Arc<Dash>) -> Router {
         .route("/api/openapi.json", axum::routing::get(openapi))
         .route("/api/session", axum::routing::get(session).post(sign_in))
         .route("/api/session/end", axum::routing::post(sign_out))
+        .route("/api/session/code", axum::routing::post(sign_in_code))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         // The chat catalogue is over a megabyte of JSON for a few thousand
@@ -341,6 +342,7 @@ async fn guard(
             .into_response();
     }
     let service_action = (session_path
+        || path == "/api/session/code"
         || matches!(
             request.uri().path(),
             "/api/services/action" | "/api/services/fleet/jobs" | "/api/services/settings"
@@ -471,6 +473,24 @@ async fn sign_in(
             )),
         )
             .into_response(),
+    }
+}
+
+/// A short code for signing one more browser in; the guard has already
+/// required the caller to be signed in.
+async fn sign_in_code(State(state): State<Arc<Dash>>) -> Response {
+    if !state.access.required() {
+        return (
+            StatusCode::CONFLICT,
+            axum::Json(AppError::configuration(
+                "this dashboard has no access token, so there is nothing to sign in to",
+            )),
+        )
+            .into_response();
+    }
+    match state.access.issue_code() {
+        Ok(code) => axum::Json(serde_json::json!({ "code": code, "minutes": 10 })).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(error)).into_response(),
     }
 }
 
@@ -995,6 +1015,56 @@ mod tests {
             },
             receipt.record_id,
         )
+    }
+
+    #[tokio::test]
+    async fn only_a_signed_in_caller_mints_a_code_that_signs_another_browser_in() {
+        const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+        let (_directory, paths, _) = record_fixture();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = super::router(std::sync::Arc::new(super::Dash {
+            console: crate::mcp::console::Console::new(crate::core::Paths::default()),
+            paths,
+            hosts: allowed_hosts(address),
+            loopback: false,
+            access: super::access::Access::new(Some(TOKEN)),
+            shared_only: false,
+            model_work: tokio::sync::Semaphore::new(0),
+            services: super::services::Services::load(None).unwrap(),
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        let url = |path: &str| format!("http://{address}{path}");
+        let stranger = client.post(url("/api/session/code")).send().await.unwrap();
+        assert_eq!(stranger.status(), reqwest::StatusCode::UNAUTHORIZED);
+        let minted: serde_json::Value = client
+            .post(url("/api/session/code"))
+            .bearer_auth(TOKEN)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let code = minted["code"].as_str().unwrap().to_lowercase();
+        let with_code = client
+            .post(url("/api/session"))
+            .json(&serde_json::json!({ "token": code }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(with_code.status(), reqwest::StatusCode::OK);
+        assert!(with_code.headers().contains_key("set-cookie"));
+        // The code is spent.
+        let again = client
+            .post(url("/api/session"))
+            .json(&serde_json::json!({ "token": code }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(again.status(), reqwest::StatusCode::UNAUTHORIZED);
+        server.abort();
     }
 
     #[tokio::test]
