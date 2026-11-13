@@ -82,7 +82,7 @@ export function mountInstall(picker: HTMLElement): void {
   const methodRow = picker.querySelector<HTMLElement>('[data-pick="method"]');
   const prompt = picker.querySelector<HTMLElement>(".prompt");
   const code = picker.querySelector<HTMLElement>("code");
-  const copy = picker.querySelector<HTMLButtonElement>("button[data-copy]");
+  const copy = picker.querySelector<HTMLButtonElement>(".command button[data-copy]");
   if (picker.dataset.mounted || !systemRow || !methodRow || !prompt || !code || !copy) {
     return;
   }

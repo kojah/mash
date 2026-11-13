@@ -100,18 +100,14 @@ test("the hero's install picker follows the chosen system and method", async ({
   await expect(install.getByRole("button", { name: "Homebrew", exact: true })).toBeVisible();
 });
 
-test("the hero's picker offers a prompt that hands setup to a coding agent", async ({
+test("the hero offers a prompt that hands setup to a coding agent", async ({
   page,
   context,
   request,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
-  await page
-    .locator(".mash-install")
-    .getByRole("button", { name: "Ask your agent", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Copy the install command" }).click();
+  await page.getByRole("button", { name: "Copy the prompt for your agent" }).click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   expect(prompt).toBe("Read https://getmash.io/setup.md and set up Mash on this machine.");
   // The file the prompt names is published as plain Markdown.
