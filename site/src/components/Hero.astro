@@ -6,8 +6,59 @@ import Surface from "./Surface.astro";
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero ?? {};
-// Releases are not published yet, so this is the install that works today.
-const install = "cargo +stable install --locked --git https://github.com/kojah/mash mash";
+// Set once the first release is published: the prebuilt installs then work,
+// and the picker opens on the visitor's own system instead of the source build.
+const released = false;
+const pending = released ? "" : "Works from the first release; until then, build with Cargo. ";
+
+const cargo = {
+  id: "cargo",
+  label: "Cargo",
+  prompt: "$",
+  command: "cargo +stable install --locked --git https://github.com/kojah/mash mash",
+  note: "Builds from source with Rust.",
+};
+const brew = {
+  id: "brew",
+  label: "Homebrew",
+  prompt: "$",
+  command: "brew install kojah/tap/mash",
+  note: `${pending}Installs a prebuilt binary from the Mash tap.`,
+};
+const script = (machines: string) => ({
+  id: "script",
+  label: "Script",
+  prompt: "$",
+  command: "curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh",
+  note: `${pending}Installs a prebuilt binary for ${machines} to ~/.local/bin and verifies its checksum.`,
+});
+const systems = [
+  { id: "macos", label: "macOS", methods: [script("Apple silicon"), brew, cargo] },
+  { id: "linux", label: "Linux", methods: [script("x86-64 or ARM64"), brew, cargo] },
+  {
+    id: "windows",
+    label: "Windows",
+    methods: [
+      {
+        id: "script",
+        label: "PowerShell",
+        prompt: ">",
+        command: "irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex",
+        note: `${pending}Installs a prebuilt x64 binary and verifies its checksum.`,
+      },
+      {
+        id: "scoop",
+        label: "Scoop",
+        prompt: ">",
+        command: "scoop bucket add kojah https://github.com/kojah/mash; scoop install kojah/mash",
+        note: `${pending}Installs a prebuilt x64 binary from the Mash bucket.`,
+      },
+      cargo,
+    ],
+  },
+];
+// Without scripting the page shows the install that works today.
+const first = released ? script("Apple silicon") : cargo;
 ---
 
 <div class="mash-hero">
@@ -25,13 +76,25 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
           )
         }
       </div>
-      <div class="mash-install">
-        <div class="command">
-          <span class="prompt" aria-hidden="true">$</span>
-          <code>{install}</code>
-          <button type="button" data-copy={install} aria-label="Copy the install command">Copy</button>
+      <div class="mash-install" data-systems={JSON.stringify(systems)} data-released={released ? "" : undefined}>
+        <div class="choices">
+          <div class="choice" role="group" aria-label="Operating system" data-pick="system">
+            {
+              systems.map((system) => (
+                <button type="button" value={system.id} aria-pressed="false">
+                  {system.label}
+                </button>
+              ))
+            }
+          </div>
+          <div class="choice" role="group" aria-label="Install method" data-pick="method"></div>
         </div>
-        <p>Builds from source with Rust. <a href="/installation/">Other ways to install</a></p>
+        <div class="command">
+          <span class="prompt" aria-hidden="true">{first.prompt}</span>
+          <code>{first.command}</code>
+          <button type="button" data-copy={first.command} aria-label="Copy the install command">Copy</button>
+        </div>
+        <p><span class="note">{first.note}</span> <a href="/installation/">Other ways to install</a></p>
       </div>
       {
         actions.length > 0 && (
@@ -65,6 +128,15 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
       const code = button.parentElement?.querySelector("code");
       if (code) getSelection()?.selectAllChildren(code);
     }
+  });
+</script>
+
+<script>
+  import { mountInstall } from "../install.ts";
+
+  // Runs on the first load and after each page change.
+  document.addEventListener("astro:page-load", () => {
+    for (const picker of document.querySelectorAll<HTMLElement>(".mash-install")) mountInstall(picker);
   });
 </script>
 
@@ -120,6 +192,40 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
     max-width: 100%;
     align-self: center;
   }
+  .choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1rem;
+    justify-content: center;
+  }
+  .choice {
+    display: flex;
+    gap: 0.125rem;
+    padding: 0.125rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--sl-color-black) 82%, transparent);
+  }
+  .choice:empty {
+    display: none;
+  }
+  .choice :global(button) {
+    min-width: 0;
+    padding: 0.1875rem 0.625rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--sl-color-gray-2);
+    font: 500 var(--sl-text-sm) var(--sl-font);
+    cursor: pointer;
+  }
+  .choice :global(button:hover) {
+    color: var(--sl-color-white);
+  }
+  .choice :global(button[aria-pressed="true"]) {
+    background: var(--sl-color-gray-5);
+    color: var(--sl-color-white);
+  }
   .command {
     display: flex;
     align-items: center;
@@ -146,7 +252,7 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
     color: var(--sl-color-white);
     white-space: nowrap;
   }
-  button {
+  .command button {
     flex: none;
     min-width: 4.25rem;
     padding: 0.375rem 0.75rem;
@@ -157,7 +263,7 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
     font: 500 var(--sl-text-sm) var(--sl-font);
     cursor: pointer;
   }
-  button:hover {
+  .command button:hover {
     border-color: var(--sl-color-gray-3);
   }
   .mash-install p {
@@ -181,6 +287,9 @@ const install = "cargo +stable install --locked --git https://github.com/kojah/m
     }
     .mash-install {
       align-self: flex-start;
+    }
+    .choices {
+      justify-content: flex-start;
     }
   }
 </style>
