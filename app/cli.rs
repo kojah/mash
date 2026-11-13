@@ -23,7 +23,8 @@ pub(crate) struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     db: Option<PathBuf>,
 
-    /// Semantic model asset directory.
+    /// Semantic model asset directory [default: ~/.local/share/mash/models on
+    /// Linux, ~/Library/Application Support/dev.jamesqo.mash/models on macOS].
     #[arg(long, global = true, value_name = "PATH")]
     models_dir: Option<PathBuf>,
 
@@ -268,6 +269,14 @@ enum Command {
 #[derive(Debug, Clone, Subcommand)]
 enum ModelsCommand {
     /// Explicitly install embedding and reranking models.
+    #[command(long_about = concat!(
+        "Explicitly install embedding and reranking models.\n\n",
+        "Downloads about 177 MB (more on Apple silicon, which adds a Core ML embedding model) ",
+        "from https://huggingface.co, or from the Hugging Face mirror named by HF_ENDPOINT, ",
+        "into the models directory: ~/.local/share/mash/models on Linux and ",
+        "~/Library/Application Support/dev.jamesqo.mash/models on macOS, unless --models-dir is set. ",
+        "Word-exact search does not need these models.",
+    ))]
     Install,
 }
 

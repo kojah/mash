@@ -291,3 +291,35 @@ fn maintained_repository_is_independent_and_minimal() {
         assert!(!manifest.to_ascii_lowercase().contains(removed));
     }
 }
+
+/// B-012: the model download's size, source and destination are visible
+/// before anything is downloaded.
+#[test]
+fn models_install_help_states_download_size_source_and_directory() {
+    let help = |arguments: &[&str]| {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args(arguments)
+            .arg("--help")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let body: Value = serde_json::from_slice(&output.stdout).unwrap();
+        body["help"].as_str().unwrap().to_owned()
+    };
+    let install = help(&["models", "install"]);
+    for part in [
+        "about 177 MB",
+        "https://huggingface.co",
+        "HF_ENDPOINT",
+        "~/.local/share/mash/models",
+        "--models-dir",
+    ] {
+        assert!(install.contains(part), "{install}");
+    }
+    let init = help(&["init"]);
+    assert!(
+        init.contains("[default: ~/.local/share/mash/models on"),
+        "{init}"
+    );
+}

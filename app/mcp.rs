@@ -677,7 +677,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly download and install embedding and reranking models. Requires network access and writes model assets."
+        description = "Explicitly download and install embedding and reranking models: about 177 MB from https://huggingface.co, or the Hugging Face mirror named by HF_ENDPOINT, into the configured models directory. Requires network access and writes model assets."
     )]
     async fn models_install(&self) -> CallToolResult {
         self.execute(Operation::ModelsInstall).await

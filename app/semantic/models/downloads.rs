@@ -51,8 +51,10 @@ fn download(
     // FastEmbed's prebuilt-model constructor overrides its cache_dir with
     // HF_HOME. Use HF Hub explicitly so the installer owns every mutable write.
     // Mirror selection remains supported without mutating process environment.
-    let endpoint =
-        std::env::var("HF_ENDPOINT").unwrap_or_else(|_| "https://huggingface.co".to_owned());
+    let mirror = std::env::var("HF_ENDPOINT").ok();
+    let endpoint = mirror
+        .clone()
+        .unwrap_or_else(|| "https://huggingface.co".to_owned());
     let api = ApiBuilder::new()
         .with_cache_dir(root.to_path_buf())
         .with_endpoint(endpoint.clone())
@@ -67,9 +69,7 @@ fn download(
         .chain(TOKENIZER_FILES)
     {
         repo.get(file).map_err(|error| {
-            let message = format!(
-                "failed to download model asset {file} from {endpoint}: {error}; semantic models (about 170 MB) need network access to {endpoint} or a Hugging Face mirror named by HF_ENDPOINT; word-exact search does not need them, only the local Qdrant service that every search uses"
-            );
+            let message = failure(file, mirror.as_deref(), &error.to_string());
             if unreachable(&error.to_string()) {
                 AppError::model_unreachable(message)
             } else {
@@ -78,6 +78,22 @@ fn download(
         })?;
     }
     Ok(())
+}
+
+/// Name the host that failed: the default Hugging Face endpoint, or the
+/// mirror set by `HF_ENDPOINT` together with how to stop using it.
+fn failure(file: &str, mirror: Option<&str>, error: &str) -> String {
+    let source = match mirror {
+        Some(mirror) => format!(
+            "could not download model asset {file} from the Hugging Face mirror set by HF_ENDPOINT ({mirror}): {error}; check that mirror, or unset HF_ENDPOINT to download from https://huggingface.co"
+        ),
+        None => format!(
+            "could not download model asset {file} from https://huggingface.co: {error}; check network access to it, or set HF_ENDPOINT to a Hugging Face mirror"
+        ),
+    };
+    format!(
+        "{source}. Semantic models need about 177 MB; word-exact search does not need them, only the local Qdrant service that every search uses"
+    )
 }
 
 /// The download host could not be reached at all, so repeating the same

@@ -30,7 +30,7 @@ fn installation_child() {
             error
                 .error
                 .message
-                .contains("failed to download model asset")
+                .contains("could not download model asset")
         );
         assert!(
             walkdir::WalkDir::new(stage.root())
@@ -192,4 +192,30 @@ fn unreachable_hosts_are_told_apart_from_transient_failures() {
     assert!(!unreachable(
         "Too many retries: I/O error unexpected end of file"
     ));
+}
+
+/// B-016: a failed mirror is named as the host that failed, not as advice.
+#[test]
+fn download_failures_name_the_host_that_failed() {
+    let mirror = failure(
+        "model.onnx",
+        Some("http://127.0.0.1:9"),
+        "Connection refused",
+    );
+    assert!(
+        mirror.starts_with("could not download model asset model.onnx from the Hugging Face mirror set by HF_ENDPOINT (http://127.0.0.1:9): Connection refused;"),
+        "{mirror}"
+    );
+    assert!(mirror.contains("unset HF_ENDPOINT to download from https://huggingface.co"));
+    assert!(!mirror.contains("need network access to http://127.0.0.1:9"));
+    let default = failure("model.onnx", None, "Connection refused");
+    assert!(
+        default
+            .starts_with("could not download model asset model.onnx from https://huggingface.co:"),
+        "{default}"
+    );
+    assert!(default.contains("set HF_ENDPOINT to a Hugging Face mirror"));
+    for message in [mirror, default] {
+        assert!(message.contains("about 177 MB"), "{message}");
+    }
 }
