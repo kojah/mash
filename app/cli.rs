@@ -267,7 +267,10 @@ enum Command {
     /// Serve search tools over the stdio MCP protocol.
     Mcp,
     /// Serve the dashboard (history is read-only; service management is opt-in).
+    #[command(args_conflicts_with_subcommands = true)]
     Dash {
+        #[command(subcommand)]
+        command: Option<DashCommand>,
         /// Address to listen on; loopback by default.
         #[arg(long, value_name = "ADDRESS", default_value = "127.0.0.1:8790")]
         listen: std::net::SocketAddr,
@@ -293,6 +296,27 @@ enum Command {
         /// This dashboard's machine ID; defaults to the inventory controller.
         #[arg(long, requires = "fleet_config")]
         fleet_node: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum DashCommand {
+    /// Keep the dashboard running and open it from your other devices over
+    /// Tailscale, behind a sign-in. Prints the address, a one-time code and a
+    /// QR code to scan.
+    Remote {
+        /// Port for the dashboard on this machine and in its tailnet address.
+        #[arg(long, default_value_t = 8790)]
+        port: u16,
+        /// Print a fresh one-time code for signing another device in.
+        #[arg(long, conflicts_with_all = ["qr", "remove"])]
+        code: bool,
+        /// Show the sign-in QR code again.
+        #[arg(long, conflicts_with = "remove")]
+        qr: bool,
+        /// Stop serving and remove the service; the token is kept.
+        #[arg(long)]
+        remove: bool,
     },
 }
 
@@ -635,6 +659,61 @@ impl Cli {
     }
 }
 
+/// Serve the dashboard, or set up its remote access.
+fn dash(runtime: &tokio::runtime::Runtime, paths: Paths, command: Command) -> Result<(), AppError> {
+    match command {
+        Command::Dash {
+            command:
+                Some(DashCommand::Remote {
+                    port,
+                    code,
+                    qr,
+                    remove,
+                }),
+            ..
+        } => runtime.block_on(crate::dash::remote(
+            paths,
+            port,
+            remote_action(code, qr, remove),
+        )),
+        Command::Dash {
+            command: None,
+            listen,
+            allow_host,
+            access_token_env,
+            shared_only,
+            services_config,
+            fleet_config,
+            fleet_node,
+        } => runtime.block_on(crate::dash::run(
+            paths,
+            crate::dash::Reach {
+                listen,
+                hosts: allow_host,
+                access_token_env,
+                shared_only,
+            },
+            services_config,
+            fleet_config,
+            fleet_node,
+        )),
+        _ => Err(AppError::internal("not a dashboard command")),
+    }
+}
+
+fn remote_action(code: bool, qr: bool, remove: bool) -> crate::dash::RemoteAction {
+    use crate::dash::RemoteAction;
+    if remove {
+        RemoteAction::Remove
+    } else if code {
+        RemoteAction::Code
+    } else if qr {
+        RemoteAction::Qr
+    } else {
+        RemoteAction::Setup
+    }
+}
+
 pub(super) fn run<I, T>(args: I) -> Result<Response, AppError>
 where
     I: IntoIterator<Item = T>,
@@ -683,7 +762,7 @@ where
     let warm_up = {
         use crate::semantic::remote_reranker::{Occasion, warm_up_task};
         let occasion = match &cli.command {
-            Command::Mcp | Command::Dash { .. } => Some(Occasion::LongRunning),
+            Command::Mcp | Command::Dash { command: None, .. } => Some(Occasion::LongRunning),
             Command::Index { watch: false, .. } => Some(Occasion::CatchUp),
             _ => None,
         };
@@ -691,33 +770,13 @@ where
             .and_then(|occasion| warm_up_task(occasion, cli.config.clone()))
             .map(|task| runtime.spawn(task))
     };
-    if let Command::Dash {
-        listen,
-        allow_host,
-        access_token_env,
-        shared_only,
-        services_config,
-        fleet_config,
-        fleet_node,
-    } = cli.command
-    {
+    if matches!(cli.command, Command::Dash { .. }) {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        runtime.block_on(crate::dash::run(
-            paths,
-            crate::dash::Reach {
-                listen,
-                hosts: allow_host,
-                access_token_env,
-                shared_only,
-            },
-            services_config,
-            fleet_config,
-            fleet_node,
-        ))?;
+        dash(&runtime, paths, cli.command)?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp = cli.command {
         let paths = Paths {

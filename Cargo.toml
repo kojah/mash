@@ -100,6 +100,7 @@ schemars = "1.2"
 aide = { version = "=0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-ws"] }
 walkdir = "2.5.0"
 same-file = "1.0.6"
+qrcode = { version = "0.14", default-features = false }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }

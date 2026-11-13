@@ -148,54 +148,69 @@ machines appear in the dashboard through [sharing](shared-index.md).
 
 ## Open it from your phone or another computer
 
-By default, only your machine can reach the dashboard. To use it from other
-devices, give it an access token and a private network path. The steps below
-use [Tailscale](https://tailscale.com), which gives the dashboard an HTTPS
-address only your own devices can open.
+By default, only your machine can reach the dashboard. On Linux with
+[Tailscale](https://tailscale.com) connected, one command makes it reachable
+from your other devices, and only from them:
 
-1. On the machine that runs the dashboard, choose a token of at least 32
-   characters and keep it in an environment variable:
+```sh
+mash dash remote
+```
 
-   ```sh
-   export MASH_DASH_TOKEN="$(openssl rand -hex 24)"
-   echo "$MASH_DASH_TOKEN"
-   ```
+It keeps the dashboard running as a user service behind a sign-in, gives it an
+HTTPS address inside your tailnet, and prints the address, a one-time code and
+a QR code:
 
-2. Publish the dashboard's port inside your tailnet. The command prints the
-   address, such as `https://laptop.your-tailnet.ts.net`:
+```json
+{
+  "dashboard": "https://laptop.your-tailnet.ts.net:8790/",
+  "service": "mash-dash.service",
+  "code": "K7M-2QX",
+  "code_minutes": 10
+}
+```
 
-   ```sh
-   tailscale serve --bg 8790
-   ```
+On the phone, with Tailscale connected, scan the QR code. Or open the address
+and type the code. Either way the browser stays signed in for 30 days.
 
+| To | Run |
+| --- | --- |
+| Sign another device in | `mash dash remote --code` |
+| Show the QR code again | `mash dash remote --qr` |
+| Use another port | `mash dash remote --port 8791` (with every command) |
+| Stop serving | `mash dash remote --remove` |
+
+A code works once, within ten minutes. The QR code holds the long-lived token
+itself, after `#` in the address, where browsers never send it to a server;
+the dashboard signs in and removes it from the address at once. Treat a picture
+of it like a password.
+
+The dashboard searches whatever that machine can search: its own history and,
+with a [shared index](shared-index.md), your other machines' history too. For
+the shared index the service needs the node token: run `mash dash remote` in a
+shell where that variable is set, and it is saved for the service in
+`~/.mash/dashboard.env`, readable only by you.
+
+A machine with no agent history of its own, such as the server that holds the
+shared index, can still host the dashboard: start it with `--shared-only`, and
+chats, search and memories come from the shared index alone.
+
+### Set it up by hand
+
+On macOS or Windows, or behind another HTTPS reverse proxy such as Caddy:
+
+1. Choose a token of at least 32 characters and put it in an environment
+   variable, for example `MASH_DASH_TOKEN`.
+2. Give the dashboard an HTTPS address. With Tailscale:
+   `tailscale serve --bg 8790`.
 3. Start the dashboard with that name and the token variable:
 
    ```sh
    mash dash --allow-host laptop.your-tailnet.ts.net --access-token-env MASH_DASH_TOKEN
    ```
 
-4. On the phone, with Tailscale connected, open the address and enter the
-   token once. The browser stays signed in for 30 days.
-
-On Linux, `tools/dashboard-remote.sh` in the source repository does steps 1 to
-3, keeps the dashboard running as a user service, and prints a QR code to scan
-instead of typing the token (`tools/dashboard-remote.sh --qr` shows it again).
-The code opens `https://…/#signin=TOKEN`; the dashboard signs in and removes
-the token from the address at once. Treat the code like the token itself.
-
-The dashboard searches whatever that machine can search: its own history and,
-with a [shared index](shared-index.md), your other machines' history too.
-
-A machine with no agent history of its own, such as the server that holds the
-shared index, can still host the dashboard. Give it a configuration with a
-`[shared]` table and start the dashboard with `--shared-only`: chats, search
-and memories then come from the shared index alone, and no local index is
-needed.
-
 `--allow-host` is the name browsers use for the dashboard, with its port when
-the address shows one (`laptop.your-tailnet.ts.net:8443`); repeat it for more
-than one. It works the same way behind another HTTPS reverse proxy, such as
-Caddy. Changing the token signs every browser out.
+the address shows one; repeat it for more than one. Changing the token signs
+every browser out.
 
 ## Keep access private
 

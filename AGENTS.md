@@ -7,7 +7,9 @@ Node and server configuration is strict TOML only. Do not add JSON compatibility
 Keep the CLI command surface limited to `init`, `index`, `search`, `list-chats`, `view`,
 `status`, `forget`, `export`, `import`, `models install`, `qdrant install`
 (with its matching `qdrant uninstall`), `mcp`, and `dash`
-(the local web dashboard: history is read-only; service management is opt-in).
+(the local web dashboard: history is read-only; service management is opt-in),
+with `dash remote` to keep it running behind a sign-in at a private Tailscale
+address.
 The shared HTTP service has its own `mash-server` executable; keep its process
 arguments separate from the local CLI and share the typed server implementation.
 `init` is first-run setup: it writes configuration for detected histories, registers

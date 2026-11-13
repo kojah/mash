@@ -15,7 +15,10 @@ use std::sync::Arc;
 
 mod access;
 mod contract;
+mod remote;
 mod services;
+
+pub(crate) use remote::{Action as RemoteAction, run as remote};
 
 mod assets {
     include!(concat!(env!("OUT_DIR"), "/dash_assets.rs"));
