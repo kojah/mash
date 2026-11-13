@@ -181,7 +181,11 @@ excerpts in relevance order. Each excerpt has a `message_id`, its own `node_id`,
 role, timestamp, and relevance scores. Open an excerpt with `view MESSAGE_ID
 --context N`, supplying `--shared NODE_ID` for a shared excerpt. Timestamps are
 Unix milliseconds; unknown metadata is null. Search never returns an entire
-chat automatically. Every returned message `id` in a `view` response is
+chat automatically. A local `view` response also names `chat_id`,
+`message_count`, `omitted_before` and `omitted_after` (messages ordered before the
+first or after the last returned one; other branches inside the window count in
+neither), with a `notice` when either is non-zero; shared views omit them.
+Every returned message `id` in a `view` response is
 itself a view anchor: to keep reading, view the first or last returned message
 with the same `--shared` value. `--context` has no upper bound and bodies are
 never truncated.

@@ -1848,9 +1848,32 @@ export interface components {
             /** @default false */
             shared: boolean;
         };
+        /**
+         * @description Where a view's messages sit in their chat, so a short window is not
+         *     mistaken for the whole conversation.
+         */
         ViewResponse: {
+            /** @description The chat the viewed message belongs to. */
+            chat_id?: string;
             id: string;
+            /**
+             * Format: uint64
+             * @description Every message the chat retains, including other branches.
+             */
+            message_count?: number;
             messages: components["schemas"]["Message"][];
+            /** @description How to read on when messages before or after the window were omitted. */
+            notice?: string | null;
+            /**
+             * Format: uint64
+             * @description Messages later than the last returned message.
+             */
+            omitted_after?: number;
+            /**
+             * Format: uint64
+             * @description Messages earlier than the first returned message.
+             */
+            omitted_before?: number;
         };
         ViewsConfiguration: {
             /**
@@ -1907,6 +1930,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /**
+             * @description Where a view's messages sit in their chat, so a short window is not
+             *     mistaken for the whole conversation.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2642,6 +2669,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /**
+             * @description Where a view's messages sit in their chat, so a short window is not
+             *     mistaken for the whole conversation.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;

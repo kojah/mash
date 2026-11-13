@@ -136,6 +136,13 @@ WHERE chat_id=sqlc.arg(chat_id) AND id=sqlc.arg(id);
 -- name: FirstChild :one
 SELECT id,ordinal FROM messages WHERE chat_id=sqlc.arg(chat_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
 
+-- name: ChatWindow :one
+-- A view's place in its chat: all messages, and those before and after its ordinal range.
+SELECT COUNT(*) AS message_count,
+    CAST(COALESCE(SUM(ordinal<sqlc.arg(first_ordinal)),0) AS INTEGER) AS omitted_before,
+    CAST(COALESCE(SUM(ordinal>sqlc.arg(last_ordinal)),0) AS INTEGER) AS omitted_after
+FROM messages WHERE chat_id=sqlc.arg(chat_id);
+
 -- name: SilverCertificate :one
 SELECT s.revision, s.interpretation_version,
     CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=0) AS INTEGER) AS pending,

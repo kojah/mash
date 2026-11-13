@@ -3302,6 +3302,119 @@ impl<'a> FirstChildBuilder<'a, (&'a str, Option<&'a str>)> {
         FirstChild { chat_id, parent }
     }
 }
+pub struct ChatWindowRow {
+    pub message_count: i64,
+    pub omitted_before: i64,
+    pub omitted_after: i64,
+}
+impl ChatWindowRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            message_count: row.get(0)?,
+            omitted_before: row.get(1)?,
+            omitted_after: row.get(2)?,
+        })
+    }
+}
+pub struct ChatWindow<'a> {
+    first_ordinal: i64,
+    last_ordinal: i64,
+    chat_id: &'a str,
+}
+impl<'a> ChatWindow<'a> {
+    pub const QUERY: &'static str = r"SELECT COUNT(*) AS message_count,
+    CAST(COALESCE(SUM(ordinal<?1),0) AS INTEGER) AS omitted_before,
+    CAST(COALESCE(SUM(ordinal>?2),0) AS INTEGER) AS omitted_after
+FROM messages WHERE chat_id=?3";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ChatWindow<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatWindowRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ChatWindowRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ChatWindowRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ChatWindowRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.first_ordinal, self.last_ordinal, self.chat_id)
+    }
+}
+impl<'a> ChatWindow<'a> {
+    pub const fn builder() -> ChatWindowBuilder<'a, ((), (), ())> {
+        ChatWindowBuilder {
+            fields: ((), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ChatWindowBuilder<'a, Fields = ((), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, LastOrdinal, ChatId> ChatWindowBuilder<'a, ((), LastOrdinal, ChatId)> {
+    pub fn first_ordinal(
+        self,
+        first_ordinal: i64,
+    ) -> ChatWindowBuilder<'a, (i64, LastOrdinal, ChatId)> {
+        let ((), last_ordinal, chat_id) = self.fields;
+        let _phantom = self._phantom;
+        ChatWindowBuilder {
+            fields: (first_ordinal, last_ordinal, chat_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, FirstOrdinal, ChatId> ChatWindowBuilder<'a, (FirstOrdinal, (), ChatId)> {
+    pub fn last_ordinal(
+        self,
+        last_ordinal: i64,
+    ) -> ChatWindowBuilder<'a, (FirstOrdinal, i64, ChatId)> {
+        let (first_ordinal, (), chat_id) = self.fields;
+        let _phantom = self._phantom;
+        ChatWindowBuilder {
+            fields: (first_ordinal, last_ordinal, chat_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, FirstOrdinal, LastOrdinal> ChatWindowBuilder<'a, (FirstOrdinal, LastOrdinal, ())> {
+    pub fn chat_id(
+        self,
+        chat_id: &'a str,
+    ) -> ChatWindowBuilder<'a, (FirstOrdinal, LastOrdinal, &'a str)> {
+        let (first_ordinal, last_ordinal, ()) = self.fields;
+        let _phantom = self._phantom;
+        ChatWindowBuilder {
+            fields: (first_ordinal, last_ordinal, chat_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ChatWindowBuilder<'a, (i64, i64, &'a str)> {
+    pub fn build(self) -> ChatWindow<'a> {
+        let (first_ordinal, last_ordinal, chat_id) = self.fields;
+        ChatWindow {
+            first_ordinal,
+            last_ordinal,
+            chat_id,
+        }
+    }
+}
 pub struct SilverCertificateRow {
     pub revision: i64,
     pub interpretation_version: i64,

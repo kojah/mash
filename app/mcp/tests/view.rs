@@ -105,10 +105,38 @@ async fn sdk_list_chats_rows_carry_a_first_message_view_lookup() {
     )
     .await;
     assert_ne!(viewed.is_error, Some(true), "{viewed:?}");
-    assert_eq!(
-        viewed.structured_content.unwrap()["messages"][0]["id"],
-        "first-message"
+    // R2 S-003: the default window says the chat continues.
+    let body = viewed.structured_content.clone().unwrap();
+    assert_eq!(body["messages"][0]["id"], "first-message");
+    assert_eq!(body["messages"].as_array().unwrap().len(), 1, "{body}");
+    assert_eq!(body["chat_id"], "log-rotation", "{body}");
+    assert_eq!(body["message_count"], 2, "{body}");
+    assert_eq!(body["omitted_before"], 0, "{body}");
+    assert_eq!(body["omitted_after"], 1, "{body}");
+    let notice = body["notice"].as_str().unwrap();
+    assert!(
+        notice.starts_with("Showing 1 of this chat's 2 messages; 1 later message is not shown."),
+        "{notice}"
     );
+    let text = viewed
+        .content
+        .iter()
+        .filter_map(|content| content.as_text())
+        .map(|text| text.text.as_str())
+        .collect::<String>();
+    assert!(text.contains("omitted after: 1"), "{text}");
+    assert!(text.contains("Notice: Showing 1 of"), "{text}");
+    let whole = call(
+        &client,
+        "view",
+        json!({"id": "second-message", "context": 1}),
+    )
+    .await;
+    let whole = whole.structured_content.unwrap();
+    assert_eq!(whole["messages"].as_array().unwrap().len(), 2, "{whole}");
+    assert_eq!(whole["omitted_before"], 0, "{whole}");
+    assert_eq!(whole["omitted_after"], 0, "{whole}");
+    assert!(whole.get("notice").is_none(), "{whole}");
     let extended = call(
         &client,
         "list_chats",

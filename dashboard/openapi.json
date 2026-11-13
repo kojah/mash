@@ -5068,15 +5068,45 @@
         "type": "object"
       },
       "ViewResponse": {
+        "description": "Where a view's messages sit in their chat, so a short window is not\nmistaken for the whole conversation.",
         "properties": {
+          "chat_id": {
+            "description": "The chat the viewed message belongs to.",
+            "type": "string"
+          },
           "id": {
             "type": "string"
+          },
+          "message_count": {
+            "description": "Every message the chat retains, including other branches.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
           },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/Message"
             },
             "type": "array"
+          },
+          "notice": {
+            "description": "How to read on when messages before or after the window were omitted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "omitted_after": {
+            "description": "Messages later than the last returned message.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "omitted_before": {
+            "description": "Messages earlier than the first returned message.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -5218,7 +5248,7 @@
                 }
               }
             },
-            "description": ""
+            "description": "Where a view's messages sit in their chat, so a short window is not\nmistaken for the whole conversation."
           },
           "default": {
             "content": {
@@ -6231,7 +6261,7 @@
                 }
               }
             },
-            "description": ""
+            "description": "Where a view's messages sit in their chat, so a short window is not\nmistaken for the whole conversation."
           },
           "default": {
             "content": {

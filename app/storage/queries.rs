@@ -4,7 +4,7 @@ use rusqlite::{Connection, OpenFlags};
 
 use super::generated as sql;
 use super::schema::SCHEMA_VERSION;
-use super::{Counts, Message, StatusSnapshot, Storage};
+use super::{ChatWindow, Counts, Message, StatusSnapshot, Storage};
 
 /// An ID passed to `view` that names no message.
 pub(crate) enum UnmatchedId {
@@ -123,6 +123,42 @@ impl Storage {
 
     pub(crate) fn view(&self, id: &str, context: u32) -> Result<Vec<Message>, AppError> {
         self.view_content(id, context, super::MessageContent::Canonical)
+    }
+
+    /// The chat around `messages`, a view anchored at `id`; `None` when `id`
+    /// matches no message or nothing was returned.
+    pub(crate) fn chat_window(
+        &self,
+        id: &str,
+        messages: &[Message],
+    ) -> Result<Option<ChatWindow>, AppError> {
+        let (Some(first), Some(last)) = (messages.first(), messages.last()) else {
+            return Ok(None);
+        };
+        let Some(anchor) = sql::Anchor::builder()
+            .id(id)
+            .build()
+            .query_opt(&self.connection)
+            .map_err(AppError::database)?
+        else {
+            return Ok(None);
+        };
+        let row = sql::ChatWindow::builder()
+            .first_ordinal(first.ordinal)
+            .last_ordinal(last.ordinal)
+            .chat_id(&anchor.chat_id)
+            .build()
+            .query_one(&self.connection)
+            .map_err(AppError::database)?;
+        let count = |value| {
+            u64::try_from(value).map_err(|_| AppError::database_data("negative message count"))
+        };
+        Ok(Some(ChatWindow {
+            chat_id: anchor.chat_id,
+            message_count: count(row.message_count)?,
+            omitted_before: count(row.omitted_before)?,
+            omitted_after: count(row.omitted_after)?,
+        }))
     }
 
     /// What an ID that matches no message names instead.

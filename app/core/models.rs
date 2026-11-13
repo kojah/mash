@@ -320,7 +320,62 @@ pub(crate) struct SearchResponse {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ViewResponse {
     pub(crate) id: String,
+    /// The viewed message's chat and how many of its messages lie outside
+    /// the returned window. Local views only.
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub(crate) chat: Option<crate::storage::ChatWindow>,
+    /// How to read on when messages before or after the window were omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) notice: Option<String>,
     pub(crate) messages: Vec<crate::storage::Message>,
+}
+
+impl ViewResponse {
+    /// A page or window without its place in the chat.
+    pub(crate) fn messages(id: String, messages: Vec<crate::storage::Message>) -> Self {
+        Self {
+            id,
+            chat: None,
+            notice: None,
+            messages,
+        }
+    }
+
+    /// A local view with its place in the chat, and a notice when the chat
+    /// continues beyond the returned messages.
+    pub(crate) fn window(
+        id: String,
+        chat: Option<crate::storage::ChatWindow>,
+        messages: Vec<crate::storage::Message>,
+    ) -> Self {
+        let notice = chat.as_ref().and_then(|chat| {
+            let omitted = chat.omitted_before + chat.omitted_after;
+            (omitted > 0).then(|| {
+                let sides = [(chat.omitted_before, "earlier"), (chat.omitted_after, "later")]
+                    .into_iter()
+                    .filter(|(count, _)| *count > 0)
+                    .map(|(count, side)| format!("{count} {side}"))
+                    .collect::<Vec<_>>()
+                    .join(" and ");
+                let noun = if omitted == 1 {
+                    "message is"
+                } else {
+                    "messages are"
+                };
+                format!(
+                    "Showing {} of this chat's {} messages; {sides} {noun} not shown. Raise context (CLI `--context N`) to read more, or view the first or last returned message.",
+                    messages.len(),
+                    chat.message_count
+                )
+            })
+        });
+        Self {
+            id,
+            chat,
+            notice,
+            messages,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]

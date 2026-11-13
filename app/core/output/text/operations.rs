@@ -11,6 +11,21 @@ pub(super) fn view(out: &mut String, value: &ViewResponse) -> Result<(), serde_j
             value.messages.len()
         ),
     );
+    if let Some(chat) = &value.chat {
+        line(
+            out,
+            &format!(
+                "Chat: {} · {} messages · omitted before: {} · omitted after: {}",
+                safe(&chat.chat_id),
+                chat.message_count,
+                chat.omitted_before,
+                chat.omitted_after
+            ),
+        );
+    }
+    if let Some(notice) = &value.notice {
+        line(out, &format!("Notice: {}", safe(notice)));
+    }
     for message in &value.messages {
         line(
             out,

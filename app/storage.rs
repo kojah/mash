@@ -112,6 +112,20 @@ pub(crate) struct Message {
     pub(crate) tools: crate::tools::Activity,
 }
 
+/// Where a view's messages sit in their chat, so a short window is not
+/// mistaken for the whole conversation.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+pub(crate) struct ChatWindow {
+    /// The chat the viewed message belongs to.
+    pub(crate) chat_id: String,
+    /// Every message the chat retains, including other branches.
+    pub(crate) message_count: u64,
+    /// Messages earlier than the first returned message.
+    pub(crate) omitted_before: u64,
+    /// Messages later than the last returned message.
+    pub(crate) omitted_after: u64,
+}
+
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum MessageContent {

@@ -91,6 +91,33 @@ fn cli_view_reads_list_chats_lookup_and_rejects_chat_and_unknown_ids() {
     let id = listed["chats"][0]["lookup"]["view"]["id"].as_str().unwrap();
     let viewed = run_json(&[base.as_slice(), &["view", id]].concat());
     assert_eq!(viewed["messages"][0]["id"], "message");
+    // R2 S-003: the default window names its chat and says nothing was cut.
+    assert_eq!(viewed["chat_id"], "session", "{viewed}");
+    assert_eq!(viewed["message_count"], 1, "{viewed}");
+    assert_eq!(viewed["omitted_before"], 0, "{viewed}");
+    assert_eq!(viewed["omitted_after"], 0, "{viewed}");
+    assert!(viewed.get("notice").is_none(), "{viewed}");
+    // Once the chat continues, the same default view says so.
+    open_silver(&database)
+        .execute(
+            "INSERT INTO messages(id,chat_id,ordinal,role,content_packed) VALUES('reply','session',1,'assistant','use logrotate')",
+            [],
+        )
+        .unwrap();
+    let viewed = run_json(&[base.as_slice(), &["view", id]].concat());
+    assert_eq!(viewed["messages"].as_array().unwrap().len(), 1, "{viewed}");
+    assert_eq!(viewed["message_count"], 2, "{viewed}");
+    assert_eq!(viewed["omitted_after"], 1, "{viewed}");
+    let notice = viewed["notice"].as_str().unwrap();
+    assert!(
+        notice.contains("Showing 1 of this chat's 2 messages; 1 later message is not shown.")
+            && notice.contains("`--context N`"),
+        "{notice}"
+    );
+    let all = run_json(&[base.as_slice(), &["view", "reply", "--context", "1"]].concat());
+    assert_eq!(all["messages"].as_array().unwrap().len(), 2, "{all}");
+    assert_eq!(all["omitted_before"], 0, "{all}");
+    assert!(all.get("notice").is_none(), "{all}");
     for (id, expected) in [
         ("session", "is a chat ID"),
         ("no-such-thing", "no message with ID"),

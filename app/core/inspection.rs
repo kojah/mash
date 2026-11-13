@@ -65,7 +65,7 @@ pub(super) async fn view(
             message.content = output.text(&message.content);
             output.tools(&mut message.tools);
         }
-        Ok(ViewResponse { id, messages })
+        Ok(ViewResponse::messages(id, messages))
     } else {
         let database = database.to_path_buf();
         crate::blocking(move || local_view(&database, id, context, output)).await
@@ -252,10 +252,7 @@ pub(super) async fn chat_messages(
             output.tools(&mut message.tools);
             output.attachments(&mut message.attachments);
         }
-        return Ok(ViewResponse {
-            id: chat_id,
-            messages,
-        });
+        return Ok(ViewResponse::messages(chat_id, messages));
     }
     let database = database.to_path_buf();
     crate::blocking(move || {
@@ -267,10 +264,7 @@ pub(super) async fn chat_messages(
             message.attachments = storage.list_attachments(&message.id)?.attachments;
             output.attachments(&mut message.attachments);
         }
-        Ok(ViewResponse {
-            id: chat_id,
-            messages,
-        })
+        Ok(ViewResponse::messages(chat_id, messages))
     })
     .await
 }
@@ -291,7 +285,8 @@ fn local_view(
         output.tools(&mut message.tools);
         message.attachments = storage.list_attachments(&message.id)?.attachments;
     }
-    Ok(ViewResponse { id, messages })
+    let chat = storage.chat_window(&id, &messages)?;
+    Ok(ViewResponse::window(id, chat, messages))
 }
 
 /// Chat and message IDs are separate namespaces, so view never reinterprets

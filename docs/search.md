@@ -28,7 +28,10 @@ context:
 mash view MESSAGE_ID --context 3
 ```
 
-Replace `MESSAGE_ID` with the returned message ID, not the chat ID. A chat ID
+Replace `MESSAGE_ID` with the returned message ID, not the chat ID. For local history, the result
+names the message's `chat_id`, the chat's `message_count`, and how many messages
+come before and after the returned ones (`omitted_before`, `omitted_after`).
+When some are left out, a `notice` says so; raise `--context` to read more. A chat ID
 or an ID that matches no message is an error (`not-found`); when you pass a chat
 ID, the error names the chat's first message ID to use instead.
 For a shared result, `lookup.view.shared` names its publishing node:
