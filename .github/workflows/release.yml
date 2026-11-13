@@ -71,9 +71,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: stable
+      # `mash dash` serves pages embedded at compile time (see build.rs), so
+      # they are built first and the compile fails without them.
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          package_json_file: site/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
       - name: Build
         env:
           MASH_BUILD_REVISION: ${{ github.sha }}
+          MASH_REQUIRE_DASHBOARD: 1
         run: cargo +stable build --release --locked --bin mash --bin mash-server
       - name: Smoke
         run: |

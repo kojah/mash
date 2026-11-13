@@ -42,7 +42,8 @@ fn main() {
 }
 
 /// Embeds the built `mash dash` front end (`dashboard/dist`) when it exists;
-/// without it the command serves a page saying how to build it.
+/// without it the command serves a page saying how to build it, unless
+/// `MASH_REQUIRE_DASHBOARD` makes its absence a build error.
 fn embed_dashboard() {
     // Read at run time. `env!` would bake in the checkout that compiled this
     // script, and a target directory shared between checkouts reuses that
@@ -50,6 +51,16 @@ fn embed_dashboard() {
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let dist = std::path::Path::new(&manifest).join("dashboard/dist");
     println!("cargo:rerun-if-changed={}", dist.display());
+    // A release must ship the dashboard, so its build sets this and fails here
+    // instead of quietly producing a binary without it.
+    println!("cargo:rerun-if-env-changed=MASH_REQUIRE_DASHBOARD");
+    let required =
+        std::env::var_os("MASH_REQUIRE_DASHBOARD").is_some_and(|value| !value.is_empty());
+    assert!(
+        !required || dist.join("index.html").is_file(),
+        "MASH_REQUIRE_DASHBOARD is set but {} has no index.html; run `pnpm install --frozen-lockfile && pnpm build` in dashboard/ first",
+        dist.display()
+    );
     let mut files = Vec::new();
     collect(&dist, &dist, &mut files);
     files.sort();
