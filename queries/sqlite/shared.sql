@@ -25,6 +25,11 @@ SELECT c.id, c.provider AS provider, c.title, c.project, c.repository, c.created
 FROM chats c LEFT JOIN chat_enrichment e ON e.chat_id = c.id
 ORDER BY c.id;
 
+-- name: NodeFirstMessages :many
+SELECT c.id AS chat_id, f.id AS first_message_id
+FROM chats c LEFT JOIN messages f ON f.chat_id = c.id
+    AND f.ordinal = (SELECT MIN(m.ordinal) FROM messages m WHERE m.chat_id = c.id);
+
 -- name: ChatProvider :one
 SELECT provider FROM chats
 WHERE id = sqlc.arg(id);

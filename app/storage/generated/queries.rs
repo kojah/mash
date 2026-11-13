@@ -24,6 +24,7 @@ pub struct ListChatsRow {
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
     pub enrichment: Option<String>,
+    pub first_message_id: Option<String>,
 }
 impl ListChatsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -36,6 +37,7 @@ impl ListChatsRow {
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
             enrichment: row.get(7)?,
+            first_message_id: row.get(8)?,
         })
     }
 }
@@ -59,8 +61,11 @@ impl<'a> ListChats<'a> {
     CAST(?7 AS INTEGER) AS before_ms,
     CAST(?8 AS TEXT) AS sort_key,
     CAST(?9 AS INTEGER) AS descending)
-SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment,
+    f.id AS first_message_id
 FROM chats c CROSS JOIN scope s LEFT JOIN chat_enrichment e ON e.chat_id=c.id
+LEFT JOIN messages f ON f.chat_id=c.id
+    AND f.ordinal=(SELECT MIN(m.ordinal) FROM messages m WHERE m.chat_id=c.id)
 WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
@@ -2547,6 +2552,80 @@ impl<'a> ParkMessageOrdinalBuilder<'a, (i64, &'a str, &'a str)> {
             chat_id,
             message_id,
         }
+    }
+}
+pub struct ChatFirstMessageRow {
+    pub first_message_id: Option<String>,
+}
+impl ChatFirstMessageRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            first_message_id: row.get(0)?,
+        })
+    }
+}
+pub struct ChatFirstMessage<'a> {
+    id: &'a str,
+}
+impl<'a> ChatFirstMessage<'a> {
+    pub const QUERY: &'static str = r"SELECT f.id AS first_message_id
+FROM chats c LEFT JOIN messages f ON f.chat_id=c.id
+    AND f.ordinal=(SELECT MIN(m.ordinal) FROM messages m WHERE m.chat_id=c.id)
+WHERE c.id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ChatFirstMessage<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatFirstMessageRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ChatFirstMessageRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ChatFirstMessageRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ChatFirstMessageRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl<'a> ChatFirstMessage<'a> {
+    pub const fn builder() -> ChatFirstMessageBuilder<'a, ((),)> {
+        ChatFirstMessageBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ChatFirstMessageBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ChatFirstMessageBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> ChatFirstMessageBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ChatFirstMessageBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ChatFirstMessageBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatFirstMessage<'a> {
+        let (id,) = self.fields;
+        ChatFirstMessage { id }
     }
 }
 pub struct AnchorRow {

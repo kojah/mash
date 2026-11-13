@@ -21,14 +21,17 @@ Prefer a visual view? Use the [dashboard](dashboard.md). Inside an agent, ask
 
 ## Read the original messages
 
-Copy a message ID from a result, then read it with nearby context:
+Copy `lookup.view.id` from a search result, then read that message with nearby
+context:
 
 ```bash
 mash view MESSAGE_ID --context 3
 ```
 
-Replace `MESSAGE_ID` with the returned message ID, not the chat ID.
-For a shared result, include its publishing node:
+Replace `MESSAGE_ID` with the returned message ID, not the chat ID. A chat ID
+or an ID that matches no message is an error (`not-found`); when you pass a chat
+ID, the error names the chat's first message ID to use instead.
+For a shared result, `lookup.view.shared` names its publishing node:
 
 ```bash
 mash view MESSAGE_ID --shared NODE_ID --context 3
@@ -40,8 +43,14 @@ mash view MESSAGE_ID --shared NODE_ID --context 3
 mash list-chats --title-contains 'authentication' --limit 10
 ```
 
-This lists chat metadata without models or a working search index. To search
-within one of those chats, copy its `chat_id`:
+This lists chat metadata without models or a working search index. Each chat
+carries `lookup.view` for its first message, so you can start reading it:
+
+```bash
+mash view FIRST_MESSAGE_ID --context 10
+```
+
+To search within one of those chats, copy its `chat_id`:
 
 ```bash
 mash search 'token' --chat CHAT_ID --unit messages

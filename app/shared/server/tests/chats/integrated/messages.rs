@@ -214,8 +214,8 @@ async fn contract(service: Service) {
     let ids: Vec<_> = discovered
         .chats
         .iter()
-        .filter(|thread| ["codex", "claude-code"].contains(&thread.chat_id.as_str()))
-        .map(|thread| thread.chat_id.clone())
+        .filter(|thread| ["codex", "claude-code"].contains(&thread.chat.chat_id.as_str()))
+        .map(|thread| thread.chat.chat_id.clone())
         .collect();
     assert_eq!(ids.len(), 2);
     let before = std::fs::read(paths.db.as_ref().unwrap()).unwrap();

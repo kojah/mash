@@ -346,6 +346,64 @@ impl<'a> NodeChatsBuilder<'a, ()> {
         NodeChats {}
     }
 }
+pub struct NodeFirstMessagesRow {
+    pub chat_id: String,
+    pub first_message_id: Option<String>,
+}
+impl NodeFirstMessagesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            chat_id: row.get(0)?,
+            first_message_id: row.get(1)?,
+        })
+    }
+}
+pub struct NodeFirstMessages;
+impl NodeFirstMessages {
+    pub const QUERY: &'static str = r"SELECT c.id AS chat_id, f.id AS first_message_id
+FROM chats c LEFT JOIN messages f ON f.chat_id = c.id
+    AND f.ordinal = (SELECT MIN(m.ordinal) FROM messages m WHERE m.chat_id = c.id)";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl NodeFirstMessages {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<NodeFirstMessagesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), NodeFirstMessagesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl NodeFirstMessages {
+    pub const fn builder() -> NodeFirstMessagesBuilder<'static, ()> {
+        NodeFirstMessagesBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct NodeFirstMessagesBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> NodeFirstMessagesBuilder<'a, ()> {
+    pub fn build(self) -> NodeFirstMessages {
+        let () = self.fields;
+        NodeFirstMessages {}
+    }
+}
 pub struct ChatProviderRow {
     pub provider: String,
 }

@@ -22,7 +22,8 @@ the problem concerns another machine.
 4. Check `mash status --installation` for missing provider roots or failed scans.
 
 `mash list-chats --title-contains 'part of the title'` can find a chat without
-using search models. If it appears there, search inside its returned chat ID.
+using search models. If it appears there, read it from its first message with
+`mash view` and the row's `lookup.view.id`, or search inside its returned chat ID.
 
 Tool output and reasoning are retained for reading but excluded from dialogue
 search. Search for a nearby user/assistant message, then open the transcript.

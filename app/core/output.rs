@@ -27,20 +27,8 @@ pub(crate) fn serialize(
     match response {
         Response::Search(value) => serde_json::to_value(Search::from(value)),
         Response::ListChats(value) => serde_json::to_value(List {
-            chats: value
-                .page
-                .chats
-                .iter()
-                .map(|thread| Chat {
-                    chat_id: &thread.chat_id,
-                    provider: &thread.provider,
-                    node_id: Some(&thread.node_id),
-                    metadata: metadata(&thread.metadata),
-                    score: None,
-                    matches: Vec::new(),
-                })
-                .collect(),
-            next_offset: value.page.next_offset,
+            chats: value.chats.iter().map(Chat::from).collect(),
+            next_offset: value.next_offset,
             shared: value.shared,
             shared_error: value.shared_error.as_deref(),
             diagnostics: value.diagnostics.as_ref(),
@@ -135,11 +123,28 @@ struct Chat<'a> {
     score: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     matches: Vec<Excerpt<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lookup: Option<&'a super::chats::Lookup>,
+}
+
+impl<'a> From<&'a super::chats::Row> for Chat<'a> {
+    fn from(row: &'a super::chats::Row) -> Self {
+        Self {
+            chat_id: &row.chat.chat_id,
+            provider: &row.chat.provider,
+            node_id: Some(&row.chat.node_id),
+            metadata: metadata(&row.chat.metadata),
+            score: None,
+            matches: Vec::new(),
+            lookup: row.lookup.as_ref(),
+        }
+    }
 }
 
 impl<'a> From<&'a ChatHit> for Chat<'a> {
     fn from(value: &'a ChatHit) -> Self {
         Self {
+            lookup: None,
             chat_id: &value.chat_id,
             provider: &value.provider,
             node_id: value.node_id.as_deref(),

@@ -9,17 +9,29 @@ use rusqlite::Connection;
 use std::io::Write;
 
 /// One published thread's catalogue row.
+#[allow(
+    clippy::struct_field_names,
+    reason = "chat is the published record; the struct names the catalogue row"
+)]
 pub(crate) struct Chat {
     pub(crate) node_id: String,
     pub(crate) chat: ChatRecord,
+    pub(crate) first_message_id: Option<String>,
 }
 
 /// Every thread of one node's silver.
 pub(crate) fn list_chats(connection: &Connection, node: &str) -> Result<Vec<Chat>, AppError> {
+    let mut first: std::collections::HashMap<String, String> = sql::NodeFirstMessages
+        .query_many(connection)
+        .map_err(database)?
+        .into_iter()
+        .filter_map(|row| Some((row.chat_id, row.first_message_id?)))
+        .collect();
     Ok(chats(connection)?
         .into_iter()
         .map(|chat| Chat {
             node_id: node.to_owned(),
+            first_message_id: first.remove(&chat.id),
             chat,
         })
         .collect())

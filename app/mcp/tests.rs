@@ -18,6 +18,7 @@ mod redaction;
 mod runtime;
 mod selections;
 mod skill;
+mod view;
 mod workflows;
 
 #[tokio::test]

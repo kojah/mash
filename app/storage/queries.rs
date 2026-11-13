@@ -5,6 +5,17 @@ use rusqlite::{Connection, OpenFlags};
 use super::generated as sql;
 use super::schema::SCHEMA_VERSION;
 use super::{Counts, Message, StatusSnapshot, Storage};
+
+/// An ID passed to `view` that names no message.
+pub(crate) enum UnmatchedId {
+    Unknown,
+    /// A chat that retains no messages.
+    EmptyChat,
+    /// A chat, with its first message by display position.
+    Chat {
+        first: String,
+    },
+}
 use crate::AppError;
 use crate::database_error::Operation;
 
@@ -112,6 +123,21 @@ impl Storage {
 
     pub(crate) fn view(&self, id: &str, context: u32) -> Result<Vec<Message>, AppError> {
         self.view_content(id, context, super::MessageContent::Canonical)
+    }
+
+    /// What an ID that matches no message names instead.
+    pub(crate) fn unmatched_id(&self, id: &str) -> Result<UnmatchedId, AppError> {
+        let row = sql::ChatFirstMessage::builder()
+            .id(id)
+            .build()
+            .query_opt(&self.connection)
+            .map_err(AppError::database)?;
+        Ok(match row {
+            None => UnmatchedId::Unknown,
+            Some(row) => row
+                .first_message_id
+                .map_or(UnmatchedId::EmptyChat, |first| UnmatchedId::Chat { first }),
+        })
     }
 
     /// One chat's messages by display position, `offset..offset + limit`.

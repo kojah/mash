@@ -1,7 +1,7 @@
 //! Metadata discovery independent of inference; merge before global pagination.
 use super::required_shared;
 use crate::AppError;
-use crate::chat_catalog::{Chat, Collector, Page, Request};
+use crate::chat_catalog::{Chat, Collector, Request};
 use crate::config::ResolvedConfig;
 use crate::observability::retrieval::{Capture, Guard, Measurement, Stage};
 use crate::shared;
@@ -16,13 +16,42 @@ mod tests;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Response {
-    #[serde(flatten)]
-    pub(crate) page: Page,
+    pub(crate) chats: Vec<Row>,
+    pub(crate) next_offset: Option<usize>,
     pub(crate) shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) shared_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) diagnostics: Option<Diagnostics>,
+}
+
+/// One listed chat with arguments `view` accepts to read it from the start.
+#[derive(Debug, Serialize)]
+pub(crate) struct Row {
+    #[serde(flatten)]
+    pub(crate) chat: Chat,
+    /// Absent only when the chat retains no messages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) lookup: Option<Lookup>,
+}
+
+/// The `view` arguments for a chat's first message, as search hits carry them.
+#[derive(Debug, Serialize)]
+pub(crate) struct Lookup {
+    pub(crate) view: crate::search_results::lookup::View,
+}
+
+impl Row {
+    /// Shared rows name their publishing node; rows read from local silver do not.
+    fn new(mut chat: Chat, local_node: &str, shared_only: bool) -> Self {
+        let lookup = chat.first_message_id.take().map(|id| Lookup {
+            view: crate::search_results::lookup::View {
+                id,
+                shared: (shared_only || chat.node_id != local_node).then(|| chat.node_id.clone()),
+            },
+        });
+        Self { chat, lookup }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -110,6 +139,7 @@ fn finish_dashboard(
         // The dashboard needs display metadata, not provenance or entire prompts
         // used as fallback titles. Avoid serializing/redacting unused evidence.
         chat.metadata.enrichment = None;
+        chat.first_message_id = None;
         if let Some(title) = &mut chat.metadata.title {
             crate::chat_catalog::headline(title);
         }
@@ -166,8 +196,8 @@ pub(super) async fn run(
         Some(capture) => capture.scope(work).await?,
         None => work.await?,
     };
-    for thread in &mut response.page.chats {
-        config.redaction.output().metadata(&mut thread.metadata);
+    for row in &mut response.chats {
+        config.redaction.output().metadata(&mut row.chat.metadata);
     }
     if let Some(capture) = capture {
         let use_shared = shared_only || (!local_only && config.shared.is_some());
@@ -189,7 +219,7 @@ pub(super) async fn run(
                 vec![Source::Local]
             },
             shared_fallback: response.shared_error.is_some(),
-            returned_results: response.page.chats.len(),
+            returned_results: response.chats.len(),
             elapsed_ms: crate::progress::milliseconds(started),
             stages: capture.finish(),
         });
@@ -256,7 +286,12 @@ async fn run_inner(
     let page = collector.finish();
     stage.complete(Some(candidates), Some(page.chats.len()));
     Ok(Response {
-        page,
+        chats: page
+            .chats
+            .into_iter()
+            .map(|chat| Row::new(chat, node, shared_only))
+            .collect(),
+        next_offset: page.next_offset,
         shared: use_shared && shared_error.is_none(),
         shared_error,
         diagnostics: None,

@@ -119,6 +119,9 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
     if let Some(score) = value.score {
         line(out, &format!("  Chat score: {score}"));
     }
+    if let Some(lookup) = value.lookup {
+        json(out, "  First message view", &lookup.view)?;
+    }
     for hit in &value.matches {
         line(
             out,
@@ -438,33 +441,22 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
         out,
         &format!(
             "Mash chats — {} results · shared included: {}",
-            value.page.chats.len(),
+            value.chats.len(),
             value.shared
         ),
     );
     warning(out, "shared listing", value.shared_error.as_deref());
-    for (index, row) in value.page.chats.iter().enumerate() {
-        thread(
-            out,
-            index + 1,
-            &Chat {
-                chat_id: &row.chat_id,
-                provider: &row.provider,
-                node_id: Some(&row.node_id),
-                metadata: super::metadata(&row.metadata),
-                score: None,
-                matches: Vec::new(),
-            },
-        )?;
+    for (index, row) in value.chats.iter().enumerate() {
+        thread(out, index + 1, &Chat::from(row))?;
     }
-    json(out, "Next offset", &value.page.next_offset)?;
-    if value.page.next_offset.is_some() {
+    json(out, "Next offset", &value.next_offset)?;
+    if value.next_offset.is_some() {
         line(
             out,
             "Continue list_chats with the same filters/order and this offset.",
         );
     }
-    if value.page.chats.is_empty() {
+    if value.chats.is_empty() {
         line(
             out,
             "No chats returned; this does not prove complete history or absence of chats.",

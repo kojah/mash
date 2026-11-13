@@ -1,4 +1,5 @@
 use super::*;
+use crate::chat_catalog::Page;
 use axum::extract::State;
 use std::sync::{
     Arc,
@@ -20,7 +21,7 @@ async fn malformed_catalog_json_falls_back_without_forwarding_response_contents(
     let response = run(&config, &database, Request::default(), false, false, false)
         .await
         .unwrap();
-    assert_eq!(response.page.chats.len(), 1);
+    assert_eq!(response.chats.len(), 1);
     let error = response.shared_error.unwrap();
     assert!(error.contains("invalid shared index HTTP response"));
     assert!(!error.contains("private-response-canary"));
@@ -58,7 +59,7 @@ async fn malformed_catalog_pages_fail_once_and_preserve_local_metadata() {
     let response = run(&config, &database, Request::default(), false, false, false)
         .await
         .unwrap();
-    assert_eq!(response.page.chats.len(), 1);
+    assert_eq!(response.chats.len(), 1);
     assert!(!response.shared);
     assert!(response.shared_error.unwrap().contains("pagination"));
     assert_eq!(
@@ -83,6 +84,7 @@ async fn shared_catalog_deadline_covers_all_pages_and_discards_partial_remote_re
                     for number in 0..120 {
                         collector.push(Chat {
                             chat_id: format!("peer-{number:03}"),
+                            first_message_id: None,
                             provider: Provider::Codex,
                             node_id: "peer".into(),
                             metadata: ChatMetadata {
@@ -123,8 +125,8 @@ async fn shared_catalog_deadline_covers_all_pages_and_discards_partial_remote_re
         "{elapsed:?}"
     );
     assert_eq!(requests.load(Ordering::Relaxed), 2);
-    assert_eq!(response.page.chats.len(), 1);
-    assert_eq!(response.page.chats[0].node_id, "laptop");
+    assert_eq!(response.chats.len(), 1);
+    assert_eq!(response.chats[0].chat.node_id, "laptop");
     assert!(!response.shared);
     assert!(response.shared_error.unwrap().contains("deadline"));
     server.abort();

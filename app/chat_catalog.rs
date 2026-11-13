@@ -148,6 +148,10 @@ pub(crate) struct Chat {
     pub(crate) node_id: String,
     #[serde(flatten)]
     pub(crate) metadata: ChatMetadata,
+    /// The chat's first message by display position, which `view` accepts.
+    /// None when the chat has no retained messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) first_message_id: Option<String>,
 }
 
 /// Cuts a title to the line a chat list shows, before secrets are masked.

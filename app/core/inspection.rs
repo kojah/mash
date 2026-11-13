@@ -55,6 +55,11 @@ pub(super) async fn view(
     if let Some(node) = node {
         let mut messages =
             shared::view(required_shared(configuration)?, &node, &id, context).await?;
+        if messages.is_empty() {
+            return Err(AppError::not_found(format!(
+                "node {node:?} has published no message with ID {id:?}; view takes a message ID, not a chat ID: copy lookup.view from a list-chats row or search result"
+            )));
+        }
         for message in &mut messages {
             message.content = output.text(&message.content);
             output.tools(&mut message.tools);
@@ -226,12 +231,32 @@ fn local_view(
 ) -> Result<ViewResponse, AppError> {
     let storage = Storage::open_silver(database_path)?;
     let mut messages = storage.view(&id, context)?;
+    if messages.is_empty() {
+        return Err(missing_message(&id, storage.unmatched_id(&id)?));
+    }
     for message in &mut messages {
         message.content = output.text(&message.content);
         output.tools(&mut message.tools);
         message.attachments = storage.list_attachments(&message.id)?.attachments;
     }
     Ok(ViewResponse { id, messages })
+}
+
+/// Chat and message IDs are separate namespaces, so view never reinterprets
+/// an ID; it names the chat's first message when the ID belongs to a chat.
+fn missing_message(id: &str, unmatched: crate::storage::UnmatchedId) -> AppError {
+    use crate::storage::UnmatchedId;
+    AppError::not_found(match unmatched {
+        UnmatchedId::Chat { first } => format!(
+            "{id:?} is a chat ID, but view takes a message ID; to read this chat from its start, view its first message {first:?} (lookup.view in list-chats rows and search results)"
+        ),
+        UnmatchedId::EmptyChat => {
+            format!("{id:?} is a chat ID, and that chat retains no messages to view")
+        }
+        UnmatchedId::Unknown => format!(
+            "no message with ID {id:?}; view takes a message ID, not a chat ID: copy lookup.view from a list-chats row or search result"
+        ),
+    })
 }
 
 #[allow(

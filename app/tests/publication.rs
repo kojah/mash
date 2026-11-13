@@ -100,13 +100,28 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
         "shared deletion is pending"
     );
     assert_eq!(invoke(&["index"], true)["shared"]["state"], "published");
-    assert_eq!(
-        invoke(&["view", "message", "--shared", "cli-node"], true)["messages"]
-            .as_array()
-            .unwrap()
-            .as_slice(),
-        &[] as &[serde_json::Value]
-    );
+    let deleted = Command::cargo_bin("mash")
+        .expect("binary")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "view",
+            "message",
+            "--shared",
+            "cli-node",
+        ])
+        .env(
+            "MASH_TEST_SHARED_CLIENT_TOKEN",
+            shared_server::token("cli-node"),
+        )
+        .output()
+        .expect("run");
+    assert_eq!(deleted.status.code(), Some(13), "published deletion");
+    assert_eq!(error_kind(&deleted), "not-found");
     shared_server::cleanup_group(&group);
     cleanup_local_gold(&database, "cli-node");
 }

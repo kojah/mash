@@ -17,7 +17,8 @@
 | Download optional search models | `mash models install` |
 | Back up my history | `mash export /path/to/new-backup` |
 
-Replace `MESSAGE_ID` with a message ID returned by search.
+Replace `MESSAGE_ID` with `lookup.view.id` from a search result or a
+`list-chats` row; `view` does not accept chat IDs.
 Terminal results are JSON; use the [dashboard](dashboard.md) or a
 [connected agent](agents.md) if you prefer reading conversations directly.
 `mash init` uses an interactive wizard when stdin and stderr are terminals;

@@ -593,6 +593,13 @@
               }
             ]
           },
+          "first_message_id": {
+            "description": "The chat's first message by display position, which `view` accepts.\nNone when the chat has no retained messages.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "node_id": {
             "type": "string"
           },
@@ -1726,7 +1733,8 @@
           "remote-inference",
           "conflict",
           "source-changed",
-          "search-timeout"
+          "search-timeout",
+          "not-found"
         ],
         "type": "string"
       },

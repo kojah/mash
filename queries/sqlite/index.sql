@@ -9,8 +9,11 @@ WITH scope AS (SELECT
     CAST(sqlc.narg(before_ms) AS INTEGER) AS before_ms,
     CAST(sqlc.arg(sort_key) AS TEXT) AS sort_key,
     CAST(sqlc.arg(descending) AS INTEGER) AS descending)
-SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+SELECT c.id,c.provider AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment,
+    f.id AS first_message_id
 FROM chats c CROSS JOIN scope s LEFT JOIN chat_enrichment e ON e.chat_id=c.id
+LEFT JOIN messages f ON f.chat_id=c.id
+    AND f.ordinal=(SELECT MIN(m.ordinal) FROM messages m WHERE m.chat_id=c.id)
 WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
@@ -94,6 +97,13 @@ SELECT count(*) AS messages FROM messages WHERE chat_id=sqlc.arg(chat_id);
 -- name: ParkMessageOrdinal :exec
 UPDATE messages SET ordinal=sqlc.arg(ordinal)
 WHERE chat_id=sqlc.arg(chat_id) AND id=sqlc.arg(message_id);
+
+-- name: ChatFirstMessage :one
+-- A chat ID passed where a message ID belongs; NULL when the chat has no messages.
+SELECT f.id AS first_message_id
+FROM chats c LEFT JOIN messages f ON f.chat_id=c.id
+    AND f.ordinal=(SELECT MIN(m.ordinal) FROM messages m WHERE m.chat_id=c.id)
+WHERE c.id=?1;
 
 -- name: Anchor :one
 SELECT id,chat_id,ordinal,context_parent FROM messages WHERE id=?1;

@@ -17,6 +17,8 @@ mod search;
 pub(crate) mod setup;
 
 pub(crate) use chats::DashboardCatalog;
+#[cfg(test)]
+pub(crate) use chats::Response as ChatList;
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
     BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Reading, Request, Response,

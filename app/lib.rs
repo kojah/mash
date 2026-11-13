@@ -203,6 +203,7 @@ enum ErrorKind {
     Conflict,
     SourceChanged,
     SearchTimeout,
+    NotFound,
 }
 
 impl ErrorKind {
@@ -339,6 +340,11 @@ impl AppError {
             ),
             true,
         )
+    }
+
+    /// A requested ID names nothing in the index that was read.
+    fn not_found(message: impl Into<String>) -> Self {
+        Self::new(13, ErrorKind::NotFound, message, false)
     }
 
     fn search_not_ready(message: impl Into<String>) -> Self {

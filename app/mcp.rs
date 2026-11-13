@@ -117,7 +117,7 @@ struct ListChats {
 #[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct View {
-    /// Copy lookup.view from a search hit; id is the message anchor, not the chat ID.
+    /// Copy lookup.view from a search hit or `list_chats` row; id is a message ID, not a chat ID.
     id: String,
     /// Number of adjacent messages on each side (default 0); message bodies are never truncated.
     context: Option<u32>,
@@ -575,7 +575,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Quickly list chat metadata without models or inference. Omit unused filters; title_contains must be nonempty when supplied. Filter by provider, node, literal title substring or chat activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned chat_id and provider in search with unit=messages and chat filters. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
+        description = "Quickly list chat metadata without models or inference. Omit unused filters; title_contains must be nonempty when supplied. Filter by provider, node, literal title substring or chat activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned chat_id and provider in search with unit=messages and chat filters; copy a row's lookup.view into view to read the chat from its first message. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
     )]
     async fn list_chats(&self, Parameters(input): Parameters<ListChats>) -> CallToolResult {
         self.execute_detailed(
@@ -601,7 +601,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read complete message text and surrounding replies after discovery. Copy lookup.view from a search result and add context when needed; bodies are never truncated. To read further, view the first or last returned message id with the same shared value. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
+        description = "Read complete message text and surrounding replies after discovery. Copy lookup.view from a search result or list_chats row and add context when needed; a chat ID or unknown ID is a not-found error; bodies are never truncated. To read further, view the first or last returned message id with the same shared value. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
     )]
     async fn view(&self, Parameters(request): Parameters<View>) -> CallToolResult {
         self.execute(Operation::View {

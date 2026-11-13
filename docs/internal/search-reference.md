@@ -7,6 +7,13 @@ argument objects into the corresponding MCP tool. They preserve local/shared
 origin, including this node's own data returned by a shared-only search. Both
 compact and extended results keep them.
 
+`list_chats` rows carry the same `lookup.view` object for the chat's first
+message (by display position); it is absent only for a chat with no retained
+messages. `view` accepts message IDs only. Chat IDs and message IDs are separate
+namespaces, so `view` never reinterprets an ID: an ID that matches no message is
+a `not-found` error (exit 13), and when it is a local chat ID the message names
+that chat's first message ID.
+
 For scoped history questions, use MCP `status` with an optional `coverage`
 object containing `provider`, `node`, `after`, and `before`, or run
 `mash status --coverage --provider claude-code --node xenia --shared`.

@@ -86,15 +86,22 @@ fn compact_thread_excerpts_preserve_copy_anchors_and_order() {
 #[test]
 fn compact_listing_keeps_pagination_and_view_never_truncates() {
     let response = Response::ListChats(super::super::chats::Response {
-        page: crate::chat_catalog::Page {
-            chats: vec![crate::chat_catalog::Chat {
+        chats: vec![super::super::chats::Row {
+            chat: crate::chat_catalog::Chat {
                 chat_id: "thread".into(),
                 provider: crate::provider::Provider::Codex,
                 node_id: "peer".into(),
                 metadata: ChatMetadata::default(),
-            }],
-            next_offset: Some(50),
-        },
+                first_message_id: None,
+            },
+            lookup: Some(super::super::chats::Lookup {
+                view: crate::search_results::lookup::View {
+                    id: "first".into(),
+                    shared: Some("peer".into()),
+                },
+            }),
+        }],
+        next_offset: Some(50),
         shared: true,
         shared_error: Some("offline peer".into()),
         diagnostics: None,
@@ -103,8 +110,13 @@ fn compact_listing_keeps_pagination_and_view_never_truncates() {
     assert_eq!(compact["next_offset"], 50);
     assert_eq!(compact["chats"][0]["node_id"], "peer");
     assert_eq!(compact["shared_error"], "offline peer");
+    assert_eq!(
+        compact["chats"][0]["lookup"],
+        serde_json::json!({"view": {"id": "first", "shared": "peer"}})
+    );
     let readable = text::render(&response, Detail::Compact, &compact).unwrap();
     assert!(readable.contains("Next offset: 50"));
+    assert!(readable.contains(r#"First message view: {"id":"first","shared":"peer"}"#));
     assert!(readable.contains("same filters/order"));
     assert!(readable.contains("offline peer"));
     let view = Response::View(

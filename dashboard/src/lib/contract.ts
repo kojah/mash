@@ -523,6 +523,11 @@ export interface components {
             /** Format: int64 */
             created_at?: number | null;
             enrichment?: components["schemas"]["ChatEvidence"] | null;
+            /**
+             * @description The chat's first message by display position, which `view` accepts.
+             *     None when the chat has no retained messages.
+             */
+            first_message_id?: string | null;
             node_id: string;
             project?: string | null;
             provider: components["schemas"]["Provider"];
@@ -831,7 +836,7 @@ export interface components {
             retryable: boolean;
         };
         /** @enum {string} */
-        ErrorKind: "shared-index" | "qdrant-unavailable" | "qdrant-failure" | "configuration" | "usage" | "database-missing" | "index-busy" | "model-busy" | "database" | "io" | "internal" | "model" | "search-not-ready" | "schema-incompatible" | "remote-inference" | "conflict" | "source-changed" | "search-timeout";
+        ErrorKind: "shared-index" | "qdrant-unavailable" | "qdrant-failure" | "configuration" | "usage" | "database-missing" | "index-busy" | "model-busy" | "database" | "io" | "internal" | "model" | "search-not-ready" | "schema-incompatible" | "remote-inference" | "conflict" | "source-changed" | "search-timeout" | "not-found";
         EvidenceUse: ("context" | "report") | "endorsement";
         /** @enum {string} */
         FactState: "current" | "superseded" | "retracted";

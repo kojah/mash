@@ -709,6 +709,7 @@ impl Store {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                 },
+                first_message_id: thread.first_message_id,
             });
         }
         Ok(chats)

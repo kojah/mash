@@ -159,10 +159,14 @@ enum Command {
         #[arg(long, conflicts_with = "shared")]
         local: bool,
     },
-    /// Return a message and adjacent context.
+    /// Return a message, by message ID, and adjacent context.
     View {
+        /// Message ID: copy lookup.view.id from a list-chats row or search result.
+        /// A chat ID is not accepted.
+        #[arg(value_name = "MESSAGE_ID")]
         id: String,
-        #[arg(long, default_value_t = 0)]
+        /// Also return up to N messages before and after the message.
+        #[arg(long, value_name = "N", default_value_t = 0)]
         context: u32,
         /// Read shared context for this publishing node.
         #[arg(long, value_name = "NODE_ID")]

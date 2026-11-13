@@ -124,7 +124,8 @@ mash list-chats --provider codex --limit 10
 mash view MESSAGE_ID --context 3
 ```
 
-Use a message ID returned by search in the last command. CLI results are JSON;
+In the last command, use `lookup.view.id` from a search result or a
+`list-chats` row (a message ID, not the chat ID). CLI results are JSON;
 your connected agent can use the same operations through MCP.
 
 Start with one distinctive word you remember. Without semantic models, multiple

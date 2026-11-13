@@ -30,6 +30,7 @@ pub(crate) mod turns;
 
 // Connection/schema and generated query infrastructure for both layers.
 mod queries;
+pub(crate) use queries::UnmatchedId;
 pub(crate) mod schema;
 
 #[cfg(test)]

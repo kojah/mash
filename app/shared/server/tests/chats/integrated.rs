@@ -47,7 +47,7 @@ fn local_copy(path: &Path) {
     storage.commit_writer().unwrap();
 }
 
-async fn discover(paths: &Paths, input: Request, shared: bool) -> Page {
+async fn discover(paths: &Paths, input: Request, shared: bool) -> core::ChatList {
     let response = core::execute(core::Request {
         paths: paths.clone(),
         operation: Operation::ListChats {
@@ -63,7 +63,7 @@ async fn discover(paths: &Paths, input: Request, shared: bool) -> Page {
         panic!("thread response")
     };
     assert!(response.shared, "{:?}", response.shared_error);
-    response.page
+    response
 }
 
 mod messages;
@@ -81,10 +81,10 @@ async fn contract(service: Service, token: &str) {
     }
     let initial = discover(&paths, Request::default(), false).await;
     assert_eq!(initial.chats.len(), 5);
-    assert_eq!(initial.chats[0].chat_id, "a");
-    assert_eq!(initial.chats[0].node_id, "first");
+    assert_eq!(initial.chats[0].chat.chat_id, "a");
+    assert_eq!(initial.chats[0].chat.node_id, "first");
     assert_eq!(
-        initial.chats[0].metadata.title.as_deref(),
+        initial.chats[0].chat.metadata.title.as_deref(),
         Some("Local Alpha")
     );
     let own = discover(
@@ -111,7 +111,7 @@ async fn contract(service: Service, token: &str) {
     )
     .await;
     assert_eq!(peer.chats.len(), 5);
-    assert!(peer.chats.iter().all(|row| row.node_id == "second"));
+    assert!(peer.chats.iter().all(|row| row.chat.node_id == "second"));
     replace_and_forget(&service, &paths, token).await;
     verify_client_authorization(&paths).await;
     assert!(!paths.models_dir.as_ref().unwrap().exists());
@@ -143,7 +143,7 @@ async fn verify_client_authorization(paths: &Paths) {
     };
     assert!(!fallback.shared);
     assert!(fallback.shared_error.is_some());
-    assert_eq!(fallback.page.chats.len(), 1);
+    assert_eq!(fallback.chats.len(), 1);
     let error = core::execute(core::Request {
         paths: paths.clone(),
         operation: operation(true),
@@ -169,10 +169,10 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .unwrap();
     let replaced = discover(paths, Request::default(), false).await;
     assert_eq!(replaced.chats.len(), 4);
-    assert!(replaced.chats.iter().all(|row| row.chat_id != "c"));
-    assert_eq!(replaced.chats[0].node_id, "second");
+    assert!(replaced.chats.iter().all(|row| row.chat.chat_id != "c"));
+    assert_eq!(replaced.chats[0].chat.node_id, "second");
     assert_eq!(
-        replaced.chats[0].metadata.title.as_deref(),
+        replaced.chats[0].chat.metadata.title.as_deref(),
         Some("New Alpha")
     );
     service
@@ -188,7 +188,7 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .unwrap();
     let combined = discover(paths, Request::default(), false).await;
     assert_eq!(
-        combined.chats[0].node_id, "first",
+        combined.chats[0].chat.node_id, "first",
         "forget on the peer preserves the local copy"
     );
     service
@@ -204,13 +204,13 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .unwrap();
     let shared = discover(paths, Request::default(), true).await;
     assert_eq!(shared.chats.len(), 4);
-    assert!(shared.chats.iter().all(|row| row.chat_id != "a"));
+    assert!(shared.chats.iter().all(|row| row.chat.chat_id != "a"));
     let combined = discover(paths, Request::default(), false).await;
     assert!(
         combined
             .chats
             .iter()
-            .any(|row| row.chat_id == "a" && row.node_id == "first")
+            .any(|row| row.chat.chat_id == "a" && row.chat.node_id == "first")
     );
     assert_eq!(
         service.upload(SECOND, &replacement).await.status(),
@@ -227,7 +227,7 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
             .await
             .chats
             .iter()
-            .all(|row| row.chat_id != "a"),
+            .all(|row| row.chat.chat_id != "a"),
         "a delayed publication cannot resurrect a tombstoned catalog entry"
     );
 }

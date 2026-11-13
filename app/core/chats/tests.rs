@@ -12,6 +12,7 @@ async fn dashboard_catalog_preserves_copies_and_partial_failure() {
         axum::routing::get(|| async {
             Json(vec![Chat {
                 chat_id: "thread-105".into(),
+                first_message_id: None,
                 provider: Provider::Codex,
                 node_id: "peer".into(),
                 metadata: ChatMetadata {
@@ -57,6 +58,7 @@ fn dashboard_redaction_reuses_values_without_crossing_policy_or_source_changes()
     let source = "password=\"sensitive-value\"";
     let make = |value: &str| Chat {
         chat_id: value.into(),
+        first_message_id: None,
         provider: Provider::Codex,
         node_id: "local".into(),
         metadata: ChatMetadata {
@@ -170,6 +172,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             for number in 0..110 {
                 collector.push(Chat {
                     chat_id: format!("thread-{number:03}"),
+                    first_message_id: Some(format!("message-{number:03}")),
                     provider: Provider::Codex,
                     node_id: "peer".into(),
                     metadata: ChatMetadata {
@@ -198,13 +201,17 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
         .unwrap();
     assert_combined_metadata_diagnostics(&result);
     assert!(result.shared);
-    assert_eq!(result.page.next_offset, Some(105));
+    assert_eq!(result.next_offset, Some(105));
+    // A peer's row names its publishing node, so view reads it from shared.
+    let lookup = result.chats[0].lookup.as_ref().unwrap();
+    assert_eq!(lookup.view.id, "message-009");
+    assert_eq!(lookup.view.shared.as_deref(), Some("peer"));
+    assert!(result.chats[0].chat.first_message_id.is_none());
     assert_eq!(
         result
-            .page
             .chats
             .iter()
-            .map(|row| row.chat_id.as_str())
+            .map(|row| row.chat.chat_id.as_str())
             .collect::<Vec<_>>(),
         [
             "thread-009",
@@ -219,20 +226,19 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
         .unwrap();
     assert_eq!(
         result
-            .page
             .chats
             .iter()
-            .filter(|row| row.chat_id == "thread-105")
+            .filter(|row| row.chat.chat_id == "thread-105")
             .count(),
         1
     );
     assert_eq!(
         result
-            .page
             .chats
             .iter()
-            .find(|row| row.chat_id == "thread-105")
+            .find(|row| row.chat.chat_id == "thread-105")
             .unwrap()
+            .chat
             .node_id,
         "laptop"
     );
@@ -252,7 +258,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
         .unwrap();
     assert_eq!(failed.calls, 1);
     assert_eq!(failed.completed_calls, 0);
-    assert_eq!(result.page.chats.len(), 1);
+    assert_eq!(result.chats.len(), 1);
     assert!(
         run(&config, &database, Request::default(), false, true, false)
             .await
@@ -287,7 +293,7 @@ async fn invalid_catalog_inputs_and_local_scope_never_contact_remote_or_create_d
         .await
         .unwrap();
     assert!(result.diagnostics.is_none());
-    assert_eq!(result.page.chats.len(), 1);
+    assert_eq!(result.chats.len(), 1);
     assert!(!result.shared);
     assert!(result.shared_error.is_none());
     assert!(!directory.path().join("models").exists());

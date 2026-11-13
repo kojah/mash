@@ -417,6 +417,32 @@ mod tests {
     }
 
     #[test]
+    fn listed_chats_name_their_first_message_by_display_position() {
+        let directory = tempfile::tempdir().unwrap();
+        let identity = super::node_identity("group", "node");
+        let store = super::SilverStore::open(directory.path(), [&identity]).unwrap();
+        let connection = store.connect(&identity).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO chats(id,provider) VALUES ('chat','codex'),('empty','codex');
+                 INSERT INTO messages(id,chat_id,ordinal,role,content_packed)
+                 VALUES ('later','chat',1,'assistant','b'),('opening','chat',0,'user','a');",
+            )
+            .unwrap();
+        let chats = super::read::list_chats(&connection, "node").unwrap();
+        let first = |id: &str| {
+            chats
+                .iter()
+                .find(|chat| chat.chat.id == id)
+                .unwrap()
+                .first_message_id
+                .clone()
+        };
+        assert_eq!(first("chat").as_deref(), Some("opening"));
+        assert_eq!(first("empty"), None);
+    }
+
+    #[test]
     fn node_writers_commit_without_an_fsync_per_transaction() {
         let directory = tempfile::tempdir().unwrap();
         let identity = super::node_identity("group", "node");
