@@ -312,8 +312,9 @@ async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
     let event = wire_next(&mut read).await;
     assert_eq!(event["params"]["progressToken"], 42);
     assert_eq!(event["params"]["progress"], 1.0);
-    // Indexing no longer stops for missing models: it reads history, reports
-    // progress under the same token, and says why embeddings were not computed.
+    // Indexing no longer stops for missing models: it reads history and
+    // reports progress under the same token. With nothing new to embed here,
+    // the missing models do not come up at all.
     let result = loop {
         let message = wire_next(&mut read).await;
         if message.get("id").is_some() {
@@ -322,12 +323,8 @@ async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
         assert_eq!(message["params"]["progressToken"], 42);
     };
     assert_eq!(result["id"], 4);
-    let content = &result["result"]["structuredContent"];
-    assert!(
-        content["embedding_error"].is_string()
-            || content["error"]["recommended_action"] == "models install",
-        "{result}"
-    );
+    assert_ne!(result["result"]["isError"], true, "{result}");
+    assert_eq!(result["result"]["structuredContent"]["indexed_messages"], 0);
     drop(write);
     drop(read);
     server.waiting().await.unwrap();
