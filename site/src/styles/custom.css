@@ -97,12 +97,12 @@ h4 {
 .hero .tagline {
   max-width: 39rem;
 }
-/* The headline is two lines: what goes wrong, then the answer in the mash's cream. */
+/* The headline is two lines: what goes wrong, then the answer in clay. */
 .hero h1 span {
   display: block;
 }
 .hero h1 .mash-turn {
-  color: var(--mash-turn);
+  color: var(--sl-color-accent);
 }
 /* The main action is the one clay button on the page. */
 .hero .sl-link-button {
