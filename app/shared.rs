@@ -14,6 +14,7 @@ pub(crate) mod attachments;
 mod client;
 mod coverage;
 mod exact;
+pub(crate) mod join;
 mod lexical_manifest;
 mod output;
 pub(crate) mod protocol;

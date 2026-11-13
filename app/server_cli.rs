@@ -44,6 +44,19 @@ struct Arguments {
         conflicts_with_all = ["replay_views", "activate_views", "activate_query", "activate_memory"]
     )]
     retire_node: Option<String>,
+    /// Add a machine to this server and print a join string for it, then
+    /// exit without serving. Needs --api-url. Restart the service afterwards.
+    #[arg(
+        long,
+        value_name = "GROUP/NODE",
+        requires = "api_url",
+        conflicts_with_all = ["retire_node", "replay_views", "activate_views", "activate_query", "activate_memory"]
+    )]
+    add_node: Option<String>,
+    /// The address other machines use to reach this server, written into the
+    /// join string: an HTTPS name or a private-network address.
+    #[arg(long, value_name = "URL", requires = "add_node")]
+    api_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -100,6 +113,10 @@ where
         .unwrap_or_else(crate::core::default_models_path);
     if let Some(node) = &args.retire_node {
         runtime.block_on(server::retire(&args.server_config, node))?;
+        return Ok(None);
+    }
+    if let (Some(node), Some(api_url)) = (&args.add_node, &args.api_url) {
+        runtime.block_on(server::add_node(&args.server_config, node, api_url))?;
         return Ok(None);
     }
     runtime.block_on(server::run(

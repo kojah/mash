@@ -12,7 +12,66 @@ use std::path::Path;
 struct AuthorizedNode {
     group_id: String,
     node_id: String,
-    token_env: String,
+    /// Environment variable holding the node's token.
+    #[serde(default)]
+    token_env: Option<String>,
+    /// BLAKE3 of the node's token, for a node added with `--add-node`: the
+    /// server then keeps no copy of the token itself.
+    #[serde(default)]
+    token_hash: Option<String>,
+}
+
+/// Nodes added with `--add-node`, kept beside the configuration so the
+/// operator's own file is never rewritten.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AddedNodes {
+    #[serde(default)]
+    nodes: Vec<AuthorizedNode>,
+}
+
+/// The file `--add-node` appends to: the configuration's path plus `.nodes`.
+pub(super) fn added_nodes_path(configuration: &Path) -> std::path::PathBuf {
+    let mut name = configuration.as_os_str().to_owned();
+    name.push(".nodes");
+    name.into()
+}
+
+/// Whether `group_id/node_id` is already a node of this server.
+pub(super) fn has_node(config: &Configuration, group_id: &str, node_id: &str) -> bool {
+    config
+        .nodes
+        .iter()
+        .any(|node| node.group_id == group_id && node.node_id == node_id)
+}
+
+/// Record a new node by the hash of its token. The caller has validated the
+/// identifiers, which are therefore safe to write as TOML strings.
+pub(super) fn append_node(
+    configuration: &Path,
+    group_id: &str,
+    node_id: &str,
+    token: &str,
+) -> Result<(), AppError> {
+    use std::io::Write;
+    let path = added_nodes_path(configuration);
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|_| AppError::configuration("could not write the added-nodes file"))?;
+    write!(
+        file,
+        "\n[[nodes]]\ngroup_id = \"{group_id}\"\nnode_id = \"{node_id}\"\ntoken_hash = \"{}\"\n",
+        blake3::hash(token.as_bytes()).to_hex()
+    )
+    .and_then(|()| file.sync_all())
+    .map_err(|_| AppError::configuration("could not write the added-nodes file"))
 }
 
 #[derive(Deserialize)]
@@ -154,19 +213,35 @@ pub(super) fn identities(
     for node in &config.nodes {
         crate::config::validate_identifier(&node.group_id, "group_id")?;
         crate::config::validate_identifier(&node.node_id, "node_id")?;
-        env_name(&node.token_env)?;
-        let token = std::env::var(&node.token_env).map_err(|_| {
-            AppError::configuration(format!("set {} to the node's API token", node.token_env))
-        })?;
-        if token.len() < 32 || token.len() > 4096 || !token.bytes().all(|b| b.is_ascii_graphic()) {
-            return Err(AppError::configuration(
-                "API tokens require 32..4096 printable ASCII bytes",
-            ));
-        }
+        let hash = match (&node.token_env, &node.token_hash) {
+            (Some(name), None) => {
+                env_name(name)?;
+                let token = std::env::var(name).map_err(|_| {
+                    AppError::configuration(format!("set {name} to the node's API token"))
+                })?;
+                if token.len() < 32
+                    || token.len() > 4096
+                    || !token.bytes().all(|b| b.is_ascii_graphic())
+                {
+                    return Err(AppError::configuration(
+                        "API tokens require 32..4096 printable ASCII bytes",
+                    ));
+                }
+                blake3::hash(token.as_bytes())
+            }
+            (None, Some(hex)) => blake3::Hash::from_hex(hex).map_err(|_| {
+                AppError::configuration("token_hash must be 64 hexadecimal characters")
+            })?,
+            _ => {
+                return Err(AppError::configuration(
+                    "each node needs exactly one of token_env and token_hash",
+                ));
+            }
+        };
         if !unique.insert((&node.group_id, &node.node_id))
             || result
                 .insert(
-                    blake3::hash(token.as_bytes()),
+                    hash,
                     Identity {
                         group_id: node.group_id.clone(),
                         node_id: node.node_id.clone(),
@@ -196,7 +271,7 @@ pub(super) async fn load(path: &Path) -> Result<Configuration, AppError> {
             ));
         }
         let mut bytes = Vec::new();
-        std::fs::File::open(path)
+        std::fs::File::open(&path)
             .map_err(|_| AppError::configuration("could not open server configuration"))?
             .take(65537)
             .read_to_end(&mut bytes)
@@ -208,8 +283,33 @@ pub(super) async fn load(path: &Path) -> Result<Configuration, AppError> {
         }
         let contents = std::str::from_utf8(&bytes)
             .map_err(|_| AppError::configuration("server configuration must be UTF-8 TOML"))?;
-        toml::from_str(contents)
-            .map_err(|_| AppError::configuration("invalid server configuration"))
+        let mut config: Configuration = toml::from_str(contents)
+            .map_err(|_| AppError::configuration("invalid server configuration"))?;
+        // Nodes added with --add-node; they carry token hashes only.
+        match std::fs::read_to_string(added_nodes_path(&path)) {
+            Ok(text) if text.len() <= 65536 => {
+                let added: AddedNodes = toml::from_str(&text)
+                    .map_err(|_| AppError::configuration("invalid added-nodes file"))?;
+                if added.nodes.iter().any(|node| node.token_env.is_some()) {
+                    return Err(AppError::configuration(
+                        "the added-nodes file holds token hashes only",
+                    ));
+                }
+                config.nodes.extend(added.nodes);
+            }
+            Ok(_) => {
+                return Err(AppError::configuration(
+                    "the added-nodes file exceeds 65536 bytes",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                return Err(AppError::configuration(
+                    "could not read the added-nodes file",
+                ));
+            }
+        }
+        Ok(config)
     })
     .await
 }
@@ -338,6 +438,54 @@ mod tests {
                 .message
                 .contains("ef_runtime")
         );
+    }
+
+    #[tokio::test]
+    async fn added_nodes_are_known_by_the_hash_of_their_token_only() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("server.toml");
+        std::fs::write(&path, "version=1\nnodes=[]\n").unwrap();
+        // Nothing added yet: the configuration alone names no node.
+        assert!(identities(&load(&path).await.unwrap()).is_err());
+        let token = "0123456789abcdef0123456789abcdef";
+        append_node(&path, "team", "laptop", token).unwrap();
+        append_node(&path, "team", "desktop", "ffffffffffffffffffffffffffffffff").unwrap();
+        let added = std::fs::read_to_string(added_nodes_path(&path)).unwrap();
+        assert!(
+            !added.contains(token),
+            "the server keeps no copy of the token"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(added_nodes_path(&path))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let config = load(&path).await.unwrap();
+        assert!(has_node(&config, "team", "laptop") && has_node(&config, "team", "desktop"));
+        assert!(!has_node(&config, "team", "phone"));
+        let known = identities(&config).unwrap();
+        assert_eq!(known.len(), 2);
+        assert_eq!(known[&blake3::hash(token.as_bytes())].node_id, "laptop");
+        // The file holds hashes only, and a node names exactly one credential.
+        std::fs::write(
+            added_nodes_path(&path),
+            "[[nodes]]\ngroup_id='team'\nnode_id='x'\ntoken_env='MASH_X'\n",
+        )
+        .unwrap();
+        assert!(load(&path).await.is_err());
+        for node in [
+            "{group_id='team',node_id='x'}",
+            "{group_id='team',node_id='x',token_env='MASH_X',token_hash='00'}",
+            "{group_id='team',node_id='x',token_hash='not-hex'}",
+        ] {
+            let config: Configuration =
+                toml::from_str(&format!("version=1\nnodes=[{node}]\n")).unwrap();
+            assert!(identities(&config).is_err(), "{node}");
+        }
     }
 
     #[test]

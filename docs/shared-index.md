@@ -102,8 +102,37 @@ changing its settings.
 ## 2. Connect each computer
 
 Do this on every computer that should publish or search shared history. Mash
-must already be [installed and set up](installation.md) there, with its local
-Qdrant running.
+must already be [installed](installation.md) there, with its local Qdrant
+running.
+
+### With a join string
+
+The quickest way needs no token variables and no configuration editing. On the
+server, add the computer by name and say which address it should use to reach
+the server:
+
+```sh
+mash-server --server-config /absolute/path/to/server.toml \
+  --add-node personal/laptop --api-url https://mash.example.net
+```
+
+It prints a `join` value starting with `mash-join.`. Restart the server so it
+accepts the new computer, then on that computer run:
+
+```sh
+mash init --join 'mash-join.…'
+```
+
+That writes the sharing settings, saves the computer's token in
+`~/.mash/node.env` (readable only by you), then indexes and uploads. The join
+string contains the token, so pass it privately and treat it like a password.
+The server keeps only a hash of the token, in `server.toml.nodes` beside its
+configuration. To issue a new string for a computer, delete its `[[nodes]]`
+entry from that file and add it again.
+
+### By hand
+
+Or set the token and settings yourself.
 
 First put this computer's token in an environment variable, for example
 `MASH_NODE_TOKEN`. Mash stores only the variable's name, so the variable must

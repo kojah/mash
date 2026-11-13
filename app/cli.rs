@@ -78,6 +78,10 @@ enum Command {
         /// Plugin marketplace to add: a GitHub owner/repo, URL or local path.
         #[arg(long, default_value = crate::core::MARKETPLACE)]
         marketplace: String,
+        /// Connect this machine to a shared index with the join string that
+        /// `mash-server --add-node` printed. It holds this machine's token.
+        #[arg(long, value_name = "JOIN_STRING")]
+        join: Option<String>,
     },
     /// List chat metadata without inference, ordered by activity, creation or title.
     ListChats {
@@ -504,13 +508,19 @@ impl Cli {
                 no_index,
                 backfill_memory,
                 marketplace,
+                join,
                 yes: _,
             } => Operation::Init(crate::core::InitRequest {
                 force,
                 agents: !no_agents,
                 index: !no_index,
                 marketplace,
-                plan: None,
+                plan: join
+                    .map(|text| {
+                        let join = crate::shared::join::Join::decode(&text)?;
+                        crate::core::join_plan(&paths, &join)
+                    })
+                    .transpose()?,
                 selected_agents: None,
                 backfill_memory,
             }),
@@ -883,10 +893,11 @@ enum WatchRoleEvent {
 }
 
 async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
-    if let Command::Init { yes, .. } = &cli.command {
+    if let Command::Init { yes, join, .. } = &cli.command {
         use std::io::IsTerminal;
+        // A join string already says what to set up; nothing is left to ask.
         if wizard::interactive(
-            *yes,
+            *yes || join.is_some(),
             std::io::stdin().is_terminal(),
             std::io::stderr().is_terminal(),
         ) {

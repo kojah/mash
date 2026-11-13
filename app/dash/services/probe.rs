@@ -350,7 +350,7 @@ async fn endpoints(configuration: &crate::config::ResolvedConfig) -> Vec<Service
             ))
             .header("x-mash-group", &shared.group_id)
             .header("x-mash-node", &shared.node_id);
-        if let Ok(token) = std::env::var(&shared.token_env) {
+        if let Some(token) = shared.token() {
             request = request.bearer_auth(token);
         }
         checks.push((

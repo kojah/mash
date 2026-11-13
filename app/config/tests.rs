@@ -687,3 +687,29 @@ fn remote_reranking_is_explicit_strict_and_keeps_credentials_unresolved() {
         assert!(parse_document(setting.as_bytes()).is_err(), "{setting}");
     }
 }
+
+#[test]
+fn a_saved_node_token_is_private_and_replaced_by_name() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("nested/node.env");
+    save_token(&path, "MASH_NODE_TOKEN", "first").unwrap();
+    save_token(&path, "OTHER", "kept").unwrap();
+    save_token(&path, "MASH_NODE_TOKEN", "second").unwrap();
+    assert_eq!(
+        saved_token(&path, "MASH_NODE_TOKEN").as_deref(),
+        Some("second")
+    );
+    assert_eq!(saved_token(&path, "OTHER").as_deref(), Some("kept"));
+    assert_eq!(saved_token(&path, "MASH_NODE"), None, "names match whole");
+    assert_eq!(
+        saved_token(&directory.path().join("missing"), "OTHER"),
+        None
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 2);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+}

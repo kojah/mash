@@ -1,4 +1,5 @@
 //! Typed node configuration shared by CLI, MCP and application operations.
+use crate::AppError;
 use crate::provider::{Provider, ProviderRoots};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -62,6 +63,61 @@ pub(crate) struct SharedConfig {
     /// Whether uploads mask credentials; set from `[redaction]`, not this table.
     #[serde(skip)]
     pub(crate) publication_redaction: crate::redaction::Policy,
+}
+
+impl SharedConfig {
+    /// This node's API token: the variable `token_env` names, or the copy a
+    /// join saved for it under Mash's own directory.
+    pub(crate) fn token(&self) -> Option<String> {
+        std::env::var(&self.token_env)
+            .ok()
+            .filter(|token| !token.is_empty())
+            .or_else(|| saved_token(&saved_tokens()?, &self.token_env))
+    }
+}
+
+/// Where `mash init --join` keeps a node token, readable only by the user, so
+/// a joined machine needs no shell profile edit.
+pub(crate) fn saved_tokens() -> Option<std::path::PathBuf> {
+    crate::platform::mash_home().map(|home| home.join("node.env"))
+}
+
+fn saved_token(path: &std::path::Path, name: &str) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()?
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix(name)?
+                .strip_prefix('=')
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        })
+}
+
+/// Save `name=token` in `path`, replacing an earlier value for that name and
+/// keeping the others.
+pub(crate) fn save_token(path: &std::path::Path, name: &str, token: &str) -> Result<(), AppError> {
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    let prefix = format!("{name}=");
+    let mut text = String::new();
+    for line in existing.lines().filter(|line| !line.starts_with(&prefix)) {
+        text.push_str(line);
+        text.push('\n');
+    }
+    text.push_str(&prefix);
+    text.push_str(token);
+    text.push('\n');
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(AppError::io)?;
+    }
+    std::fs::write(path, text).map_err(AppError::io)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(AppError::io)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]

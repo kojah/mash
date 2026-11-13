@@ -24,7 +24,7 @@ pub(crate) use models::{
     BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Reading, Request, Response,
     SearchMode, SearchResponse, StatusResponse, ViewResponse,
 };
-pub(crate) use setup::{InitRequest, MARKETPLACE};
+pub(crate) use setup::{InitRequest, MARKETPLACE, join_plan};
 
 pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
     execute_admitted(request, None).await

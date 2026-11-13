@@ -508,6 +508,49 @@ pub(crate) async fn retire(path: &Path, node: &str) -> Result<(), AppError> {
     crate::write_json(&mut std::io::stdout(), &retired)
 }
 
+/// Add a node to this server and print the join string for its machine. The
+/// server keeps only a hash of the new token, in a file beside its
+/// configuration; a running server accepts the node after a restart.
+/// `node` is `GROUP/NODE`, and `api_url` is the address that machine will use.
+pub(crate) async fn add_node(path: &Path, node: &str, api_url: &str) -> Result<(), AppError> {
+    let config = configuration::load(path).await?;
+    let (group_id, node_id) = node
+        .split_once('/')
+        .ok_or_else(|| AppError::usage("--add-node takes GROUP/NODE, such as personal/laptop"))?;
+    crate::config::validate_identifier(group_id, "group_id")?;
+    crate::config::validate_identifier(node_id, "node_id")?;
+    if configuration::has_node(&config, group_id, node_id) {
+        return Err(AppError::usage(
+            "that node already exists; choose another name, or retire it first with --retire-node",
+        ));
+    }
+    let mut random = [0_u8; 32];
+    getrandom::fill(&mut random).map_err(|_| AppError::internal("create node token"))?;
+    let token = random.iter().fold(String::new(), |mut hex, byte| {
+        use std::fmt::Write;
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
+    // Validate the whole string before anything is written.
+    let join = crate::shared::join::Join::new(api_url, group_id, node_id, &token).encode()?;
+    crate::shared::join::Join::decode(&join).map_err(|_| {
+        AppError::usage(
+            "--api-url must be the http or https address other machines use for this server",
+        )
+    })?;
+    let file = path.to_path_buf();
+    let (group, name) = (group_id.to_owned(), node_id.to_owned());
+    crate::blocking(move || configuration::append_node(&file, &group, &name, &token)).await?;
+    crate::write_json(
+        &mut std::io::stdout(),
+        &serde_json::json!({
+            "node": node,
+            "join": join,
+            "next": "Restart mash-server so it accepts this node. Then, on that machine, run `mash init --join` with the join value. It contains the node's token: pass it privately.",
+        }),
+    )
+}
+
 /// `models` is used to replay views from silver before serving.
 pub(crate) async fn run(
     path: &Path,

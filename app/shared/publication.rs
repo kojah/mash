@@ -166,7 +166,7 @@ pub(crate) fn status(
     let Some(config) = config else {
         return Ok(None);
     };
-    let Ok(_) = std::env::var(&config.token_env) else {
+    let Some(_) = config.token() else {
         return Ok(Some(Publication::pending()));
     };
     let pending = !path.is_file() || Storage::publication_is_pending(path, &target(config))?;

@@ -35,7 +35,7 @@ fn endpoint(api_url: &str) -> Result<String, AppError> {
 }
 
 fn token(config: &SharedConfig) -> Result<String, AppError> {
-    let token = std::env::var(&config.token_env).map_err(|_| {
+    let token = config.token().ok_or_else(|| {
         AppError::configuration(format!("set {} to the node's API token", config.token_env))
     })?;
     // Header safety only: the server remains authoritative for token length and

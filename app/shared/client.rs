@@ -135,7 +135,7 @@ pub(super) fn request(
     method: reqwest::Method,
     endpoint: Endpoint,
 ) -> Result<reqwest::RequestBuilder, AppError> {
-    let token = std::env::var(&config.token_env).map_err(|_| {
+    let token = config.token().ok_or_else(|| {
         AppError::shared(format!("set {} to this node's API token", config.token_env))
     })?;
     request_with_token(config, method, endpoint, &token)
@@ -424,7 +424,7 @@ pub(crate) async fn query(
     node: Option<&str>,
     request: &crate::silver_query::Request,
 ) -> Result<serde_json::Value, AppError> {
-    let token = std::env::var(&config.token_env).map_err(|_| {
+    let token = config.token().ok_or_else(|| {
         AppError::shared(format!("set {} to this node's API token", config.token_env))
     })?;
     query_with_token(config, &token, node, request).await
