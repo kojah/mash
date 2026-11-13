@@ -17,7 +17,7 @@
     "@astrojs/starlight": "0.42.9",
     "@fontsource/ibm-plex-mono": "5.2.7",
     "@fontsource/ibm-plex-sans": "5.2.8",
-    "astro": "7.4.5",
+    "astro": "7.4.7",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
