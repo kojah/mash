@@ -982,7 +982,7 @@ export interface components {
         LexicalManifest: {
             /**
              * Format: uint32
-             * @description Qdrant lexical payloads and sparse retrieval, with literal verification.
+             * @description Qdrant lexical payloads and their ranked text index, with literal verification.
              */
             representation_version: number;
             /** Format: uint32 */
