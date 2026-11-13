@@ -17,12 +17,12 @@ test("the landing page says what Mash is and which agents it reads", async ({ pa
   await expect(page.locator(".card-grid .card")).toHaveCount(4);
   await expect(page.locator(".hero .actions a")).toHaveText([
     "Get started",
-    "Try the demo",
+    "Try it",
     "Explore the docs",
   ]);
   await expect(page.getByRole("navigation", { name: "Footer" }).getByRole("link")).toHaveText([
     "Docs",
-    "Demo",
+    "Try it",
     "Privacy",
     "GitHub",
   ]);

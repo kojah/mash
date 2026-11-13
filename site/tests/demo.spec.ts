@@ -7,7 +7,7 @@ test("the landing page leads to a working demo of the dashboard", async ({ page 
     if (response.status() >= 400) problems.push(`${response.status()} ${response.url()}`);
   });
   await page.goto("/");
-  await page.getByRole("link", { name: "Try the demo", exact: true }).click();
+  await page.locator(".hero").getByRole("link", { name: "Try it", exact: true }).click();
   await expect(page).toHaveURL(/\/demo\/$/);
   await expect(page.getByRole("complementary", { name: "About this demo" })).toContainText(
     "This history is made up",
