@@ -53,7 +53,8 @@ const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine ===
 let offset = $state(0);
 let anchor = $state(untrack(() => messageId));
 let showSessions = $state(true);
-// On a phone the list is a panel at the top that the reader opens on demand.
+// On a phone the list takes the whole screen in place of the transcript when
+// the reader opens it, and closing it returns to where they were reading.
 const phoneQuery =
   typeof window === "undefined" ? undefined : window.matchMedia("(max-width: 700px)");
 let phone = $state(phoneQuery?.matches ?? false);
@@ -67,9 +68,25 @@ $effect(() => {
   return () => phoneQuery.removeEventListener("change", update);
 });
 const sessionsShown = $derived(phone ? sessionsOpen : showSessions);
+let readingAt = 0;
+async function openSessions(): Promise<void> {
+  readingAt = window.scrollY;
+  sessionsOpen = true;
+  await tick();
+  window.scrollTo(0, 0);
+}
+/** Puts the transcript back; `restore` returns to where the reader was. */
+async function closeSessions(restore: boolean): Promise<void> {
+  if (!sessionsOpen) return;
+  sessionsOpen = false;
+  // The transcript has no height while the list replaces it.
+  await tick();
+  if (restore) window.scrollTo(0, readingAt);
+}
 function toggleSessions(): void {
-  if (phone) sessionsOpen = !sessionsOpen;
-  else showSessions = !showSessions;
+  if (!phone) showSessions = !showSessions;
+  else if (sessionsOpen) void closeSessions(true);
+  else void openSessions();
 }
 let exportOpen = $state(false);
 let currentMessage = $state("");
@@ -452,13 +469,13 @@ const prompts = $derived(
 />
 <div class="chat" class:nosess={!showSessions} class:sessopen={sessionsOpen}>
   <nav class="sess" aria-label="Prompts and sessions">
-    {#if phone && sessionsOpen}<button class="btn sessclose" type="button" onclick={() => (sessionsOpen = false)}><X size={15} aria-hidden="true" />Close</button>{/if}
+    {#if phone && sessionsOpen}<button class="btn sessclose" type="button" onclick={() => closeSessions(true)}><X size={15} aria-hidden="true" />Back to chat</button>{/if}
     {#if prompts.length >= 2}
       <div class="outl">
         <h2 class="h2">your prompts on this page</h2>
         <div class="outl-l">
           {#each prompts as message, index (message.id)}
-            <button type="button" class:on={currentMessage === message.id} aria-current={currentMessage === message.id ? "location" : undefined} onclick={() => { sessionsOpen = false; jump(message.id); }}><small>{index + 1}</small><span>{plainText(message).replace(/\s+/g, " ").slice(0, 80)}</span></button>
+            <button type="button" class:on={currentMessage === message.id} aria-current={currentMessage === message.id ? "location" : undefined} onclick={async () => { await closeSessions(false); jump(message.id); }}><small>{index + 1}</small><span>{plainText(message).replace(/\s+/g, " ").slice(0, 80)}</span></button>
           {/each}
         </div>
       </div>
