@@ -486,7 +486,7 @@ const prompts = $derived(
         </p>
       </div>
       <span class="acts" style:position="relative">
-        <button class="btn" type="button" aria-pressed={sessionsShown} aria-label="{sessionsShown ? 'Hide' : 'Show'} session list" title="{sessionsShown ? 'Hide' : 'Show'} session list" onclick={toggleSessions} style:padding="0 11px"><PanelLeft size={15} /></button>
+        <button class="btn" type="button" aria-pressed={sessionsShown} aria-label="{sessionsShown ? 'Hide' : 'Show'} session list" title="{sessionsShown ? 'Hide' : 'Show'} session list" onclick={toggleSessions} style:padding="0 11px"><PanelLeft size={15} aria-hidden="true" />{#if phone}Sessions{/if}</button>
         <button class="btn" type="button" aria-expanded={findOpen} onclick={openFind}><Search size={15} aria-hidden="true" />Find in chat<kbd class="kbd">{shortcut}</kbd></button>
         <button class="btn" type="button" onclick={copySession}><Copy size={15} aria-hidden="true" />Copy session ID</button>
         <button class="btn" type="button" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)}><Download size={15} aria-hidden="true" />Export</button>

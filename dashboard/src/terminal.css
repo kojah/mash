@@ -2148,11 +2148,13 @@ h1:focus {
   .chat {
     flex-direction: column;
   }
-  /* Opened on demand as a panel above the transcript, not left below it. */
+  /* Opened on demand as a sheet pinned to the bottom of the screen, not left
+     below the transcript. #main is a query container, so `fixed` would pin
+     it to the page; `sticky` pins it to the screen while the chat is in view. */
   .sess {
     display: none;
     flex: none;
-    order: -1;
+    order: 3;
     width: 100%;
   }
   .sessclose {
@@ -2161,11 +2163,16 @@ h1:focus {
   }
   .chat.sessopen .sess {
     display: block;
-    max-height: 60vh;
+    position: sticky;
+    bottom: 0;
+    z-index: 18;
+    max-height: 70dvh;
     overflow-y: auto;
-    padding: 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
+    overscroll-behavior: contain;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    border: 1px solid var(--strong);
+    border-bottom: 0;
+    border-radius: 12px 12px 0 0;
     background: var(--raised);
   }
   .log {
