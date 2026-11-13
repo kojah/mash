@@ -35,7 +35,15 @@ const now = Date.now();
       <span class="big"><b>{group.chats.length.toLocaleString()}</b><span>chats</span></span>
       <span class="bar"><i style:width="{Math.max(2, Math.round((group.chats.length / Math.max(1, chats.length)) * 100))}%"></i></span>
       {#if field === "machine"}<span class="tile-m">{#each group.agents.slice(0, 4) as [name] (name)}<AgentMark agent={name} size={14} />{/each}</span>{/if}
-      <span class="tile-f"><span>{field === "agent" ? group.machines.map(([machine]) => machine).join(", ") : `${group.projects.filter(([name]) => name).length} projects`}</span><span>{whenLabel(group.latestMs, now)}</span></span>
+      {#if field === "agent"}
+        <!-- As on a project's tile: the machines as chips, then the time. -->
+        <span class="mts">
+          {#each group.machines as [machine] (machine)}<span class="mt"><Laptop size={12} aria-hidden="true" />{machine}</span>{/each}
+          <span class="mtx">{whenLabel(group.latestMs, now)}</span>
+        </span>
+      {:else}
+        <span class="tile-f"><span>{group.projects.filter(([name]) => name).length} projects</span><span>{whenLabel(group.latestMs, now)}</span></span>
+      {/if}
     </a>
   {/each}
 </div>

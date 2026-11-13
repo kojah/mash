@@ -5,21 +5,25 @@ export function projectLabel(project: string): string {
   return project.split(/[\\/]/).filter(Boolean).at(-1) ?? "no project";
 }
 
-/** A short time for a list row: the clock today, the date otherwise. */
+/**
+ * How long ago, for a list row: `3m`, `3h` or `3d`, and the date once it is
+ * more than thirty days back.
+ */
 export function whenLabel(ms: number | undefined, now: number): string {
   if (ms === undefined) return "time unknown";
+  const minutes = Math.floor((now - ms) / 60_000);
+  // A clock a little ahead of this one still reads as the present.
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days <= 30) return `${days}d`;
   const date = new Date(ms);
-  const today = new Date(now);
-  if (date.toDateString() === today.toDateString())
-    return date.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-    ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
+    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: "numeric" }),
   });
 }
 

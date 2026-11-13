@@ -36,7 +36,13 @@ describe("catalogue grouping", () => {
     expect(projectLabel("")).toBe("no project");
     const now = new Date(2026, 10, 10, 18, 0).getTime();
     expect(whenLabel(undefined, now)).toBe("time unknown");
-    expect(whenLabel(new Date(2026, 10, 10, 9, 5).getTime(), now)).toMatch(/09[:.]05/);
+    expect(whenLabel(now - 20_000, now)).toBe("now");
+    expect(whenLabel(now + 5_000, now)).toBe("now");
+    expect(whenLabel(now - 3 * 60_000, now)).toBe("3m");
+    expect(whenLabel(now - 3 * 3_600_000, now)).toBe("3h");
+    expect(whenLabel(now - 3 * 86_400_000, now)).toBe("3d");
+    expect(whenLabel(now - 30 * 86_400_000, now)).toBe("30d");
+    expect(whenLabel(now - 45 * 86_400_000, now)).not.toMatch(/^\d+d$/);
     expect(whenLabel(new Date(2025, 2, 4).getTime(), now)).toContain("2025");
   });
 });
