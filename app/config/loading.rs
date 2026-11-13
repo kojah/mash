@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use directories::{BaseDirs, ProjectDirs};
+use directories::BaseDirs;
 
 use super::document::parse_document;
 use super::{DEFAULT_SINCE_DAYS, IndexDestination, ResolvedConfig};
@@ -17,9 +17,8 @@ pub(crate) fn load(explicit_path: Option<&Path>) -> Result<ResolvedConfig, AppEr
 }
 
 pub(crate) fn default_path() -> Result<PathBuf, AppError> {
-    let path = ProjectDirs::from("dev", "kojah", "mash")
+    let path = crate::platform::mash_home()
         .ok_or_else(|| AppError::configuration("platform configuration directory is unavailable"))?
-        .config_dir()
         .join("config.toml");
     if !path.is_absolute() {
         return Err(AppError::configuration(

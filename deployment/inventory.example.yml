@@ -50,7 +50,7 @@ all:
           mash_shared: true
           mash_preflight: [ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, -o, ServerAliveInterval=15, -o, ServerAliveCountMax=2, dev-macbook, 'true']
           mash_deploy_preflight: [[ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, dev-macbook, 'test -w /Users/operator/.local/bin']]
-          mash_node_configs: [/Users/operator/Library/Application Support/dev.kojah.mash/config.toml]
+          mash_node_configs: [/Users/operator/.mash/config.toml]
           mash_install:
             - [bash, tools/upgrade-remote-index.sh, dev-macbook, /absolute/artifacts/mash-darwin-arm64, /Users/operator/.local/bin/mash]
             - [bash, tools/install-dev-remote.sh, dev-macbook, /absolute/artifacts/mash-darwin-arm64, /Users/operator/.local/bin/mash]

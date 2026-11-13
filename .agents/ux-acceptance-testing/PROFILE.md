@@ -56,8 +56,7 @@ the adapter's marker for that exact session ID.
 
 - Working roots: `/home/user` inside the sandbox
   (`/home/james/scratch/mash-artifacts/ux-sessions/SESSION_ID/home` on the host).
-- Configuration/state roots: `/home/user/.config/mash`,
-  `/home/user/.local/share/mash`, and whatever else mash creates under
+- Configuration/state root: `/home/user/.mash`, and whatever else mash creates under
   `/home/user`.
 - Test fixtures:
   - Claude Code, Codex and OpenCode histories in their default locations:
@@ -76,7 +75,7 @@ the adapter's marker for that exact session ID.
     standing in for using the agent.
   - There is no network: `mash models install` cannot download.
 - Forbidden host or production state: `/home/james` (including real agent
-  histories and `~/.local/share/mash`), the repository checkout, the shared
+  histories and `~/.mash`), the repository checkout, the shared
   fleet and its credentials, and Docker.
 
 ## Journals and discovery

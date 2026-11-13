@@ -28,10 +28,7 @@ trap 'rm -rf "$staging"' EXIT
 test "$(shasum -a 256 "$staging/mash" | cut -d ' ' -f 1)" = "$digest"
 chmod 755 "$staging/mash"
 if [[ -z $database ]]; then
-    case "$(uname -s)" in
-        Darwin) database="$HOME/Library/Application Support/dev.kojah.mash/mash.sqlite3" ;;
-        *) database="${XDG_DATA_HOME:-$HOME/.local/share}/mash/mash.sqlite3" ;;
-    esac
+    database="$HOME/.mash/mash.sqlite3"
 fi
 if [[ ! -x $installed ]]; then
     echo "no installed release at $installed; nothing to upgrade"

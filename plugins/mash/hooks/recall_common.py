@@ -6,7 +6,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -122,13 +121,10 @@ def path_key(path: str) -> str:
 
 
 def state_dir() -> Path:
-    """`<Mash data dir>/recall`, matching Mash's `ProjectDirs` location."""
+    """`~/.mash/recall`, inside Mash's own directory on every platform."""
     if explicit := os.environ.get("MASH_RECALL_STATE_DIR", "").strip():
         return Path(explicit)
-    if sys.platform == "darwin":
-        return Path.home() / "Library/Application Support/dev.kojah.mash/recall"
-    data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local/share")
-    return Path(data) / "mash" / "recall"
+    return Path.home() / ".mash" / "recall"
 
 
 def read_state(path: Path) -> dict[str, Any]:

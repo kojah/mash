@@ -1,7 +1,6 @@
 //! Typed application facade shared by CLI and MCP.
 use crate::AppError;
 use crate::config::{self, ResolvedConfig};
-use directories::ProjectDirs;
 use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
@@ -620,16 +619,16 @@ pub(crate) fn publication_config(configuration: &ResolvedConfig) -> Option<&conf
 }
 
 pub(crate) fn default_database_path() -> PathBuf {
-    ProjectDirs::from("dev", "kojah", "mash").map_or_else(
+    crate::platform::mash_home().map_or_else(
         || PathBuf::from("mash.sqlite3"),
-        |directories| directories.data_local_dir().join("mash.sqlite3"),
+        |directory| directory.join("mash.sqlite3"),
     )
 }
 
 pub(crate) fn default_models_path() -> PathBuf {
-    ProjectDirs::from("dev", "kojah", "mash").map_or_else(
+    crate::platform::mash_home().map_or_else(
         || PathBuf::from("models"),
-        |directories| directories.data_local_dir().join("models"),
+        |directory| directory.join("models"),
     )
 }
 

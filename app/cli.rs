@@ -23,8 +23,7 @@ pub(crate) struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     db: Option<PathBuf>,
 
-    /// Semantic model asset directory [default: ~/.local/share/mash/models on
-    /// Linux, ~/Library/Application Support/dev.kojah.mash/models on macOS].
+    /// Semantic model asset directory [default: ~/.mash/models].
     #[arg(long, global = true, value_name = "PATH")]
     models_dir: Option<PathBuf>,
 
@@ -290,8 +289,7 @@ enum ModelsCommand {
         "Explicitly install embedding and reranking models.\n\n",
         "Downloads about 177 MB (more on Apple silicon, which adds a Core ML embedding model) ",
         "from https://huggingface.co, or from the Hugging Face mirror named by HF_ENDPOINT, ",
-        "into the models directory: ~/.local/share/mash/models on Linux and ",
-        "~/Library/Application Support/dev.kojah.mash/models on macOS, unless --models-dir is set. ",
+        "into the models directory, ~/.mash/models unless --models-dir is set. ",
         "Word-exact search does not need these models.",
     ))]
     Install,
@@ -304,8 +302,7 @@ enum QdrantCommand {
         "Download, verify and start the local Qdrant search service.\n\n",
         "Downloads Qdrant 1.20.0 for this platform (about 30 MB) from ",
         "https://github.com/qdrant/qdrant/releases, checks it against the SHA-256 built into Mash, ",
-        "and installs it under Mash's data directory (~/.local/share/mash/qdrant on Linux, ",
-        "~/Library/Application Support/dev.kojah.mash/qdrant on macOS). ",
+        "and installs it in ~/.mash/qdrant. ",
         "It runs as your user, only on 127.0.0.1 at the ports in Mash's [qdrant] settings ",
         "(6333 and 6334 by default), and starts again at login: a systemd user service on Linux, ",
         "a LaunchAgent on macOS, a logon task on Windows. ",

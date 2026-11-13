@@ -56,7 +56,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
     assert_eq!(
         body["configuration"],
         serde_json::json!({
-            "path": config_home.join("mash/config.toml"),
+            "path": home.join(".mash/config.toml"),
             "loaded": false,
             "records": {"enabled": true, "backfill_since": null},
             "attachments": {"allowed_roots": [], "share_files": false},
@@ -112,11 +112,11 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
         .flat_map(|arguments| [(arguments, true), (arguments, false)])
     {
         let directory = tempfile::tempdir().expect("temporary directory");
-        let xdg = directory.path().join("xdg");
+        let home = directory.path().join("home");
         let config = if explicit {
             directory.path().join("config.toml")
         } else {
-            xdg.join("mash/config.toml")
+            home.join(".mash/config.toml")
         };
         let database = directory.path().join("mash.sqlite3");
         let models = directory.path().join("models");
@@ -126,7 +126,7 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
         if explicit {
             command.args(["--config", config.to_str().unwrap()]);
         } else {
-            command.env("XDG_CONFIG_HOME", &xdg);
+            command.env("HOME", &home);
         }
         let output = command
             .args(["--db", database.to_str().unwrap()])

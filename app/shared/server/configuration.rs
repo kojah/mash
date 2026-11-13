@@ -84,9 +84,8 @@ impl Configuration {
             Some(_) => Err(AppError::configuration(
                 "silver_dir must be an absolute path",
             )),
-            None => Ok(directories::ProjectDirs::from("dev", "kojah", "mash")
+            None => Ok(crate::platform::mash_home()
                 .ok_or_else(|| AppError::configuration("platform data directory is unavailable"))?
-                .data_local_dir()
                 .join("shared-silver")),
         }
     }

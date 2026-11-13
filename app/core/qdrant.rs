@@ -210,9 +210,8 @@ impl Layout {
         })?;
         let directories = directories::BaseDirs::new()
             .ok_or_else(|| install_error("could not determine the home directory"))?;
-        let root = directories::ProjectDirs::from("dev", "kojah", "mash")
+        let root = crate::platform::mash_home()
             .ok_or_else(|| install_error("could not determine Mash's data directory"))?
-            .data_local_dir()
             .join("qdrant");
         let service = std::env::var("MASH_TEST_QDRANT_SERVICE").ok();
         Ok(Self::for_platform(

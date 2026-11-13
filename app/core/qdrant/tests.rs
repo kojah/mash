@@ -251,7 +251,7 @@ fn account() -> Account {
 fn layout(home: &Path, platform: Platform) -> Layout {
     Layout::for_platform(
         platform,
-        home.join(".local/share/mash/qdrant"),
+        home.join(".mash/qdrant"),
         home,
         &home.join(".config"),
         None,
@@ -776,7 +776,7 @@ fn the_systemd_unit_runs_the_pinned_binary_as_a_user_service() {
         home.join(".config/systemd/user/mash-qdrant.service")
     );
     let unit = supervisor::definition(&layout, &layout.binary(VERSION)).unwrap();
-    let root = "/home/ada/.local/share/mash/qdrant";
+    let root = "/home/ada/.mash/qdrant";
     for line in [
         "[Service]".to_owned(),
         format!("WorkingDirectory={root}"),
@@ -837,7 +837,7 @@ fn the_launch_agent_starts_at_login_and_keeps_qdrant_running() {
         home.join("Library/LaunchAgents/dev.mash.qdrant.plist")
     );
     let plist = supervisor::definition(&layout, &layout.binary(VERSION)).unwrap();
-    let root = "/Users/ada &amp; co/.local/share/mash/qdrant";
+    let root = "/Users/ada &amp; co/.mash/qdrant";
     for part in [
         "<key>Label</key><string>dev.mash.qdrant</string>".to_owned(),
         format!(
@@ -873,7 +873,7 @@ fn the_windows_logon_task_needs_no_administrator_and_opens_no_window() {
     let home = Path::new("C:\\Users\\ada");
     let layout = Layout::for_platform(
         Platform::WindowsX86_64,
-        "C:\\Users\\ada\\AppData\\Local\\kojah\\mash\\data\\qdrant".into(),
+        "C:\\Users\\ada\\.mash\\qdrant".into(),
         home,
         home,
         None,

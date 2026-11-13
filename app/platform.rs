@@ -3,7 +3,7 @@
 //! Callers use these instead of their own `cfg` blocks.
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Temporary directories readable only by the current user where the
 /// platform has Unix modes; elsewhere the user profile's access control applies.
@@ -37,6 +37,12 @@ pub(crate) fn private_file(options: &mut fs::OpenOptions) {
     }
     #[cfg(not(unix))]
     let _ = options;
+}
+
+/// Mash's own directory, `~/.mash`, on every platform: its configuration,
+/// index, models and Qdrant all live here, next to the agents' own folders.
+pub(crate) fn mash_home() -> Option<PathBuf> {
+    directories::BaseDirs::new().map(|directories| directories.home_dir().join(".mash"))
 }
 
 /// Persist a directory's entries, such as a rename into it. Windows cannot

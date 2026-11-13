@@ -329,7 +329,7 @@ address the same Qdrant instance. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.20+ in the 1.x series** is
 required; older versions are rejected before creating collections. Shared
 silver lives on the API host under `silver_dir` (absolute path; default
-`shared-silver` in the platform data directory), one SQLite database per
+`~/.mash/shared-silver`), one SQLite database per
 configured node at `<silver_dir>/<group_id>/<node_id>.sqlite3`, using the same
 silver schema as local indexes. Back it up: Qdrant can be rebuilt from it, but
 not the reverse. One `mash-server` process owns a `silver_dir`; a second one using

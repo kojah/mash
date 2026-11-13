@@ -312,14 +312,11 @@ fn models_install_help_states_download_size_source_and_directory() {
         "about 177 MB",
         "https://huggingface.co",
         "HF_ENDPOINT",
-        "~/.local/share/mash/models",
+        "~/.mash/models",
         "--models-dir",
     ] {
         assert!(install.contains(part), "{install}");
     }
     let init = help(&["init"]);
-    assert!(
-        init.contains("[default: ~/.local/share/mash/models on"),
-        "{init}"
-    );
+    assert!(init.contains("[default: ~/.mash/models]"), "{init}");
 }

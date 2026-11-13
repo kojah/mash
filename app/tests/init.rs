@@ -78,7 +78,7 @@ fn init_configures_registers_and_indexes_detected_history() {
     let (root, env) = fixture(false);
     let home = root.path();
     let value = init(&env, &["--no-index"]);
-    let config = home.join(".config/mash/config.toml");
+    let config = home.join(".mash/config.toml");
     assert_eq!(value["config"]["written"], true, "{value}");
     assert_eq!(value["config"]["search"], "exact-mention");
     assert_eq!(
@@ -153,14 +153,14 @@ fn init_configures_registers_and_indexes_detected_history() {
     let forced = init(&env, &["--force", "--no-index", "--no-agents"]);
     assert_eq!(forced["config"]["written"], true);
     assert_eq!(forced["agents"], serde_json::json!([]));
-    assert!(home.join(".config/mash/config.toml.previous").exists());
+    assert!(home.join(".mash/config.toml.previous").exists());
     assert_eq!(
         forced["config"]["previous"],
-        home.join(".config/mash/config.toml.previous")
+        home.join(".mash/config.toml.previous")
             .display()
             .to_string()
     );
-    cleanup_local_gold(&home.join(".local/share/mash/mash.sqlite3"), "local");
+    cleanup_local_gold(&home.join(".mash/mash.sqlite3"), "local");
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn init_reports_why_a_plugin_could_not_be_installed() {
 fn init_memory_backfill_is_explicit_and_agent_exit_does_not_certify_a_review() {
     let (root, env) = fixture(false);
     init(&env, &["--no-index", "--no-agents"]);
-    let database = root.path().join(".local/share/mash/mash.sqlite3");
+    let database = root.path().join(".mash/mash.sqlite3");
     std::fs::create_dir_all(database.parent().unwrap()).unwrap();
     seed_readiness_database(&database, None);
     let connection = Connection::open(&database).unwrap();
@@ -277,7 +277,7 @@ fn init_without_history_writes_nothing() {
         .unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("no supported agent history"));
-    assert!(!root.path().join(".config/mash/config.toml").exists());
+    assert!(!root.path().join(".mash/config.toml").exists());
 }
 
 #[test]
@@ -287,7 +287,7 @@ fn init_yes_accepts_defaults_and_preserves_existing_configuration() {
     assert_eq!(result["config"]["written"], true);
     assert_eq!(result["agents"], serde_json::json!([]));
     assert!(!root.path().join("calls.log").exists());
-    let path = root.path().join(".config/mash/config.toml");
+    let path = root.path().join(".mash/config.toml");
     let original = std::fs::read_to_string(&path).unwrap() + "\n# keep me\n";
     std::fs::write(&path, &original).unwrap();
     let result = init(&env, &["--yes", "--no-index", "--no-agents"]);
@@ -321,7 +321,7 @@ fn mash(env: &[(&str, String)], arguments: &[&str]) -> (i32, Value, Value) {
 
 /// A configuration whose Qdrant endpoints refuse connections.
 fn unreachable_qdrant(home: &std::path::Path, url: &str) -> std::path::PathBuf {
-    let config = home.join(".config/mash/config.toml");
+    let config = home.join(".mash/config.toml");
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
     std::fs::write(
         &config,
@@ -362,7 +362,7 @@ fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
     assert!(!message.contains("retry"), "{message}");
     // No agent CLI ran, no history was read and the configuration is intact.
     assert!(!home.join("calls.log").exists());
-    assert!(!home.join(".local/share/mash/mash.sqlite3").exists());
+    assert!(!home.join(".mash/mash.sqlite3").exists());
     assert_eq!(std::fs::read_to_string(&config).unwrap(), before);
 
     // Status keeps liveness apart from readiness and does not loop on index.
@@ -584,7 +584,7 @@ fn init_replaces_a_stale_registration_and_status_expects_recorded_agents() {
     let added = calls.find("claude mcp add --scope user mash -- ").unwrap();
     assert!(removed < added, "{calls}");
     assert!(calls.contains("codex mcp remove mash\n"), "{calls}");
-    let config = home.join(".config/mash/config.toml");
+    let config = home.join(".mash/config.toml");
     let text = std::fs::read_to_string(&config).unwrap();
     assert!(text.contains("[agents]"), "{text}");
 

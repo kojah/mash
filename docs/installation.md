@@ -115,9 +115,9 @@ you log in. The JSON result has `"outcome": "installed"`.
 
 | Platform | Runs as | Qdrant's output | Data |
 | --- | --- | --- | --- |
-| Linux | systemd user service `mash-qdrant.service` | `journalctl --user --unit mash-qdrant.service` | `~/.local/share/mash/qdrant` |
-| macOS | LaunchAgent `dev.mash.qdrant` | `~/Library/Application Support/dev.kojah.mash/qdrant/qdrant.log` | `~/Library/Application Support/dev.kojah.mash/qdrant` |
-| Windows | logon task `MashQdrant` | `%LOCALAPPDATA%\kojah\mash\data\qdrant\qdrant.log` | `C:\mash-qdrant`, because Qdrant fails with longer data paths there |
+| Linux | systemd user service `mash-qdrant.service` | `journalctl --user --unit mash-qdrant.service` | `~/.mash/qdrant` |
+| macOS | LaunchAgent `dev.mash.qdrant` | `~/.mash/qdrant/qdrant.log` | `~/.mash/qdrant` |
+| Windows | logon task `MashQdrant` | `%USERPROFILE%\.mash\qdrant\qdrant.log` | `C:\mash-qdrant`, because Qdrant fails with longer data paths there |
 
 `mash status` shows the installed version and whether the service is running,
 under `local_qdrant.installed`.

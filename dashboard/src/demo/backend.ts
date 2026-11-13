@@ -290,7 +290,7 @@ function status(): Answer<"/api/status"> {
     searchable_messages: count,
     models_installed: true,
     realized_mode: "hybrid",
-    database_path: "/home/sam/.local/share/mash/mash.sqlite",
+    database_path: "/home/sam/.mash/mash.sqlite",
     recommended_action: null,
     embeddings: count,
     stored_embeddings: count,
@@ -301,7 +301,7 @@ function status(): Answer<"/api/status"> {
     lexical: null,
     views: null,
     configuration: {
-      path: "/home/sam/.config/mash/config.toml",
+      path: "/home/sam/.mash/config.toml",
       loaded: true,
       providers: perAgent((paths) => ({ roots: paths })),
       attachments: { share_files: false, allowed_roots: [] },
@@ -339,7 +339,7 @@ function status(): Answer<"/api/status"> {
 }
 function settings(): Answer<"/api/services/settings"> {
   return {
-    path: "/home/sam/.config/mash/config.toml",
+    path: "/home/sam/.mash/config.toml",
     revision: "demo",
     editable: false,
     agents: perAgent((paths) => ({ indexed: true, roots: paths })),

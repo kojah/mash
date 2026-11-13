@@ -166,8 +166,7 @@ projects. The hook has a 2-second deadline, fails open, and
 `MASH_RECORD_RECALL=off` disables record context in both hooks, retaining chat hints.
 
 Hook throttling and per-session file hints live in
-`<Mash data directory>/recall/` (`~/.local/share/mash/recall` on Linux;
-override with `MASH_RECALL_STATE_DIR`). Throttling state is replaced atomically;
+`~/.mash/recall/` (override with `MASH_RECALL_STATE_DIR`). Throttling state is replaced atomically;
 file hints use exclusive marker creation and skip repeat lookups once shown.
 The scripts use only the Python 3.9+
 standard library. Codex runs the same `hooks/hooks.json` once you trust the

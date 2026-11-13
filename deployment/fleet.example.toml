@@ -48,7 +48,7 @@ replay_views = [["/home/operator/bin/mash-server-release", "replay-views"]]
 [[machines.databases]]
 id = "history"
 name = "Agent history"
-path = "/home/operator/.local/share/mash/silver.sqlite3"
+path = "/home/operator/.mash/silver.sqlite3"
 
 [[machines]]
 id = "macbook"
