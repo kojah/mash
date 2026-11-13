@@ -258,10 +258,14 @@ pub(crate) fn commands(layout: &Layout, step: Step, domain: &str) -> Vec<Invocat
                 Step::Stop | Step::Remove => {
                     vec![tolerant(invocation("launchctl", &["bootout", &target]))]
                 }
+                // `RunAtLoad` and `KeepAlive` spawns are deferred, possibly
+                // indefinitely, while the domain is in on-demand-only mode;
+                // `kickstart` is an explicit demand that starts it regardless.
                 Step::Start => vec![
                     tolerant(invocation("launchctl", &["bootout", &target])),
                     invocation("launchctl", &["enable", &target]),
                     invocation("launchctl", &["bootstrap", domain, &definition]),
+                    invocation("launchctl", &["kickstart", &target]),
                 ],
             }
         }

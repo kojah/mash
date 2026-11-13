@@ -850,6 +850,7 @@ fn the_launch_agent_starts_at_login_and_keeps_qdrant_running() {
                 home.join("Library/LaunchAgents/dev.mash.qdrant.plist")
                     .display()
             ),
+            "launchctl kickstart gui/501/dev.mash.qdrant".to_owned(),
         ]
     );
 }
