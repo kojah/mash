@@ -273,13 +273,22 @@ impl Backend {
         root: &Path,
         ranking: crate::views::config::Ranking,
     ) -> Result<Self, AppError> {
-        let embedding = load_local_embedding(root, None)?;
-        let reranker = match ranking {
-            crate::views::config::Ranking::ContextualRerank => {
-                Some(reranker::Reranker::load(root)?)
-            }
-            crate::views::config::Ranking::Fusion => None,
-        };
+        // A command-line search loads both models before it can answer, and
+        // each load is single-threaded work on its own files: do them together.
+        let (embedding, reranker) = std::thread::scope(|scope| {
+            let reranker = matches!(ranking, crate::views::config::Ranking::ContextualRerank)
+                .then(|| scope.spawn(|| reranker::Reranker::load(root)));
+            let embedding = load_local_embedding(root, None);
+            let reranker = reranker
+                .map(|loading| {
+                    loading
+                        .join()
+                        .unwrap_or_else(|_| Err(AppError::internal("reranker loading failed")))
+                })
+                .transpose();
+            (embedding, reranker)
+        });
+        let (embedding, reranker) = (embedding?, reranker?);
         Ok(Self {
             embedding,
             reranker,
