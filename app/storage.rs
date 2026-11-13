@@ -41,6 +41,8 @@ pub(crate) mod generated;
 
 pub(crate) struct Storage {
     attachments_config: crate::attachments::Configuration,
+    /// This writer's attachment-cache verification, recorded when it commits.
+    attachment_verification: Option<attachments::PendingVerification>,
     /// Match evidence is computed on text masked under the output policy.
     output_redaction: crate::redaction::Policy,
     connection: Connection,
@@ -149,6 +151,7 @@ impl Storage {
         schema::install_publication_triggers(&connection)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
+            attachment_verification: None,
             output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
@@ -174,10 +177,14 @@ impl Storage {
     #[tracing::instrument(name = "commit_writer", skip_all)]
     pub(crate) fn commit_writer(&mut self) -> Result<(), AppError> {
         if self.writer_active {
+            let verification = self.verification_to_record();
             self.connection
                 .execute_batch("COMMIT")
                 .map_err(AppError::database)?;
             self.writer_active = false;
+            if let Some(verification) = verification {
+                verification.record();
+            }
         }
         Ok(())
     }

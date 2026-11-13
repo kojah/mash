@@ -35,6 +35,7 @@ impl Storage {
     pub(super) fn from_silver(connection: Connection) -> Self {
         Self {
             attachments_config: crate::attachments::Configuration::default(),
+            attachment_verification: None,
             output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
@@ -70,6 +71,7 @@ impl Storage {
         }
         let storage = Self {
             attachments_config: crate::attachments::Configuration::default(),
+            attachment_verification: None,
             output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
