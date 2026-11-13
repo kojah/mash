@@ -83,7 +83,7 @@ cargo +stable install --locked --git https://github.com/kojah/mash mash
 mash --version
 ```
 
-CLI output is JSON, including `--version` and `--help`.
+Commands print JSON. `--help` and `--version` print plain text.
 
 If your shell cannot find `mash`, add Cargo's binary directory to `PATH`:
 `export PATH="$HOME/.cargo/bin:$PATH"` on macOS/Linux, or

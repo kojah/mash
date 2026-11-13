@@ -10,7 +10,7 @@ mash view MESSAGE_ID --context 3
 Each result carries a `lookup.view.id`; pass it to `view` as `MESSAGE_ID`.
 `list-chats` rows carry one too. `view` does not accept chat IDs.
 
-Every command prints JSON. To read conversations directly, use the
+Every command prints JSON; `--help` and `--version` print plain text. To read conversations directly, use the
 [dashboard](dashboard.md) or a [connected agent](agents.md).
 
 ## Commands

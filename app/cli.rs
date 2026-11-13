@@ -12,8 +12,19 @@ use crate::core::{self, IndexRequest, Operation, Paths, Request};
 
 mod wizard;
 
+/// The flag that prints what `--version` leaves out; tools read it.
+pub(crate) const VERSION_INFO: &str = "--version-info";
+pub(crate) const VERSION_INFO_HELP: &str =
+    "  --version-info  Print the release and database schema versions as JSON";
+
 #[derive(Debug, Clone, Parser)]
-#[command(name = "mash", version, about, arg_required_else_help = true)]
+#[command(
+    name = "mash",
+    version,
+    about,
+    arg_required_else_help = true,
+    after_help = VERSION_INFO_HELP
+)]
 pub(crate) struct Cli {
     /// Versioned mash node and provider configuration.
     #[arg(long, global = true, value_name = "PATH")]
@@ -714,12 +725,30 @@ fn remote_action(code: bool, qr: bool, remove: bool) -> crate::dash::RemoteActio
     }
 }
 
+/// What `--version-info` prints, wherever the flag appears: the release and
+/// the silver schemas it opens.
+fn version_info(arguments: &[OsString]) -> Option<Response> {
+    arguments
+        .iter()
+        .skip(1)
+        .any(|argument| argument == VERSION_INFO)
+        .then_some(Response::Version {
+            version: env!("CARGO_PKG_VERSION"),
+            silver_schema: crate::storage::schema::SCHEMA_VERSION,
+            silver_schema_min: crate::storage::schema::MIN_SCHEMA_VERSION,
+            record_citations: ["message_id", "session_id"],
+        })
+}
+
 pub(super) fn run<I, T>(args: I) -> Result<Response, AppError>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
     let arguments: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    if let Some(response) = version_info(&arguments) {
+        return Ok(response);
+    }
     let cli = match Cli::try_parse_from(&arguments) {
         Ok(cli) => cli,
         Err(error) => match error.kind() {
@@ -734,12 +763,10 @@ where
                 }
                 return Ok(Response::Help { help });
             }
+            // The short version is for a person, like help.
             clap::error::ErrorKind::DisplayVersion => {
-                return Ok(Response::Version {
-                    version: env!("CARGO_PKG_VERSION"),
-                    silver_schema: crate::storage::schema::SCHEMA_VERSION,
-                    silver_schema_min: crate::storage::schema::MIN_SCHEMA_VERSION,
-                    record_citations: ["message_id", "session_id"],
+                return Ok(Response::Help {
+                    help: concat!("mash ", env!("CARGO_PKG_VERSION")).to_owned(),
                 });
             }
             _ => return Err(AppError::usage(error.to_string())),

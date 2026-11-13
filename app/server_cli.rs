@@ -10,7 +10,12 @@ use crate::{AppError, shared::server};
 #[derive(Parser)]
 // Independent explicit startup operations, not mutually exclusive states.
 #[allow(clippy::struct_excessive_bools)]
-#[command(name = "mash-server", version, about = "Mash shared-index HTTP server")]
+#[command(
+    name = "mash-server",
+    version,
+    about = "Mash shared-index HTTP server",
+    after_help = crate::cli::VERSION_INFO_HELP
+)]
 struct Arguments {
     /// Server configuration in TOML format.
     #[arg(long, value_name = "PATH")]
@@ -59,6 +64,18 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    if args
+        .iter()
+        .skip(1)
+        .any(|argument| argument == crate::cli::VERSION_INFO)
+    {
+        return Ok(Some(Information::Version {
+            version: env!("CARGO_PKG_VERSION"),
+            silver_schema: crate::storage::schema::SCHEMA_VERSION,
+            silver_schema_min: crate::storage::schema::MIN_SCHEMA_VERSION,
+        }));
+    }
     let args = match Arguments::try_parse_from(args) {
         Ok(args) => args,
         Err(error) => {
@@ -66,10 +83,8 @@ where
                 clap::error::ErrorKind::DisplayHelp => Ok(Some(Information::Help {
                     help: error.to_string(),
                 })),
-                clap::error::ErrorKind::DisplayVersion => Ok(Some(Information::Version {
-                    version: env!("CARGO_PKG_VERSION"),
-                    silver_schema: crate::storage::schema::SCHEMA_VERSION,
-                    silver_schema_min: crate::storage::schema::MIN_SCHEMA_VERSION,
+                clap::error::ErrorKind::DisplayVersion => Ok(Some(Information::Help {
+                    help: concat!("mash-server ", env!("CARGO_PKG_VERSION")).to_owned(),
                 })),
                 _ => Err(AppError::usage(error.to_string())),
             };

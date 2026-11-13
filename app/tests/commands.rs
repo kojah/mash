@@ -4,7 +4,7 @@ use super::*;
 fn standalone_server_has_separate_arguments_and_side_effect_free_information() {
     let directory = tempfile::tempdir().unwrap();
     let missing = directory.path().join("missing.toml");
-    for flag in ["--help", "-h", "--version", "-V"] {
+    for flag in ["--help", "-h", "--version", "-V", "--version-info"] {
         let output = Command::cargo_bin("mash-server")
             .unwrap()
             .args(["--server-config", missing.to_str().unwrap(), flag])
@@ -13,21 +13,28 @@ fn standalone_server_has_separate_arguments_and_side_effect_free_information() {
             .unwrap();
         assert!(output.status.success(), "{output:?}");
         assert_eq!(output.stderr, [] as [u8; 0]);
-        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
         if flag == "--help" || flag == "-h" {
-            let help = response["help"].as_str().unwrap();
+            // Help is plain text for a person; everything else is JSON.
+            let help = std::str::from_utf8(&output.stdout).unwrap();
             assert!(help.contains("mash-server"));
             assert!(help.contains("--server-config"));
             assert!(!help.contains("--db"));
             assert!(!help.contains("--config "));
+            assert!(help.contains("--version-info"));
+        } else if flag != "--version-info" {
+            assert_eq!(
+                std::str::from_utf8(&output.stdout).unwrap(),
+                concat!("mash-server ", env!("CARGO_PKG_VERSION"), "\n")
+            );
         } else {
+            let response: Value = serde_json::from_slice(&output.stdout).unwrap();
             assert_eq!(response["version"], env!("CARGO_PKG_VERSION"));
             assert!(response["silver_schema"].as_i64().unwrap() > 0);
             let minimum = response["silver_schema_min"].as_i64().unwrap();
             assert!(minimum > 0 && minimum <= response["silver_schema"].as_i64().unwrap());
             assert_eq!(
                 response["silver_schema_min"],
-                run_json(&["--version"])["silver_schema_min"]
+                run_json(&["--version-info"])["silver_schema_min"]
             );
         }
     }
@@ -94,8 +101,7 @@ fn built_in_views_flags_replace_gold_flags_without_aliases() {
             .output()
             .unwrap();
         assert!(output.status.success());
-        let help: Value = serde_json::from_slice(&output.stdout).unwrap();
-        let help = help["help"].as_str().unwrap();
+        let help = std::str::from_utf8(&output.stdout).unwrap();
         assert!(help.contains(current), "{help}");
         assert!(!help.contains(retired), "{help}");
         let output = Command::cargo_bin(binary)
@@ -169,6 +175,8 @@ fn informational_flags_succeed_without_initializing_application_resources() {
         vec!["models", "install", "--help"],
         vec!["--version"],
         vec!["-V"],
+        vec!["--version-info"],
+        vec!["search", "--version-info"],
     ] {
         let output = Command::cargo_bin("mash")
             .unwrap()
@@ -184,8 +192,14 @@ fn informational_flags_succeed_without_initializing_application_resources() {
             .unwrap();
         assert!(output.status.success(), "{arguments:?}: {output:?}");
         assert!(output.stderr.is_empty(), "{arguments:?}");
-        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
         if arguments.contains(&"--version") || arguments.contains(&"-V") {
+            assert_eq!(
+                std::str::from_utf8(&output.stdout).unwrap(),
+                concat!("mash ", env!("CARGO_PKG_VERSION"), "\n"),
+                "{arguments:?}"
+            );
+        } else if arguments.contains(&"--version-info") {
+            let response: Value = serde_json::from_slice(&output.stdout).unwrap();
             assert_eq!(response["version"], env!("CARGO_PKG_VERSION"));
             assert!(response["silver_schema"].as_i64().is_some_and(|v| v > 0));
             let minimum = response["silver_schema_min"].as_i64().unwrap();
@@ -196,8 +210,13 @@ fn informational_flags_succeed_without_initializing_application_resources() {
             );
             assert_eq!(response.as_object().unwrap().len(), 4);
         } else {
-            assert_eq!(response.as_object().unwrap().len(), 1);
-            let help = response["help"].as_str().unwrap();
+            // Plain text a person can read, not a JSON string with escapes.
+            let help = std::str::from_utf8(&output.stdout).unwrap();
+            assert!(
+                serde_json::from_str::<Value>(help).is_err(),
+                "{arguments:?}"
+            );
+            assert!(help.lines().count() > 3, "{arguments:?}");
             assert!(help.contains("Usage:"), "{arguments:?}");
             assert!(help.contains("--help"), "{arguments:?}");
         }
@@ -304,8 +323,7 @@ fn models_install_help_states_download_size_source_and_directory() {
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
-        let body: Value = serde_json::from_slice(&output.stdout).unwrap();
-        body["help"].as_str().unwrap().to_owned()
+        String::from_utf8(output.stdout).unwrap()
     };
     let install = help(&["models", "install"]);
     for part in [

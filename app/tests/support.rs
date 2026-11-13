@@ -45,7 +45,9 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
     ] {
         connection.execute_batch(schema).unwrap();
     }
-    let version = run_json(&["--version"])["silver_schema"].as_i64().unwrap();
+    let version = run_json(&["--version-info"])["silver_schema"]
+        .as_i64()
+        .unwrap();
     connection
         .pragma_update(None, "user_version", version)
         .unwrap();

@@ -38,10 +38,11 @@ fn agent_path(root: &Path, agent: &str) -> std::path::PathBuf {
 fn report(command: &mut Command) -> (i32, Value) {
     let output = command.output().unwrap();
     assert!(output.stderr.is_empty(), "{output:?}");
-    (
-        output.status.code().unwrap(),
-        serde_json::from_slice(&output.stdout).unwrap(),
-    )
+    // Help is plain text; these tests read it under a `help` key.
+    let value = serde_json::from_slice(&output.stdout).unwrap_or_else(
+        |_| serde_json::json!({ "help": String::from_utf8(output.stdout.clone()).unwrap() }),
+    );
+    (output.status.code().unwrap(), value)
 }
 
 #[test]

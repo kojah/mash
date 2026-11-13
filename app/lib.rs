@@ -91,6 +91,9 @@ pub fn main_entry() -> i32 {
 pub fn server_main_entry() -> i32 {
     observability::initialize();
     match server_cli::run(std::env::args_os()) {
+        Ok(Some(server_cli::Information::Help { help })) => {
+            write_help(&mut io::stdout(), &mut io::stderr(), &help)
+        }
         Ok(Some(response)) => write_json(&mut io::stdout(), &response).map_or_else(
             |error| {
                 if error.code == BROKEN_PIPE {
@@ -130,6 +133,8 @@ where
                 reason.code
             }
         }
+        // Help is for a person to read: plain text, as clap renders it.
+        Ok(cli::Response::Help { help }) => write_help(stdout, stderr, &help),
         Ok(response) => match write_json(stdout, &response) {
             // A reader that stopped early (`mash ... | head`) is not a failure.
             Err(error) if error.code == BROKEN_PIPE => 0,
@@ -179,6 +184,21 @@ impl WatchRestart {
 
 /// Internal code for a closed output stream; never reported as an exit status.
 const BROKEN_PIPE: i32 = -1;
+
+/// Prints help text and returns the exit code. A reader that stopped early
+/// (`mash --help | head`) is not a failure.
+fn write_help(stdout: &mut dyn Write, stderr: &mut dyn Write, help: &str) -> i32 {
+    let text = help.trim_end();
+    match writeln!(stdout, "{text}").and_then(|()| stdout.flush()) {
+        Ok(()) => 0,
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => 0,
+        Err(error) => {
+            let error = AppError::io(error);
+            let _ = write_json(stderr, &error);
+            error.code
+        }
+    }
+}
 
 fn write_json<T: Serialize>(writer: &mut dyn Write, value: &T) -> Result<(), AppError> {
     let closed = |mut error: AppError, kind: Option<io::ErrorKind>| {

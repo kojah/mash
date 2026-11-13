@@ -45,7 +45,7 @@ second copy alongside it.
 
 ## Before replacing a release
 
-1. Check the installed and target releases with `mash --version`; each reports
+1. Check the installed and target releases with `mash --version-info`; each reports
    its `silver_schema` and `silver_schema_min`. The inclusive interval is the
    supported migration range; schema zero creates a new database. Older releases
    without the minimum field support only their exact reported schema.

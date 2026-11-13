@@ -87,9 +87,15 @@ def saving(
     ):
         return None
     try:
-        citations = run_mash(binary, ["--version"], 1.0).get("record_citations")
-    except (MashError, OSError, subprocess.SubprocessError, TimeoutError):
+        citations = run_mash(binary, ["--version-info"], 1.0).get("record_citations")
+    except (OSError, subprocess.SubprocessError, TimeoutError):
         return None
+    except MashError:
+        # Releases before --version-info printed this from --version.
+        try:
+            citations = run_mash(binary, ["--version"], 1.0).get("record_citations")
+        except (MashError, OSError, subprocess.SubprocessError, TimeoutError):
+            return None
     if not isinstance(citations, list) or "session_id" not in citations:
         return None
     scope = (

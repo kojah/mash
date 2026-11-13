@@ -71,7 +71,9 @@ silver_schema_supported() {
 # Older releases without this field support only their own exact schema.
 silver_binary_range() {
     local report
-    report=$("$1" --version) || return 1
+    # Releases before --version-info printed this JSON from --version.
+    report=$("$1" --version-info 2>/dev/null) && jq -e . >/dev/null 2>&1 <<<"$report" ||
+        report=$("$1" --version) || return 1
     schema=$(jq -er '.silver_schema | select(type == "number" and . > 0 and floor == .)' <<<"$report") || return 1
     schema_min=$(jq -er '(if has("silver_schema_min") then .silver_schema_min else .silver_schema end) | select(type == "number" and . > 0 and floor == .)' <<<"$report") || return 1
     [[ $schema_min -le $schema ]]

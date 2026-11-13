@@ -137,10 +137,13 @@ fn cli_view_reads_list_chats_lookup_and_rejects_chat_and_unknown_ids() {
             assert!(message.contains("\"message\""), "{message}");
         }
     }
-    let help = run_json(&["view", "--help"])["help"]
-        .as_str()
+    let output = Command::cargo_bin("mash")
         .unwrap()
-        .to_owned();
+        .args(["view", "--help"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let help = String::from_utf8(output.stdout).unwrap();
     assert!(help.contains("<MESSAGE_ID>"), "{help}");
     assert!(help.contains("lookup.view.id"), "{help}");
     assert!(help.contains("before and after"), "{help}");

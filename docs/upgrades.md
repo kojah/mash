@@ -48,7 +48,7 @@ questions were retired as a kind of saved record removes them, with their
 revisions and the links that resolved them. Decisions, preferences and facts
 are untouched. The export from step 1 still contains them.
 
-**Which indexes can be upgraded.** `mash --version` on the new release prints
+**Which indexes can be upgraded.** `mash --version-info` on the new release prints
 `silver_schema_min`, the oldest index format it upgrades in place; this
 release accepts schema 62 and later. If `mash index` reports an older index,
 it changes nothing: follow
