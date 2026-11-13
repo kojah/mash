@@ -25,7 +25,12 @@ mod tests;
 
 pub(crate) struct Build {
     pub(crate) counts: Counts,
+    /// Every configured view is certified, including dense when enabled.
     pub(crate) ready: bool,
+    /// Word search covers the current history, whatever became of dense.
+    pub(crate) words_ready: bool,
+    /// Why documents were stored without vectors in this pass, when they were.
+    pub(crate) inference_error: Option<String>,
     pub(crate) manifest: Option<Manifest>,
     pub(crate) embeddings: semantic::EmbeddingSummary,
     pub(crate) model_load_milliseconds: u64,
@@ -36,6 +41,8 @@ pub(crate) struct Build {
 pub(crate) struct Local {
     database: std::path::PathBuf,
     instance: String,
+    /// A model-free reader needs the documents' text, not their vectors.
+    words: bool,
     pub(crate) store: Store,
     pub(crate) scope: Scope,
     pub(crate) certificate: crate::silver::certificate::Certificate,
@@ -124,6 +131,7 @@ impl Local {
         Ok(Self {
             database: source,
             instance,
+            words: exact,
             store,
             scope,
             certificate,
@@ -180,7 +188,12 @@ impl Local {
         }
         let state = revision(&self.certificate)?;
         Ok(self.store.node_views(&self.scope).await?.filter(|node| {
-            self.certificate.permits_views() && node.current(&self.store, &self.scope, Some(&state))
+            self.certificate.permits_views()
+                && if self.words {
+                    node.words_current(&self.store, &self.scope, Some(&state))
+                } else {
+                    node.current(&self.store, &self.scope, Some(&state))
+                }
         }))
     }
 
@@ -264,7 +277,10 @@ pub(crate) async fn build(
     let previous = store
         .node_views(&scope)
         .await?
-        .filter(|node| node.compatible(&store, &scope) && node.certified && !full);
+        // A stored node always describes a finished pass: a new pass first
+        // replaces it with an empty one. Its complete chats are reusable even
+        // when dense was left uncertified by a failed inference.
+        .filter(|node| node.compatible(&store, &scope) && node.silver.is_some() && !full);
     let state = revision(&input.certificate)?;
     if input.certificate.permits_views()
         && let Some(node) = &previous
@@ -282,7 +298,8 @@ pub(crate) async fn build(
                 bulk.retain_chats(input.chats.keys().cloned()).await?;
                 let mut writer = bulk
                     .writer(models)
-                    .with_execution(configuration.embeddings.clone());
+                    .with_execution(configuration.embeddings.clone())
+                    .keeping_words_without_inference();
                 Box::pin(projection::native(
                     &store,
                     &scope,
@@ -308,9 +325,11 @@ pub(crate) async fn build(
                     i64::try_from(certificate.revision)
                         .map_err(|_| AppError::database_data("silver revision overflow"))?,
                 );
-                let ready = certificate.permits_views() && node.projections.complete();
-                node.certified = ready;
-                node.silver = ready.then_some(state);
+                // Every chat of this revision has its documents, so word
+                // search is current; dense also needs every vector.
+                let words = certificate.permits_views();
+                node.certified = words && node.projections.complete();
+                node.silver = words.then_some(state);
                 // The single completion barrier: strongly ordered after the
                 // stale state, the delete and every unwaited document batch.
                 store.put_node_views(&scope, &node).await?;
@@ -321,12 +340,15 @@ pub(crate) async fn build(
         .await?;
     let stored = node.stored_vectors();
     let ready = node.certified;
+    let words_ready = node.silver.is_some();
     let mut embeddings = work.embeddings;
     embeddings.stored_vectors = stored;
     embeddings.reused_vectors = stored.saturating_sub(embeddings.model_inferences);
     Ok(Build {
         counts: input.counts.clone(),
         ready,
+        words_ready,
+        inference_error: work.inference_error,
         manifest: ready.then(|| {
             Manifest::new(
                 configuration.views.build.clone(),
@@ -352,6 +374,8 @@ fn unchanged(
     Build {
         counts: input.counts.clone(),
         ready: true,
+        words_ready: true,
+        inference_error: None,
         manifest: Some(Manifest::new(
             configuration.views.build.clone(),
             scope.generation.clone(),

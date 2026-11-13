@@ -303,15 +303,14 @@ async fn index(
         model_inferences: embeddings.model_inferences,
         reused_embeddings: embeddings.reused_vectors,
         remote_inferences: embeddings.remote_inferences,
-        realized_mode: if views.ready {
-            if build.dense_enabled() {
-                SearchMode::Hybrid
-            } else {
-                SearchMode::Lexical
-            }
+        realized_mode: if views.ready && build.dense_enabled() {
+            SearchMode::Hybrid
+        } else if views.words_ready {
+            SearchMode::Lexical
         } else {
             SearchMode::Unavailable
         },
+        embedding_error: views.inference_error,
         model_load_milliseconds: views.model_load_milliseconds,
         storage_setup_milliseconds,
         ingestion_milliseconds,

@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// What one node's views currently reflects. `silver` is set only after every
-/// chat of that silver revision has documents built with this recipe.
+/// chat of that silver revision has documents built with this recipe; a local
+/// pass whose inference failed sets it with some documents lacking vectors,
+/// which `certified` and each chat's evidence then record.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NodeViews {
@@ -50,12 +52,20 @@ impl NodeViews {
         self.build == store.build && self.generation == identity.generation
     }
 
-    /// Complete for exactly this silver revision.
+    /// Every chat of exactly this silver revision has its documents, so word
+    /// search is current. A failed inference can leave some without vectors.
+    pub(crate) fn words_current(
+        &self,
+        store: &Store,
+        identity: &Scope,
+        silver: Option<&State>,
+    ) -> bool {
+        self.compatible(store, identity) && silver.is_some() && self.silver.as_ref() == silver
+    }
+
+    /// Complete for exactly this silver revision, vectors included.
     pub(crate) fn current(&self, store: &Store, identity: &Scope, silver: Option<&State>) -> bool {
-        self.compatible(store, identity)
-            && silver.is_some()
-            && self.silver.as_ref() == silver
-            && self.projections.complete()
+        self.words_current(store, identity, silver) && self.projections.complete()
     }
 
     /// Dense retrieval may use this node's documents.

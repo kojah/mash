@@ -34,6 +34,13 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 filter = 'test(=semantic::retrieval::benchmarks::pipeline::benchmark_local_ann_pipeline)'
 slow-timeout = { period = "60s", terminate-after = 10 }
 
+[[profile.default.overrides]]
+# One real-model journey: several index passes, a failed-inference pass that
+# keeps word search, recovery and every query policy. About a minute with the
+# unoptimized development build.
+filter = 'test(=real_models::real_models_index_and_run_hybrid_search)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 [profile.ci]
 fail-fast = false
 test-threads = "num-cpus"

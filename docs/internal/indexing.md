@@ -22,6 +22,15 @@ reported by the command.
 Without installed models, `mash init` configures lexical search. With models
 installed, it configures semantic search. A `lexical-only` views build supports
 `exact-mention`; semantic `related-discussion` requires `lexical-and-dense`.
+
+Word search and dense retrieval are certified separately on a local index.
+When inference fails during a pass (a model error, a missing token or a remote
+worker failure), that pass stores the remaining documents without vectors,
+makes no further inference request, and still certifies the word index for the
+committed history. It reports `embedding_error`, realizes `lexical` mode and
+needs a retry; `related-discussion` stays unavailable until a later pass embeds
+the incomplete chats. Shared publication and server replay are unchanged: they
+still fail when a dense group's embeddings cannot be produced.
 Lexical retrieval defaults to `--match-mode flexible` (`match_mode: "flexible"`
 in MCP/HTTP): prefixes of at least three characters and conservative typo
 corrections use the common Qdrant engine locally and on the server. Use `strict`, `prefix`, or `typo`

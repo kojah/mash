@@ -417,7 +417,10 @@ fn current_views_readiness_does_not_require_query_model_assets() {
         missing_models.to_str().unwrap(),
         "status",
     ]);
-    assert_eq!(status["ready"], false);
+    // Word search answers without the models; searching by meaning does not.
+    assert_eq!(status["ready"], true);
+    assert_eq!(status["realized_mode"], "lexical");
+    assert_eq!(status["recommended_action"], "models install");
     assert_eq!(status["query_models"], "unavailable");
     assert_eq!(
         status["local_artifacts"],

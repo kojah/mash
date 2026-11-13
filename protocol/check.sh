@@ -142,6 +142,7 @@ if $self_test; then
     check LocalWriter LocalWriterEarlyRelease WorkOwnsLock
     check LocalGold LocalGoldClearFirst CurrentMatchesSilver
     check LocalGold LocalGoldEarlyCertify CurrentMatchesSilver
+    check LocalGold LocalGoldDenseWithoutVectors DenseHasVectors
     # Concurrency regressions found by running four baseline lanes for one node.
     check BackfillOrdering BackfillOrderingSequential
     check BackfillOrdering BackfillOrderingRebaseBug OrderedRevisions

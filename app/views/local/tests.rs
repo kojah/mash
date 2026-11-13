@@ -264,7 +264,7 @@ async fn local_qdrant_reader_rejects_replaced_silver_with_the_same_certificate()
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
-async fn local_qdrant_failed_dense_rebuild_preserves_silver_without_certifying_gold() {
+async fn local_qdrant_failed_inference_keeps_word_search_and_leaves_dense_uncertified() {
     let mut fixture = Fixture::new();
     fixture.write("retained sentinel");
     fixture.build(false).await;
@@ -275,16 +275,19 @@ async fn local_qdrant_failed_dense_rebuild_preserves_silver_without_certifying_g
         .unwrap();
     fixture.configuration.views.build.representations =
         crate::views::config::Representations::LexicalAndDense;
-    let error = build(
+    // No models are installed, so every inference of this pass fails.
+    let failed = build(
         &fixture.database,
         &fixture.directory.path().join("missing-models"),
         &fixture.configuration,
         true,
     )
     .await
-    .err()
     .unwrap();
-    assert_eq!(error.error.kind, crate::ErrorKind::Model);
+    assert!(!failed.ready && failed.words_ready);
+    assert!(failed.inference_error.is_some());
+    assert!(failed.manifest.is_none());
+    assert_eq!(failed.embeddings.stored_vectors, 0);
     assert_eq!(
         Storage::open_silver(&fixture.database)
             .unwrap()
@@ -292,7 +295,30 @@ async fn local_qdrant_failed_dense_rebuild_preserves_silver_without_certifying_g
             .unwrap(),
         before
     );
+    // Meaning search stays closed; word search reads the same documents.
     assert!(fixture.open().await.current().await.unwrap().is_none());
+    let words = Local::open_exact(&fixture.database, &fixture.configuration)
+        .await
+        .unwrap();
+    let node = words.current().await.unwrap().unwrap();
+    assert!(!node.certified && !node.projections.complete());
+    for text in ["retained", "sentinel retained"] {
+        assert_eq!(
+            words.candidates(query(text)).await.unwrap().lexical.len(),
+            1,
+            "{text}"
+        );
+    }
+    // The next pass tries the incomplete chat again and fails the same way.
+    let retried = build(
+        &fixture.database,
+        &fixture.directory.path().join("missing-models"),
+        &fixture.configuration,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(!retried.ready && retried.words_ready && retried.inference_error.is_some());
     fixture.configuration.views.build.representations =
         crate::views::config::Representations::LexicalOnly;
     fixture.build(true).await;

@@ -227,6 +227,10 @@ pub(crate) struct IndexResponse {
     /// model computed the rest.
     pub(super) remote_inferences: u64,
     pub(super) realized_mode: SearchMode,
+    /// Why semantic search is not current after this pass: embedding failed, so
+    /// the affected messages are searchable by word only until a later pass.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) embedding_error: Option<String>,
     pub(super) model_load_milliseconds: u64,
     pub(super) storage_setup_milliseconds: u64,
     pub(super) ingestion_milliseconds: u64,
@@ -282,10 +286,12 @@ impl Response {
 
 impl IndexResponse {
     /// A retry can help only incomplete silver (a rejected or unfinished
-    /// source) or a pending publication. Records skipped from a source whose
-    /// rest was applied are permanent damage, reported but never retried.
+    /// source), messages left without embeddings, or a pending publication.
+    /// Records skipped from a source whose rest was applied are permanent
+    /// damage, reported but never retried.
     pub(super) fn needs_retry(&self) -> bool {
         !self.silver.is_complete()
+            || self.embedding_error.is_some()
             || self
                 .shared
                 .as_ref()

@@ -133,6 +133,15 @@ pub(super) fn index(out: &mut String, value: &IndexResponse) -> Result<(), serde
             value.reused_embeddings
         ),
     );
+    if let Some(error) = &value.embedding_error {
+        line(
+            out,
+            &format!(
+                "Embedding failed; affected messages are searchable by word only until a later index pass succeeds: {}",
+                safe(error)
+            ),
+        );
+    }
     line(
         out,
         &format!(

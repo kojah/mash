@@ -237,6 +237,14 @@ deletes the native projection. A reader reports current only when certification,
 the captured silver revision, and build settings agree. `CurrentMatchesSilver`
 then requires both persisted projections to equal that input.
 
+The node record makes two claims. The word index is current when every chat of
+the captured revision has its documents (`silver` is stamped); exact-mention
+search needs only that. Meaning search additionally needs `certified`, which
+also requires every dense-eligible document to hold its vector. A write whose
+inference failed stores the document's text alone, so a completed pass can
+stamp the word index while leaving dense uncertified. `DenseHasVectors` requires
+a dense claim to imply the word claim and a vector on every remaining document.
+
 Exact readers select the persisted build recipe rather than activating a newly
 requested dense recipe; they still require that recipe's complete certification
 for the current silver. Status reports the persisted recipe and leaves requested
@@ -254,8 +262,11 @@ Source mapping:
   changed settings selected before replay in `views/local.rs::build`.
 - `Invalidate` is the awaited `put_node_views` with an empty, uncertified node,
   before any point deletion or upsert.
-- `Delete(item)` and `Write(item)` represent separate completed Qdrant mutation
-  requests in `views/local/projection.rs` and the common `Writer` and
+- `Delete(item)` and `Write(item, embedded)` represent separate completed Qdrant mutation
+  requests; `embedded = FALSE` is `views/materialize.rs::Writer::flush_pending`
+  storing a batch without vectors after inference failed. The pass makes no
+  further inference request, reports the failure, and the next pass rewrites
+  those documents because their chats' evidence is incomplete in `views/local/projection.rs` and the common `Writer` and
   `Documents` helpers. Clearing a point before replacing it is an allowed
   intermediate state, not an atomic silver-and-gold transaction. Modeling each
   item separately permits more interleavings than a batched request.
@@ -305,8 +316,9 @@ Source mapping:
 
 `LocalGoldClearFirst.cfg` deliberately deletes a point before invalidation.
 `LocalGoldEarlyCertify.cfg` deliberately certifies before both projections have
-finished. Both must violate `CurrentMatchesSilver`; neither is a proposed
-implementation.
+finished. Both must violate `CurrentMatchesSilver`.
+`LocalGoldDenseWithoutVectors.cfg` deliberately claims dense after a text-only
+write and must violate `DenseHasVectors`. None is a proposed implementation.
 
 Limitations: this model assumes mutations have either completed or have not
 been sent when `Crash` occurs. It does **not** cover requests still executing

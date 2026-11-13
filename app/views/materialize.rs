@@ -15,6 +15,7 @@ pub(crate) struct Writer<'a> {
     pool: Option<LoadedIndexer>,
     execution: crate::config::Embeddings,
     reuse: bool,
+    words_survive_inference: bool,
     build: Build,
     documents: Documents,
 }
@@ -122,6 +123,7 @@ impl<'a> Writer<'a> {
             pool: None,
             execution: crate::config::Embeddings::Local {},
             reuse: true,
+            words_survive_inference: false,
             build: Build::default(),
             documents: Documents::new(scope),
         }
@@ -135,6 +137,15 @@ impl<'a> Writer<'a> {
     /// Stage writes without awaiting each batch; the caller supplies the barrier.
     pub(crate) fn with_bulk(mut self) -> Self {
         self.documents = self.documents.with_wait(false);
+        self
+    }
+
+    /// When inference fails, store the remaining documents without vectors
+    /// and record why, instead of failing the pass: their text stays
+    /// searchable by word and their chats stay incomplete for dense. Nothing
+    /// is embedded again in this pass, so a failed request is never retried.
+    pub(crate) fn keeping_words_without_inference(mut self) -> Self {
+        self.words_survive_inference = true;
         self
     }
 
@@ -362,21 +373,39 @@ impl<'a> Writer<'a> {
             flat_inputs.extend(inputs(chunk.chat, &chunk.rows, &chunk.texts));
             flat_cached.extend(chunk.cached.iter().cloned());
         }
-        let vectors = embedding::embed_units(
-            &flat_inputs,
-            (&self.scope.generation, self.scope.dimensions),
-            self.model,
-            &mut self.pool,
-            &mut self.build,
-            flat_cached,
-            &self.execution,
-        )
-        .await?;
+        let vectors = if self.build.inference_error.is_some() {
+            None
+        } else {
+            match embedding::embed_units(
+                &flat_inputs,
+                (&self.scope.generation, self.scope.dimensions),
+                self.model,
+                &mut self.pool,
+                &mut self.build,
+                flat_cached,
+                &self.execution,
+            )
+            .await
+            {
+                Ok(vectors) => Some(vectors),
+                Err(error)
+                    if self.words_survive_inference
+                        && matches!(
+                            error.error.kind,
+                            crate::ErrorKind::Model | crate::ErrorKind::Configuration
+                        ) =>
+                {
+                    self.build.inference_error = Some(error.error.message);
+                    None
+                }
+                Err(error) => return Err(error),
+            }
+        };
         drop(flat_inputs);
-        let mut vectors = vectors.into_iter();
+        let mut vectors = vectors.map(Vec::into_iter);
         for chunk in pending.drain(..) {
             for (mut message, text) in chunk.rows.into_iter().zip(chunk.texts) {
-                let fingerprint = if text.is_some() {
+                let fingerprint = if let (Some(_), Some(vectors)) = (&text, &mut vectors) {
                     let (vector, fingerprint) = vectors
                         .next()
                         .ok_or_else(|| AppError::model("missing materialized embedding"))?;

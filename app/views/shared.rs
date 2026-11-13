@@ -22,6 +22,8 @@ pub(crate) struct Build {
     pub(crate) embeddings: EmbeddingSummary,
     pub(crate) model_load_milliseconds: u64,
     pub(crate) embedding_milliseconds: u64,
+    /// Why this pass stored documents without vectors, when it did.
+    pub(crate) inference_error: Option<String>,
 }
 
 /// Materialization and publication share vector validation, inference accounting,

@@ -351,8 +351,12 @@ fn assert_views_rebuild_recovers_without_sources(config: &Path, database: &Path,
         ])
         .output()
         .unwrap();
-    assert!(!failed.status.success());
-    assert_eq!(failed.stdout, [] as [u8; 0]);
+    // Inference fails, so the pass keeps the words, says why and asks for a retry.
+    assert_eq!(failed.status.code(), Some(9));
+    let failed: serde_json::Value = serde_json::from_slice(&failed.stdout).unwrap();
+    assert!(failed["embedding_error"].is_string(), "{failed}");
+    assert_eq!(failed["realized_mode"], "lexical");
+    assert_eq!(failed["embeddings"], 0);
     let status = run_json(&[
         "--config",
         config.to_str().unwrap(),
@@ -362,10 +366,10 @@ fn assert_views_rebuild_recovers_without_sources(config: &Path, database: &Path,
         models,
         "status",
     ]);
-    assert_eq!(
-        status["ready"], false,
-        "failed replacement must remain unready"
-    );
+    assert_eq!(status["ready"], true, "word search stays available");
+    assert_eq!(status["realized_mode"], "lexical");
+    assert_eq!(status["recommended_action"], "index");
+    assert_eq!(status["local_artifacts"]["lexical"], "ready");
     assert_ne!(status["local_artifacts"]["dense"], "ready");
     let recovered = run_json(&[
         "--config",

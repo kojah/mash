@@ -182,7 +182,7 @@ async fn local_gold_status(
     let Some(node) = local.current().await? else {
         return Ok(());
     };
-    let dense_current = node.build == configuration.views.build;
+    let dense_current = node.build == configuration.views.build && node.certified;
     response.lexical = Some(crate::views::lexical_manifest::Manifest::new(
         local.certificate.clone(),
         response.searchable_messages,
@@ -199,16 +199,22 @@ async fn local_gold_status(
     if configuration.views.build.dense_enabled() && dense_current {
         response.local_artifacts.dense = ArtifactState::publication(true, true);
     }
-    let exact = !configuration.views.query.intent.semantic();
-    response.ready = (exact || dense_current)
+    // The word index answers by itself. Searching by meaning also needs the
+    // vectors and the query models, which only matter when it is configured.
+    let semantic = configuration.views.build.dense_enabled()
+        && dense_current
         && !matches!(response.query_models, ModelAvailability::Unavailable);
+    response.ready = semantic || !configuration.views.query.intent.semantic();
     if response.ready {
-        response.realized_mode = if exact {
-            SearchMode::Lexical
-        } else {
+        response.realized_mode = if semantic {
             SearchMode::Hybrid
+        } else {
+            SearchMode::Lexical
         };
-        response.recommended_action = None;
+        // Keep saying how to finish a configured semantic search.
+        if semantic || !configuration.views.build.dense_enabled() {
+            response.recommended_action = None;
+        }
     }
     Ok(())
 }
@@ -319,10 +325,9 @@ fn local_status(
     let models = Models::new(models_dir.to_path_buf());
     let models_installed = models.is_installed();
     let dense_enabled = configuration.views.build.dense_enabled();
-    let query_models = query_model_availability(&models, &configuration.views.query)?;
-    let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
+    let query_models = query_model_availability(&models, &configuration.views)?;
     // Building dense views needs the models even when searches default to words.
-    let can_index = query_models_available && (models_installed || !dense_enabled);
+    let can_index = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
             local_views_error: None,
@@ -412,9 +417,10 @@ fn local_artifacts(has_silver: bool, dense_enabled: bool) -> LocalArtifacts {
 
 fn query_model_availability(
     models: &Models,
-    query: &crate::views::config::Query,
+    views: &crate::views::config::Configuration,
 ) -> Result<ModelAvailability, AppError> {
-    if !query.intent.semantic() {
+    // Models matter only where searching by meaning is configured.
+    if !views.query.intent.semantic() && !views.build.dense_enabled() {
         return Ok(ModelAvailability::NotRequired);
     }
     match models.require_installed() {
