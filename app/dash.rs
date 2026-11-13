@@ -1223,9 +1223,13 @@ mod tests {
     async fn settings_are_changed_only_where_the_dashboard_is_private() {
         let directory = tempfile::tempdir().unwrap();
         let config = directory.path().join("config.toml");
+        // Configured roots must be absolute on this host.
         std::fs::write(
             &config,
-            "version = 1\n\n[providers.codex]\nroots = [\"/h/codex\"]\n\n[index]\nall_history = true\n",
+            format!(
+                "version = 1\n\n[providers.codex]\nroots = ['{}']\n\n[index]\nall_history = true\n",
+                directory.path().join("codex").display()
+            ),
         )
         .unwrap();
         let paths = crate::core::Paths {

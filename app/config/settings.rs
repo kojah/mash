@@ -139,10 +139,21 @@ fn revise(text: &str, change: &Change, detected: &ProviderRoots) -> Result<Strin
 mod tests {
     use super::*;
 
-    const FILE: &str = "version = 1\n\n[providers.codex]\nroots = [\"/h/codex\"]\n\n[index]\nall_history = true\n\n[views.query]\nlimit = 7\n";
+    /// A history location that is absolute on the host running the test, as
+    /// configured roots must be.
+    fn home(name: &str) -> PathBuf {
+        PathBuf::from(if cfg!(windows) { r"C:\h" } else { "/h" }).join(name)
+    }
+
+    fn file() -> String {
+        format!(
+            "version = 1\n\n[providers.codex]\nroots = ['{}']\n\n[index]\nall_history = true\n\n[views.query]\nlimit = 7\n",
+            home("codex").display()
+        )
+    }
 
     fn detected() -> ProviderRoots {
-        ProviderRoots::from([(Provider::ClaudeCode, vec![PathBuf::from("/h/claude")])])
+        ProviderRoots::from([(Provider::ClaudeCode, vec![home("claude")])])
     }
 
     fn change(text: &str) -> Change {
@@ -158,19 +169,17 @@ mod tests {
 
     #[test]
     fn a_change_edits_only_what_it_names_and_keeps_the_rest_of_the_file() {
-        let mut request = change(FILE);
+        let file = &file();
+        let mut request = change(file);
         request.agents = BTreeMap::from([(Provider::ClaudeCode, true)]);
         request.since_days = Some(30);
         request.memory_capture = false;
         request.hide_credentials.publication = false;
-        let updated = revise(FILE, &request, &detected()).unwrap();
+        let updated = revise(file, &request, &detected()).unwrap();
         let view = describe(Path::new("/c.toml"), &updated, &detected()).unwrap();
         assert!(view.agents[&Provider::Codex].indexed);
         assert!(view.agents[&Provider::ClaudeCode].indexed);
-        assert_eq!(
-            view.agents[&Provider::ClaudeCode].roots,
-            [PathBuf::from("/h/claude")]
-        );
+        assert_eq!(view.agents[&Provider::ClaudeCode].roots, [home("claude")]);
         assert_eq!(view.since_days, Some(30));
         assert!(!view.memory_capture);
         assert!(view.hide_credentials.output && !view.hide_credentials.publication);
@@ -180,58 +189,61 @@ mod tests {
 
     #[test]
     fn an_agent_with_no_history_here_is_offered_nothing_and_cannot_be_turned_on() {
-        let view = describe(Path::new("/c.toml"), FILE, &detected()).unwrap();
+        let file = &file();
+        let view = describe(Path::new("/c.toml"), file, &detected()).unwrap();
         assert!(!view.agents.contains_key(&Provider::Cursor));
         assert!(!view.agents[&Provider::ClaudeCode].indexed);
-        let mut request = change(FILE);
+        let mut request = change(file);
         request.agents = BTreeMap::from([(Provider::Cursor, true)]);
-        let error = revise(FILE, &request, &detected()).unwrap_err();
+        let error = revise(file, &request, &detected()).unwrap_err();
         assert!(error.error.message.contains("no cursor history"));
     }
 
     #[test]
     fn stale_or_unusable_changes_leave_the_file_alone() {
-        let mut stale = change(FILE);
+        let file = &file();
+        let mut stale = change(file);
         stale.revision = revision("something else");
         assert!(
-            revise(FILE, &stale, &detected())
+            revise(file, &stale, &detected())
                 .unwrap_err()
                 .error
                 .message
                 .contains("changed since")
         );
-        let mut none = change(FILE);
+        let mut none = change(file);
         none.agents = BTreeMap::from([(Provider::Codex, false)]);
         assert!(
-            revise(FILE, &none, &detected())
+            revise(file, &none, &detected())
                 .unwrap_err()
                 .error
                 .message
                 .contains("at least one")
         );
         // History cannot be sent to a shared server that is not configured.
-        let mut both = change(FILE);
+        let mut both = change(file);
         both.destination = IndexDestination::Both;
-        assert!(revise(FILE, &both, &detected()).is_err());
-        let mut days = change(FILE);
+        assert!(revise(file, &both, &detected()).is_err());
+        let mut days = change(file);
         days.since_days = Some(0);
-        assert!(revise(FILE, &days, &detected()).is_err());
+        assert!(revise(file, &days, &detected()).is_err());
     }
 
     #[test]
     fn applying_keeps_the_previous_file_beside_the_new_one() {
+        let file = &file();
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.toml");
-        std::fs::write(&path, FILE).unwrap();
-        let mut request = change(FILE);
+        std::fs::write(&path, file).unwrap();
+        let mut request = change(file);
         request.since_days = Some(7);
         // Detection reads this machine; the change names no agent, so it is unused.
         let view = apply(&path, &request).unwrap();
         assert_eq!(view.since_days, Some(7));
-        assert_ne!(view.revision, revision(FILE));
+        assert_ne!(view.revision, revision(file));
         assert_eq!(
             std::fs::read_to_string(root.path().join("config.toml.previous")).unwrap(),
-            FILE
+            *file
         );
     }
 }

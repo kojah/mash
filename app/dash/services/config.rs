@@ -278,8 +278,23 @@ impl From<mash_fleet::inventory::Service> for Service {
 #[cfg(test)]
 #[test]
 fn fleet_projection_shares_watcher_identity_and_limits_peer_credentials() {
-    let inventory: mash_fleet::inventory::Inventory =
-        toml::from_str(include_str!("../../../deployment/fleet.example.toml")).unwrap();
+    // The example describes Linux and macOS machines, and a dashboard projects
+    // only the machine it runs on, whose paths must be absolute on its host. On
+    // a Windows test host, the same machines are given drive-absolute paths.
+    let host = |path: &str| {
+        if cfg!(windows) {
+            format!("C:{path}")
+        } else {
+            path.to_owned()
+        }
+    };
+    let example = include_str!("../../../deployment/fleet.example.toml");
+    let example = if cfg!(windows) {
+        example.replace("\"/", "\"C:/")
+    } else {
+        example.to_owned()
+    };
+    let inventory: mash_fleet::inventory::Inventory = toml::from_str(&example).unwrap();
     let controller = Configuration::from_fleet(&inventory, None).unwrap();
     assert_eq!(controller.node, "workstation");
     assert_eq!(controller.machines.len(), 1);
@@ -296,9 +311,9 @@ fn fleet_projection_shares_watcher_identity_and_limits_peer_credentials() {
     assert_eq!(peer.services[0].unit, "dev.mash.index-watch");
     assert_eq!(
         peer.services[0].plist.as_deref(),
-        Some(Path::new(
+        Some(Path::new(&host(
             "/Users/operator/Library/LaunchAgents/dev.mash.index-watch.plist"
-        ))
+        )))
     );
     assert!(Configuration::from_fleet(&inventory, Some("missing")).is_err());
 }

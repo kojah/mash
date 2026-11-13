@@ -52,7 +52,10 @@ async fn app_named(
             directory: Some(root.to_path_buf()),
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(2))
+                // A refused loopback connection, as to the unreachable Qdrant
+                // configured above, takes about two seconds on Windows, so a
+                // peer's report needs longer than that.
+                .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .unwrap(),
         },
