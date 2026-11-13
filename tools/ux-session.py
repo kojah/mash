@@ -227,9 +227,12 @@ if args[:2] == ["mcp", "list"]:
         print(f"{key}: {value['command']} {' '.join(value['args'])}")
     sys.exit(0)
 if args[:2] == ["mcp", "remove"]:
-    if found.pop(args[2], None) is None:
-        print(f"No MCP server found with name: {args[2]}", file=sys.stderr); sys.exit(1)
-    write(found); print(f"Removed MCP server {args[2]}"); sys.exit(0)
+    rest = args[2:]
+    if rest[:2] == ["--scope", "user"]:
+        rest = rest[2:]
+    if found.pop(rest[0], None) is None:
+        print(f"No MCP server found with name: {rest[0]}", file=sys.stderr); sys.exit(1)
+    write(found); print(f"Removed MCP server {rest[0]}"); sys.exit(0)
 if args[:3] == ["plugin", "marketplace", "add"]:
     print(f"Failed to add marketplace {args[3]}: getaddrinfo ENOTFOUND github.com", file=sys.stderr); sys.exit(1)
 if args[:1] == ["plugin"] and args[1:2] in (["install"], ["add"], ["uninstall"], ["remove"]):

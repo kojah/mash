@@ -1,6 +1,6 @@
 //! Inspect known user settings. Project overrides are surfaced rather than treated as active
 //! without the host's project-trust/profile/policy resolution.
-use super::{Agent, Client, Component, Environment, State, executable, plugin, read};
+use super::{Agent, Client, Component, Environment, Expectation, State, executable, plugin, read};
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -107,6 +107,7 @@ pub(super) fn inspect(
     environment: &Environment,
     agent: Agent,
     explicitly_expected: bool,
+    recorded: bool,
 ) -> Client {
     let root = match agent {
         Agent::Codex => &environment.codex,
@@ -115,17 +116,18 @@ pub(super) fn inspect(
     let mut client = Client {
         agent,
         data_directory_found: root.exists(),
-        cli_path: executable(
-            match agent {
-                Agent::Codex => "codex",
-                Agent::ClaudeCode => "claude",
-            },
-            environment,
-        ),
-        expected: explicitly_expected,
+        cli_path: executable(agent.program(), environment),
+        expected: explicitly_expected || recorded,
+        expectation: if explicitly_expected {
+            Expectation::Named
+        } else if recorded {
+            Expectation::Recorded
+        } else {
+            Expectation::None
+        },
         findings: vec![],
         launch: None,
-        required: explicitly_expected,
+        probe_skipped: None,
     };
     match agent {
         Agent::Codex => codex(&mut client, environment),
@@ -142,10 +144,20 @@ pub(super) fn inspect(
             }
         }
     }
+    if client.expected && client.expectation == Expectation::None {
+        client.expectation = Expectation::Configured;
+    }
     if !client.expected {
-        client.add(Component::Configuration, State::NotConfigured, Some(root),
-            "No enabled Mash integration was found in user settings; CLI-only use is valid.",
-            Some("To require this client, run mash status --installation --agent codex or --agent claude-code."));
+        client.add(
+            Component::Configuration,
+            State::NotConfigured,
+            Some(root),
+            "No enabled Mash integration was found in user settings, and `mash init` did not record connecting this agent; CLI-only use is valid.",
+            Some(&format!(
+                "To require this agent, run `mash status --installation --agent {}`.",
+                agent.as_str()
+            )),
+        );
     }
     client
 }
@@ -242,14 +254,85 @@ fn codex(client: &mut Client, environment: &Environment) {
     }
 }
 
-fn claude(client: &mut Client, environment: &Environment) {
-    let path = environment.claude.join("settings.json");
-    let config: Claude = settings(client, &path);
-    let mcp_path = if environment.claude == environment.home.join(".claude") {
+/// Where Claude Code keeps user-level MCP registrations.
+pub(super) fn claude_mcp_path(environment: &Environment) -> PathBuf {
+    if environment.claude == environment.home.join(".claude") {
         environment.home.join(".claude.json")
     } else {
         environment.claude.join(".claude.json")
+    }
+}
+
+/// The user settings files and plugin directories an agent's own CLI edits
+/// when `mash init` registers Mash with it.
+pub(super) fn edited_files(environment: &Environment, agent: Agent) -> Vec<PathBuf> {
+    match agent {
+        Agent::Codex => vec![
+            environment.codex.join("config.toml"),
+            environment.codex.join("plugins"),
+        ],
+        Agent::ClaudeCode => vec![
+            claude_mcp_path(environment),
+            environment.claude.join("settings.json"),
+            environment.claude.join("plugins"),
+        ],
+    }
+}
+
+/// The user-level Mash registration `mash init` would leave in place, or
+/// the command of one it must replace.
+pub(super) fn registration(environment: &Environment, agent: Agent) -> super::Registration {
+    let server = match agent {
+        Agent::Codex => read::<Codex>(&environment.codex.join("config.toml"))
+            .ok()
+            .flatten()
+            .and_then(|config| config.mcp_servers.get("mash").cloned()),
+        Agent::ClaudeCode => read::<ClaudeMcp>(&claude_mcp_path(environment))
+            .ok()
+            .flatten()
+            .and_then(|config| config.mcp_servers.get("mash").cloned()),
     };
+    let Some(server) = server else {
+        return super::Registration::Unknown;
+    };
+    if server.url.is_some()
+        || server
+            .transport
+            .as_deref()
+            .is_some_and(|value| value != "stdio")
+        || server.cwd.is_some()
+        || server
+            .command
+            .as_deref()
+            .is_some_and(|command| command.contains('$'))
+    {
+        return super::Registration::Unknown;
+    }
+    let command = server.command.clone().unwrap_or_default();
+    let launch_environment = Environment {
+        path: server
+            .env
+            .get("PATH")
+            .map_or_else(|| environment.path.clone(), Into::into),
+        ..environment.clone()
+    };
+    let current = std::env::current_exe().and_then(std::fs::canonicalize).ok();
+    let registered = (!command.is_empty())
+        .then(|| executable(&command, &launch_environment))
+        .flatten()
+        .and_then(|path| std::fs::canonicalize(path).ok());
+    match (registered, current) {
+        (Some(registered), Some(current)) if registered == current => super::Registration::Current,
+        // This binary's own path is unknown, so any working command stays.
+        (Some(_), None) => super::Registration::Unknown,
+        _ => super::Registration::Stale { command },
+    }
+}
+
+fn claude(client: &mut Client, environment: &Environment) {
+    let path = environment.claude.join("settings.json");
+    let config: Claude = settings(client, &path);
+    let mcp_path = claude_mcp_path(environment);
     let mcp: ClaudeMcp = settings(client, &mcp_path);
     let plugins: Vec<_> = config
         .enabled_plugins
@@ -324,6 +407,8 @@ fn project_override(client: &mut Client, path: &std::path::Path) {
         "Project settings may override this user-level inspection; effective client trust and settings are unverified. MCP probe skipped.",
         Some("Review Mash in the agent's project plugin/MCP settings, or run this check outside the project to inspect the user installation."));
     client.launch = None;
+    client.probe_skipped =
+        Some("Skipped: project settings may override the user-level Mash MCP registration.");
 }
 
 fn inspect_server(
@@ -332,22 +417,11 @@ fn inspect_server(
     path: &std::path::Path,
     environment: &Environment,
 ) {
+    let current = std::env::current_exe()
+        .map_or_else(|_| "mash".to_owned(), |path| path.display().to_string());
+    let register = client.agent.add_mcp(&current);
     let Some(server) = server else {
-        let executable = std::env::current_exe()
-            .map_or_else(|_| "mash".to_owned(), |path| path.display().to_string());
-        let register = match client.agent {
-            Agent::ClaudeCode => format!("claude mcp add --scope user mash -- {executable} mcp"),
-            Agent::Codex => format!("codex mcp add mash -- {executable} mcp"),
-        };
-        client.add(
-            Component::Mcp,
-            State::Missing,
-            Some(path),
-            "No user-level Mash MCP registration found.",
-            Some(&format!(
-                "Run `mash init`, or register it yourself: `{register}`. Then restart the agent."
-            )),
-        );
+        missing_registration(client, path, &register);
         return;
     };
     if server.enabled == Some(false) || server.disabled == Some(true) {
@@ -410,20 +484,64 @@ fn inspect_server(
         ..environment.clone()
     };
     let Some(executable) = executable(command, &launch_environment) else {
-        client.add(
-            Component::Mcp,
-            State::Missing,
-            Some(path),
-            "Configured MCP executable is missing or not executable on this CLI's PATH.",
-            Some("Repair the executable path/permissions or the agent launcher environment."),
-        );
+        missing_executable(client, path, command, &register);
         return;
     };
-    client.add(Component::Mcp, State::Present, Some(path), "Enabled stdio registration and executable found; arguments and handshake have not been tested.", Some("Run mash status --installation --probe to test a fresh MCP process."));
+    client.add(
+        Component::Mcp,
+        State::Present,
+        Some(path),
+        "Enabled stdio registration and executable found; arguments and handshake have not been tested.",
+        Some(&format!(
+            "Run `mash status --installation --agent {} --probe` to test a fresh MCP process.",
+            client.agent.as_str()
+        )),
+    );
     client.launch = Some(Launch {
         server: server.clone(),
         executable,
         cwd: environment.cwd.clone(),
         source: path.to_path_buf(),
     });
+}
+
+fn missing_registration(client: &mut Client, path: &std::path::Path, register: &str) {
+    client.probe_skipped = Some("Skipped: there is no user-level Mash MCP registration.");
+    if client.expectation == Expectation::Recorded {
+        client.add(
+            Component::Mcp,
+            State::Missing,
+            Some(path),
+            "`mash init` connected this agent, but its user-level Mash MCP registration is missing.",
+            Some(&format!(
+                "Run `{register}`, then restart the agent."
+            )),
+        );
+    } else {
+        client.add(
+            Component::Mcp,
+            State::Missing,
+            Some(path),
+            "No user-level Mash MCP registration found.",
+            Some(&format!(
+                "Run `mash init`, or register it yourself: `{register}`. Then restart the agent."
+            )),
+        );
+    }
+}
+
+fn missing_executable(client: &mut Client, path: &std::path::Path, command: &str, register: &str) {
+    client.probe_skipped = Some("Skipped: the registered MCP executable does not exist.");
+    client.add(
+        Component::Mcp,
+        State::Missing,
+        Some(path),
+        &format!(
+            "Registered MCP command {command} does not exist or is not executable on this CLI's PATH."
+        ),
+        Some(&format!(
+            "Run `{} && {register}`, then restart the agent. Rerunning `mash init` also replaces it.",
+            client.agent.remove_mcp()
+        )),
+    );
 }

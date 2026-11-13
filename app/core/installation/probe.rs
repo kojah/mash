@@ -16,12 +16,15 @@ struct Runtime {
 
 pub(super) async fn check(client: &mut Client) {
     let Some(launch) = &client.launch else {
+        let message = client.probe_skipped.unwrap_or(
+            "No unambiguous enabled user-level stdio registration is available to probe.",
+        );
         client.add(
             Component::Probe,
             State::Unverified,
             None,
-            "No unambiguous enabled user-level stdio registration is available to probe.",
-            Some("Resolve the configuration findings, then rerun with --probe."),
+            message,
+            Some("Resolve the MCP and configuration findings, then rerun with --probe."),
         );
         return;
     };
@@ -76,6 +79,16 @@ pub(super) async fn check(client: &mut Client) {
         ),
     };
     client.add(Component::Probe, state, Some(&source), message, (state == State::Failed).then_some("Repair the MCP command, arguments and environment; reconnect the agent, then rerun --probe."));
+    if state == State::Passed {
+        // The registration finding no longer has anything left to test.
+        for finding in &mut client.findings {
+            if finding.component == Component::Mcp && finding.state == State::Present {
+                "Enabled stdio registration found; a fresh process passed the MCP handshake (see the probe finding)."
+                    .clone_into(&mut finding.message);
+                finding.remediation = None;
+            }
+        }
+    }
 }
 
 async fn handshake(command: tokio::process::Command) -> Result<(), &'static str> {

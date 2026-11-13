@@ -18,6 +18,87 @@ pub(crate) enum Agent {
     ClaudeCode,
 }
 
+impl Agent {
+    /// The `--agent` value and JSON name.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::ClaudeCode => "claude-code",
+        }
+    }
+
+    /// The agent's own command-line program.
+    pub(crate) const fn program(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::ClaudeCode => "claude",
+        }
+    }
+
+    /// The agent CLI command that removes Mash's user-level MCP registration.
+    pub(crate) const fn remove_mcp(self) -> &'static str {
+        match self {
+            Self::Codex => "codex mcp remove mash",
+            Self::ClaudeCode => "claude mcp remove --scope user mash",
+        }
+    }
+
+    /// The agent CLI command that registers `executable` as Mash's MCP server.
+    pub(crate) fn add_mcp(self, executable: &str) -> String {
+        match self {
+            Self::Codex => format!("codex mcp add mash -- {executable} mcp"),
+            Self::ClaudeCode => format!("claude mcp add --scope user mash -- {executable} mcp"),
+        }
+    }
+
+    /// The online commands that install and enable the mash@mash plugin.
+    pub(crate) const fn install_plugin(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => {
+                "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
+            }
+            Self::Codex => "codex plugin marketplace add kojah/mash && codex plugin add mash@mash",
+        }
+    }
+
+    /// The agent CLI command that removes the mash@mash plugin.
+    pub(crate) const fn remove_plugin(self) -> &'static str {
+        match self {
+            Self::Codex => "codex plugin remove mash@mash",
+            Self::ClaudeCode => "claude plugin uninstall mash@mash",
+        }
+    }
+}
+
+/// Why an integration is expected for an agent, strongest reason first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Expectation {
+    /// Named with `--agent`.
+    Named,
+    /// `mash init` recorded connecting it under `[agents] connected`, so it
+    /// is expected whatever its settings say now.
+    Recorded,
+    /// Its own settings enable the Mash plugin or register Mash's MCP server.
+    Configured,
+    /// Not expected: CLI-only use is valid.
+    None,
+}
+
+/// How far an agent can use Mash, judged from its user settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(rename = "AgentConnection")]
+pub(crate) enum Connection {
+    /// No usable Mash MCP registration: the agent cannot reach Mash.
+    None,
+    /// The Mash MCP tools are registered and usable; the plugin (history
+    /// skill and session hooks) or another part needs attention.
+    McpOnly,
+    /// Expected, with nothing needing attention.
+    Full,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[schemars(rename = "SetupState")]
@@ -73,12 +154,14 @@ struct Client {
     data_directory_found: bool,
     cli_path: Option<PathBuf>,
     expected: bool,
+    /// Why an integration is expected for this agent.
+    expectation: Expectation,
     findings: Vec<Finding>,
     #[serde(skip)]
     launch: Option<clients::Launch>,
-    /// Named with `--agent`; a problem with it fails the command.
+    /// Why there is nothing to probe, when the settings say so.
     #[serde(skip)]
-    required: bool,
+    probe_skipped: Option<&'static str>,
 }
 
 impl Client {
@@ -123,14 +206,15 @@ pub(crate) struct Summary {
 struct ClientSummary {
     agent: Agent,
     expected: bool,
-    /// Configured for Mash with nothing needing attention.
-    connected: bool,
+    connection: Connection,
     /// Parts of an expected integration that are not installed.
     missing: Vec<Component>,
     #[serde(skip)]
     required: bool,
     attention: usize,
     unverified: usize,
+    /// What would repair this agent, or null when nothing needs attention.
+    next_action: Option<String>,
 }
 
 impl Report {
@@ -160,12 +244,28 @@ impl Report {
                     .filter(|component| matches!(component, Component::Mcp | Component::Plugin))
                     .collect();
                 missing.dedup();
+                let mcp_usable = client.findings.iter().any(|finding| {
+                    finding.component == Component::Mcp && finding.state == State::Present
+                }) && !client.findings.iter().any(|finding| {
+                    matches!(finding.component, Component::Mcp | Component::Probe)
+                        && finding.state.needs_attention()
+                });
+                let connection = if client.expected && attention == 0 {
+                    Connection::Full
+                } else if client.expected && mcp_usable {
+                    Connection::McpOnly
+                } else {
+                    Connection::None
+                };
                 ClientSummary {
                     agent: client.agent,
                     expected: client.expected,
-                    connected: client.expected && attention == 0,
+                    connection,
+                    next_action: (attention > 0)
+                        .then(|| client.next_action(&missing))
+                        .flatten(),
                     missing,
-                    required: client.required,
+                    required: client.expectation == Expectation::Named,
                     attention,
                     unverified: client
                         .findings
@@ -207,6 +307,16 @@ impl Report {
     }
 
     fn next_action(&self) -> Option<String> {
+        // Agents named with `--agent` are what the caller asked about.
+        if let Some((agent, action)) = self
+            .summary
+            .clients
+            .iter()
+            .filter(|client| client.required)
+            .find_map(|client| Some((client.agent, client.next_action.as_deref()?)))
+        {
+            return Some(format!("{}: {action}", agent.as_str()));
+        }
         // Without Qdrant nothing searches, whatever the agents' state.
         if let Some(remedy) = self.resources.as_ref().and_then(|resources| {
             resources
@@ -227,13 +337,7 @@ impl Report {
                         && finding.state.needs_attention()
                 })
             {
-                let command = match client.agent {
-                    Agent::Codex => "codex",
-                    Agent::ClaudeCode => "claude",
-                };
-                return Some(format!(
-                    "Install the {command} CLI and make `{command}` available on PATH, then run `mash init`. CLI search and the dashboard work without this integration."
-                ));
+                return Some(install_cli(client.agent));
             }
         }
         // Unconfigured agents are valid CLI-only use. A missing MCP server is
@@ -250,14 +354,7 @@ impl Report {
             .clients
             .iter()
             .filter(|client| client.missing == [Component::Plugin])
-            .map(|client| match client.agent {
-                Agent::ClaudeCode => {
-                    "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
-                }
-                Agent::Codex => {
-                    "codex plugin marketplace add kojah/mash && codex plugin add mash@mash"
-                }
-            })
+            .map(|client| client.agent.install_plugin())
             .collect();
         if mcp {
             Some("mash init".to_owned())
@@ -275,12 +372,50 @@ impl Report {
         }
     }
 
-    /// An agent named with `--agent` needs attention.
-    pub(crate) fn required_attention(&self) -> bool {
+    /// An expected agent (named with `--agent`, recorded by `mash init` or
+    /// configured for Mash) needs attention; the command then exits 1.
+    pub(crate) fn agents_need_attention(&self) -> bool {
         self.summary
             .clients
             .iter()
-            .any(|client| client.required && client.attention > 0)
+            .any(|client| client.expected && client.attention > 0)
+    }
+}
+
+fn install_cli(agent: Agent) -> String {
+    let command = agent.program();
+    format!(
+        "Install the {command} CLI and make `{command}` available on PATH, then run `mash init`. CLI search and the dashboard work without this integration."
+    )
+}
+
+impl Client {
+    /// One agent's repair: its CLI first, then its MCP registration, then
+    /// the plugin, then anything else needing attention.
+    fn next_action(&self, missing: &[Component]) -> Option<String> {
+        let attention = |component: Component| {
+            self.findings
+                .iter()
+                .find(|finding| finding.component == component && finding.state.needs_attention())
+        };
+        if self.cli_path.is_none()
+            && (attention(Component::Mcp).is_some() || attention(Component::Plugin).is_some())
+        {
+            return Some(install_cli(self.agent));
+        }
+        if let Some(remedy) = attention(Component::Mcp).and_then(|f| f.remediation.clone()) {
+            return Some(remedy);
+        }
+        if missing == [Component::Plugin] {
+            return Some(plugin::remedy(self.agent));
+        }
+        self.findings
+            .iter()
+            .filter(|finding| {
+                (self.expected || finding.component == Component::Configuration)
+                    && finding.state.needs_attention()
+            })
+            .find_map(|finding| finding.remediation.clone())
     }
 }
 
@@ -336,8 +471,12 @@ pub(crate) struct Step {
 }
 
 /// Inspect this machine's agent integrations without launching anything.
-pub(crate) fn setup() -> Setup {
-    let report = collect(Environment::discover().as_ref(), &[]);
+pub(crate) fn setup(paths: &super::Paths) -> Setup {
+    let report = collect(
+        Environment::discover().as_ref(),
+        &[],
+        &recorded_agents(paths),
+    );
     let agents = report
         .clients
         .iter()
@@ -345,7 +484,7 @@ pub(crate) fn setup() -> Setup {
         .map(|(client, summary)| AgentSetup {
             agent: client.agent,
             expected: client.expected,
-            connected: summary.connected,
+            connected: summary.connection == Connection::Full,
             steps: client
                 .findings
                 .iter()
@@ -367,7 +506,15 @@ pub(crate) fn setup() -> Setup {
     }
 }
 
-fn collect(environment: Option<&Environment>, agents: &[Agent]) -> Report {
+/// The agents `mash init` recorded in the configuration; none when it
+/// cannot be loaded, which the resources section reports.
+fn recorded_agents(paths: &super::Paths) -> Vec<Agent> {
+    crate::config::load(paths.config.as_deref())
+        .map(|config| config.connected_agents)
+        .unwrap_or_default()
+}
+
+fn collect(environment: Option<&Environment>, agents: &[Agent], recorded: &[Agent]) -> Report {
     let mut report = Report {
         summary: Summary {
             attention: 0,
@@ -388,6 +535,7 @@ fn collect(environment: Option<&Environment>, agents: &[Agent]) -> Report {
                     environment,
                     agent,
                     agents.contains(&agent),
+                    recorded.contains(&agent),
                 ));
             }
         }
@@ -404,7 +552,7 @@ fn collect(environment: Option<&Environment>, agents: &[Agent]) -> Report {
 /// `mash status --installation` would report it.
 pub(super) fn plugin_current(agent: Agent) -> bool {
     Environment::discover().is_some_and(|environment| {
-        clients::inspect(&environment, agent, true)
+        clients::inspect(&environment, agent, true, false)
             .findings
             .iter()
             .all(|finding| {
@@ -416,8 +564,33 @@ pub(super) fn plugin_current(agent: Agent) -> bool {
     })
 }
 
-pub(super) fn summary() -> Summary {
-    collect(Environment::discover().as_ref(), &[]).summary
+/// The user-level Mash MCP registration `mash init` finds for an agent.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Registration {
+    /// This Mash binary.
+    Current,
+    /// Its command is missing, not executable, or another binary.
+    Stale { command: String },
+    /// Absent from user settings, or not resolvable without the agent's own
+    /// environment expansion; `init` leaves it as it is.
+    Unknown,
+}
+
+pub(super) fn registration(agent: Agent) -> Registration {
+    Environment::discover().map_or(Registration::Unknown, |environment| {
+        clients::registration(&environment, agent)
+    })
+}
+
+/// The files an agent's own CLI edits when `init` registers Mash with it.
+pub(super) fn edited_files(agent: Agent) -> Vec<PathBuf> {
+    Environment::discover()
+        .map(|environment| clients::edited_files(&environment, agent))
+        .unwrap_or_default()
+}
+
+pub(super) fn summary(recorded: &[Agent]) -> Summary {
+    collect(Environment::discover().as_ref(), &[], recorded).summary
 }
 
 pub(crate) fn help_notice(paths: &super::Paths) -> Option<&'static str> {
@@ -439,7 +612,7 @@ pub(crate) fn help_notice(paths: &super::Paths) -> Option<&'static str> {
             "Installation warning: Mash configuration or configured provider roots need attention. Run `mash status --installation` for setup details.",
         );
     }
-    let summary = summary();
+    let summary = summary(&recorded_agents(paths));
     if summary.attention > 0 {
         Some(
             "Installation warning: some Mash agent integrations are incomplete. Run `mash status --installation` for findings and repair steps.",
@@ -459,12 +632,13 @@ pub(super) async fn inspect(
     paths: super::Paths,
 ) -> Result<Report, crate::AppError> {
     let (mut report, qdrant) = crate::blocking(move || {
-        let mut report = collect(Environment::discover().as_ref(), &agents);
+        let config = crate::config::load(paths.config.as_deref()).ok();
+        let recorded = config
+            .as_ref()
+            .map_or(&[][..], |config| config.connected_agents.as_slice());
+        let mut report = collect(Environment::discover().as_ref(), &agents, recorded);
         report.resources = Some(resources::inspect(&paths));
-        let qdrant = crate::config::load(paths.config.as_deref())
-            .ok()
-            .map(|config| config.qdrant);
-        Ok((report, qdrant))
+        Ok((report, config.map(|config| config.qdrant)))
     })
     .await?;
     if let (Some(config), Some(resources)) = (qdrant, &mut report.resources) {

@@ -40,6 +40,15 @@ enum Command {
     /// Indexing and every search need a running local Qdrant service (by
     /// default on this machine's port 6333); init checks it before changing
     /// anything. Use --no-index to configure without it.
+    ///
+    /// Agents are connected through their own CLIs, which edit their user
+    /// settings: ~/.claude.json, ~/.claude/settings.json and ~/.claude/plugins
+    /// for Claude Code, ~/.codex/config.toml and ~/.codex/plugins for Codex.
+    /// The connected agents are recorded in Mash's config.toml, so
+    /// `mash status --installation` reports them if they lose Mash. To undo,
+    /// run `claude mcp remove --scope user mash`, `claude plugin uninstall
+    /// mash@mash`, `codex mcp remove mash` and `codex plugin remove mash@mash`,
+    /// then delete Mash's configuration and data directories.
     Init {
         /// Accept defaults without prompting (also used automatically without a terminal).
         #[arg(short = 'y', long)]
@@ -185,7 +194,10 @@ enum Command {
         /// opening the Mash index or models.
         #[arg(long, conflicts_with_all = ["coverage", "shared"])]
         installation: bool,
-        /// Require this integration (repeatable); otherwise inspect detected clients.
+        /// Inspect only this agent and require its integration (repeatable).
+        /// Without it, every agent is inspected; the command exits 1 when an
+        /// expected agent (named here, connected by `mash init`, or configured
+        /// for Mash) needs attention.
         #[arg(long, value_enum, requires = "installation")]
         agent: Vec<crate::core::installation::Agent>,
         /// Launch configured stdio MCP commands and verify Mash help (10 seconds per client).

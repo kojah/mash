@@ -159,6 +159,26 @@
         ],
         "type": "object"
       },
+      "AgentConnection": {
+        "description": "How far an agent can use Mash, judged from its user settings.",
+        "oneOf": [
+          {
+            "const": "none",
+            "description": "No usable Mash MCP registration: the agent cannot reach Mash.",
+            "type": "string"
+          },
+          {
+            "const": "mcp-only",
+            "description": "The Mash MCP tools are registered and usable; the plugin (history\nskill and session hooks) or another part needs attention.",
+            "type": "string"
+          },
+          {
+            "const": "full",
+            "description": "Expected, with nothing needing attention.",
+            "type": "string"
+          }
+        ]
+      },
       "AgentSettings": {
         "properties": {
           "indexed": {
@@ -949,9 +969,8 @@
             "minimum": 0,
             "type": "integer"
           },
-          "connected": {
-            "description": "Configured for Mash with nothing needing attention.",
-            "type": "boolean"
+          "connection": {
+            "$ref": "#/components/schemas/AgentConnection"
           },
           "expected": {
             "type": "boolean"
@@ -963,6 +982,13 @@
             },
             "type": "array"
           },
+          "next_action": {
+            "description": "What would repair this agent, or null when nothing needs attention.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "unverified": {
             "format": "uint",
             "minimum": 0,
@@ -972,7 +998,7 @@
         "required": [
           "agent",
           "expected",
-          "connected",
+          "connection",
           "missing",
           "attention",
           "unverified"

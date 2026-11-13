@@ -190,9 +190,75 @@ pub(crate) fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, AppError
     Ok(previous)
 }
 
+/// Record in the configuration at `path` that `mash init` connected
+/// `agents`, keeping agents recorded earlier. Returns whether it changed.
+pub(crate) fn record_connected_agents(
+    path: &Path,
+    agents: &[crate::core::installation::Agent],
+) -> Result<bool, AppError> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        AppError::configuration(format!(
+            "failed to read configuration {}: {error}",
+            path.display()
+        ))
+    })?;
+    let Some(updated) = super::document::connect_agents(&text, agents)? else {
+        return Ok(false);
+    };
+    let mut staged = path.as_os_str().to_owned();
+    staged.push(".partial");
+    let failed = |operation: &str, error: &std::io::Error| {
+        AppError::configuration(format!(
+            "failed to {operation} configuration {}: {error}",
+            path.display()
+        ))
+    };
+    fs::write(&staged, updated).map_err(|error| failed("write", &error))?;
+    fs::rename(&staged, path).map_err(|error| failed("install", &error))?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::installation::Agent;
+
+    #[test]
+    fn init_records_connected_agents_and_keeps_comments() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.toml");
+        let providers = ProviderRoots::from([(Provider::Codex, vec![root.path().join("history")])]);
+        std::fs::write(&path, render(&providers, false).unwrap()).unwrap();
+        assert_eq!(
+            super::super::load(Some(&path)).unwrap().connected_agents,
+            []
+        );
+        assert!(record_connected_agents(&path, &[Agent::Codex]).unwrap());
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# Written by `mash init`"), "{text}");
+        assert!(!record_connected_agents(&path, &[Agent::Codex]).unwrap());
+        assert!(
+            record_connected_agents(&path, &[Agent::ClaudeCode, Agent::Codex, Agent::ClaudeCode])
+                .unwrap()
+        );
+        assert_eq!(
+            super::super::load(Some(&path)).unwrap().connected_agents,
+            [Agent::Codex, Agent::ClaudeCode]
+        );
+        assert!(!root.path().join("config.toml.previous").exists());
+        std::fs::write(
+            &path,
+            "version = 1\nproviders = {}\n[agents]\nconnected = ['codex', 'codex']\n",
+        )
+        .unwrap();
+        assert!(super::super::load(Some(&path)).is_err());
+        std::fs::write(
+            &path,
+            "version = 1\nproviders = {}\n[agents]\nconnected = ['cursor']\n",
+        )
+        .unwrap();
+        assert!(super::super::load(Some(&path)).is_err());
+    }
 
     #[test]
     fn setup_wizard_preserves_custom_settings_and_applies_choices() {

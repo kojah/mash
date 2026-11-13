@@ -19,10 +19,10 @@ fn write(path: &Path, content: &str) {
 fn installation_cli_only_is_not_broken_but_expected_clients_are() {
     let root = tempfile::tempdir().unwrap();
     let environment = environment(root.path());
-    let report = collect(Some(&environment), &[]);
+    let report = collect(Some(&environment), &[], &[]);
     assert_eq!(report.summary.attention, 0);
     assert!(report.clients.iter().all(|client| !client.expected));
-    let report = collect(Some(&environment), &[Agent::Codex]);
+    let report = collect(Some(&environment), &[Agent::Codex], &[]);
     assert_eq!(report.clients.len(), 1);
     assert_eq!(report.summary.attention, 2);
 }
@@ -35,7 +35,7 @@ fn installation_partial_setup_warns_and_never_serializes_secrets() {
         &environment.codex.join("config.toml"),
         "[mcp_servers.mash]\ncommand = '/missing/mash'\nargs = ['mcp', 'secret-argument']\n[mcp_servers.mash.env]\nTOKEN = 'secret-token'\n",
     );
-    let report = collect(Some(&environment), &[]);
+    let report = collect(Some(&environment), &[], &[]);
     assert!(report.summary.attention >= 2);
     let json = serde_json::to_string(&report).unwrap();
     assert!(!json.contains("secret-argument"));
@@ -51,7 +51,7 @@ fn installation_malformed_settings_are_findings_not_errors() {
         &environment.codex.join("config.toml"),
         "[mcp_servers.mash]\ncommand = SECRET_VALUE_INVALID\n",
     );
-    let report = collect(Some(&environment), &[Agent::Codex]);
+    let report = collect(Some(&environment), &[Agent::Codex], &[]);
     assert!(report.summary.attention > 0);
     assert!(
         !serde_json::to_string(&report)
@@ -100,7 +100,7 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
     ] {
         write(&plugin.join("hooks").join(script), "# hook");
     }
-    let report = collect(Some(&environment), &[]);
+    let report = collect(Some(&environment), &[], &[]);
     let findings = &report.clients[0].findings;
     assert_eq!(
         findings
@@ -119,7 +119,7 @@ fn installation_codex_checks_hook_files_trust_and_versions() {
     );
     std::fs::remove_file(plugin.join("hooks/session_start.py")).unwrap();
     write(&plugin.join("skills/mash-history/contract.json"), "{}");
-    let report = collect(Some(&environment), &[]);
+    let report = collect(Some(&environment), &[], &[]);
     assert!(
         report.clients[0]
             .findings
@@ -144,7 +144,7 @@ fn installation_claude_disabled_hooks_and_mcp_are_reported() {
         &environment.claude.join("settings.json"),
         r#"{"enabledPlugins":{"mash@mash-local":true},"disableAllHooks":true,"disabledMcpServers":["mash"]}"#,
     );
-    let report = collect(Some(&environment), &[]);
+    let report = collect(Some(&environment), &[], &[]);
     let client = &report.clients[1];
     assert!(client.expected);
     assert!(client.launch.is_none());
@@ -170,7 +170,7 @@ async fn installation_probe_reports_failed_handshake_without_leaking_stderr() {
         &environment.codex.join("config.toml"),
         "[mcp_servers.mash]\ncommand = '/bin/sh'\nargs = ['-c', 'echo SECRET >&2; exit 1']\n",
     );
-    let mut report = collect(Some(&environment), &[Agent::Codex]);
+    let mut report = collect(Some(&environment), &[Agent::Codex], &[]);
     probe::check(&mut report.clients[0]).await;
     assert!(
         report.clients[0]
@@ -195,7 +195,7 @@ fn installation_project_override_does_not_probe_user_registration() {
         &environment.cwd.join(".codex/config.toml"),
         "[mcp_servers.mash]\nenabled = false\n",
     );
-    let report = collect(Some(&environment), &[Agent::Codex]);
+    let report = collect(Some(&environment), &[Agent::Codex], &[]);
     assert!(report.clients[0].launch.is_none());
     assert!(report.summary.unverified > 0);
 }
@@ -245,7 +245,7 @@ fn installation_complete_claude_user_setup_has_no_attention_findings() {
     ] {
         write(&plugin.join("hooks").join(name), "# script");
     }
-    let report = collect(Some(&environment), &[Agent::ClaudeCode]);
+    let report = collect(Some(&environment), &[Agent::ClaudeCode], &[]);
     assert_eq!(report.summary.attention, 0, "{report:?}");
     assert!(report.clients[0].launch.is_some());
     assert!(report.clients[0].expected);
@@ -320,7 +320,7 @@ fn installation_claude_directory_marketplace_is_inspected_in_place() {
             &serde_json::json!({"mash-local":{"source":{"source":kind,"path":checkout},"installLocation":checkout}})
                 .to_string(),
         );
-        collect(Some(&environment), &[Agent::ClaudeCode])
+        collect(Some(&environment), &[Agent::ClaudeCode], &[])
             .summary
             .attention
     };
@@ -347,7 +347,7 @@ async fn installation_probe_skips_watch_and_preserves_disabled_registration() {
         "[mcp_servers.mash]\ncommand = '/bin/true'\nenabled = false\n",
     ] {
         write(&environment.codex.join("config.toml"), config);
-        let mut report = collect(Some(&environment), &[Agent::Codex]);
+        let mut report = collect(Some(&environment), &[Agent::Codex], &[]);
         if config.contains("--watch") {
             assert!(report.clients[0].findings.iter().any(|finding| matches!(
                 finding.component,
@@ -381,10 +381,154 @@ fn installation_multiple_codex_copies_are_ambiguous() {
         )
         .unwrap();
     }
-    let report = collect(Some(&environment), &[Agent::Codex]);
+    let report = collect(Some(&environment), &[Agent::Codex], &[]);
     assert!(report.clients[0].findings.iter().any(|finding| matches!(
         finding.component,
         Component::Plugin
     ) && finding.state
         == State::Unverified));
+}
+
+/// An environment whose PATH has discovery-only `claude` and `codex` files.
+fn with_agent_clis(root: &Path) -> Environment {
+    let mut environment = environment(root);
+    let bin = root.join("bin");
+    for agent in ["claude", "codex"] {
+        write(&bin.join(agent), "discovery-only test fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(bin.join(agent), std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+        }
+    }
+    environment.path = bin.into_os_string();
+    environment
+}
+
+fn finding(client: &Client, component: Component) -> &Finding {
+    client
+        .findings
+        .iter()
+        .find(|finding| finding.component == component)
+        .unwrap()
+}
+
+#[test]
+fn installation_expects_recorded_agents_whose_registration_disappeared() {
+    let root = tempfile::tempdir().unwrap();
+    let environment = with_agent_clis(root.path());
+    std::fs::create_dir_all(&environment.claude).unwrap();
+    // Without a record, a missing registration is valid CLI-only use.
+    let unused = collect(Some(&environment), &[], &[]);
+    assert!(!unused.agents_need_attention());
+    let configuration = finding(&unused.clients[1], Component::Configuration);
+    assert_eq!(
+        configuration.remediation.as_deref(),
+        Some("To require this agent, run `mash status --installation --agent claude-code`.")
+    );
+    let report = collect(Some(&environment), &[], &[Agent::ClaudeCode]);
+    let client = &report.clients[1];
+    assert!(client.expected && client.expectation == Expectation::Recorded);
+    let mcp = finding(client, Component::Mcp);
+    assert_eq!(mcp.state, State::Missing);
+    assert!(mcp.message.contains("`mash init` connected this agent"));
+    let remedy = mcp.remediation.as_deref().unwrap();
+    assert!(
+        remedy.starts_with("Run `claude mcp add --scope user mash -- "),
+        "{remedy}"
+    );
+    let summary = &report.summary.clients[1];
+    assert_eq!(summary.connection, Connection::None);
+    assert_eq!(summary.next_action.as_deref(), Some(remedy));
+    assert_eq!(summary.missing, [Component::Plugin, Component::Mcp]);
+    assert!(report.agents_need_attention());
+    // The unrecorded Codex client stays optional.
+    assert_eq!(report.summary.clients[0].next_action, None);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn installation_names_a_missing_registered_executable_and_its_replacement() {
+    let root = tempfile::tempdir().unwrap();
+    let environment = with_agent_clis(root.path());
+    write(
+        &environment.codex.join("config.toml"),
+        "[mcp_servers.mash]\ncommand = '/old/mash'\nargs = ['mcp']\n",
+    );
+    assert_eq!(
+        clients::registration(&environment, Agent::Codex),
+        Registration::Stale {
+            command: "/old/mash".into()
+        }
+    );
+    let mut report = collect(Some(&environment), &[], &[]);
+    let mcp = finding(&report.clients[0], Component::Mcp);
+    assert_eq!(mcp.state, State::Missing);
+    assert!(mcp.message.contains("/old/mash"), "{}", mcp.message);
+    let remedy = mcp.remediation.as_deref().unwrap();
+    assert!(
+        remedy.starts_with("Run `codex mcp remove mash && codex mcp add mash -- "),
+        "{remedy}"
+    );
+    probe::check(&mut report.clients[0]).await;
+    assert_eq!(
+        finding(&report.clients[0], Component::Probe).message,
+        "Skipped: the registered MCP executable does not exist."
+    );
+    // A registration that runs this binary is current; another binary is stale.
+    let current = std::env::current_exe().unwrap();
+    write(
+        &environment.codex.join("config.toml"),
+        &format!(
+            "[mcp_servers.mash]\ncommand = {}\nargs = ['mcp']\n",
+            toml::Value::String(current.to_string_lossy().into_owned())
+        ),
+    );
+    assert_eq!(
+        clients::registration(&environment, Agent::Codex),
+        Registration::Current
+    );
+    write(
+        &environment.codex.join("config.toml"),
+        "[mcp_servers.mash]\ncommand = '/bin/sh'\nargs = ['mcp']\n",
+    );
+    assert_eq!(
+        clients::registration(&environment, Agent::Codex),
+        Registration::Stale {
+            command: "/bin/sh".into()
+        }
+    );
+    std::fs::remove_file(environment.codex.join("config.toml")).unwrap();
+    assert_eq!(
+        clients::registration(&environment, Agent::Codex),
+        Registration::Unknown
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn installation_mcp_without_the_plugin_is_mcp_only_with_the_plugin_commands() {
+    let root = tempfile::tempdir().unwrap();
+    let environment = with_agent_clis(root.path());
+    write(
+        &environment.home.join(".claude.json"),
+        r#"{"mcpServers":{"mash":{"command":"/bin/true","args":["mcp"]}}}"#,
+    );
+    let report = collect(Some(&environment), &[], &[]);
+    let summary = &report.summary.clients[1];
+    assert_eq!(summary.connection, Connection::McpOnly);
+    let action = summary.next_action.as_deref().unwrap();
+    assert!(
+        action.contains("The Mash MCP tools work without the plugin"),
+        "{action}"
+    );
+    assert!(
+        action.contains(
+            "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
+        ),
+        "{action}"
+    );
+    assert!(!action.contains("mash init"), "{action}");
+    assert!(report.agents_need_attention());
 }

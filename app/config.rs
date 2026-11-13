@@ -39,6 +39,10 @@ pub(crate) struct ResolvedConfig {
     pub(crate) providers: ProviderRoots,
     pub(crate) since_days: Option<u32>,
     pub(crate) destination: IndexDestination,
+    /// Agents that `mash init` registered Mash with (`[agents] connected`).
+    /// `status --installation` expects them even if a registration is removed;
+    /// empty when the configuration predates the field.
+    pub(crate) connected_agents: Vec<crate::core::installation::Agent>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]

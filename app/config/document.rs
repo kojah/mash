@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{DEFAULT_SINCE_DAYS, IndexDestination, MAX_SINCE_DAYS, SharedConfig};
 use crate::AppError;
+use crate::core::installation::Agent;
 use crate::provider::{Provider, ProviderRoots};
 
 #[derive(Debug)]
@@ -21,11 +22,14 @@ pub(super) struct ParsedDocument {
     pub(super) shared: Option<SharedConfig>,
     pub(super) views: crate::views::config::Configuration,
     pub(super) destination: IndexDestination,
+    pub(super) connected_agents: Vec<Agent>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawDocument {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agents: Option<RawAgents>,
     #[serde(default)]
     embeddings: super::Embeddings,
     #[serde(default)]
@@ -53,6 +57,13 @@ type RawProviders = BTreeMap<Provider, RawProvider>;
 #[serde(deny_unknown_fields)]
 struct RawProvider {
     roots: Vec<PathBuf>,
+}
+
+/// The agents `mash init` registered Mash with.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAgents {
+    connected: Vec<Agent>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -195,6 +206,16 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             ));
         }
     }
+    let connected_agents = raw.agents.map_or_else(Vec::new, |agents| agents.connected);
+    if connected_agents
+        .iter()
+        .enumerate()
+        .any(|(index, agent)| connected_agents[..index].contains(agent))
+    {
+        return Err(AppError::configuration(
+            "agents connected must not repeat an agent",
+        ));
+    }
     let destination = raw.index.destination.unwrap_or(if raw.shared.is_some() {
         IndexDestination::Both
     } else {
@@ -221,7 +242,51 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         shared: raw.shared,
         views: raw.views,
         destination,
+        connected_agents,
     })
+}
+
+/// Add `agents` to the recorded `[agents] connected` list, or `None` when
+/// every one is already recorded. A file without the table gets it appended,
+/// so its comments and layout are kept.
+pub(super) fn connect_agents(text: &str, agents: &[Agent]) -> Result<Option<String>, AppError> {
+    let parsed = parse_document(text.as_bytes())?;
+    let mut added = Vec::new();
+    for &agent in agents {
+        if !parsed.connected_agents.contains(&agent) && !added.contains(&agent) {
+            added.push(agent);
+        }
+    }
+    if added.is_empty() {
+        return Ok(None);
+    }
+    let mut document: RawDocument = toml::from_str(text)
+        .map_err(|error| AppError::configuration(format!("invalid configuration: {error}")))?;
+    let updated = if let Some(recorded) = &mut document.agents {
+        recorded.connected.extend(added);
+        toml::to_string_pretty(&document)
+            .map_err(|error| AppError::configuration(format!("serialize configuration: {error}")))?
+    } else {
+        let table = toml::to_string(&RawDocumentAgents {
+            agents: RawAgents { connected: added },
+        })
+        .map_err(|error| AppError::configuration(format!("serialize configuration: {error}")))?;
+        let separator = if text.ends_with('\n') || text.is_empty() {
+            ""
+        } else {
+            "\n"
+        };
+        format!(
+            "{text}{separator}\n# Agents `mash init` registered Mash with; `mash status --installation`\n# reports them as needing repair if their registration goes missing.\n{table}"
+        )
+    };
+    parse_document(updated.as_bytes())?;
+    Ok(Some(updated))
+}
+
+#[derive(Serialize)]
+struct RawDocumentAgents {
+    agents: RawAgents,
 }
 
 pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<(), AppError> {

@@ -63,6 +63,7 @@ pub(super) fn load_from_paths(
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
                 destination: IndexDestination::Local,
+                connected_agents: Vec::new(),
             });
         }
         Err(error) => return Err(path_error("inspect", &path, &error)),
@@ -115,6 +116,7 @@ pub(super) fn load_from_paths(
         shared: parsed.shared,
         views: parsed.views,
         destination: parsed.destination,
+        connected_agents: parsed.connected_agents,
     })
 }
 

@@ -57,7 +57,7 @@ impl Report {
                 State::Missing,
                 observed.message.clone().unwrap_or_default(),
                 Some(format!(
-                    "Start Qdrant at {} (see this finding's message for the commands), then run `{then}`. Until then, every search fails.",
+                    "Start Qdrant at {} (see the qdrant finding under resources for the commands), then run `{then}`. Until then, every search fails.",
                     observed.url
                 )),
             ),
@@ -232,8 +232,13 @@ fn inspect_configuration(report: &mut Report, paths: &Paths, storage: Option<&St
     match crate::config::load(paths.config.as_deref()) {
         Ok(config) => {
             report.configuration_loaded = config.loaded;
+            // Before setup, list the history locations `mash init` would
+            // configure rather than the built-in defaults.
+            let detected = (!config.loaded)
+                .then(|| crate::config::init::detect().unwrap_or_default());
+            let providers = detected.as_ref().unwrap_or(&config.providers);
             for &provider in Provider::ALL {
-                let roots = config.providers.get(&provider);
+                let roots = providers.get(&provider);
                 if provider == Provider::Codex {
                     for path in unconfigured_codex_stores(roots.map_or(&[], Vec::as_slice)) {
                         report.findings.push(Finding {

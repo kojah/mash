@@ -414,7 +414,8 @@ pub(super) async fn installation(
             Err(message) => error(StatusCode::BAD_GATEWAY, &message),
         };
     }
-    match tokio::task::spawn_blocking(setup).await {
+    let paths = state.paths.clone();
+    match tokio::task::spawn_blocking(move || setup(&paths)).await {
         Ok(setup) => axum::Json(setup).into_response(),
         Err(_) => error(
             StatusCode::INTERNAL_SERVER_ERROR,

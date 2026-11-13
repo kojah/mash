@@ -397,6 +397,8 @@ export interface components {
             occupied: number;
             scope: string;
         };
+        /** @description How far an agent can use Mash, judged from its user settings. */
+        AgentConnection: "none" | "mcp-only" | "full";
         AgentSettings: {
             indexed: boolean;
             /** @description The configured locations, or the ones found on this machine. */
@@ -610,11 +612,12 @@ export interface components {
             agent: components["schemas"]["SetupAgent"];
             /** Format: uint */
             attention: number;
-            /** @description Configured for Mash with nothing needing attention. */
-            connected: boolean;
+            connection: components["schemas"]["AgentConnection"];
             expected: boolean;
             /** @description Parts of an expected integration that are not installed. */
             missing: components["schemas"]["Component"][];
+            /** @description What would repair this agent, or null when nothing needs attention. */
+            next_action?: string | null;
             /** Format: uint */
             unverified: number;
         };

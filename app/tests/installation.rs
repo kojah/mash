@@ -33,8 +33,8 @@ fn agent_path(root: &Path, agent: &str) -> std::path::PathBuf {
     bin
 }
 
-/// The report and exit status; an agent named with `--agent` that needs
-/// attention exits 1 with the full report.
+/// The report and exit status; an expected agent that needs attention
+/// exits 1 with the full report.
 fn report(command: &mut Command) -> (i32, Value) {
     let output = command.output().unwrap();
     assert!(output.stderr.is_empty(), "{output:?}");
@@ -280,8 +280,12 @@ fn installation_names_the_repair_and_fails_for_a_required_agent_that_is_not_conn
     std::fs::create_dir(root.path().join(".codex")).unwrap();
     // Unconfigured agents are valid CLI-only use: nothing to do, exit 0.
     let unused = json(isolated(root.path()).args(["status", "--installation"]));
-    assert_eq!(unused["summary"]["clients"][0]["connected"], false);
+    assert_eq!(unused["summary"]["clients"][0]["connection"], "none");
     assert_eq!(unused["summary"]["next_action"], Value::Null);
+    assert_eq!(
+        unused["clients"][0]["findings"][2]["remediation"],
+        "To require this agent, run `mash status --installation --agent codex`."
+    );
     // Requiring the agent makes its missing integration a failure that names
     // `mash init` and the agent's own registration command.
     let (code, required) = report(
@@ -290,8 +294,14 @@ fn installation_names_the_repair_and_fails_for_a_required_agent_that_is_not_conn
             .args(["status", "--installation", "--agent", "codex"]),
     );
     assert_eq!(code, 1, "{required}");
-    assert_eq!(required["summary"]["next_action"], "mash init");
-    assert_eq!(required["summary"]["clients"][0]["connected"], false);
+    // The named agent's repair comes first, even before a missing Qdrant.
+    let next = required["summary"]["next_action"].as_str().unwrap();
+    assert!(next.starts_with("codex: Run `mash init`"), "{next}");
+    assert_eq!(
+        required["summary"]["clients"][0]["next_action"].as_str(),
+        next.strip_prefix("codex: ")
+    );
+    assert_eq!(required["summary"]["clients"][0]["connection"], "none");
     let findings = required["clients"][0]["findings"].as_array().unwrap();
     let mcp = findings
         .iter()
@@ -338,14 +348,21 @@ fn installation_distinguishes_agent_data_from_a_missing_cli() {
     assert!(value["clients"][0]["cli_path"].is_null());
     assert!(value["clients"][0].get("detected").is_none());
     let action = value["summary"]["next_action"].as_str().unwrap();
-    assert!(action.starts_with("Install the claude CLI"), "{action}");
+    assert!(
+        action.starts_with("claude-code: Install the claude CLI"),
+        "{action}"
+    );
     let (_, installed) = report(
         isolated(root.path())
             .env("PATH", agent_path(root.path(), "claude"))
             .args(["status", "--installation", "--agent", "claude-code"]),
     );
     assert!(installed["clients"][0]["cli_path"].is_string());
-    assert_eq!(installed["summary"]["next_action"], "mash init");
+    let action = installed["summary"]["next_action"].as_str().unwrap();
+    assert!(
+        action.starts_with("claude-code: Run `mash init`"),
+        "{action}"
+    );
 }
 
 #[test]
@@ -361,26 +378,37 @@ fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init()
         ),
     )
     .unwrap();
-    let (code, report) = report(
+    let (code, required) = report(
         isolated(root.path())
             .env("PATH", agent_path(root.path(), "codex"))
             .args(["status", "--installation", "--agent", "codex"]),
     );
-    assert_eq!(code, 1, "{report}");
+    assert_eq!(code, 1, "{required}");
     assert_eq!(
-        report["summary"]["clients"][0]["missing"],
+        required["summary"]["clients"][0]["missing"],
         serde_json::json!(["plugin"])
     );
-    let next = report["summary"]["next_action"].as_str().unwrap();
+    assert_eq!(required["summary"]["clients"][0]["connection"], "mcp-only");
+    let next = required["summary"]["next_action"].as_str().unwrap();
     assert!(
-        next.starts_with("codex plugin marketplace add kojah/mash && codex plugin add mash@mash"),
+        next.starts_with("codex: The Mash MCP tools work without the plugin"),
         "{next}"
     );
     assert!(
-        next.contains("Mash MCP tools are available without it"),
+        next.contains(
+            "When online, run `codex plugin marketplace add kojah/mash && codex plugin add mash@mash`"
+        ),
         "{next}"
     );
-    assert!(!next.contains("search already works"), "{next}");
+    assert!(!next.contains("mash init"), "{next}");
+    // Without --agent, the configured agent is still expected: exit 1.
+    let (code, unnamed) = report(
+        isolated(root.path())
+            .env("PATH", agent_path(root.path(), "codex"))
+            .args(["status", "--installation"]),
+    );
+    assert_eq!(code, 1, "{unnamed}");
+    assert_eq!(unnamed["summary"]["clients"][0]["connection"], "mcp-only");
 }
 
 #[test]
@@ -401,14 +429,26 @@ fn installation_probe_verifies_real_mash_without_index_or_models() {
         "codex",
         "--probe",
     ]));
+    let findings = report["clients"][0]["findings"].as_array().unwrap();
     assert!(
-        report["clients"][0]["findings"]
-            .as_array()
-            .unwrap()
+        findings
             .iter()
             .any(|finding| finding["component"] == "probe" && finding["state"] == "passed"),
         "{report}"
     );
+    // A passing probe settles what the registration finding left untested.
+    let mcp = findings
+        .iter()
+        .find(|finding| finding["component"] == "mcp")
+        .unwrap();
+    assert!(
+        mcp["message"]
+            .as_str()
+            .unwrap()
+            .contains("passed the MCP handshake"),
+        "{mcp}"
+    );
+    assert!(mcp["remediation"].is_null(), "{mcp}");
     // MCP may leave an empty runtime-registry directory. The probe must never
     // create an index, model files, or a live record after its child has exited.
     let data = root.path().join("data");
@@ -447,7 +487,9 @@ fn installation_probe_timeout_terminates_child_and_keeps_help_passive() {
     std::fs::create_dir(root.path().join(".codex")).unwrap();
     std::fs::write(root.path().join(".codex/config.toml"), "[mcp_servers.mash]\ncommand = '/bin/sh'\nargs = ['-c', 'echo $$ > probe.pid; exec sleep 60']\n").unwrap();
     json(isolated(root.path()).arg("--help"));
-    json(isolated(root.path()).args(["status", "--installation"]));
+    // The registration makes Codex expected; its missing plugin exits 1.
+    let (code, _) = report(isolated(root.path()).args(["status", "--installation"]));
+    assert_eq!(code, 1);
     assert!(!root.path().join("probe.pid").exists());
     let started = std::time::Instant::now();
     let (_, report) = report(isolated(root.path()).args([

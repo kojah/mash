@@ -78,6 +78,7 @@ fn test_configuration(
         .collect(),
         since_days,
         destination: config::IndexDestination::Local,
+        connected_agents: Vec::new(),
     }
 }
 

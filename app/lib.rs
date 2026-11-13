@@ -134,7 +134,7 @@ where
                     } else if value.needs_retry() {
                         9
                     } else {
-                        i32::from(value.required_agent_needs_attention())
+                        i32::from(value.agents_need_attention())
                     }
                 }
                 _ => 0,

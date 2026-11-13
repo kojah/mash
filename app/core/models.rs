@@ -241,9 +241,14 @@ pub(crate) struct BackfillSummary {
 }
 
 impl Response {
-    /// An installation report where an agent named with `--agent` needs attention.
-    pub(crate) fn required_agent_needs_attention(&self) -> bool {
-        matches!(self, Self::Installation(report) if report.required_attention())
+    /// An installation report where an expected agent needs attention, or an
+    /// `init` that left a stale agent registration in place: exit status 1.
+    pub(crate) fn agents_need_attention(&self) -> bool {
+        match self {
+            Self::Installation(report) => report.agents_need_attention(),
+            Self::Init(result) => result.left_stale_registration(),
+            _ => false,
+        }
     }
 
     /// The error a partly completed operation ended with: `init` keeps its

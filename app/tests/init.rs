@@ -514,3 +514,140 @@ fn init_keeps_its_setup_report_when_the_first_index_fails() {
             .contains("mcp add")
     );
 }
+
+/// Stand-in agent CLIs that keep a Mash registration in the agents' real
+/// user settings files, as the real CLIs do, so status inspects what init did.
+/// Each registration starts out naming the missing executable `/old/mash`.
+fn stale_fixture(refuse_remove: bool) -> (tempfile::TempDir, Vec<(&'static str, String)>) {
+    let (root, env) = fixture(false);
+    let home = root.path();
+    let claude = home.join(".claude.json");
+    let codex = home.join(".codex/config.toml");
+    std::fs::create_dir_all(codex.parent().unwrap()).unwrap();
+    let write_claude =
+        r#"printf '{"mcpServers":{"mash":{"type":"stdio","command":"%s","args":["mcp"]}}}' "$1""#;
+    let write_codex = r#"printf '[mcp_servers.mash]\ncommand = "%s"\nargs = ["mcp"]\n' "$1""#;
+    for (agent, settings, register) in [
+        ("claude", &claude, write_claude),
+        ("codex", &codex, write_codex),
+    ] {
+        std::fs::write(
+            home.join("bin").join(agent),
+            format!(
+                "#!/bin/sh\necho \"{agent} $*\" >> '{log}'\ncase \"$1 $2\" in\n\"mcp get\") [ -f '{settings}' ]; exit $?;;\n\"mcp remove\") [ {refuse} = 1 ] && {{ echo 'remove refused' >&2; exit 1; }}; rm -f '{settings}'; exit 0;;\n\"mcp add\") while [ \"$1\" != -- ]; do shift; done; shift; {register} > '{settings}'; exit 0;;\nesac\nexit 0\n",
+                log = home.join("calls.log").display(),
+                settings = settings.display(),
+                refuse = i32::from(refuse_remove),
+            ),
+        )
+        .unwrap();
+    }
+    std::fs::write(
+        &claude,
+        r#"{"mcpServers":{"mash":{"type":"stdio","command":"/old/mash","args":["mcp"]}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &codex,
+        "[mcp_servers.mash]\ncommand = \"/old/mash\"\nargs = [\"mcp\"]\n",
+    )
+    .unwrap();
+    (root, env)
+}
+
+#[test]
+fn init_replaces_a_stale_registration_and_status_expects_recorded_agents() {
+    let (root, env) = stale_fixture(false);
+    let home = root.path();
+    let value = init(&env, &["--no-index"]);
+    for (index, agent, remove) in [
+        (0, "claude-code", "claude mcp remove --scope user mash"),
+        (1, "codex", "codex mcp remove mash"),
+    ] {
+        let outcome = &value["agents"][index];
+        assert_eq!(outcome["agent"], agent, "{value}");
+        assert_eq!(outcome["mcp"]["state"], "replaced", "{value}");
+        assert_eq!(outcome["mcp"]["stale"], "/old/mash", "{value}");
+        assert_eq!(outcome["undo"][0], remove, "{value}");
+        assert!(!outcome["files"].as_array().unwrap().is_empty(), "{value}");
+    }
+    assert_eq!(
+        value["config"]["recorded_agents"],
+        serde_json::json!(["claude-code", "codex"])
+    );
+    assert!(
+        value["next"].to_string().contains("To undo agent setup"),
+        "{value}"
+    );
+    let calls = std::fs::read_to_string(home.join("calls.log")).unwrap();
+    let removed = calls.find("claude mcp remove --scope user mash").unwrap();
+    let added = calls.find("claude mcp add --scope user mash -- ").unwrap();
+    assert!(removed < added, "{calls}");
+    assert!(calls.contains("codex mcp remove mash\n"), "{calls}");
+    let config = home.join(".config/mash/config.toml");
+    let text = std::fs::read_to_string(&config).unwrap();
+    assert!(text.contains("[agents]"), "{text}");
+
+    // The replacement runs this binary, so a rerun leaves it in place.
+    let again = init(&env, &["--no-index"]);
+    assert_eq!(
+        again["agents"][0]["mcp"]["state"], "already-present",
+        "{again}"
+    );
+    assert!(again["config"].get("recorded_agents").is_none(), "{again}");
+    assert_eq!(std::fs::read_to_string(&config).unwrap(), text);
+
+    // The stand-ins install no plugin files: the MCP tools work, so the
+    // agents are connected for MCP only, and that still needs attention.
+    let (code, report, _) = mash(&env, &["status", "--installation"]);
+    assert_eq!(code, 1, "{report}");
+    for client in report["summary"]["clients"].as_array().unwrap() {
+        assert_eq!(client["connection"], "mcp-only", "{report}");
+        assert!(
+            client["next_action"]
+                .as_str()
+                .unwrap()
+                .contains("work without the plugin"),
+            "{report}"
+        );
+    }
+
+    // A removed registration for a recorded agent is broken, not CLI-only use.
+    std::fs::remove_file(home.join(".claude.json")).unwrap();
+    let (code, report, _) = mash(&env, &["status", "--installation"]);
+    assert_eq!(code, 1, "{report}");
+    let claude = &report["summary"]["clients"][1];
+    assert_eq!(claude["agent"], "claude-code");
+    assert_eq!(claude["expected"], true);
+    assert_eq!(claude["connection"], "none");
+    assert!(
+        claude["next_action"]
+            .as_str()
+            .unwrap()
+            .starts_with("Run `claude mcp add --scope user mash -- "),
+        "{report}"
+    );
+    assert_eq!(report["clients"][1]["expectation"], "recorded");
+}
+
+#[test]
+fn init_fails_with_the_commands_when_a_stale_registration_cannot_be_replaced() {
+    let (_root, env) = stale_fixture(true);
+    let (code, value, _) = mash(&env, &["init", "--no-index"]);
+    assert_eq!(code, 1, "{value}");
+    let mcp = &value["agents"][1]["mcp"];
+    assert_eq!(mcp["state"], "stale", "{value}");
+    assert_eq!(mcp["stale"], "/old/mash");
+    assert!(mcp["message"].as_str().unwrap().contains("remove refused"));
+    let command = mcp["command"].as_str().unwrap();
+    assert!(
+        command.contains("codex mcp remove mash && ") && command.contains(" mcp add mash -- "),
+        "{command}"
+    );
+    let next = value["next"].to_string();
+    assert!(
+        next.contains("codex: the Mash MCP registration runs /old/mash"),
+        "{next}"
+    );
+    assert!(value["config"].get("recorded_agents").is_none(), "{value}");
+}

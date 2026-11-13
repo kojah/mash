@@ -9,7 +9,21 @@ use std::{
 };
 
 pub(super) fn missing(client: &mut Client, path: &Path) {
-    client.add(Component::Plugin, State::Missing, Some(path), "Mash history plugin registration or installed files are missing.", Some("Run `mash init` (or install and enable mash@mash from the kojah/mash marketplace), then restart the agent."));
+    client.add(
+        Component::Plugin,
+        State::Missing,
+        Some(path),
+        "Mash history plugin registration or installed files are missing.",
+        Some(&remedy(client.agent)),
+    );
+}
+
+/// What the plugin adds, and the online commands that install it.
+pub(super) fn remedy(agent: Agent) -> String {
+    format!(
+        "The Mash MCP tools work without the plugin; the mash@mash plugin adds the history skill and session hooks. When online, run `{}`, then restart the agent.",
+        agent.install_plugin()
+    )
 }
 
 pub(super) fn cached_roots(client: &mut Client, path: &Path) -> Vec<PathBuf> {

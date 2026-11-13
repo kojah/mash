@@ -324,7 +324,7 @@ fn local_status(
     if !database_path.is_file() {
         return Ok(StatusResponse {
             local_views_error: None,
-            installation: super::installation::summary(),
+            installation: super::installation::summary(&configuration.connected_agents),
             coverage: None,
             shared_error: None,
             local_artifacts: local_artifacts(false, dense_enabled),
@@ -363,7 +363,7 @@ fn local_status(
     let counts = &snapshot.counts;
     Ok(StatusResponse {
         local_views_error: None,
-        installation: super::installation::summary(),
+        installation: super::installation::summary(&configuration.connected_agents),
         coverage: None,
         shared_error: None,
         local_artifacts: local_artifacts(snapshot.silver.is_some(), dense_enabled),

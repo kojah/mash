@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+use super::installation::{Agent, Registration};
 use super::models::{IndexMode, IndexRequest, Operation, Paths, Response};
 use crate::AppError;
 
@@ -62,6 +63,14 @@ fn error_body<S: serde::Serializer>(
 }
 
 impl InitResponse {
+    /// An agent's registration names a missing or different executable and
+    /// could not be replaced, so `init` exits 1.
+    pub(in crate::core) fn left_stale_registration(&self) -> bool {
+        self.agents
+            .iter()
+            .any(|agent| matches!(agent.mcp, Step::Stale { .. }))
+    }
+
     /// Keep the setup report when the first index fails, and say what is
     /// left: setup is saved, so `mash index` finishes it.
     pub(in crate::core) fn index_failed(&mut self, error: AppError) {
@@ -167,21 +176,47 @@ struct ConfigOutcome {
     /// Where `--force` kept the configuration it replaced.
     #[serde(skip_serializing_if = "Option::is_none")]
     previous: Option<PathBuf>,
+    /// Agents newly recorded under `[agents] connected`, which
+    /// `mash status --installation` then expects to stay connected.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    recorded_agents: Vec<Agent>,
 }
 
 #[derive(Debug, Serialize)]
 struct AgentOutcome {
-    agent: &'static str,
+    agent: Agent,
     mcp: Step,
     plugin: Step,
+    /// The settings files and plugin directories the agent's own CLI edits.
+    files: Vec<PathBuf>,
+    /// The agent CLI commands that remove what `init` added.
+    undo: [&'static str; 2],
 }
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
 enum Step {
-    Done { command: String },
+    Done {
+        command: String,
+    },
     AlreadyPresent,
-    Failed { command: String, message: String },
+    /// The registration named `stale`, a missing or different executable,
+    /// and was removed and added again with this binary.
+    Replaced {
+        stale: String,
+        command: String,
+    },
+    /// The registration names `stale` and could not be replaced; `command`
+    /// replaces it.
+    Stale {
+        stale: String,
+        command: String,
+        message: String,
+    },
+    Failed {
+        command: String,
+        message: String,
+    },
 }
 
 pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitResponse, AppError> {
@@ -194,13 +229,14 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         .clone()
         .unwrap_or_else(super::default_models_path);
     let mut next = Vec::new();
-    let config = if config_path.exists() && !request.force && request.plan.is_none() {
+    let mut config = if config_path.exists() && !request.force && request.plan.is_none() {
         ConfigOutcome {
             path: config_path,
             written: false,
             providers: None,
             search: None,
             previous: None,
+            recorded_agents: Vec::new(),
         }
     } else {
         let semantic = crate::semantic::Models::new(models).is_installed();
@@ -225,6 +261,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
                 "exact-mention"
             }),
             previous,
+            recorded_agents: Vec::new(),
         }
     };
     let agents = if request.agents {
@@ -253,7 +290,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
     if agents.is_empty() && request.agents {
         next.push("No Claude Code or Codex CLI was found on PATH. CLI search and the dashboard still work; to connect an agent, see https://getmash.io/agents/".to_owned());
     }
-    next.extend(agent_next_steps(&agents));
+    record_agents(&mut config, &agents, &paths, &mut next).await;
     if !request.index {
         // Indexing reports an unreadable configuration itself.
         let path = config.path.clone();
@@ -271,6 +308,55 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
         memory: None,
         next,
     })
+}
+
+/// Record the agents whose MCP registration is in place, then add each
+/// agent's next steps and how to undo setup.
+async fn record_agents(
+    config: &mut ConfigOutcome,
+    agents: &[AgentOutcome],
+    paths: &Paths,
+    next: &mut Vec<String>,
+) {
+    let connected: Vec<Agent> = agents
+        .iter()
+        .filter(|agent| {
+            matches!(
+                agent.mcp,
+                Step::Done { .. } | Step::AlreadyPresent | Step::Replaced { .. }
+            )
+        })
+        .map(|agent| agent.agent)
+        .collect();
+    if !connected.is_empty() {
+        let path = config.path.clone();
+        let recorded = connected.clone();
+        match crate::blocking(move || {
+            crate::config::init::record_connected_agents(&path, &recorded)
+        })
+        .await
+        {
+            Ok(true) => config.recorded_agents = connected,
+            Ok(false) => {}
+            Err(error) => next.push(format!(
+                "Could not record the connected agents in {}, so `mash status --installation` will not report them as broken if their registration disappears: {}",
+                config.path.display(),
+                error.error.message
+            )),
+        }
+    }
+    next.extend(agent_next_steps(agents));
+    if !agents.is_empty() {
+        let data = paths
+            .db
+            .clone()
+            .unwrap_or_else(super::default_database_path);
+        next.push(format!(
+            "To undo agent setup, run each agent's `undo` commands; to remove Mash's own files, also delete {} and {}.",
+            config.path.display(),
+            data.parent().unwrap_or(&data).display()
+        ));
+    }
 }
 
 fn write_configuration(
@@ -315,21 +401,24 @@ fn write_configuration(
 fn agent_next_steps(agents: &[AgentOutcome]) -> Vec<String> {
     let mut steps = Vec::new();
     for agent in agents {
+        let name = agent.agent.as_str();
         if let Step::Failed { command, .. } = &agent.mcp {
             steps.push(format!(
-            "{}: the Mash MCP server was not registered, so this agent cannot search history yet; fix the error above, then rerun `mash init` or run `{command}`.",
-            agent.agent
-        ));
+                "{name}: the Mash MCP server was not registered, so this agent cannot search history yet; fix the error above, then rerun `mash init` or run `{command}`."
+            ));
+        } else if let Step::Stale { stale, command, .. } = &agent.mcp {
+            steps.push(format!(
+                "{name}: the Mash MCP registration runs {stale}, which is missing or is not this Mash binary, and could not be replaced (see the error above). Run `{command}`, then restart the agent."
+            ));
         } else if let Step::Failed { command, .. } = &agent.plugin {
             steps.push(format!(
-            "{}: the Mash MCP server is registered, but the mash@mash plugin (history skill and session hooks) was not installed; when online, rerun `mash init` or run `{command}`.",
-            agent.agent
-        ));
+                "{name}: the Mash MCP server is registered, but the mash@mash plugin (history skill and session hooks) was not installed; when online, rerun `mash init` or run `{command}`."
+            ));
         }
     }
     if agents
         .iter()
-        .any(|agent| !matches!(agent.mcp, Step::Failed { .. }))
+        .any(|agent| !matches!(agent.mcp, Step::Failed { .. } | Step::Stale { .. }))
     {
         steps.push("Restart your agents so they load Mash.".to_owned());
     }
@@ -355,35 +444,33 @@ pub(super) fn first_index() -> Operation {
 async fn register(
     command: &[OsString],
     marketplace: &str,
-    selected: Option<&[super::installation::Agent]>,
+    selected: Option<&[Agent]>,
 ) -> Vec<AgentOutcome> {
     let mut outcomes = Vec::new();
-    for (agent, kind, name, install) in [
-        (
-            "claude-code",
-            super::installation::Agent::ClaudeCode,
-            "claude",
-            "install",
-        ),
-        ("codex", super::installation::Agent::Codex, "codex", "add"),
-    ] {
+    for (kind, install) in [(Agent::ClaudeCode, "install"), (Agent::Codex, "add")] {
         if selected.is_some_and(|agents| !agents.contains(&kind)) {
             continue;
         }
-        let Some(program) = which(name) else {
+        let Some(program) = which(kind.program()) else {
             continue;
         };
         let program = program.as_path();
+        let mut add: Vec<OsString> = ["mcp", "add"].map(OsString::from).to_vec();
+        if kind == Agent::ClaudeCode {
+            add.extend(["--scope", "user"].map(OsString::from));
+        }
+        add.extend(["mash", "--"].map(OsString::from));
+        add.extend(command.iter().cloned());
         let mcp = if run(program, &["mcp", "get", "mash"]).await.is_ok() {
-            Step::AlreadyPresent
-        } else {
-            let mut arguments: Vec<OsString> = ["mcp", "add"].map(OsString::from).to_vec();
-            if name == "claude" {
-                arguments.extend(["--scope", "user"].map(OsString::from));
+            let registration = crate::blocking(move || Ok(super::installation::registration(kind)))
+                .await
+                .unwrap_or(Registration::Unknown);
+            match registration {
+                Registration::Stale { command: stale } => replace(program, kind, stale, &add).await,
+                Registration::Current | Registration::Unknown => Step::AlreadyPresent,
             }
-            arguments.extend(["mash", "--"].map(OsString::from));
-            arguments.extend(command.iter().cloned());
-            step(program, &arguments).await
+        } else {
+            step(program, &add).await
         };
         let plugin = if crate::blocking(move || Ok(super::installation::plugin_current(kind)))
             .await
@@ -413,16 +500,51 @@ async fn register(
                 done => done,
             }
         };
-        outcomes.push(AgentOutcome { agent, mcp, plugin });
+        let files = crate::blocking(move || Ok(super::installation::edited_files(kind)))
+            .await
+            .unwrap_or_default();
+        outcomes.push(AgentOutcome {
+            agent: kind,
+            mcp,
+            plugin,
+            files,
+            undo: [kind.remove_mcp(), kind.remove_plugin()],
+        });
     }
     outcomes
 }
 
-async fn step(program: &Path, arguments: &[OsString]) -> Step {
-    let command = std::iter::once(program.display().to_string())
+/// Remove a registration whose executable is missing or another binary,
+/// then add this one through the agent's own CLI.
+async fn replace(program: &Path, agent: Agent, stale: String, add: &[OsString]) -> Step {
+    let mut remove: Vec<OsString> = ["mcp", "remove"].map(OsString::from).to_vec();
+    if agent == Agent::ClaudeCode {
+        remove.extend(["--scope", "user"].map(OsString::from));
+    }
+    remove.push("mash".into());
+    let both = format!("{} && {}", display(program, &remove), display(program, add));
+    if let Err(message) = run(program, &remove).await {
+        return Step::Stale {
+            stale,
+            command: both,
+            message,
+        };
+    }
+    match step(program, add).await {
+        Step::Done { command } => Step::Replaced { stale, command },
+        failed => failed,
+    }
+}
+
+fn display(program: &Path, arguments: &[OsString]) -> String {
+    std::iter::once(program.display().to_string())
         .chain(arguments.iter().map(|a| a.to_string_lossy().into_owned()))
         .collect::<Vec<_>>()
-        .join(" ");
+        .join(" ")
+}
+
+async fn step(program: &Path, arguments: &[OsString]) -> Step {
+    let command = display(program, arguments);
     match run(program, arguments).await {
         Ok(()) => Step::Done { command },
         Err(message) => Step::Failed { command, message },
