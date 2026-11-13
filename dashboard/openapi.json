@@ -4188,6 +4188,26 @@
         ],
         "type": "object"
       },
+      "Service2": {
+        "description": "A watcher service that `mash-fleet watch start` installed for this user,\nobserved without asking its service manager.",
+        "properties": {
+          "definition": {
+            "description": "The service definition: a launchd agent on macOS, a systemd user unit on Linux.",
+            "type": "string"
+          },
+          "running": {
+            "description": "Whether an `index --watch` process is running for this database, as\nleader or standby; null when that cannot be checked. Running is not\nevidence that indexing succeeds.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "type": "object"
+      },
       "ServiceAction": {
         "enum": [
           "start",
@@ -4721,6 +4741,17 @@
                 "type": "null"
               }
             ]
+          },
+          "watcher": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Service2"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The watcher service installed for this user, when there is one."
           }
         },
         "required": [

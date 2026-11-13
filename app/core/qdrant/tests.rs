@@ -446,9 +446,11 @@ async fn a_fresh_install_verifies_places_registers_and_starts_qdrant() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        // The file is created 0o755 under the caller's umask, so only the
+        // owner's execute bit is certain (release gates run with 0o077).
         assert_eq!(
-            std::fs::metadata(&binary).unwrap().permissions().mode() & 0o111,
-            0o111
+            std::fs::metadata(&binary).unwrap().permissions().mode() & 0o100,
+            0o100
         );
     }
     assert!(layout.storage().is_dir() && layout.snapshots().is_dir());

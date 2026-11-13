@@ -1569,6 +1569,20 @@ export interface components {
             state: components["schemas"]["ServiceState"];
             summary: string;
         };
+        /**
+         * @description A watcher service that `mash-fleet watch start` installed for this user,
+         *     observed without asking its service manager.
+         */
+        Service2: {
+            /** @description The service definition: a launchd agent on macOS, a systemd user unit on Linux. */
+            definition: string;
+            /**
+             * @description Whether an `index --watch` process is running for this database, as
+             *     leader or standby; null when that cannot be checked. Running is not
+             *     evidence that indexing succeeds.
+             */
+            running?: boolean | null;
+        };
         /** @enum {string} */
         ServiceAction: "start" | "stop" | "restart";
         /** @enum {string} */
@@ -1706,6 +1720,8 @@ export interface components {
             /** Format: uint64 */
             stored_embeddings: number;
             views?: components["schemas"]["ViewsManifest"] | null;
+            /** @description The watcher service installed for this user, when there is one. */
+            watcher?: components["schemas"]["Service2"] | null;
         };
         Step: {
             component: components["schemas"]["Component"];
