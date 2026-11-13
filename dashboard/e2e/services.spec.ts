@@ -194,7 +194,7 @@ for (const width of [390, 1440]) {
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Restart", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Start", exact: true })).toHaveCount(0);
-    await page.getByRole("link", { name: "< services" }).click();
+    await page.getByRole("link", { name: "Back to services" }).click();
     await expect(page).toHaveURL(/#\/services\?machine=xenia$/);
     await expect(setup.getByText("Hooks need approval")).toBeVisible();
     // Choosing a machine in the table narrows the page to it; a link widens it again.

@@ -1,7 +1,11 @@
 <script lang="ts">
+import Bot from "@lucide/svelte/icons/bot";
+import Folder from "@lucide/svelte/icons/folder";
+import Laptop from "@lucide/svelte/icons/laptop";
 import Moon from "@lucide/svelte/icons/moon";
 import Search from "@lucide/svelte/icons/search";
 import Sun from "@lucide/svelte/icons/sun";
+import X from "@lucide/svelte/icons/x";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import { asset } from "../lib/asset";
@@ -103,7 +107,7 @@ function submit(event: SubmitEvent): void {
     }}
   >
     <form class="box" class:open={showDrop} onsubmit={submit}>
-      {#each tags as tag (tag.label + tag.href)}<a class="tag" href={tag.href} aria-label="Remove filter {tag.label}" style:display="inline-flex" style:align-items="center">{tag.label} ×</a>{/each}
+      {#each tags as tag (tag.label + tag.href)}<a class="tag" href={tag.href} aria-label="Remove filter {tag.label}" style:display="inline-flex" style:align-items="center" style:gap="4px">{tag.label}<X size={13} aria-hidden="true" /></a>{/each}
       <label for="q" class="sr-only">Search your history</label>
       <input id="q" autocomplete="off" placeholder="Search your history" bind:value={text} onkeydown={(event) => { if (event.key === "Escape") focused = false; }} />
       <button class="go" type="submit" aria-label="Search"><Search size={16} /></button>
@@ -113,7 +117,7 @@ function submit(event: SubmitEvent): void {
         {#if suggestions.filters.length}
           <h4>filters</h4>
           {#each suggestions.filters as filter (filter.kind + filter.value)}
-            <a class="opt" href={searchHref({ [filter.kind]: filter.value })} onclick={() => (focused = false)}><span class="t"><span>{filter.label}</span></span><small>{filter.kind}</small></a>
+            <a class="opt" href={searchHref({ [filter.kind]: filter.value })} onclick={() => (focused = false)}>{#if filter.kind === "agent"}<Bot size={14} aria-hidden="true" />{:else if filter.kind === "machine"}<Laptop size={14} aria-hidden="true" />{:else}<Folder size={14} aria-hidden="true" />{/if}<span class="t"><span>{filter.label}</span></span><small>{filter.kind}</small></a>
           {/each}
         {/if}
         {#if suggestions.chats.length}

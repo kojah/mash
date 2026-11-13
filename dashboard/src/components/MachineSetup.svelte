@@ -3,6 +3,7 @@ import Check from "@lucide/svelte/icons/check";
 import CircleHelp from "@lucide/svelte/icons/circle-help";
 import Copy from "@lucide/svelte/icons/copy";
 import Laptop from "@lucide/svelte/icons/laptop";
+import ListChecks from "@lucide/svelte/icons/list-checks";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents } from "../lib/agents";
@@ -79,7 +80,7 @@ const partWord = { ok: "ok", attention: "needs attention", unverified: "not veri
             </ol>
           </div>
           <details class="fold" style:margin-top="8px">
-            <summary>{fix.checks === 1 ? "The check behind this" : `The ${fix.checks} checks behind this`}</summary>
+            <summary><ListChecks size={15} aria-hidden="true" />{fix.checks === 1 ? "The check behind this" : `The ${fix.checks} checks behind this`}</summary>
             <div>
               {#each chain.filter((part) => part.notes.length > 0) as part (part.label)}
             {#each part.notes as note (note.message)}

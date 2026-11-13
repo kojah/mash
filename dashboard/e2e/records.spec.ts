@@ -143,7 +143,7 @@ test("records filter on submission, expose history and safe citations, and navig
   await page.getByRole("button", { name: "First relationships" }).click();
   await related.click();
   await expect(page.getByText("Keep the old port", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "< memory" }).click();
+  await page.getByRole("link", { name: "Back to memory" }).click();
   await expect(kindNav(page).getByRole("link", { name: "facts", exact: true })).toHaveAttribute(
     "aria-current",
     "page",

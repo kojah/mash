@@ -1,5 +1,7 @@
 <script lang="ts">
 import Bot from "@lucide/svelte/icons/bot";
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Clock from "@lucide/svelte/icons/clock";
 import ClockArrowDown from "@lucide/svelte/icons/clock-arrow-down";
 import ClockArrowUp from "@lucide/svelte/icons/clock-arrow-up";
@@ -223,8 +225,8 @@ const rangeLabel = $derived.by(() => {
         <nav class="hd" aria-label="Pages" style:margin-top="14px">
           <span class="meta">{rangeLabel}</span>
           <span class="acts">
-            {#if result.data.first > 0}<a class="btn" rel="prev" href={page(Math.max(0, result.data.first - pageSize))}>Previous</a>{:else}<button class="btn" type="button" disabled>Previous</button>{/if}
-            {#if result.data.nextOffset !== null}<a class="btn" rel="next" href={page(result.data.nextOffset)}>Next</a>{:else}<button class="btn" type="button" disabled>Next</button>{/if}
+            {#if result.data.first > 0}<a class="btn" rel="prev" href={page(Math.max(0, result.data.first - pageSize))}><ChevronLeft size={15} aria-hidden="true" />Previous</a>{:else}<button class="btn" type="button" disabled><ChevronLeft size={15} aria-hidden="true" />Previous</button>{/if}
+            {#if result.data.nextOffset !== null}<a class="btn" rel="next" href={page(result.data.nextOffset)}>Next<ChevronRight size={15} aria-hidden="true" /></a>{:else}<button class="btn" type="button" disabled>Next<ChevronRight size={15} aria-hidden="true" /></button>{/if}
           </span>
         </nav>
       {/if}

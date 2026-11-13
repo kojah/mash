@@ -4,6 +4,7 @@ import Check from "@lucide/svelte/icons/check";
 import Database from "@lucide/svelte/icons/database";
 import Eye from "@lucide/svelte/icons/eye";
 import Lock from "@lucide/svelte/icons/lock";
+import Save from "@lucide/svelte/icons/save";
 import Search from "@lucide/svelte/icons/search";
 import Server from "@lucide/svelte/icons/server";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -233,7 +234,7 @@ async function save(): Promise<void> {
         <strong>{changed.length} unsaved change{changed.length === 1 ? "" : "s"}</strong>
         <button class="btn" type="button" disabled={saving} onclick={discard}>Discard</button>
         <button class="btn" type="button" aria-expanded={reviewing} onclick={() => (reviewing = !reviewing)}>{reviewing ? "Hide changes" : "Review changes"}</button>
-        <button class="btn p" type="button" disabled={saving || !!blocked} onclick={save}>{saving ? "Saving…" : "Save to file"}</button>
+        <button class="btn p" type="button" disabled={saving || !!blocked} onclick={save}><Save size={15} aria-hidden="true" />{saving ? "Saving…" : "Save to file"}</button>
       </div>
       {#if blocked}<p class="meta warn" role="alert">{blocked}</p>{/if}
       {#if reviewing}

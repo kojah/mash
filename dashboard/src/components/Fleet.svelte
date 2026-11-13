@@ -1,4 +1,6 @@
 <script lang="ts">
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+import Clock from "@lucide/svelte/icons/clock";
 import Download from "@lucide/svelte/icons/download";
 import Eye from "@lucide/svelte/icons/eye";
 import Laptop from "@lucide/svelte/icons/laptop";
@@ -40,11 +42,15 @@ const history = createQuery(() => ({
     query.state.data?.some((job) => job.outcome === "running") ? 2000 : false,
 }));
 
-const groups: readonly { name: string; actions: readonly FleetAction[] }[] = [
-  { name: "check", actions: ["status", "preflight", "watch-status"] },
-  { name: "update", actions: ["deploy"] },
-  { name: "index", actions: ["sync", "local-views", "replay-views"] },
-  { name: "watchers", actions: ["watch-start", "watch-stop", "watch-logs"] },
+const groups: readonly {
+  name: string;
+  icon: typeof ListChecks;
+  actions: readonly FleetAction[];
+}[] = [
+  { name: "check", icon: ListChecks, actions: ["status", "preflight", "watch-status"] },
+  { name: "update", icon: Download, actions: ["deploy"] },
+  { name: "index", icon: RefreshCw, actions: ["sync", "local-views", "replay-views"] },
+  { name: "watchers", icon: Eye, actions: ["watch-start", "watch-stop", "watch-logs"] },
 ];
 const blurb: Record<FleetAction, string> = {
   status: "Reads each machine's installed build and readiness. Changes nothing.",
@@ -149,7 +155,7 @@ const outcomeClass = {
 </script>
 
 {#snippet activity()}
-  <div class="hd"><h2 class="h2">{action ? "recent runs" : "activity"}</h2><button class="a meta" type="button" disabled={history.isFetching} onclick={() => history.refetch()} style:min-height="44px">check jobs</button></div>
+  <div class="hd"><h2 class="h2"><Clock size={15} aria-hidden="true" />{action ? "recent runs" : "activity"}</h2><button class="a meta ic" type="button" disabled={history.isFetching} onclick={() => history.refetch()} style:min-height="44px"><RefreshCw size={14} aria-hidden="true" />check jobs</button></div>
   <QueryError title="Couldn’t check fleet jobs" query={history} />
   {#if history.data && !jobs.length}<p class="meta">No runs yet.</p>{/if}
   {#each jobs as job (job.request.id)}
@@ -164,7 +170,7 @@ const outcomeClass = {
   {/each}
 {/snippet}
 
-{#if action}<a class="back" href="#/fleet">&lt; fleet manager</a>{/if}
+{#if action}<a class="back" href="#/fleet" aria-label="Back to fleet manager"><ChevronLeft size={15} aria-hidden="true" />fleet manager</a>{/if}
 <QueryError title="Couldn’t connect to services" query={access} />
 <QueryError title="Couldn’t load fleet controls" query={catalog} />
 {#if (access.isPending || catalog.isPending) && !access.error && !catalog.error}<h1 class="h1">Fleet manager</h1><Skeleton rows={3} />{/if}
@@ -182,7 +188,7 @@ const outcomeClass = {
         {@const available = group.actions.filter((item) => allowed.some((entry) => entry.action === item))}
         {#if available.length}
           <section>
-            <h2 class="h2" style:margin-top="12px">{group.name}</h2>
+            <h2 class="h2" style:margin-top="12px"><group.icon size={15} aria-hidden="true" />{group.name}</h2>
             <div class="grid-sm">
               {#each available as item (item)}
                 {@const Icon = icons[item]}

@@ -9,10 +9,12 @@ import History from "@lucide/svelte/icons/history";
 import House from "@lucide/svelte/icons/house";
 import Laptop from "@lucide/svelte/icons/laptop";
 import MessagesSquare from "@lucide/svelte/icons/messages-square";
+import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import Server from "@lucide/svelte/icons/server";
 import Settings from "@lucide/svelte/icons/settings";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import Wrench from "@lucide/svelte/icons/wrench";
+import X from "@lucide/svelte/icons/x";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
 import { agents as agentInfo } from "../lib/agents";
@@ -177,7 +179,7 @@ function toggle(id: Section): void {
 
 <aside id="rail" class:open style:--rail-width="{width}px">
   <a class="brand" href="#/" onclick={close}><img src={asset("mash-mark.svg")} alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
-  <button id="xdrawer" type="button" aria-label="Close navigation" onclick={close}>×</button>
+  <button id="xdrawer" type="button" aria-label="Close navigation" onclick={close}><X size={18} aria-hidden="true" /></button>
   <nav class="nav" aria-label="Main">
     {#each offered as section (section.id)}
       {@const on = section.id === area && !child}
@@ -216,7 +218,7 @@ function toggle(id: Section): void {
     {/each}
     <div class="status" style:margin-top="auto" style:padding-top="14px">
       {#if catalogue.data}{catalogue.data.localNode} / {chats.length.toLocaleString()} chats{:else if catalogue.error}history unavailable{:else}loading…{/if}
-      <button class="a" type="button" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()} style:display="block" style:min-height="32px">{catalogue.isFetching ? "reloading…" : "reload chat list"}</button>
+      <button class="a" type="button" disabled={catalogue.isFetching} onclick={() => catalogue.refetch()} style:display="flex" style:align-items="center" style:gap="6px" style:min-height="32px"><RefreshCw size={14} aria-hidden="true" />{catalogue.isFetching ? "reloading…" : "reload chat list"}</button>
     </div>
   </nav>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->

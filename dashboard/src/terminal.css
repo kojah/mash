@@ -784,7 +784,9 @@ summary::-webkit-details-marker {
   background: var(--raised);
 }
 .menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   min-height: 44px;
   padding: 0 10px;
@@ -912,6 +914,12 @@ code.i {
 }
 .a {
   color: var(--clay2);
+}
+/* A text action with an icon before its words. */
+.a.ic {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .tool summary {
   display: block;
@@ -2035,6 +2043,7 @@ h1:focus {
 }
 .back {
   display: inline-flex;
+  gap: 4px;
   align-self: flex-start;
   align-items: center;
   min-height: 44px;

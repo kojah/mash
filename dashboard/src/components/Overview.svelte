@@ -3,6 +3,7 @@ import Bot from "@lucide/svelte/icons/bot";
 import Brain from "@lucide/svelte/icons/brain";
 import Clock from "@lucide/svelte/icons/clock";
 import Laptop from "@lucide/svelte/icons/laptop";
+import Server from "@lucide/svelte/icons/server";
 import { createQuery } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
 import { groupChats } from "../lib/browse";
@@ -64,6 +65,6 @@ const providers = $derived(groupChats(chats, (chat) => chat.agent));
         {#if agent}<a class="li" href={agentHref(agent)}><AgentMark {agent} size={14} /><span class="g">{agentInfo[agent].name}</span><span class="n">{provider.chats.length.toLocaleString()}</span></a>{/if}
       {/each}
     </section>
-    <a class="meta" href="#/services" style:display="inline-flex" style:align-items="center" style:min-height="44px">services and machine health</a>
+    <a class="meta" href="#/services" style:display="inline-flex" style:align-items="center" style:gap="6px" style:min-height="44px"><Server size={15} aria-hidden="true" />services and machine health</a>
   </div>
 </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 import Bot from "@lucide/svelte/icons/bot";
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
 import Clock from "@lucide/svelte/icons/clock";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
@@ -49,7 +50,7 @@ const latest = $derived(
 const now = Date.now();
 </script>
 
-{#if back}<a class="back" href={back.href}>&lt; {back.label}</a>{/if}
+{#if back}<a class="back" href={back.href} aria-label="Back to {back.label}"><ChevronLeft size={15} aria-hidden="true" />{back.label}</a>{/if}
 <div class="hd">
   <div style:display="flex" style:align-items="center" style:gap="14px">
     {@render icon()}

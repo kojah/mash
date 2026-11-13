@@ -1,13 +1,20 @@
 <script lang="ts">
 import Brain from "@lucide/svelte/icons/brain";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import ChevronsDown from "@lucide/svelte/icons/chevrons-down";
 import ChevronsUp from "@lucide/svelte/icons/chevrons-up";
 import Copy from "@lucide/svelte/icons/copy";
 import Download from "@lucide/svelte/icons/download";
+import FileCode from "@lucide/svelte/icons/file-code";
+import FileText from "@lucide/svelte/icons/file-text";
+import Folder from "@lucide/svelte/icons/folder";
 import Lightbulb from "@lucide/svelte/icons/lightbulb";
+import ListOrdered from "@lucide/svelte/icons/list-ordered";
 import PanelLeft from "@lucide/svelte/icons/panel-left";
+import Printer from "@lucide/svelte/icons/printer";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import Search from "@lucide/svelte/icons/search";
 import Terminal from "@lucide/svelte/icons/terminal";
@@ -516,7 +523,7 @@ const prompts = $derived(
     {#if phone && sessionsOpen}<button class="btn sessclose" type="button" onclick={() => closeSessions(true)}><X size={15} aria-hidden="true" />Back to chat</button>{/if}
     {#if prompts.length >= 2}
       <div class="outl">
-        <h2 class="h2">your prompts on this page</h2>
+        <h2 class="h2"><ListOrdered size={15} aria-hidden="true" />your prompts on this page</h2>
         <div class="outl-l">
           {#each prompts as message, index (message.id)}
             <button type="button" class:on={currentMessage === message.id} aria-current={currentMessage === message.id ? "location" : undefined} onclick={async () => { await closeSessions(false); jump(message.id); }}><small>{index + 1}</small><span>{plainText(message).replace(/\s+/g, " ").slice(0, 80)}</span></button>
@@ -524,7 +531,7 @@ const prompts = $derived(
         </div>
       </div>
     {/if}
-    {#if chat?.project}<h2 class="h2"><a href={projectHref(chat.project)}>{projectLabel(chat.project)} sessions</a></h2>{/if}
+    {#if chat?.project}<h2 class="h2"><a href={projectHref(chat.project)}><Folder size={15} aria-hidden="true" />{projectLabel(chat.project)} sessions</a></h2>{/if}
     {#each projectSessions as session (session.machine + session.id)}
       {@const current = session.id === id && session.machine === displayMachine}
       <a class="ses" class:on={current} href={chatHref(session.id, session.machine)} aria-current={current ? "page" : undefined}><AgentMark agent={session.agent} /><span><span class="clamp">{session.title}</span><small>{whenLabel(session.updatedMs, now)}</small></span></a>
@@ -553,9 +560,9 @@ const prompts = $derived(
         <button class="btn" type="button" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)}><Download size={15} aria-hidden="true" />Export</button>
         {#if exportOpen}
           <div class="menu">
-            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("pdf"); }}>Export to PDF</button>
-            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("html"); }}>Export to HTML</button>
-            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("markdown"); }}>Export to Markdown</button>
+            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("pdf"); }}><Printer size={15} aria-hidden="true" />Export to PDF</button>
+            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("html"); }}><FileCode size={15} aria-hidden="true" />Export to HTML</button>
+            <button type="button" disabled={exporting || !loaded} onclick={() => { exportOpen = false; void exportChat("markdown"); }}><FileText size={15} aria-hidden="true" />Export to Markdown</button>
           </div>
         {/if}
         <button class="btn" type="button" aria-label="Check for updates" title="Check for updates" disabled={live.isFetching} onclick={() => live.refetch()} style:padding="0 11px"><RefreshCw size={15} /></button>
@@ -603,7 +610,7 @@ const prompts = $derived(
       </div>
     {/if}
     <QueryError title="Couldn’t load this conversation" query={live} />
-    {#if changed}<button type="button" class="btn" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}>This page has changed. Show updated messages</button>{/if}
+    {#if changed}<button type="button" class="btn" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}><RefreshCw size={15} aria-hidden="true" />This page has changed. Show updated messages</button>{/if}
     {#if notice}<p role="status" class="meta">{notice}</p>{/if}
     <div class="newpill" aria-live="polite">{#if added && !sessionsOpen}<button type="button" class="btn p" onclick={showNew}><ChevronsDown size={15} aria-hidden="true" />{added.toLocaleString()} new message{added === 1 ? "" : "s"}</button>{/if}</div>
     {#if loaded}
@@ -659,8 +666,8 @@ const prompts = $derived(
       {#if !anchor}
         <nav aria-label="Message pages" class="pager end">
           <button class="btn" type="button" disabled={offset === 0} onclick={() => page(0)} aria-label="First message" title="First message"><ChevronsUp size={15} aria-hidden="true" /></button>
-          <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}>Previous messages</button>
-          <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)}>Next messages</button>
+          <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}><ChevronLeft size={15} aria-hidden="true" />Previous messages</button>
+          <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)}>Next messages<ChevronRight size={15} aria-hidden="true" /></button>
           {#if lastOffset !== undefined}<button class="btn" type="button" disabled={offset === lastOffset} onclick={latest} aria-label="Latest message" title="Latest message"><ChevronsDown size={15} aria-hidden="true" /></button>{/if}
         </nav>
       {/if}

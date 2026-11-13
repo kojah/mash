@@ -1,12 +1,16 @@
 <script lang="ts">
 import Bot from "@lucide/svelte/icons/bot";
 import Check from "@lucide/svelte/icons/check";
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
 import Clock from "@lucide/svelte/icons/clock";
 import Info from "@lucide/svelte/icons/info";
+import Play from "@lucide/svelte/icons/play";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+import RotateCw from "@lucide/svelte/icons/rotate-cw";
 import ScrollText from "@lucide/svelte/icons/scroll-text";
 import Search from "@lucide/svelte/icons/search";
 import Server from "@lucide/svelte/icons/server";
+import Square from "@lucide/svelte/icons/square";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
@@ -142,6 +146,7 @@ const actionLabel: Record<ServiceAction, string> = {
   stop: "Stop",
   restart: "Restart",
 };
+const actionIcon = { start: Play, stop: Square, restart: RotateCw } as const;
 function consequences({ service, action }: Target): string {
   if (action === "start") return "";
   return service.kind === "watcher"
@@ -162,7 +167,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
 {/snippet}
 
 {#if serviceId}
-  <a class="back" href={servicesHref(selectedId)}>&lt; services</a>
+  <a class="back" href={servicesHref(selectedId)} aria-label="Back to services"><ChevronLeft size={15} aria-hidden="true" />services</a>
   <div class="hd">
     <div><h1 class="h1">{service?.name ?? serviceId}</h1><p class="meta">{selectedId}{service ? ` / ${service.kind}` : ""}</p></div>
     <span class="acts"><button class="btn" type="button" disabled={!enabled || fleet.isFetching || pending} onclick={refresh}><RefreshCw size={15} aria-hidden="true" />{fleet.isFetching ? "Checking…" : "Check again"}</button></span>
@@ -204,7 +209,7 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
       {#if issue}<p><span class="warn">Needs attention.</span> {issue.fix}</p>{/if}
       <p class="meta">{service.control_note}</p>
       <div class="chips" style:gap="8px" style:margin-top="8px">
-        {#each service.actions as action (action)}<button class="btn" class:p={issue?.actions.includes(action)} type="button" disabled={blocked || !machine.reachable} onclick={() => (confirm = { machine, service, action })}>{actionLabel[action]}</button>{/each}
+        {#each service.actions as action (action)}{@const ActionIcon = actionIcon[action]}<button class="btn" class:p={issue?.actions.includes(action)} type="button" disabled={blocked || !machine.reachable} onclick={() => (confirm = { machine, service, action })}><ActionIcon size={14} aria-hidden="true" />{actionLabel[action]}</button>{/each}
         {#if service.logs_available}<button class="btn" type="button" aria-expanded={showLog} onclick={() => (showLog = !showLog)}><ScrollText size={15} aria-hidden="true" />{showLog ? "Hide log" : "View log"}</button>{/if}
       </div>
       {#if confirm}{@render confirmation(confirm)}{/if}
@@ -255,10 +260,10 @@ const blocked = $derived(pending || !!fleet.error || !!actionError);
             </div>
             <span class="acts">
               {#if entry}
-                {#each issue.actions as action (action)}<button class="btn p" type="button" disabled={blocked} onclick={() => (confirm = { machine: issue.machine, service: entry, action })}>{actionLabel[action]}</button>{/each}
+                {#each issue.actions as action (action)}{@const ActionIcon = actionIcon[action]}<button class="btn p" type="button" disabled={blocked} onclick={() => (confirm = { machine: issue.machine, service: entry, action })}><ActionIcon size={14} aria-hidden="true" />{actionLabel[action]}</button>{/each}
                 <a class="btn" href={servicesHref(issue.machine.id, entry.id)}>Details</a>
               {:else}
-                <button class="btn" type="button" disabled={fleet.isFetching || pending} onclick={refresh}>Check again</button>
+                <button class="btn" type="button" disabled={fleet.isFetching || pending} onclick={refresh}><RefreshCw size={15} aria-hidden="true" />Check again</button>
               {/if}
             </span>
             {#if entry && confirm?.service.id === entry.id && confirm.machine.id === issue.machine.id}{@render confirmation(confirm)}{/if}

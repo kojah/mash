@@ -1,7 +1,12 @@
 <script lang="ts">
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+import ChevronsUp from "@lucide/svelte/icons/chevrons-up";
 import Clock from "@lucide/svelte/icons/clock";
 import FileText from "@lucide/svelte/icons/file-text";
+import Lightbulb from "@lucide/svelte/icons/lightbulb";
 import Link2 from "@lucide/svelte/icons/link-2";
+import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import { createQuery } from "@tanstack/svelte-query";
 import { stableRead } from "../lib/queries";
 import { type Evidence, getRecord, label, scopeLabel, standing, timingLabel } from "../lib/records";
@@ -51,7 +56,7 @@ function date(value: number | null): string {
   {/each}
 {/snippet}
 
-<a class="back" href={back}>&lt; memory</a>
+<a class="back" href={back} aria-label="Back to memory"><ChevronLeft size={15} aria-hidden="true" />memory</a>
 {#if latest.isPending}<Skeleton rows={4} />{/if}
 {#if latest.error}<LoadError title="Couldn’t load this memory" message={latest.error.message} retry={refresh} busy={latest.isFetching}/>{/if}
 {#if page.error && !latest.error}<LoadError title="Couldn’t load memory history" message={page.error.message} retry={() => page.refetch()} busy={page.isFetching} retryLabel="Retry history"/>{/if}
@@ -64,13 +69,13 @@ function date(value: number | null): string {
     {#if record.conflicted}<p class="warn" role="status" style:margin-top="8px">Another record contradicts this one. Look at the related records before relying on it.</p>{/if}
     {#if !current.evidenceCurrent}<p class="warn" role="status" style:margin-top="8px">The quoted messages have changed or are missing. Review the sources before relying on this.</p>{/if}
   </header>
-  {#if current.rationale}<section><h2 class="h2">why</h2><p style:white-space="pre-wrap" style:overflow-wrap="anywhere">{current.rationale}</p></section>{/if}
+  {#if current.rationale}<section><h2 class="h2"><Lightbulb size={15} aria-hidden="true" />why</h2><p style:white-space="pre-wrap" style:overflow-wrap="anywhere">{current.rationale}</p></section>{/if}
   <section>
     <h2 class="h2"><FileText size={15} aria-hidden="true" />evidence{current.evidenceCurrent ? "" : " (stale or missing)"}</h2>
     {@render sources(current.evidence, record.node)}
   </section>
   <section>
-    <div class="hd"><h2 class="h2"><Clock size={15} aria-hidden="true" />revision history</h2><button class="a meta" type="button" onclick={refresh} disabled={latest.isFetching} style:min-height="44px">check for updates</button></div>
+    <div class="hd"><h2 class="h2"><Clock size={15} aria-hidden="true" />revision history</h2><button class="a meta ic" type="button" onclick={refresh} disabled={latest.isFetching} style:min-height="44px"><RefreshCw size={14} aria-hidden="true" />check for updates</button></div>
     {#if page.isFetching}<p class="meta" role="status">Loading history…</p>{/if}
     {#if page.data}
       {#if !page.data.revisions.length}<p class="meta">No revisions on this page.</p>{/if}
@@ -98,8 +103,8 @@ function date(value: number | null): string {
       {/each}
       {#if before !== null || page.data.nextBeforeRevision !== null}
         <nav aria-label="Revision pages" class="acts" style:margin-top="10px">
-          {#if before !== null}<button class="btn" type="button" onclick={() => (before = null)}>Newest revisions</button>{/if}
-          {#if page.data.nextBeforeRevision !== null}<button class="btn" type="button" onclick={() => (before = page.data?.nextBeforeRevision ?? null)}>Older revisions</button>{/if}
+          {#if before !== null}<button class="btn" type="button" onclick={() => (before = null)}><ChevronsUp size={15} aria-hidden="true" />Newest revisions</button>{/if}
+          {#if page.data.nextBeforeRevision !== null}<button class="btn" type="button" onclick={() => (before = page.data?.nextBeforeRevision ?? null)}>Older revisions<ChevronDown size={15} aria-hidden="true" /></button>{/if}
         </nav>
       {/if}
     {/if}
@@ -115,8 +120,8 @@ function date(value: number | null): string {
       {/each}
       {#if linkOffset > 0 || page.data.nextLinkOffset !== null}
         <nav aria-label="Relationship pages" class="acts" style:margin-top="10px">
-          {#if linkOffset > 0}<button class="btn" type="button" onclick={() => (linkOffset = 0)}>First relationships</button>{/if}
-          {#if page.data.nextLinkOffset !== null}<button class="btn" type="button" onclick={() => (linkOffset = page.data?.nextLinkOffset ?? 0)}>More relationships</button>{/if}
+          {#if linkOffset > 0}<button class="btn" type="button" onclick={() => (linkOffset = 0)}><ChevronsUp size={15} aria-hidden="true" />First relationships</button>{/if}
+          {#if page.data.nextLinkOffset !== null}<button class="btn" type="button" onclick={() => (linkOffset = page.data?.nextLinkOffset ?? 0)}>More relationships<ChevronDown size={15} aria-hidden="true" /></button>{/if}
         </nav>
       {/if}
     </section>

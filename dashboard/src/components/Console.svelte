@@ -1,6 +1,7 @@
 <script lang="ts">
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import Copy from "@lucide/svelte/icons/copy";
+import Eraser from "@lucide/svelte/icons/eraser";
 import Lock from "@lucide/svelte/icons/lock";
 import Play from "@lucide/svelte/icons/play";
 import SearchIcon from "@lucide/svelte/icons/search";
@@ -184,7 +185,7 @@ $effect(() => () => controller?.abort());
               {#if entry.readOnly}
                 <div class="op-r">
                   <button class="btn p" type="submit" disabled={outcome.state === "running" || !request?.ok}><Play size={15} aria-hidden="true" />{outcome.state === "running" ? "Running…" : "Run"}</button>
-                  <button class="btn" type="button" onclick={() => { for (const param of entry.params) delete values[`${entry.name}.${param.name}`]; }}>Clear values</button>
+                  <button class="btn" type="button" onclick={() => { for (const param of entry.params) delete values[`${entry.name}.${param.name}`]; }}><Eraser size={15} aria-hidden="true" />Clear values</button>
                   {#if request && !request.ok}<span class="meta">{request.message}</span>{/if}
                 </div>
                 {#if request?.ok}

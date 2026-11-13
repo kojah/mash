@@ -1,10 +1,14 @@
 <script lang="ts">
 import BadgeCheck from "@lucide/svelte/icons/badge-check";
+import Brain from "@lucide/svelte/icons/brain";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
 import CircleDashed from "@lucide/svelte/icons/circle-dashed";
 import Database from "@lucide/svelte/icons/database";
 import Laptop from "@lucide/svelte/icons/laptop";
 import ListChecks from "@lucide/svelte/icons/list-checks";
 import Network from "@lucide/svelte/icons/network";
+import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import Server from "@lucide/svelte/icons/server";
 import { createQuery } from "@tanstack/svelte-query";
 import { untrack } from "svelte";
@@ -116,7 +120,7 @@ const dirty = $derived(
 
 <div><h1 class="h1">Memory</h1><p class="meta">Decisions, preferences and facts, with the conversations behind them.</p></div>
 <nav class="chips" aria-label="Memory kind">
-  <a class="chip big-c" class:on={!kind} href={kindHref("")} aria-current={!kind ? "page" : undefined}>all</a>
+  <a class="chip big-c" class:on={!kind} href={kindHref("")} aria-current={!kind ? "page" : undefined}><Brain size={15} color="var(--pink)" aria-hidden="true" />all</a>
   {#each kinds as value (value)}
     {@const Icon = kindIcons[value]}
     <a class="chip big-c" class:on={kind === value} href={kindHref(value)} aria-current={kind === value ? "page" : undefined}><Icon size={15} color="var(--pink)" aria-hidden="true" />{label(value).toLowerCase()}s</a>
@@ -137,7 +141,7 @@ const dirty = $derived(
     {#snippet optionIcon(value: string)}{#if value === ""}<Laptop size={15} aria-hidden="true" />{:else if value === "shared"}<Network size={15} aria-hidden="true" />{:else}<Server size={15} aria-hidden="true" />{/if}{/snippet}
   </FilterMenu>
   {#if dirty}<button class="a" id="applyf" type="submit" style:min-height="30px" style:padding="0 6px" style:font-size="13.5px">Apply filters</button>{/if}
-  <button class="a meta" type="button" disabled={page.isFetching} onclick={() => page.refetch()} style:min-height="30px" style:margin-left="auto">{page.isFetching ? "checking…" : "check for updates"}</button>
+  <button class="a meta ic" type="button" disabled={page.isFetching} onclick={() => page.refetch()} style:min-height="30px" style:margin-left="auto"><RefreshCw size={14} aria-hidden="true" />{page.isFetching ? "checking…" : "check for updates"}</button>
 </form>
 {#if chat}<p class="meta">Memory citing chat <span style:overflow-wrap="anywhere">{chat}</span>. <a class="a" href="#/records?">Show all memory</a></p>{/if}
 {#if page.isPending}<Skeleton rows={5} />{/if}
@@ -175,8 +179,8 @@ const dirty = $derived(
     <nav aria-label="Record pages" class="hd">
       <span class="meta">{page.data.records.length} on this page</span>
       <span class="acts">
-        <button class="btn" type="button" disabled={!(initial.has("offset") || initial.has("cursor_node"))} onclick={firstPage}>First page</button>
-        <button class="btn" type="button" disabled={!hasNext} onclick={nextPage}>Next page</button>
+        <button class="btn" type="button" disabled={!(initial.has("offset") || initial.has("cursor_node"))} onclick={firstPage}><ChevronsLeft size={15} aria-hidden="true" />First page</button>
+        <button class="btn" type="button" disabled={!hasNext} onclick={nextPage}>Next page<ChevronRight size={15} aria-hidden="true" /></button>
       </span>
     </nav>
   {/if}

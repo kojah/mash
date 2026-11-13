@@ -3,11 +3,14 @@ import Archive from "@lucide/svelte/icons/archive";
 import Bot from "@lucide/svelte/icons/bot";
 import Braces from "@lucide/svelte/icons/braces";
 import Check from "@lucide/svelte/icons/check";
+import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Clock from "@lucide/svelte/icons/clock";
 import Copy from "@lucide/svelte/icons/copy";
 import FileText from "@lucide/svelte/icons/file-text";
 import Folder from "@lucide/svelte/icons/folder";
 import Laptop from "@lucide/svelte/icons/laptop";
+import Square from "@lucide/svelte/icons/square";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import Upload from "@lucide/svelte/icons/upload";
 import { createQuery } from "@tanstack/svelte-query";
@@ -256,8 +259,8 @@ async function copy(): Promise<void> {
         <nav class="hd" aria-label="Pages" style:margin-top="14px">
           <span class="meta">{(first + 1).toLocaleString()}–{(first + shown.length).toLocaleString()} of {count(listed.length, "chat")} · {shownChosen.toLocaleString()} of the {shown.length} on this page included</span>
           <span class="acts">
-            {#if first > 0}<a class="btn" rel="prev" href={appliedHref({ ...applied, offset: Math.max(0, first - pageSize) }, base)}>Previous</a>{:else}<button class="btn" type="button" disabled>Previous</button>{/if}
-            {#if first + pageSize < listed.length}<a class="btn" rel="next" href={appliedHref({ ...applied, offset: first + pageSize }, base)}>Next</a>{:else}<button class="btn" type="button" disabled>Next</button>{/if}
+            {#if first > 0}<a class="btn" rel="prev" href={appliedHref({ ...applied, offset: Math.max(0, first - pageSize) }, base)}><ChevronLeft size={15} aria-hidden="true" />Previous</a>{:else}<button class="btn" type="button" disabled><ChevronLeft size={15} aria-hidden="true" />Previous</button>{/if}
+            {#if first + pageSize < listed.length}<a class="btn" rel="next" href={appliedHref({ ...applied, offset: first + pageSize }, base)}>Next<ChevronRight size={15} aria-hidden="true" /></a>{:else}<button class="btn" type="button" disabled>Next<ChevronRight size={15} aria-hidden="true" /></button>{/if}
           </span>
         </nav>
       {/if}
@@ -286,7 +289,7 @@ async function copy(): Promise<void> {
       <div class="hd">
         <span class="acts">
           <button class="btn p" type="button" disabled={!chosen.length || job.state === "running"} onclick={() => { if (format !== "archive") void start(format); }}><Upload size={15} aria-hidden="true" />Export {count(chosen.length, "chat")}</button>
-          {#if job.state === "running"}<button class="btn" type="button" onclick={() => controller?.abort()}>Stop</button>{/if}
+          {#if job.state === "running"}<button class="btn" type="button" onclick={() => controller?.abort()}><Square size={14} aria-hidden="true" />Stop</button>{/if}
         </span>
         <span class="meta" style:font-size="13px">Saved by your browser as one .zip file. Attachments are not included.</span>
       </div>
