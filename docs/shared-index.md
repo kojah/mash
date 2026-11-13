@@ -35,6 +35,37 @@ Before you connect a computer you need:
 If someone already runs the server for you, get these four from them and go to
 [step 2](#2-connect-each-computer).
 
+## The quick way
+
+On Linux or macOS with [Tailscale](https://tailscale.com) connected and Qdrant
+running (`mash qdrant install`), two commands set everything up.
+
+On the machine that will hold the shared index, naming the first computer to
+connect:
+
+```sh
+mash-server --setup --add-node personal/laptop
+```
+
+This writes a first configuration under `~/.mash/server`, keeps the server
+running as a user service, gives it an HTTPS address that only devices on your
+tailnet can reach, and prints a `join` value. On the laptop:
+
+```sh
+mash init --join 'mash-join.…'
+```
+
+Run the first command again with another name for each further computer; a
+rerun with a name already added just repairs the service. The join value
+contains that computer's token, so pass it privately. To browse everything
+from a phone, add [`mash dash remote`](dashboard.md#open-it-from-your-phone-or-another-computer)
+on any machine that has joined, or `mash dash remote --shared-only` on the
+server itself.
+
+The server it sets up uses word search only, so it needs no models. For
+semantic search on the server, a public address, or a host without Tailscale,
+set it up by hand as below.
+
 ## 1. Set up the server
 
 On the server machine:

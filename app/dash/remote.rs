@@ -15,28 +15,38 @@ const TOKEN_VARIABLE: &str = "MASH_DASH_TOKEN";
 /// Where Tailscale's macOS app keeps its command when it is not on PATH.
 const TAILSCALE_APP: &str = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
 
+/// What a user service is called under each service manager, and who wrote it.
+#[derive(Clone, Copy)]
+pub(crate) struct ServiceName {
+    pub(crate) unit: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) description: &'static str,
+    /// The command to rerun, named in the definition for whoever reads it.
+    pub(crate) written_by: &'static str,
+}
+
+const DASHBOARD: ServiceName = ServiceName {
+    unit: UNIT,
+    label: LABEL,
+    description: "Mash dashboard for this tailnet",
+    written_by: "mash dash remote",
+};
+
 /// The user's own service manager on this system.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Supervisor {
+pub(crate) enum Supervisor {
     Systemd,
     Launchd,
 }
 
 impl Supervisor {
-    fn current() -> Option<Self> {
+    pub(crate) fn current() -> Option<Self> {
         if cfg!(target_os = "linux") {
             Some(Self::Systemd)
         } else if cfg!(target_os = "macos") {
             Some(Self::Launchd)
         } else {
             None
-        }
-    }
-
-    fn service(self) -> &'static str {
-        match self {
-            Self::Systemd => UNIT,
-            Self::Launchd => LABEL,
         }
     }
 }
@@ -86,39 +96,55 @@ struct Report {
     next: Option<&'static str>,
 }
 
-struct Layout {
-    supervisor: Supervisor,
-    token_file: PathBuf,
+/// A user service and the files that belong to it.
+pub(crate) struct Layout {
+    pub(crate) supervisor: Supervisor,
+    pub(crate) name: ServiceName,
+    /// The service's environment; for the dashboard, its tokens.
+    pub(crate) token_file: PathBuf,
     /// The systemd unit or the launch agent property list.
-    unit_file: PathBuf,
+    pub(crate) unit_file: PathBuf,
     /// Where a launch agent's output goes; systemd keeps its own journal.
-    log: PathBuf,
+    pub(crate) log: PathBuf,
 }
 
 impl Layout {
-    fn resolve(supervisor: Supervisor) -> Result<Self, AppError> {
-        let home = crate::platform::mash_home()
-            .ok_or_else(|| AppError::configuration("cannot find the home directory"))?;
+    /// `environment` and `log` are the service's own files.
+    pub(crate) fn resolve(
+        supervisor: Supervisor,
+        name: ServiceName,
+        environment: PathBuf,
+        log: PathBuf,
+    ) -> Result<Self, AppError> {
         let base = directories::BaseDirs::new()
             .ok_or_else(|| AppError::configuration("cannot find the home directory"))?;
         Ok(Self {
             supervisor,
-            token_file: home.join("dashboard.env"),
+            name,
+            token_file: environment,
             unit_file: match supervisor {
-                Supervisor::Systemd => base.config_dir().join("systemd/user").join(UNIT),
+                Supervisor::Systemd => base.config_dir().join("systemd/user").join(name.unit),
                 Supervisor::Launchd => base
                     .home_dir()
                     .join("Library/LaunchAgents")
-                    .join(format!("{LABEL}.plist")),
+                    .join(format!("{}.plist", name.label)),
             },
-            log: home.join("dashboard.log"),
+            log,
         })
     }
 
-    /// Where to look when the service does not come up.
-    fn logs(&self) -> String {
+    /// The name the service manager knows the service by.
+    pub(crate) fn service(&self) -> &'static str {
         match self.supervisor {
-            Supervisor::Systemd => format!("`journalctl --user -u {UNIT}`"),
+            Supervisor::Systemd => self.name.unit,
+            Supervisor::Launchd => self.name.label,
+        }
+    }
+
+    /// Where to look when the service does not come up.
+    pub(crate) fn logs(&self) -> String {
+        match self.supervisor {
+            Supervisor::Systemd => format!("`journalctl --user -u {}`", self.name.unit),
             Supervisor::Launchd => self.log.display().to_string(),
         }
     }
@@ -136,7 +162,14 @@ pub(crate) async fn run(paths: Paths, options: Options, action: Action) -> Resul
             "a public address needs --port 443, 8443 or 10000, the ports Tailscale Funnel can publish",
         ));
     }
-    let layout = Layout::resolve(supervisor)?;
+    let home = crate::platform::mash_home()
+        .ok_or_else(|| AppError::configuration("cannot find the home directory"))?;
+    let layout = Layout::resolve(
+        supervisor,
+        DASHBOARD,
+        home.join("dashboard.env"),
+        home.join("dashboard.log"),
+    )?;
     if matches!(action, Action::Remove) {
         return remove(&layout, port).await;
     }
@@ -144,12 +177,15 @@ pub(crate) async fn run(paths: Paths, options: Options, action: Action) -> Resul
     let host = format!("{name}:{port}");
     let dashboard = format!("https://{host}/");
     match action {
-        Action::Setup => setup(&paths, &layout, options, &host, dashboard).await,
+        Action::Setup => {
+            ensure_port_free(&layout, &host, port).await?;
+            setup(&paths, &layout, options, &host, dashboard).await
+        }
         Action::Code => {
             let token = read_token(&layout.token_file)?;
             report(&Report {
                 dashboard,
-                service: supervisor.service(),
+                service: layout.service(),
                 reach: None,
                 warning: None,
                 code: Some(new_code(port, &token, &layout).await?),
@@ -162,7 +198,7 @@ pub(crate) async fn run(paths: Paths, options: Options, action: Action) -> Resul
             show_qr(&dashboard, &read_token(&layout.token_file)?);
             report(&Report {
                 dashboard,
-                service: supervisor.service(),
+                service: layout.service(),
                 reach: None,
                 warning: None,
                 code: None,
@@ -196,18 +232,7 @@ async fn setup(
     let token = ensure_environment(&layout.token_file, shared.as_deref())?;
     let exe = std::env::current_exe().map_err(AppError::io)?;
     let arguments = arguments(&exe, paths, (port, host), shared_only)?;
-    match layout.supervisor {
-        Supervisor::Systemd => {
-            write_private(&layout.unit_file, &unit(&arguments, layout)?, 0o644)?;
-        }
-        // launchd reads no environment file, so the property list carries
-        // the tokens and is as private as the token file.
-        Supervisor::Launchd => write_private(
-            &layout.unit_file,
-            &property_list(&arguments, layout, &token.environment),
-            0o600,
-        )?,
-    }
+    write_definition(layout, &arguments, &token.environment)?;
     start(layout).await?;
     let forward = format!("http://127.0.0.1:{port}");
     let https = format!("--https={port}");
@@ -218,7 +243,7 @@ async fn setup(
     show_qr(&dashboard, &token.dashboard);
     report(&Report {
         dashboard,
-        service: layout.supervisor.service(),
+        service: layout.service(),
         reach: Some(if public {
             "the public internet"
         } else {
@@ -248,20 +273,39 @@ fn report(report: &Report) -> Result<(), AppError> {
     crate::write_json(&mut std::io::stdout(), report)
 }
 
+/// Write the service's definition for its manager. launchd reads no
+/// environment file, so its property list carries `environment` and is as
+/// private as that file.
+pub(crate) fn write_definition(
+    layout: &Layout,
+    arguments: &[String],
+    environment: &[(String, String)],
+) -> Result<(), AppError> {
+    match layout.supervisor {
+        Supervisor::Systemd => write_private(&layout.unit_file, &unit(arguments, layout)?, 0o644),
+        Supervisor::Launchd => write_private(
+            &layout.unit_file,
+            &property_list(arguments, layout, environment),
+            0o600,
+        ),
+    }
+}
+
 /// Load the written definition and start the service, replacing a running one.
-async fn start(layout: &Layout) -> Result<(), AppError> {
+pub(crate) async fn start(layout: &Layout) -> Result<(), AppError> {
     match layout.supervisor {
         Supervisor::Systemd => {
+            let unit = layout.name.unit;
             for arguments in [
                 vec!["--user", "daemon-reload"],
-                vec!["--user", "enable", "--quiet", UNIT],
-                vec!["--user", "restart", UNIT],
+                vec!["--user", "enable", "--quiet", unit],
+                vec!["--user", "restart", unit],
             ] {
                 command("systemctl", &arguments).await?;
             }
         }
         Supervisor::Launchd => {
-            let (domain, target) = launchd_target().await?;
+            let (domain, target) = launchd_target(layout.name.label).await?;
             let definition = layout.unit_file.display().to_string();
             unload(&target).await;
             command("launchctl", &["enable", &target]).await?;
@@ -274,7 +318,7 @@ async fn start(layout: &Layout) -> Result<(), AppError> {
 }
 
 /// This user's launchd domain and the service's name within it.
-async fn launchd_target() -> Result<(String, String), AppError> {
+async fn launchd_target(label: &str) -> Result<(String, String), AppError> {
     let uid = command("id", &["-u"]).await?;
     let uid = uid.trim();
     if uid.is_empty() || !uid.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -282,7 +326,7 @@ async fn launchd_target() -> Result<(String, String), AppError> {
             "could not determine this user's ID for launchd",
         ));
     }
-    Ok((format!("gui/{uid}"), format!("gui/{uid}/{LABEL}")))
+    Ok((format!("gui/{uid}"), format!("gui/{uid}/{label}")))
 }
 
 /// Unload the launch agent and wait until launchd has let go of it; loading a
@@ -298,14 +342,19 @@ async fn unload(target: &str) {
     }
 }
 
-async fn remove(layout: &Layout, port: u16) -> Result<(), AppError> {
-    // A service that is already gone is the wanted outcome.
+/// Stop the service, remove its definition and take down its address. A
+/// service that is already gone is the wanted outcome.
+pub(crate) async fn uninstall(layout: &Layout, port: u16) -> Result<(), AppError> {
     match layout.supervisor {
         Supervisor::Systemd => {
-            let _ = command("systemctl", &["--user", "disable", "--now", UNIT]).await;
+            let _ = command(
+                "systemctl",
+                &["--user", "disable", "--now", layout.name.unit],
+            )
+            .await;
         }
         Supervisor::Launchd => {
-            if let Ok((_, target)) = launchd_target().await {
+            if let Ok((_, target)) = launchd_target(layout.name.label).await {
                 unload(&target).await;
             }
         }
@@ -318,26 +367,39 @@ async fn remove(layout: &Layout, port: u16) -> Result<(), AppError> {
     if layout.supervisor == Supervisor::Systemd {
         let _ = command("systemctl", &["--user", "daemon-reload"]).await;
     }
+    // Removing the handler takes a public address down with it.
     let https = format!("--https={port}");
-    for publish in ["serve", "funnel"] {
-        let _ = command(tailscale(), &[publish, &https, "off"]).await;
-    }
+    let _ = command(tailscale(), &["serve", &https, "off"]).await;
+    Ok(())
+}
+
+async fn remove(layout: &Layout, port: u16) -> Result<(), AppError> {
+    uninstall(layout, port).await?;
     crate::write_json(
         &mut std::io::stdout(),
         &serde_json::json!({
-            "removed": layout.supervisor.service(),
+            "removed": layout.service(),
             "token_file_kept": layout.token_file,
         }),
     )
 }
 
 /// Run a helper to completion; its output is kept out of ours.
-async fn command(program: &str, arguments: &[&str]) -> Result<String, AppError> {
-    let output = tokio::process::Command::new(program)
+pub(crate) async fn command(program: &str, arguments: &[&str]) -> Result<String, AppError> {
+    // A helper that stops to ask something would otherwise hang this command.
+    let running = tokio::process::Command::new(program)
         .args(arguments)
         .stdin(std::process::Stdio::null())
-        .output()
+        .kill_on_drop(true)
+        .output();
+    let output = tokio::time::timeout(std::time::Duration::from_secs(30), running)
         .await
+        .map_err(|_| {
+            AppError::configuration(format!(
+                "`{program} {}` did not finish within 30 s",
+                arguments.join(" ")
+            ))
+        })?
         .map_err(|_| {
             AppError::configuration(format!("`{program}` is required and was not found"))
         })?;
@@ -353,7 +415,7 @@ async fn command(program: &str, arguments: &[&str]) -> Result<String, AppError> 
 }
 
 /// Tailscale's command: the one on PATH, or on macOS the app's own copy.
-fn tailscale() -> &'static str {
+pub(crate) fn tailscale() -> &'static str {
     let on_path = std::env::var_os("PATH").is_some_and(|path| {
         std::env::split_paths(&path).any(|directory| directory.join("tailscale").is_file())
     });
@@ -365,8 +427,70 @@ fn tailscale() -> &'static str {
 }
 
 /// The name other devices in the tailnet use for this machine.
-async fn tailnet_name() -> Result<String, AppError> {
+pub(crate) async fn tailnet_name() -> Result<String, AppError> {
     parse_tailnet_name(&command(tailscale(), &["status", "--json"]).await?)
+}
+
+/// This machine's own addresses inside the tailnet.
+fn parse_tailnet_addresses(status: &str) -> Vec<std::net::IpAddr> {
+    #[derive(serde::Deserialize)]
+    struct Status {
+        #[serde(rename = "Self")]
+        this: Node,
+    }
+    #[derive(serde::Deserialize)]
+    struct Node {
+        #[serde(rename = "TailscaleIPs", default)]
+        addresses: Vec<std::net::IpAddr>,
+    }
+    serde_json::from_str::<Status>(status).map_or_default(|status| status.this.addresses)
+}
+
+/// Whether Tailscale already forwards `host` (`name:port`) to this port on
+/// loopback, as an earlier run of the same command left it.
+fn already_published(serve: &str, host: &str, port: u16) -> bool {
+    serde_json::from_str::<serde_json::Value>(serve).is_ok_and(|status| {
+        status["Web"][host]["Handlers"]["/"]["Proxy"]
+            .as_str()
+            .is_some_and(|proxy| proxy == format!("http://127.0.0.1:{port}"))
+    })
+}
+
+/// Refuse a port something else on this machine already answers on. Tailscale
+/// takes the port on this machine's tailnet address, so a program listening
+/// there, such as another dashboard, would silently stop being reachable.
+pub(crate) async fn ensure_port_free(
+    layout: &Layout,
+    host: &str,
+    port: u16,
+) -> Result<(), AppError> {
+    // A rerun finds its own service and address in place. Without the
+    // service, a forward to this port belongs to something else.
+    let installed = layout.unit_file.exists();
+    let serve = command(tailscale(), &["serve", "status", "--json"])
+        .await
+        .unwrap_or_default();
+    if installed && already_published(&serve, host, port) {
+        return Ok(());
+    }
+    let status = command(tailscale(), &["status", "--json"]).await?;
+    let mut addresses = parse_tailnet_addresses(&status);
+    // Before the service exists, nothing of ours listens on loopback either.
+    if !installed {
+        addresses.push(std::net::Ipv4Addr::LOCALHOST.into());
+    }
+    for address in addresses {
+        let connect = tokio::net::TcpStream::connect((address, port));
+        if tokio::time::timeout(std::time::Duration::from_secs(1), connect)
+            .await
+            .is_ok_and(|connected| connected.is_ok())
+        {
+            return Err(AppError::usage(format!(
+                "port {port} is already in use on this machine ({address}); choose another with --port"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn parse_tailnet_name(status: &str) -> Result<String, AppError> {
@@ -453,7 +577,7 @@ fn read_token(path: &Path) -> Result<String, AppError> {
         .ok_or_else(|| AppError::usage("no dashboard token yet; run `mash dash remote` first"))
 }
 
-fn write_private(path: &Path, text: &str, mode: u32) -> Result<(), AppError> {
+pub(crate) fn write_private(path: &Path, text: &str, mode: u32) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(AppError::io)?;
     }
@@ -539,8 +663,9 @@ fn unit(arguments: &[String], layout: &Layout) -> Result<String, AppError> {
         .collect::<Vec<_>>()
         .join(" ");
     Ok(format!(
-        "[Unit]\n\
-         Description=Mash dashboard for this tailnet\n\
+        "# Written by `{}`; rerun it to repair.\n\
+         [Unit]\n\
+         Description={}\n\
          After=network-online.target\n\
          \n\
          [Service]\n\
@@ -550,7 +675,8 @@ fn unit(arguments: &[String], layout: &Layout) -> Result<String, AppError> {
          RestartSec=10\n\
          \n\
          [Install]\n\
-         WantedBy=default.target\n"
+         WantedBy=default.target\n",
+        layout.name.written_by, layout.name.description,
     ))
 }
 
@@ -580,7 +706,7 @@ fn property_list(
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
-         <!-- Written by `mash dash remote`; rerun it to repair, or run `mash dash remote --remove`. -->\n\
+         <!-- Written by `{}`; rerun it to repair. -->\n\
          <plist version=\"1.0\"><dict>\n\
          <key>Label</key>{}\n\
          <key>ProgramArguments</key><array>{program}</array>\n\
@@ -591,7 +717,8 @@ fn property_list(
          <key>StandardOutPath</key>{log}\n\
          <key>StandardErrorPath</key>{log}\n\
          </dict></plist>\n",
-        string(LABEL),
+        layout.name.written_by,
+        string(layout.name.label),
     )
 }
 
@@ -730,6 +857,7 @@ mod tests {
     fn the_service_serves_loopback_under_the_tailnet_name_with_the_token() {
         let layout = |supervisor| Layout {
             supervisor,
+            name: DASHBOARD,
             token_file: "/home/me/.mash/dashboard.env".into(),
             unit_file: "/unused".into(),
             log: "/home/me/.mash/dashboard.log".into(),
@@ -775,7 +903,10 @@ mod tests {
                 "<key>StandardErrorPath</key><string>/home/me/.mash/dashboard.log</string>"
             )
         );
-        assert_eq!(Supervisor::Launchd.service(), "dev.mash.dash");
+        assert_eq!(layout(Supervisor::Launchd).service(), "dev.mash.dash");
+        assert_eq!(layout(Supervisor::Systemd).service(), "mash-dash.service");
+        assert!(text.contains("Description=Mash dashboard for this tailnet\n"));
+        assert!(agent.contains("Written by `mash dash remote`"));
         assert!(
             layout(Supervisor::Launchd)
                 .logs()
@@ -798,6 +929,19 @@ mod tests {
             assert_eq!(error.error.kind, crate::ErrorKind::Usage);
             assert!(error.error.message.contains("8443"));
         }
+    }
+
+    #[test]
+    fn a_port_is_ours_only_when_tailscale_already_forwards_it_here() {
+        let serve = r#"{"TCP":{"8790":{"HTTPS":true}},"Web":{"laptop.ts.net:8790":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8790"}}}}}"#;
+        assert!(already_published(serve, "laptop.ts.net:8790", 8790));
+        assert!(!already_published(serve, "laptop.ts.net:8791", 8791));
+        assert!(!already_published(serve, "laptop.ts.net:8790", 9000));
+        assert!(!already_published("{}", "laptop.ts.net:8790", 8790));
+        assert!(!already_published("not json", "laptop.ts.net:8790", 8790));
+        let status = r#"{"Self":{"DNSName":"laptop.ts.net.","TailscaleIPs":["100.90.2.48","fd7a:115c:a1e0::1"]}}"#;
+        assert_eq!(parse_tailnet_addresses(status).len(), 2);
+        assert_eq!(parse_tailnet_addresses("{}"), [] as [std::net::IpAddr; 0]);
     }
 
     #[test]

@@ -16,7 +16,7 @@ use std::sync::Arc;
 mod access;
 mod contract;
 mod live;
-mod remote;
+pub(crate) mod remote;
 mod services;
 
 pub(crate) use remote::{Action as RemoteAction, Options as RemoteOptions, run as remote};

@@ -18,8 +18,21 @@ use crate::{AppError, shared::server};
 )]
 struct Arguments {
     /// Server configuration in TOML format.
-    #[arg(long, value_name = "PATH")]
-    server_config: PathBuf,
+    #[arg(long, value_name = "PATH", required_unless_present = "setup")]
+    server_config: Option<PathBuf>,
+    /// Set this machine up as the home of a shared index: write a first
+    /// configuration under ~/.mash/server, keep the server running as a user
+    /// service and give it an HTTPS address inside your tailnet. Needs
+    /// --add-node for the first machine, a running Qdrant and Tailscale.
+    #[arg(
+        long,
+        requires = "add_node",
+        conflicts_with_all = ["server_config", "api_url", "retire_node", "replay_views", "activate_views", "activate_query", "activate_memory"]
+    )]
+    setup: bool,
+    /// Port for the server on this machine and in its tailnet address.
+    #[arg(long, default_value_t = 8787, requires = "setup")]
+    port: u16,
     /// Semantic model asset directory; models are never downloaded here.
     #[arg(long, value_name = "PATH")]
     models_dir: Option<PathBuf>,
@@ -49,7 +62,6 @@ struct Arguments {
     #[arg(
         long,
         value_name = "GROUP/NODE",
-        requires = "api_url",
         conflicts_with_all = ["retire_node", "replay_views", "activate_views", "activate_query", "activate_memory"]
     )]
     add_node: Option<String>,
@@ -111,16 +123,32 @@ where
     let models = args
         .models_dir
         .unwrap_or_else(crate::core::default_models_path);
-    if let Some(node) = &args.retire_node {
-        runtime.block_on(server::retire(&args.server_config, node))?;
+    if args.setup {
+        let node = args
+            .add_node
+            .as_deref()
+            .ok_or_else(|| AppError::usage("--setup needs --add-node GROUP/NODE"))?;
+        runtime.block_on(server::setup::run(node, args.port))?;
         return Ok(None);
     }
-    if let (Some(node), Some(api_url)) = (&args.add_node, &args.api_url) {
-        runtime.block_on(server::add_node(&args.server_config, node, api_url))?;
+    let server_config = args
+        .server_config
+        .ok_or_else(|| AppError::usage("--server-config is required"))?;
+    if let Some(node) = &args.retire_node {
+        runtime.block_on(server::retire(&server_config, node))?;
+        return Ok(None);
+    }
+    if let Some(node) = &args.add_node {
+        let api_url = args.api_url.as_deref().ok_or_else(|| {
+            AppError::usage(
+                "--add-node needs --api-url, the address the new machine will use for this server",
+            )
+        })?;
+        runtime.block_on(server::add_node(&server_config, node, api_url))?;
         return Ok(None);
     }
     runtime.block_on(server::run(
-        &args.server_config,
+        &server_config,
         server::Activation {
             views: args.activate_views,
             query: args.activate_query,

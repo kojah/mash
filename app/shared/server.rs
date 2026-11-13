@@ -14,6 +14,7 @@ mod attachments;
 mod configuration;
 mod contexts;
 mod events;
+pub(crate) mod setup;
 pub(crate) mod store;
 mod sync;
 
@@ -515,12 +516,31 @@ pub(crate) async fn retire(path: &Path, node: &str) -> Result<(), AppError> {
 /// configuration; a running server accepts the node after a restart.
 /// `node` is `GROUP/NODE`, and `api_url` is the address that machine will use.
 pub(crate) async fn add_node(path: &Path, node: &str, api_url: &str) -> Result<(), AppError> {
-    let config = configuration::load(path).await?;
+    let join = mint(path, node, api_url).await?;
+    crate::write_json(
+        &mut std::io::stdout(),
+        &serde_json::json!({
+            "node": node,
+            "join": join,
+            "next": "Restart mash-server so it accepts this node. Then, on that machine, run `mash init --join` with the join value. It contains the node's token: pass it privately.",
+        }),
+    )
+}
+
+/// `GROUP/NODE` as its two validated names.
+fn node_name(node: &str) -> Result<(&str, &str), AppError> {
     let (group_id, node_id) = node
         .split_once('/')
         .ok_or_else(|| AppError::usage("--add-node takes GROUP/NODE, such as personal/laptop"))?;
     crate::config::validate_identifier(group_id, "group_id")?;
     crate::config::validate_identifier(node_id, "node_id")?;
+    Ok((group_id, node_id))
+}
+
+/// Record a new node by the hash of a fresh token and return its join string.
+async fn mint(path: &Path, node: &str, api_url: &str) -> Result<String, AppError> {
+    let config = configuration::load(path).await?;
+    let (group_id, node_id) = node_name(node)?;
     if configuration::has_node(&config, group_id, node_id) {
         return Err(AppError::usage(
             "that node already exists; choose another name, or retire it first with --retire-node",
@@ -543,14 +563,7 @@ pub(crate) async fn add_node(path: &Path, node: &str, api_url: &str) -> Result<(
     let file = path.to_path_buf();
     let (group, name) = (group_id.to_owned(), node_id.to_owned());
     crate::blocking(move || configuration::append_node(&file, &group, &name, &token)).await?;
-    crate::write_json(
-        &mut std::io::stdout(),
-        &serde_json::json!({
-            "node": node,
-            "join": join,
-            "next": "Restart mash-server so it accepts this node. Then, on that machine, run `mash init --join` with the join value. It contains the node's token: pass it privately.",
-        }),
-    )
+    Ok(join)
 }
 
 /// `models` is used to replay views from silver before serving.
