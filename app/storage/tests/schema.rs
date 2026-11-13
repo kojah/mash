@@ -117,6 +117,62 @@ fn retiring_open_questions_removes_them_and_refuses_new_ones() {
 }
 
 #[test]
+fn message_journal_migration_keeps_pending_chats_whole() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let connection = baseline(&path);
+    for script in [
+        include_str!("../records.sql"),
+        include_str!("../record_provenance.sql"),
+        include_str!("../record_extractions.sql"),
+        include_str!("../record_kinds.sql"),
+    ] {
+        connection.execute_batch(script).unwrap();
+    }
+    // A change journaled before message-level journaling existed.
+    connection
+        .execute_batch(
+            "PRAGMA user_version=66;
+             INSERT INTO shared_changes(chat_id, revision) SELECT chat_id, 9 FROM messages",
+        )
+        .unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(user_version(&path), SCHEMA_VERSION);
+    let rows = |sql: &str| {
+        storage
+            .connection
+            .prepare(sql)
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let pending = rows("SELECT chat_id || ':' || revision || ':' || whole FROM shared_changes");
+    assert_eq!(pending.len(), 1);
+    assert!(
+        pending.iter().all(|row| row.ends_with(":9:1")),
+        "{pending:?}"
+    );
+    assert_eq!(
+        rows("SELECT message_id FROM shared_message_changes"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        storage
+            .connection
+            .query_row(
+                "SELECT content FROM messages WHERE id='message'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+        "retain this history"
+    );
+}
+
+#[test]
 fn newer_schema_is_rejected_without_rewriting_version() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");

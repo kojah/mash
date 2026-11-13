@@ -359,6 +359,29 @@ impl Store {
             .await
     }
 
+    /// Delete these messages' documents from one chat, leaving the others.
+    pub(crate) async fn remove_documents(
+        &self,
+        identity: &Scope,
+        chat: &str,
+        messages: Vec<String>,
+    ) -> Result<(), AppError> {
+        if messages.is_empty() {
+            return Ok(());
+        }
+        let filter = api::Filter {
+            must: vec![
+                api::matches("node_id", vec![identity.node_id.clone()]),
+                api::matches("chat_id", vec![chat.to_owned()]),
+                api::matches("unit.anchor", messages),
+            ],
+            ..api::Filter::default()
+        };
+        self.api
+            .delete_filtered(&collection(&identity.group_id, false), filter)
+            .await
+    }
+
     /// Reconcile native deletions even when previous request metadata was lost.
     pub(crate) async fn retain_node_chats(
         &self,

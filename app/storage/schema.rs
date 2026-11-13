@@ -7,7 +7,7 @@ use crate::database_error::Operation;
 /// First supported migration baseline. Earlier releases require export/import.
 const BASELINE: i64 = 62;
 pub(crate) const MIN_SCHEMA_VERSION: i64 = BASELINE;
-pub(crate) const SCHEMA_VERSION: i64 = 66;
+pub(crate) const SCHEMA_VERSION: i64 = 67;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -17,6 +17,7 @@ const RECORDS: &str = include_str!("records.sql");
 const RECORD_PROVENANCE: &str = include_str!("record_provenance.sql");
 const RECORD_EXTRACTIONS: &str = include_str!("record_extractions.sql");
 const RECORD_KINDS: &str = include_str!("record_kinds.sql");
+const PUBLICATION_MESSAGES: &str = include_str!("publication_messages.sql");
 /// Writers run in WAL mode with NORMAL sync: commits are atomic and survive a
 /// process crash without an fsync each; only an OS crash or power loss can
 /// drop the latest commits, and the database stays consistent. Per connection.
@@ -84,6 +85,9 @@ pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppEr
             .execute_batch(RECORD_KINDS)
             .map_err(AppError::database)?;
         transaction
+            .execute_batch(PUBLICATION_MESSAGES)
+            .map_err(AppError::database)?;
+        transaction
             .pragma_update(None, "user_version", SCHEMA_VERSION)
             .map_err(AppError::database)?;
         transaction.commit().map_err(AppError::database)?;
@@ -97,6 +101,7 @@ pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppEr
         steps.push(rusqlite_migration::M::up(RECORD_PROVENANCE));
         steps.push(rusqlite_migration::M::up(RECORD_EXTRACTIONS));
         steps.push(rusqlite_migration::M::up(RECORD_KINDS));
+        steps.push(rusqlite_migration::M::up(PUBLICATION_MESSAGES));
         connection.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let result = rusqlite_migration::Migrations::new(steps).to_latest(connection);
         connection.set_transaction_behavior(rusqlite::TransactionBehavior::Deferred);
@@ -134,6 +139,17 @@ pub(super) fn install_publication_triggers(connection: &Connection) -> Result<()
                 "DELETE" => vec!["OLD"],
                 _ => vec!["OLD", "NEW"],
             };
+            // Whether a delta must resend the chat whole rather than amend
+            // it: a chat created or removed, a tombstone, or a change to the
+            // chat fields every search document of the chat carries.
+            let whole = match (table, operation) {
+                ("chats", "UPDATE") => {
+                    "OLD.id IS NOT NEW.id OR OLD.provider IS NOT NEW.provider
+                     OR OLD.project IS NOT NEW.project OR OLD.repository IS NOT NEW.repository"
+                }
+                ("chats" | "tombstones", _) => "1",
+                _ => "0",
+            };
             let mut changes = String::new();
             for reference in &references {
                 let id = if table == "chats" {
@@ -142,14 +158,27 @@ pub(super) fn install_publication_triggers(connection: &Connection) -> Result<()
                     format!("{reference}.chat_id")
                 };
                 write!(changes,
-                    "INSERT INTO main.shared_changes SELECT {id},revision FROM main.shared_publication WHERE singleton=1 AND {id} IS NOT NULL
-                     ON CONFLICT(chat_id) DO UPDATE SET revision=excluded.revision;"
+                    "INSERT INTO main.shared_changes(chat_id,revision,whole) SELECT {id},revision,({whole})<>0 FROM main.shared_publication WHERE singleton=1 AND {id} IS NOT NULL
+                     ON CONFLICT(chat_id) DO UPDATE SET revision=excluded.revision,whole=MAX(whole,excluded.whole);"
                 ).map_err(|_|AppError::internal("format publication trigger"))?;
+                if table == "messages" {
+                    write!(changes,
+                        "INSERT INTO main.shared_message_changes(chat_id,message_id,revision) SELECT {reference}.chat_id,{reference}.id,revision FROM main.shared_publication WHERE singleton=1
+                         ON CONFLICT(chat_id,message_id) DO UPDATE SET revision=excluded.revision;"
+                    ).map_err(|_|AppError::internal("format publication trigger"))?;
+                }
             }
+            // Only published message columns journal a change; derived turn
+            // membership and ingestion fingerprints never reach the server.
+            let event = if (table, operation) == ("messages", "UPDATE") {
+                "UPDATE OF id, chat_id, ordinal, role, context_parent, content_packed, search_projection, created_at, metadata, attachments"
+            } else {
+                operation
+            };
             write!(
                 statements,
                 "CREATE TEMP TRIGGER IF NOT EXISTS shared_{table}_{operation}
-                 AFTER {operation} ON main.{table} BEGIN
+                 AFTER {event} ON main.{table} BEGIN
                  UPDATE main.shared_publication SET revision = revision + 1 WHERE singleton = 1;
                  {changes}
                  END;"

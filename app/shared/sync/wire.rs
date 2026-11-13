@@ -470,7 +470,7 @@ pub(crate) struct SourceCertificate {
 
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct NativeRecord {
-    #[prost(oneof = "native_record::Body", tags = "1, 2, 3, 4, 5")]
+    #[prost(oneof = "native_record::Body", tags = "1, 2, 3, 4, 5, 6")]
     pub body: Option<native_record::Body>,
 }
 
@@ -488,7 +488,20 @@ pub(crate) mod native_record {
         /// Canonical typed recall row, validated on decoding and application.
         #[prost(bytes, tag = "5")]
         Recall(Vec<u8>),
+        #[prost(message, tag = "6")]
+        Amend(super::Amend),
     }
+}
+
+/// One chat a delta amends; see `protocol::Amendment`.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct Amend {
+    #[prost(message, optional, tag = "1")]
+    pub chat: Option<Chat>,
+    #[prost(string, repeated, tag = "2")]
+    pub replaced: Vec<String>,
+    #[prost(uint64, tag = "3")]
+    pub messages: u64,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -841,6 +854,10 @@ pub(crate) fn manifest_digest(
     manifest.finalize().to_hex().to_string()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one bounded encoder that counts every publication event kind the same way"
+)]
 pub(crate) fn encode_publication(
     events: &[Event],
     max_decoded: usize,
@@ -891,6 +908,14 @@ pub(crate) fn encode_publication(
             }
             .encode_length_delimited(&mut decoded)
             .map_err(|_| AppError::internal("encode removal record"))?,
+            Event::Amend(amendment) => {
+                NativeRecord::from(amendment.as_ref())
+                    .encode_length_delimited(&mut decoded)
+                    .map_err(|_| AppError::internal("encode amendment record"))?;
+                chats = chats
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("too many publication records"))?;
+            }
             Event::Start(_) | Event::Finish => {
                 return Err(invalid("publication data cannot contain stream metadata"));
             }
@@ -949,7 +974,7 @@ pub(crate) fn encode_publication(
 fn event_len(event: &Event) -> u32 {
     match event {
         Event::Batch(batch) => u32::try_from(batch.len()).unwrap_or(u32::MAX),
-        Event::Remove { .. } => 1,
+        Event::Remove { .. } | Event::Amend(_) => 1,
         Event::Start(_) | Event::Finish => 0,
     }
 }
@@ -1070,6 +1095,14 @@ fn decode_records(mut input: &[u8]) -> Result<Vec<Event>, AppError> {
                     serde_json::from_slice(&row).map_err(|_| invalid("invalid recall record"))?,
                 ],
             }),
+            native_record::Body::Amend(amend) => Event::Amend(Box::new(protocol::Amendment {
+                chat: amend
+                    .chat
+                    .ok_or_else(|| invalid("amendment without a chat record"))?
+                    .try_into()?,
+                replaced: amend.replaced,
+                messages: amend.messages,
+            })),
         };
         merge_event(&mut pending, event, &mut events);
     }
@@ -1131,6 +1164,22 @@ impl From<&protocol::ChatRecord> for NativeRecord {
                 repository: record.repository.clone(),
                 created_at: record.created_at,
                 updated_at: record.updated_at,
+            })),
+        }
+    }
+}
+
+impl From<&protocol::Amendment> for NativeRecord {
+    fn from(amendment: &protocol::Amendment) -> Self {
+        let chat = match NativeRecord::from(&amendment.chat).body {
+            Some(native_record::Body::Chat(chat)) => Some(chat),
+            _ => None,
+        };
+        Self {
+            body: Some(native_record::Body::Amend(Amend {
+                chat,
+                replaced: amendment.replaced.clone(),
+                messages: amendment.messages,
             })),
         }
     }

@@ -127,7 +127,18 @@ of mutations, not their total RAM.
 Shared silver is the source of truth. A publication is validated and committed
 to the silver SQLite database in one transaction, and only then synchronized into
 Qdrant: documents are replaced in place per message and the node's views record
-is certified for the new silver revision when every chat is written. Until
+is certified for the new silver revision when every chat is written. A delta
+that adds, edits or removes some messages of a chat the server already holds
+amends that chat: it sends the chat record, the IDs of the changed and removed
+messages, the chat's resulting message count and the changed messages, and the
+server keeps the chat's other messages and documents. It rejects the whole
+upload if the result would differ in message count or in the provider,
+project or repository its documents carry; the node then resends every chat.
+New, removed or tombstoned chats, chats whose provider, project or repository
+changed, chats with more than 1,024 changed messages, and every changed chat
+under a recipe whose dense input spans messages (`title-and-dialogue` text or
+`parent-and-message` units) are resent whole. Servers older than this
+amendment reject such deltas, so upgrade the server before its nodes. Until
 then the node's views are reported stale and excluded from dense search; there is
 no Qdrant staging or conditional head protocol. A node that sees stale views
 resends a complete snapshot, which repairs views without changing silver.

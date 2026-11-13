@@ -282,6 +282,7 @@ fn records(events: &[Event]) -> Vec<(String, serde_json::Value)> {
                 }
             }
             Event::Remove { id } => push("remove", serde_json::json!({"id": id})),
+            Event::Amend(amendment) => push("amend", serde_json::to_value(amendment).unwrap()),
             Event::Batch(Batch::Records { records: batch }) => {
                 for record in batch {
                     push("recall", serde_json::to_value(record).unwrap());

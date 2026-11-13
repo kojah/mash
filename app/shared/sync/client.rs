@@ -769,6 +769,7 @@ fn backfill_members(events: &[Event]) -> Result<Vec<wire::BackfillMember>, AppEr
             }
             Event::Batch(protocol::Batch::Records { .. } | protocol::Batch::Messages { .. })
             | Event::Remove { .. }
+            | Event::Amend(_)
             | Event::Start(_)
             | Event::Finish => {}
         }
@@ -985,6 +986,10 @@ fn plan_backfill_bounded(
                 }
             }
             Event::Remove { id } => entry(&mut groups, &id).events.push(Event::Remove { id }),
+            // A baseline captures whole chats; amendments belong to deltas.
+            Event::Amend(_) => {
+                return Err(AppError::usage("a backfill batch cannot amend chats"));
+            }
             Event::Start(_) | Event::Finish => {}
         }
     }

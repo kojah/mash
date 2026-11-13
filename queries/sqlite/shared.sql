@@ -48,6 +48,17 @@ VALUES (sqlc.arg(chat_id), sqlc.arg(evidence));
 -- name: SetFingerprint :exec
 UPDATE chats SET chat_fingerprint=sqlc.arg(fingerprint) WHERE id=sqlc.arg(id);
 
+-- name: ChatFingerprint :one
+SELECT chat_fingerprint FROM chats WHERE id = sqlc.arg(id);
+
+-- name: UpdateChat :execrows
+UPDATE chats SET title=sqlc.narg(title),created_at=sqlc.narg(created_at),updated_at=sqlc.narg(updated_at),
+    project=sqlc.narg(project),repository=sqlc.narg(repository)
+WHERE id=sqlc.arg(id) AND provider=sqlc.arg(provider);
+
+-- name: DeleteEnrichment :exec
+DELETE FROM chat_enrichment WHERE chat_id = sqlc.arg(chat_id);
+
 -- name: DeleteChat :execrows
 DELETE FROM chats WHERE id = sqlc.arg(id);
 
@@ -101,6 +112,17 @@ sqlc.arg(search_projection),sqlc.narg(created_at),sqlc.narg(context_parent),sqlc
 -- name: DeleteChatMessages :execrows
 DELETE FROM messages
 WHERE chat_id = sqlc.arg(chat_id);
+
+-- name: ChatMessageRole :one
+SELECT role, search_projection FROM messages
+WHERE chat_id = sqlc.arg(chat_id) AND id = sqlc.arg(id);
+
+-- name: DeleteChatMessage :execrows
+DELETE FROM messages
+WHERE chat_id = sqlc.arg(chat_id) AND id = sqlc.arg(id);
+
+-- name: ChatMessageCount :one
+SELECT count(*) AS messages FROM messages WHERE chat_id = sqlc.arg(chat_id);
 
 -- name: DeleteNodeMessages :exec
 DELETE FROM messages;

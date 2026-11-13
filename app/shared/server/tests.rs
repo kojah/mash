@@ -13,6 +13,7 @@ mod cursor;
 mod enrichment;
 mod exact;
 mod freshness;
+mod long_chats;
 mod native;
 mod query;
 mod records;

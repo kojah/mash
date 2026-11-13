@@ -87,6 +87,12 @@ impl Policy {
             batch(value);
         }
     }
+
+    pub(crate) fn chat(self, value: &mut crate::shared::protocol::ChatRecord) {
+        if self.enabled {
+            chat(value);
+        }
+    }
 }
 
 impl Settings {

@@ -50,14 +50,21 @@ pub(crate) fn write_event(
     event: &Event,
     redaction: crate::redaction::Policy,
 ) -> Result<(), AppError> {
-    let mut safe;
-    let event = if let Event::Batch(batch) = event {
-        let mut batch = batch.clone();
-        redaction.batch(&mut batch);
-        safe = Event::Batch(batch);
-        &mut safe
-    } else {
-        event
+    let safe;
+    let event = match event {
+        Event::Batch(batch) => {
+            let mut batch = batch.clone();
+            redaction.batch(&mut batch);
+            safe = Event::Batch(batch);
+            &safe
+        }
+        Event::Amend(amendment) => {
+            let mut amendment = amendment.clone();
+            redaction.chat(&mut amendment.chat);
+            safe = Event::Amend(amendment);
+            &safe
+        }
+        event => event,
     };
     serde_json::to_writer(&mut *file, event)
         .map_err(|_| AppError::internal("serialize index upload"))?;
@@ -180,7 +187,7 @@ const PUBLISH_LOCK_WAIT: Duration = Duration::from_secs(30);
 const PUBLISH_LOCK_POLL: Duration = Duration::from_millis(50);
 /// Why a delta left the node's views uncertified; the publisher resupplies.
 const VIEWS_INCOMPLETE: &str =
-    "shared views still lack chats this delta did not change; resupplying every chat";
+    "shared views still lack chats this delta did not resend whole; resupplying every chat";
 /// The backfill identity publishers choose for themselves; see `publish_backfill`.
 const AUTO_BACKFILL: &str = "auto";
 const SHARED_PENDING: &str =
@@ -244,10 +251,16 @@ pub(crate) async fn publish(
     // One atomic publication cannot exceed the decoded-size limit; a node that
     // fell far behind or holds very long chats catches up through the
     // resumable, size-bounded backfill instead of staying stale.
+    // An amendment the server could not reproduce rolled back without
+    // committing anything; the baseline resupplies every chat whole.
     if matches!(
         publication.error.as_deref(),
         Some(super::sync::wire::BATCH_TOO_LARGE | VIEWS_INCOMPLETE)
-    ) {
+    ) || publication
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains(super::silver_store::apply::AMENDMENT_DIVERGED))
+    {
         return publish_baseline_now(path, config, AUTO_BACKFILL, inference).await;
     }
     publication

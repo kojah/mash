@@ -74,7 +74,24 @@ pub(crate) enum Event {
     Start(Start),
     Batch(Batch),
     Remove { id: String },
+    Amend(Box<Amendment>),
     Finish,
+}
+
+/// Most message IDs one amendment names; a chat with more changes since the
+/// delta's base is resent whole.
+pub(crate) const MAX_AMENDED_MESSAGES: usize = 1024;
+
+/// A delta's change to one chat the server already holds at the delta's base:
+/// the chat's new record, every message ID changed or removed since the base,
+/// and the chat's resulting message count. The changed messages that still
+/// exist follow as ordinary message batches; the rest of the chat is kept.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Amendment {
+    pub chat: ChatRecord,
+    pub replaced: Vec<String>,
+    pub messages: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

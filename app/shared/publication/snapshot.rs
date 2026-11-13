@@ -4,7 +4,11 @@ use crate::shared::{
     protocol::{Batch, BatchKind, ChatRecord, Event, MessageRecord, Start},
     reuse::Target,
 };
-use crate::{AppError, storage::Storage, views::shared as views};
+use crate::{
+    AppError,
+    storage::{Storage, publication::Delta},
+    views::shared as views,
+};
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{BufRead, Write},
@@ -61,6 +65,12 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                 Selection::Replace | Selection::Backfill => None,
             };
             let incremental = base.is_some();
+            // Amending keeps a chat's other documents, so only a recipe whose
+            // dense input is the message alone may amend.
+            let delta = base.map(|after| Delta {
+                after,
+                amend: target.build.message_local(),
+            });
             write_event(
                 &mut writer,
                 &Event::Start(Start {
@@ -83,10 +93,10 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                     write_event(&mut writer, &Event::Remove { id }, target.redaction)?;
                 }
             }
-            snapshot.visit_selected(BatchKind::Tombstones, false, base, |batch| {
+            snapshot.visit_selected(BatchKind::Tombstones, false, delta, |batch| {
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
-            snapshot.visit_selected(BatchKind::Chats, false, base, |mut batch| {
+            snapshot.visit_selected(BatchKind::Chats, false, delta, |mut batch| {
                 target.redaction.batch(&mut batch);
                 if let Batch::Chats { records } = &batch {
                     for chat in records {
@@ -95,7 +105,19 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                 }
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
-            snapshot.visit_selected(BatchKind::Messages, true, base, |mut batch| {
+            let amended = delta.filter(|delta| delta.amend).map(|delta| delta.after);
+            if let Some(after) = amended {
+                snapshot.visit_amendments(after, |mut amendment| {
+                    target.redaction.chat(&mut amendment.chat);
+                    chats.insert(amendment.chat.id.clone(), amendment.chat.clone());
+                    write_event(
+                        &mut writer,
+                        &Event::Amend(Box::new(amendment)),
+                        target.redaction,
+                    )
+                })?;
+            }
+            let mut messages = |mut batch: Batch| {
                 target.redaction.batch(&mut batch);
                 if let Batch::Messages { records } = &mut batch {
                     for message in records {
@@ -111,7 +133,11 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                     }
                 }
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
-            })?;
+            };
+            snapshot.visit_selected(BatchKind::Messages, true, delta, &mut messages)?;
+            if let Some(after) = amended {
+                snapshot.visit_amended_messages(after, &mut messages)?;
+            }
             snapshot.visit_records(base, target.redaction, |batch| {
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;

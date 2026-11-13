@@ -962,6 +962,425 @@ impl<'a> SetFingerprintBuilder<'a, (Option<&'a str>, &'a str)> {
         SetFingerprint { fingerprint, id }
     }
 }
+pub struct ChatFingerprintRow {
+    pub chat_fingerprint: Option<String>,
+}
+impl ChatFingerprintRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            chat_fingerprint: row.get(0)?,
+        })
+    }
+}
+pub struct ChatFingerprint<'a> {
+    id: &'a str,
+}
+impl<'a> ChatFingerprint<'a> {
+    pub const QUERY: &'static str = r"SELECT chat_fingerprint FROM chats WHERE id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ChatFingerprint<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatFingerprintRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ChatFingerprintRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ChatFingerprintRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ChatFingerprintRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl<'a> ChatFingerprint<'a> {
+    pub const fn builder() -> ChatFingerprintBuilder<'a, ((),)> {
+        ChatFingerprintBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ChatFingerprintBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ChatFingerprintBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> ChatFingerprintBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ChatFingerprintBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ChatFingerprintBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatFingerprint<'a> {
+        let (id,) = self.fields;
+        ChatFingerprint { id }
+    }
+}
+pub struct UpdateChatRow {}
+impl UpdateChatRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct UpdateChat<'a> {
+    title: Option<&'a str>,
+    created_at: Option<i64>,
+    updated_at: Option<i64>,
+    project: Option<&'a str>,
+    repository: Option<&'a str>,
+    id: &'a str,
+    provider: &'a str,
+}
+impl<'a> UpdateChat<'a> {
+    pub const QUERY: &'static str = r"UPDATE chats SET title=?1,created_at=?2,updated_at=?3,
+    project=?4,repository=?5
+WHERE id=?6 AND provider=?7";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> UpdateChat<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.title,
+            self.created_at,
+            self.updated_at,
+            self.project,
+            self.repository,
+            self.id,
+            self.provider,
+        )
+    }
+}
+impl<'a> UpdateChat<'a> {
+    pub const fn builder() -> UpdateChatBuilder<'a, ((), (), (), (), (), (), ())> {
+        UpdateChatBuilder {
+            fields: ((), (), (), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct UpdateChatBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, CreatedAt, UpdatedAt, Project, Repository, Id, Provider>
+    UpdateChatBuilder<'a, ((), CreatedAt, UpdatedAt, Project, Repository, Id, Provider)>
+{
+    pub fn title(
+        self,
+        title: Option<&'a str>,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Option<&'a str>,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+            Id,
+            Provider,
+        ),
+    > {
+        let ((), created_at, updated_at, project, repository, id, provider) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Title, UpdatedAt, Project, Repository, Id, Provider>
+    UpdateChatBuilder<'a, (Title, (), UpdatedAt, Project, Repository, Id, Provider)>
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            Option<i64>,
+            UpdatedAt,
+            Project,
+            Repository,
+            Id,
+            Provider,
+        ),
+    > {
+        let (title, (), updated_at, project, repository, id, provider) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Title, CreatedAt, Project, Repository, Id, Provider>
+    UpdateChatBuilder<'a, (Title, CreatedAt, (), Project, Repository, Id, Provider)>
+{
+    pub fn updated_at(
+        self,
+        updated_at: Option<i64>,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            CreatedAt,
+            Option<i64>,
+            Project,
+            Repository,
+            Id,
+            Provider,
+        ),
+    > {
+        let (title, created_at, (), project, repository, id, provider) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Title, CreatedAt, UpdatedAt, Repository, Id, Provider>
+    UpdateChatBuilder<'a, (Title, CreatedAt, UpdatedAt, (), Repository, Id, Provider)>
+{
+    pub fn project(
+        self,
+        project: Option<&'a str>,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Option<&'a str>,
+            Repository,
+            Id,
+            Provider,
+        ),
+    > {
+        let (title, created_at, updated_at, (), repository, id, provider) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Title, CreatedAt, UpdatedAt, Project, Id, Provider>
+    UpdateChatBuilder<'a, (Title, CreatedAt, UpdatedAt, Project, (), Id, Provider)>
+{
+    pub fn repository(
+        self,
+        repository: Option<&'a str>,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Option<&'a str>,
+            Id,
+            Provider,
+        ),
+    > {
+        let (title, created_at, updated_at, project, (), id, provider) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Title, CreatedAt, UpdatedAt, Project, Repository, Provider>
+    UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+            (),
+            Provider,
+        ),
+    >
+{
+    pub fn id(
+        self,
+        id: &'a str,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+            &'a str,
+            Provider,
+        ),
+    > {
+        let (title, created_at, updated_at, project, repository, (), provider) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Title, CreatedAt, UpdatedAt, Project, Repository, Id>
+    UpdateChatBuilder<'a, (Title, CreatedAt, UpdatedAt, Project, Repository, Id, ())>
+{
+    pub fn provider(
+        self,
+        provider: &'a str,
+    ) -> UpdateChatBuilder<
+        'a,
+        (
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+            Id,
+            &'a str,
+        ),
+    > {
+        let (title, created_at, updated_at, project, repository, id, ()) = self.fields;
+        let _phantom = self._phantom;
+        UpdateChatBuilder {
+            fields: (
+                title, created_at, updated_at, project, repository, id, provider,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    UpdateChatBuilder<
+        'a,
+        (
+            Option<&'a str>,
+            Option<i64>,
+            Option<i64>,
+            Option<&'a str>,
+            Option<&'a str>,
+            &'a str,
+            &'a str,
+        ),
+    >
+{
+    pub fn build(self) -> UpdateChat<'a> {
+        let (title, created_at, updated_at, project, repository, id, provider) = self.fields;
+        UpdateChat {
+            title,
+            created_at,
+            updated_at,
+            project,
+            repository,
+            id,
+            provider,
+        }
+    }
+}
+pub struct DeleteEnrichmentRow {}
+impl DeleteEnrichmentRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct DeleteEnrichment<'a> {
+    chat_id: &'a str,
+}
+impl<'a> DeleteEnrichment<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM chat_enrichment WHERE chat_id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteEnrichment<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.chat_id,)
+    }
+}
+impl<'a> DeleteEnrichment<'a> {
+    pub const fn builder() -> DeleteEnrichmentBuilder<'a, ((),)> {
+        DeleteEnrichmentBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteEnrichmentBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> DeleteEnrichmentBuilder<'a, ((),)> {
+    pub fn chat_id(self, chat_id: &'a str) -> DeleteEnrichmentBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        DeleteEnrichmentBuilder {
+            fields: (chat_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteEnrichmentBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteEnrichment<'a> {
+        let (chat_id,) = self.fields;
+        DeleteEnrichment { chat_id }
+    }
+}
 pub struct DeleteChatRow {}
 impl DeleteChatRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -2528,6 +2947,231 @@ impl<'a> DeleteChatMessagesBuilder<'a, (&'a str,)> {
     pub fn build(self) -> DeleteChatMessages<'a> {
         let (chat_id,) = self.fields;
         DeleteChatMessages { chat_id }
+    }
+}
+pub struct ChatMessageRoleRow {
+    pub role: String,
+    pub search_projection: Option<String>,
+}
+impl ChatMessageRoleRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            role: row.get(0)?,
+            search_projection: row.get(1)?,
+        })
+    }
+}
+pub struct ChatMessageRole<'a> {
+    chat_id: &'a str,
+    id: &'a str,
+}
+impl<'a> ChatMessageRole<'a> {
+    pub const QUERY: &'static str = r"SELECT role, search_projection FROM messages
+WHERE chat_id = ?1 AND id = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ChatMessageRole<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatMessageRoleRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ChatMessageRoleRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ChatMessageRoleRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ChatMessageRoleRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.chat_id, self.id)
+    }
+}
+impl<'a> ChatMessageRole<'a> {
+    pub const fn builder() -> ChatMessageRoleBuilder<'a, ((), ())> {
+        ChatMessageRoleBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ChatMessageRoleBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Id> ChatMessageRoleBuilder<'a, ((), Id)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ChatMessageRoleBuilder<'a, (&'a str, Id)> {
+        let ((), id) = self.fields;
+        let _phantom = self._phantom;
+        ChatMessageRoleBuilder {
+            fields: (chat_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ChatId> ChatMessageRoleBuilder<'a, (ChatId, ())> {
+    pub fn id(self, id: &'a str) -> ChatMessageRoleBuilder<'a, (ChatId, &'a str)> {
+        let (chat_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ChatMessageRoleBuilder {
+            fields: (chat_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ChatMessageRoleBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ChatMessageRole<'a> {
+        let (chat_id, id) = self.fields;
+        ChatMessageRole { chat_id, id }
+    }
+}
+pub struct DeleteChatMessageRow {}
+impl DeleteChatMessageRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct DeleteChatMessage<'a> {
+    chat_id: &'a str,
+    id: &'a str,
+}
+impl<'a> DeleteChatMessage<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM messages
+WHERE chat_id = ?1 AND id = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteChatMessage<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.chat_id, self.id)
+    }
+}
+impl<'a> DeleteChatMessage<'a> {
+    pub const fn builder() -> DeleteChatMessageBuilder<'a, ((), ())> {
+        DeleteChatMessageBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteChatMessageBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Id> DeleteChatMessageBuilder<'a, ((), Id)> {
+    pub fn chat_id(self, chat_id: &'a str) -> DeleteChatMessageBuilder<'a, (&'a str, Id)> {
+        let ((), id) = self.fields;
+        let _phantom = self._phantom;
+        DeleteChatMessageBuilder {
+            fields: (chat_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ChatId> DeleteChatMessageBuilder<'a, (ChatId, ())> {
+    pub fn id(self, id: &'a str) -> DeleteChatMessageBuilder<'a, (ChatId, &'a str)> {
+        let (chat_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        DeleteChatMessageBuilder {
+            fields: (chat_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteChatMessageBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> DeleteChatMessage<'a> {
+        let (chat_id, id) = self.fields;
+        DeleteChatMessage { chat_id, id }
+    }
+}
+pub struct ChatMessageCountRow {
+    pub messages: i64,
+}
+impl ChatMessageCountRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            messages: row.get(0)?,
+        })
+    }
+}
+pub struct ChatMessageCount<'a> {
+    chat_id: &'a str,
+}
+impl<'a> ChatMessageCount<'a> {
+    pub const QUERY: &'static str = r"SELECT count(*) AS messages FROM messages WHERE chat_id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ChatMessageCount<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ChatMessageCountRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ChatMessageCountRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ChatMessageCountRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ChatMessageCountRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.chat_id,)
+    }
+}
+impl<'a> ChatMessageCount<'a> {
+    pub const fn builder() -> ChatMessageCountBuilder<'a, ((),)> {
+        ChatMessageCountBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ChatMessageCountBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ChatMessageCountBuilder<'a, ((),)> {
+    pub fn chat_id(self, chat_id: &'a str) -> ChatMessageCountBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ChatMessageCountBuilder {
+            fields: (chat_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ChatMessageCountBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatMessageCount<'a> {
+        let (chat_id,) = self.fields;
+        ChatMessageCount { chat_id }
     }
 }
 pub struct DeleteNodeMessagesRow {}

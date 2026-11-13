@@ -151,6 +151,13 @@ impl Build {
             && (self.dense_content == DenseContent::AllVisible || *role == crate::role::Role::User)
     }
 
+    /// Whether each message's dense input depends on that message alone, so
+    /// changing one message leaves every other document of its chat valid.
+    pub(crate) fn message_local(&self) -> bool {
+        self.retrieval_unit == RetrievalUnit::Message
+            && self.embedding_text == EmbeddingText::Dialogue
+    }
+
     pub(crate) fn users_only(&self) -> bool {
         self.dense_content == DenseContent::UserMessages
     }

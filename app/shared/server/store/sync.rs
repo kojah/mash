@@ -255,20 +255,34 @@ impl Store {
         }
         for id in &supplied {
             let chat = written.get(id);
-            if !fresh {
-                let current = chat.map_or_else(Default::default, |t| t.ids.clone());
-                self.views.retain_documents(identity, id, current).await?;
-            }
             let fingerprint = fingerprints
                 .get(id)
                 .cloned()
                 .ok_or_else(|| AppError::internal("supplied chat has no silver"))?;
+            let complete = chat.is_none_or(|t| t.embeddings == t.expected);
+            let embeddings = chat.map_or(0, |t| t.embeddings);
+            if let Some(amended) = applied.amended.get(id)
+                && amended.prior.is_some()
+            {
+                let evidence = ProjectionEvidence {
+                    fingerprint,
+                    embeddings,
+                    complete,
+                };
+                self.amend_views(identity, id, amended, chat, evidence, fresh, &mut views)
+                    .await?;
+                continue;
+            }
+            if !fresh {
+                let current = chat.map_or_else(Default::default, |t| t.ids.clone());
+                self.views.retain_documents(identity, id, current).await?;
+            }
             views.projections.insert(
                 id.clone(),
                 ProjectionEvidence {
                     fingerprint,
-                    embeddings: chat.map_or(0, |t| t.embeddings),
-                    complete: chat.is_none_or(|t| t.embeddings == t.expected),
+                    embeddings,
+                    complete,
                 },
             );
         }
@@ -277,6 +291,53 @@ impl Store {
         // time certification finishes; the guard below compares this.
         views.input = Some(applied.revision);
         self.certify(identity, views, progress).await
+    }
+
+    /// The upload carries only an amended chat's changed messages; its other
+    /// documents stay. Remove those it replaced without a successor, and carry
+    /// the evidence forward only from views built for exactly the chat this
+    /// upload amended. `written` is the evidence of the supplied messages.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one chat's amendment, its written documents and the views being certified"
+    )]
+    async fn amend_views(
+        &self,
+        identity: &Identity,
+        id: &str,
+        amended: &silver_store::apply::Amended,
+        chat: Option<&Written>,
+        written: ProjectionEvidence,
+        fresh: bool,
+        views: &mut NodeViews,
+    ) -> Result<(), AppError> {
+        let rewritten: BTreeSet<&String> = chat.map(|t| t.ids.iter().collect()).unwrap_or_default();
+        let stale: Vec<String> = amended
+            .replaced
+            .iter()
+            .filter(|message| !rewritten.contains(message))
+            .cloned()
+            .collect();
+        if !fresh {
+            self.views.remove_documents(identity, id, stale).await?;
+        }
+        match views.projections.get(id) {
+            Some(previous) if !fresh && Some(&previous.fingerprint) == amended.prior.as_ref() => {
+                let evidence = ProjectionEvidence {
+                    fingerprint: written.fingerprint,
+                    embeddings: previous
+                        .embeddings
+                        .saturating_sub(amended.removed_embeddings)
+                        .saturating_add(written.embeddings),
+                    complete: previous.complete && written.complete,
+                };
+                views.projections.insert(id.to_owned(), evidence);
+            }
+            // Nothing vouches for the documents this upload kept, so the chat
+            // stays uncovered until it is resupplied whole.
+            _ => views.projections.remove(id),
+        }
+        Ok(())
     }
 
     /// Stream the upload's messages for the selected chats into documents.

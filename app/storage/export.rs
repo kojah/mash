@@ -139,10 +139,12 @@ pub(crate) fn restore(
         .execute_batch(if keep_identity {
             "UPDATE shared_publication SET acknowledged=0,target='';
              DELETE FROM shared_changes;
+             DELETE FROM shared_message_changes;
              UPDATE shared_change_state SET floor=(SELECT revision FROM shared_publication);"
         } else {
             "UPDATE shared_publication SET instance=lower(hex(randomblob(16))),revision=1,acknowledged=0,target='';
              DELETE FROM shared_changes;
+             DELETE FROM shared_message_changes;
              UPDATE shared_change_state SET floor=1;"
         })
         .map_err(AppError::database)?;

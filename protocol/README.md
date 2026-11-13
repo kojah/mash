@@ -400,6 +400,22 @@ server restores, multiple publishers, or concurrent remote forget operations.
 It does not equate a durable local publication acknowledgement with perpetual
 remote view readiness. Publication revision is not canonical silver revision.
 
+Deltas amend long chats (`mash-evnl`): the same journal triggers also record
+each changed message in `shared_message_changes` and mark a chat `whole` when
+it was created, removed, tombstoned, journaled before schema 67 or changed a
+field its documents carry. A delta sends an `Amend` event (chat record, the
+changed/removed message IDs since the base, the resulting message count) and
+only those messages for the other chats under a message-local recipe. Message
+rows carry the same revisions, are captured in the same snapshot transaction
+and are pruned in the same acknowledgement transaction as the chat rows, so
+`Edit`, `Capture` and `Acknowledge` keep their boundaries and the
+configurations are unchanged; the model's journal is the set of pending
+revisions, which both tables realize. The server applies an amendment inside
+the one upload transaction and rejects it, committing nothing, unless the
+chat's documented fields and resulting message count match; the publisher then
+sends a whole-chat baseline. `qdrant_long_chat_delta_publishes_only_changed_messages`
+compares an amended server with a fresh replacement of the same history.
+
 ### NativeSilver: revision guards and deletion intent
 
 [NativeSilver.tla](NativeSilver.tla) chooses snapshot/delta requests with valid
@@ -424,7 +440,8 @@ Source mapping:
 Chat bodies, source certificates, canonical hashing, ordinary `Remove` events,
 provider-qualified identity is outside this model.
 Delta requests add chat IDs and/or forget them; replacement bodies are abstracted
-away. Aborted transactions are atomic rollback, not a model of SQLite internals.
+away, including `Upload::amend`, which is accepted only in a delta that has
+passed `start` and never in a snapshot or rebased baseline batch. Aborted transactions are atomic rollback, not a model of SQLite internals.
 Invalid inputs have no committing transition; input decoding remains a Rust test
 responsibility. This model makes no delivery/progress claim.
 
@@ -494,6 +511,16 @@ handle, and checks unchanged silver and successful retry. This is simulated
 boundary failure, not process termination or power-loss verification. No TLA+
 action change was needed: the passing model already described the corrected
 order; the negative configuration is now labeled as a historical mutation.
+
+An amended chat's views write only its supplied messages and delete the
+documents of replaced messages that have no successor; its other documents
+stay. These are the model's `WritePoint` steps for the points that changed,
+before the unchanged `Certify`; untouched points are the model's unchanged
+projection. The chat's evidence is carried forward only from stored evidence
+whose fingerprint equals the chat's fingerprint before the amendment, that is,
+from a certification of exactly the documents being kept; otherwise the chat
+stays uncovered, the views are not current and the publisher resupplies every
+chat. No action or configuration changes.
 
 No all-time physical-subset guarantee is claimed while views are stale: in-place
 updates permit old documents until deletion completes. This model also excludes

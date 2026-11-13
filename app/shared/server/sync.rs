@@ -1494,6 +1494,9 @@ fn chat_ids(events: &[Event]) -> Vec<String> {
             Event::Batch(protocol::Batch::Messages { records }) => {
                 ids.extend(records.iter().map(|record| record.chat_id.clone()));
             }
+            Event::Amend(amendment) => {
+                ids.insert(amendment.chat.id.clone());
+            }
             Event::Batch(protocol::Batch::Records { .. })
             | Event::Remove { .. }
             | Event::Start(_)
@@ -1553,6 +1556,7 @@ fn covered_members(events: &[Event]) -> Result<Vec<(String, String)>, AppError> 
             }
             Event::Batch(protocol::Batch::Records { .. } | protocol::Batch::Messages { .. })
             | Event::Remove { .. }
+            | Event::Amend(_)
             | Event::Start(_)
             | Event::Finish => {}
         }

@@ -185,14 +185,128 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
             .iter()
             .any(|event| matches!(event,Event::Remove{id} if id=="b"))
     );
-    let mut messages = 0;
+    // A renamed chat is amended: its record, and none of its 37 messages.
+    let (chats, amendments, messages) = delta_shape(&events);
+    assert_eq!(chats, Vec::<String>::new());
+    assert_eq!(amendments, [("a".to_owned(), Vec::new(), 37)]);
+    assert_eq!(messages, BTreeMap::new());
+}
+
+/// Capture a delta after acknowledging the seeded history and applying `edit`.
+fn delta_events(build: crate::views::config::Build, edit: &str) -> Vec<Event> {
+    let directory = tempfile::tempdir().unwrap();
+    let database = seed(directory.path());
+    let storage = Storage::open_existing(&database).unwrap();
+    storage.prepare_publication_target("journal").unwrap();
+    let mut instance = String::new();
+    let base = storage
+        .with_publication_snapshot(|snapshot| {
+            instance.clone_from(&snapshot.instance);
+            Ok(())
+        })
+        .unwrap();
+    storage
+        .acknowledge_publication(
+            "journal",
+            base,
+            crate::storage::publication::JournalCoverage::Incremental { through: base },
+        )
+        .unwrap();
+    crate::storage::test_support::write(&database, edit);
+    let target = Target {
+        build,
+        generation: "unused".into(),
+        dimensions: 384,
+        instance: Some(instance),
+        publication_revision: base,
+        redaction: crate::redaction::Policy::ON,
+    };
+    let source = capture(&database, &target, Selection::Delta { journal_base: base }).unwrap();
+    std::fs::read_to_string(source.file.path())
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+/// Chat records, amendments and message IDs per chat in one captured delta.
+type DeltaShape = (
+    Vec<String>,
+    Vec<(String, Vec<String>, u64)>,
+    BTreeMap<String, Vec<String>>,
+);
+
+fn delta_shape(events: &[Event]) -> DeltaShape {
+    let (mut chats, mut amendments, mut messages) = (Vec::new(), Vec::new(), BTreeMap::new());
     for event in events {
-        if let Event::Batch(Batch::Messages { records }) = event {
-            assert!(records.iter().all(|record| record.chat_id == "a"));
-            messages += records.len();
+        match event {
+            Event::Batch(Batch::Chats { records }) => {
+                chats.extend(records.iter().map(|chat| chat.id.clone()));
+            }
+            Event::Amend(amendment) => amendments.push((
+                amendment.chat.id.clone(),
+                amendment.replaced.clone(),
+                amendment.messages,
+            )),
+            Event::Batch(Batch::Messages { records }) => {
+                for record in records {
+                    messages
+                        .entry(record.chat_id.clone())
+                        .or_insert_with(Vec::new)
+                        .push(record.id.clone());
+                }
+            }
+            _ => {}
         }
     }
-    assert_eq!(messages, 37);
+    (chats, amendments, messages)
+}
+
+const MESSAGE_EDITS: &str = "UPDATE messages SET content_packed=silver_pack('edited'),search_projection='edited' WHERE id='a-100';
+     DELETE FROM messages WHERE id='a-99';
+     INSERT INTO messages(id,chat_id,ordinal,role,content_packed) VALUES('a-new','a',37,'user',silver_pack('new'));
+     UPDATE messages SET turn_id=NULL, fingerprint='unpublished' WHERE id='a-90';
+     UPDATE chats SET title='renamed' WHERE id='a';
+     UPDATE chats SET project='/elsewhere' WHERE id='b';
+     INSERT INTO chats(id,provider) VALUES('c','codex');
+     INSERT INTO messages(id,chat_id,ordinal,role,content_packed) VALUES('c-1','c',0,'user',silver_pack('first'));";
+
+#[test]
+fn incremental_capture_amends_message_edits_and_replaces_chats_whose_documents_change() {
+    let events = delta_events(crate::views::config::Build::default(), MESSAGE_EDITS);
+    let (chats, amendments, messages) = delta_shape(&events);
+    // A project change rewrites every document of `b`; `c` is new.
+    assert_eq!(chats, ["b", "c"]);
+    // `a` keeps 35 messages: the edit, the removal and the new message are
+    // named; unpublished columns journal nothing.
+    assert_eq!(
+        amendments,
+        [(
+            "a".to_owned(),
+            vec!["a-100".to_owned(), "a-99".to_owned(), "a-new".to_owned()],
+            37
+        )]
+    );
+    assert_eq!(messages["a"], ["a-100", "a-new"]);
+    assert_eq!(messages["b"], ["b-100", "b-99"]);
+    assert_eq!(messages["c"], ["c-1"]);
+    let renamed = events.iter().find_map(|event| match event {
+        Event::Amend(amendment) => amendment.chat.title.clone(),
+        _ => None,
+    });
+    assert_eq!(renamed.as_deref(), Some("renamed"));
+}
+
+#[test]
+fn recipes_whose_inputs_span_messages_replace_changed_chats_whole() {
+    let build = crate::views::config::Build {
+        retrieval_unit: crate::views::config::RetrievalUnit::ParentAndMessage,
+        ..Default::default()
+    };
+    let (chats, amendments, messages) = delta_shape(&delta_events(build, MESSAGE_EDITS));
+    assert_eq!(chats, ["a", "b", "c"]);
+    assert_eq!(amendments, []);
+    assert_eq!(messages["a"].len(), 37);
 }
 
 #[test]
