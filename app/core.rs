@@ -221,7 +221,18 @@ async fn execute_operation(
         owner,
         dispatch(request.operation, &configuration, &database, &models).boxed(),
     )
-    .await?;
+    .await
+    .map_err(|error| {
+        // A configured machine that has not indexed yet needs `index`, not `init`.
+        if configuration.loaded
+            && error.error.kind == crate::ErrorKind::DatabaseMissing
+            && !database.exists()
+        {
+            AppError::not_indexed(&database, &configuration.qdrant.url)
+        } else {
+            error
+        }
+    })?;
     drop(model_permit);
     if let Response::Search(search) = &mut response {
         search.notice = search::empty_notice(search, &configuration);

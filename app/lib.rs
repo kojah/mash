@@ -279,6 +279,20 @@ impl AppError {
         )
     }
 
+    /// Configured, but no index yet: `mash index` comes next, not `init`.
+    fn not_indexed(path: &std::path::Path, qdrant: &str) -> Self {
+        Self::with_action(
+            3,
+            ErrorKind::DatabaseMissing,
+            format!(
+                "Mash is configured, but nothing is indexed yet (no index at {}). Run `mash index`: it saves your history, which `mash list-chats` and `mash view` read, then builds search, which needs Qdrant at {qdrant} (`mash status` checks it).",
+                path.display()
+            ),
+            true,
+            Action::Index,
+        )
+    }
+
     fn missing_database(path: &std::path::Path) -> Self {
         Self::with_action(
             3,

@@ -232,6 +232,12 @@ Qdrant does not answer, it exits with the commands to start it and leaves
 configuration and agent settings untouched. `mash init --no-index` skips the
 check and lists starting Qdrant among the next steps.
 
+You can read your history before Qdrant runs: run `mash init --no-index`, then
+`mash index`. Indexing saves your chats on this machine before it needs Qdrant,
+then stops with the commands to start it and says how many chats it saved.
+`mash list-chats` and `mash view` read them meanwhile; once Qdrant runs, run
+`mash index` again to make search current.
+
 Press Esc or Ctrl-C during the prompts to cancel without changing configuration
 or agent settings. Prompts go to stderr; stdout remains JSON. No models are
 downloaded during setup.

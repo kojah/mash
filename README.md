@@ -101,7 +101,9 @@ and agent integrations, then shows a confirmation before changing anything.
 Choose **Just this computer** for the default local setup. Use `mash init --yes`
 to accept defaults without prompts; non-terminal runs are also non-interactive.
 Setup checks that Qdrant answers before changing anything; if it does not, start
-Qdrant as the message shows, or use `mash init --no-index` to finish indexing later.
+Qdrant as the message shows. To read your chats before Qdrant runs, use
+`mash init --no-index`, then `mash index`: indexing saves your history first, and
+`mash list-chats` and `mash view` work without Qdrant. Search waits for Qdrant.
 
 Setup prints progress to stderr and a final JSON result to stdout. If the result
 has `"agents": []`, no agents were connected; check `next` for the reason and

@@ -100,9 +100,11 @@ pub(super) async fn preflight(paths: &Paths, request: &InitRequest) -> Result<()
         crate::config::QdrantConfig::default()
     };
     crate::views::qdrant::check(&qdrant).await.map_err(|mut error| {
-        let rerun = "rerun `mash init`, or run `mash init --no-index` to save configuration and connect agents now and index later";
+        let rerun = "rerun `mash init`";
         let unavailable = (error.error.kind == crate::ErrorKind::QdrantUnavailable)
-            .then(|| crate::views::qdrant::unavailable_message(&qdrant.url, None, rerun))
+            .then(|| {
+                crate::views::qdrant::unavailable_message(&qdrant.url, Some(BROWSE_NOW), rerun)
+            })
             .flatten();
         error.error.message = match unavailable {
             Some(message) => {
@@ -118,6 +120,12 @@ pub(super) async fn preflight(paths: &Paths, request: &InitRequest) -> Result<()
     })
 }
 
+/// How to read history before Qdrant runs: indexing saves it first.
+const BROWSE_NOW: &str = "To read your chats before Qdrant runs, run `mash init --no-index`, then `mash index`: indexing saves your history before it needs Qdrant, and `mash list-chats` and `mash view <message id>` read it without Qdrant.";
+
+/// The same route after `--no-index` has saved the configuration.
+const INDEX_SAVES_HISTORY: &str = "To read your chats now, run `mash index`: it saves your history before it needs Qdrant, and `mash list-chats` and `mash view <message id>` read it without Qdrant.";
+
 /// The `--no-index` step: index now, or start Qdrant first.
 fn index_later(observed: Option<crate::views::qdrant::ServiceStatus>) -> String {
     use crate::views::qdrant::Reachability;
@@ -130,8 +138,8 @@ fn index_later(observed: Option<crate::views::qdrant::ServiceStatus>) -> String 
                 .then(|| {
                     crate::views::qdrant::unavailable_message(
                         &observed.url,
-                        None,
-                        "index your history with `mash index`",
+                        Some(INDEX_SAVES_HISTORY),
+                        "run `mash index` to make search current",
                     )
                 })
                 .flatten();

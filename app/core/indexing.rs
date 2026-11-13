@@ -250,13 +250,31 @@ async fn index(
         })
         .await?;
     let build = &configuration.views.build;
-    let views = views::build(
+    let views = match views::build(
         database_path,
         models_dir,
         configuration,
         full && rebuild_local_views,
     )
-    .await?;
+    .await
+    {
+        // Silver has committed, so the saved history is already readable.
+        Err(error) if error.error.kind == crate::ErrorKind::QdrantUnavailable => {
+            let then = if rebuild_local_views {
+                "run `mash index --rebuild-local-views` again to make search current"
+            } else {
+                "run `mash index` again to make search current"
+            };
+            return Err(super::inspection::qdrant_unavailable(
+                configuration,
+                database_path,
+                error,
+                then,
+            )
+            .await);
+        }
+        result => result?,
+    };
     let counts = views.counts;
     let embeddings = views.embeddings;
     emit_index_phase(crate::progress::Phase::LocalComplete, &summary);

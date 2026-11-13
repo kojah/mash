@@ -349,7 +349,10 @@ fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
     for part in [
         "changed nothing",
         "http://127.0.0.1:9/",
-        "Then rerun `mash init`, or run `mash init --no-index`",
+        // R2 S-002: the route to reading history before Qdrant runs.
+        "To read your chats before Qdrant runs, run `mash init --no-index`, then `mash index`",
+        "`mash list-chats` and `mash view <message id>` read it without Qdrant.",
+        "Then rerun `mash init`.",
         "Guide: https://getmash.io/installation/#start-the-local-search-service",
     ] {
         assert!(message.contains(part), "{message}");
@@ -394,18 +397,59 @@ fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
         .filter_map(Value::as_str)
         .find(|step| step.contains("Could not reach Qdrant at http://127.0.0.1:9/"))
         .unwrap_or_else(|| panic!("{next:?}"));
-    assert!(
-        step.contains("Then index your history with `mash index`."),
-        "{step}"
-    );
+    for part in [
+        "To read your chats now, run `mash index`: it saves your history before it needs Qdrant",
+        "`mash list-chats` and `mash view <message id>` read it without Qdrant.",
+        "Then run `mash index` to make search current.",
+    ] {
+        assert!(step.contains(part), "{step}");
+    }
     assert_eq!(step.matches("Then ").count(), 1, "{step}");
     assert!(!configured["next"].to_string().contains("search works"));
 
-    // B-010: once history is saved, search still fails closed but names the
-    // saved chats and the commands that read them without Qdrant.
-    let (code, _, _) = mash(&env, &["index"]);
-    assert_eq!(code, 11);
-    let (code, stdout, error) = mash(&env, &["search", "initneedle"]);
+    reads_before_and_after_a_failed_index(&env);
+}
+
+/// What a configured machine without Qdrant says before and after `index`.
+fn reads_before_and_after_a_failed_index(env: &[(&str, String)]) {
+    // P1 S-002: configured but not indexed, reads name `mash index` and
+    // Qdrant rather than sending the user back to `mash init`.
+    let (code, stdout, error) = mash(env, &["list-chats"]);
+    assert_eq!(code, 3, "{error}");
+    assert!(stdout.is_null(), "{stdout}");
+    assert_eq!(error["error"]["kind"], "database-missing", "{error}");
+    assert_eq!(error["error"]["recommended_action"], "index", "{error}");
+    let message = error["error"]["message"].as_str().unwrap();
+    for part in [
+        "Mash is configured, but nothing is indexed yet",
+        "Run `mash index`: it saves your history",
+        "needs Qdrant at http://127.0.0.1:9",
+    ] {
+        assert!(message.contains(part), "{message}");
+    }
+    assert!(!message.contains("mash init"), "{message}");
+
+    // R2 S-001: index commits history, then fails on Qdrant, and says the
+    // saved chats are readable without it.
+    let (code, stdout, error) = mash(env, &["index"]);
+    assert_eq!(code, 11, "{error}");
+    assert!(stdout.is_null(), "{stdout}");
+    assert_eq!(error["error"]["kind"], "qdrant-unavailable", "{error}");
+    assert_eq!(error["error"]["retryable"], true, "{error}");
+    assert_eq!(error["error"]["recommended_action"], "start-qdrant");
+    let message = error["error"]["message"].as_str().unwrap();
+    for part in [
+        "Could not reach Qdrant at http://127.0.0.1:9/",
+        "Your 1 indexed chat is saved on this machine",
+        "`mash list-chats` and `mash view <message id>` (MCP `list_chats` and `view`) read it without Qdrant.",
+        "Then run `mash index` again to make search current.",
+    ] {
+        assert!(message.contains(part), "{message}");
+    }
+    assert_eq!(message.matches("Then ").count(), 1, "{message}");
+
+    // B-010: search still fails closed but names the saved chats too.
+    let (code, stdout, error) = mash(env, &["search", "initneedle"]);
     assert_eq!(code, 11, "{error}");
     assert!(stdout.is_null(), "{stdout}");
     assert_eq!(error["error"]["kind"], "qdrant-unavailable", "{error}");
@@ -418,7 +462,7 @@ fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
     ] {
         assert!(message.contains(part), "{message}");
     }
-    let (code, listed, error) = mash(&env, &["list-chats"]);
+    let (code, listed, error) = mash(env, &["list-chats"]);
     assert_eq!(code, 0, "{error}");
     assert_eq!(listed["chats"].as_array().unwrap().len(), 1, "{listed}");
 }

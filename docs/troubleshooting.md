@@ -52,7 +52,10 @@ The HTTP and gRPC endpoints must point to the same Qdrant 1.20+ instance.
 See [custom endpoints](configuration.md#local-qdrant).
 
 You can still list chats, read messages, and export a backup while the search
-service is unavailable.
+service is unavailable. `mash index` saves your history before it needs Qdrant:
+when Qdrant does not answer, it exits with `qdrant-unavailable` and says how many
+chats it saved, and `mash list-chats` and `mash view` read them. Start Qdrant,
+then run `mash index` again to make search current.
 
 On native Windows, a Qdrant log mentioning `gridstore`, “path specified,” and
 `os error 3` can mean its data path is too long. Use the short absolute paths in

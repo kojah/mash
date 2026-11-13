@@ -239,7 +239,14 @@ pub(super) async fn run(
     };
     let mut response = match run_inner(configuration, database, models, input).await {
         Err(error) if !shared_only && error.error.kind == crate::ErrorKind::QdrantUnavailable => {
-            return Err(local_qdrant_unavailable(configuration, database, error).await);
+            // Search still fails closed, but history already in silver stays readable.
+            return Err(super::inspection::qdrant_unavailable(
+                configuration,
+                database,
+                error,
+                "search again",
+            )
+            .await);
         }
         result => result?,
     };
@@ -270,38 +277,6 @@ pub(super) async fn run(
         }
     }
     Ok(response)
-}
-
-/// Search still fails closed without local Qdrant, but history already in
-/// silver stays readable: say so, and name the commands that work meanwhile.
-async fn local_qdrant_unavailable(
-    configuration: &ResolvedConfig,
-    database: &Path,
-    mut error: AppError,
-) -> AppError {
-    let path = database.to_path_buf();
-    let chats = crate::blocking(move || Storage::open_silver(&path)?.silver_counts())
-        .await
-        .map_or(0, |counts| counts.chats);
-    let note = (chats > 0).then(|| {
-        let (noun, them) = if chats == 1 {
-            ("chat is", "it")
-        } else {
-            ("chats are", "them")
-        };
-        format!(
-            "Your {chats} indexed {noun} saved on this machine, and `mash list-chats` and `mash view <message id>` (MCP `list_chats` and `view`) read {them} without Qdrant."
-        )
-    });
-    if let Some(message) = crate::views::qdrant::unavailable_message(
-        &configuration.qdrant.url,
-        note.as_deref(),
-        "search again",
-    ) {
-        error.error.message = message;
-    }
-    error.error.recommended_action = Some(crate::Action::StartQdrant);
-    error
 }
 
 #[tracing::instrument(name = "search", skip_all)]

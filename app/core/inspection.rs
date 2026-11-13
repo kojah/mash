@@ -72,6 +72,41 @@ pub(super) async fn view(
     }
 }
 
+/// Rewrites an unreachable-local-Qdrant error into one sequence that also
+/// says what history silver already holds and the commands that read it
+/// without Qdrant, ending with the caller's `next_step`. Call it only
+/// when silver is current: after its commit (`index`) or for reads (`search`).
+pub(super) async fn qdrant_unavailable(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    mut error: AppError,
+    next_step: &str,
+) -> AppError {
+    let path = database.to_path_buf();
+    let chats = crate::blocking(move || Storage::open_silver(&path)?.silver_counts())
+        .await
+        .map_or(0, |counts| counts.chats);
+    let note = (chats > 0).then(|| {
+        let (noun, them) = if chats == 1 {
+            ("chat is", "it")
+        } else {
+            ("chats are", "them")
+        };
+        format!(
+            "Your {chats} indexed {noun} saved on this machine, and `mash list-chats` and `mash view <message id>` (MCP `list_chats` and `view`) read {them} without Qdrant."
+        )
+    });
+    if let Some(message) = crate::views::qdrant::unavailable_message(
+        &configuration.qdrant.url,
+        note.as_deref(),
+        next_step,
+    ) {
+        error.error.message = message;
+    }
+    error.error.recommended_action = Some(crate::Action::StartQdrant);
+    error
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "one status report assembles local, coverage and shared sections"

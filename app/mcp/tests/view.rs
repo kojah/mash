@@ -181,3 +181,51 @@ async fn sdk_search_without_qdrant_names_the_saved_history_and_working_tools() {
     let viewed = call(&client, "view", json!({"id": "first-message"})).await;
     assert_ne!(viewed.is_error, Some(true), "{viewed:?}");
 }
+
+/// P1 S-002: configured but not indexed yet, `list_chats` and search point to
+/// `mash index` and the Qdrant it needs, not back to `mash init`.
+#[tokio::test]
+async fn sdk_reads_before_the_first_index_name_index_and_qdrant() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(
+        &config,
+        "version = 1\nproviders = {}\n[qdrant]\nurl = 'http://127.0.0.1:9'\ngrpc_url = 'http://127.0.0.1:9'\n",
+    )
+    .unwrap();
+    let server = Mash {
+        runtime: None,
+        paths: Arc::new(Paths {
+            config: Some(config),
+            db: Some(directory.path().join("index.sqlite3")),
+            models_dir: Some(directory.path().join("models")),
+        }),
+        gate: Arc::default(),
+        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+    };
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move { server.serve(server_io).await.unwrap().waiting().await });
+    let client = ().serve(client_io).await.unwrap();
+    for (tool, arguments) in [
+        ("list_chats", json!({"local": true})),
+        (
+            "search",
+            json!({"query": "rotation", "intent": "exact-mention"}),
+        ),
+    ] {
+        let result = call(&client, tool, arguments).await;
+        assert_eq!(result.is_error, Some(true), "{tool}: {result:?}");
+        let error = &result.structured_content.unwrap()["error"];
+        assert_eq!(error["kind"], "database-missing", "{tool}: {error}");
+        assert_eq!(error["recommended_action"], "index", "{tool}: {error}");
+        let message = error["message"].as_str().unwrap();
+        for part in [
+            "Mash is configured, but nothing is indexed yet",
+            "Run `mash index`",
+            "needs Qdrant at http://127.0.0.1:9",
+        ] {
+            assert!(message.contains(part), "{tool}: {message}");
+        }
+        assert!(!message.contains("mash init"), "{tool}: {message}");
+    }
+}
