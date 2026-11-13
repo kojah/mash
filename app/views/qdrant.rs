@@ -17,6 +17,7 @@ use crate::views::scope::Scope;
 pub(crate) use api::endpoint;
 pub(crate) use configuration::{SCHEMA_VERSION, Settings};
 use serde::{Deserialize, Serialize};
+pub(crate) use vocabulary::file_beside as vocabulary_file;
 
 pub(crate) use evidence::{ProjectionEvidence, Projections};
 pub(crate) use read::validate_search;

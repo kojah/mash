@@ -30,6 +30,13 @@ numbers are never expanded or corrected. Expanded results include
 `lexical_match` with the matched source term. Vocabulary expansion is scoped by
 metadata filters and bounded to 100,000 vocabulary terms, 32 query terms and eight alternatives per query
 term; a budget error asks for narrower filters or strict matching.
+The vocabulary for a filter is reused for up to five minutes, across newly
+certified revisions, while the searched nodes, their views settings and their
+certification stay the same; a local index also keeps it beside the database
+(`mash.sqlite3.vocabulary.json`, owner-only) so separate CLI searches share it,
+and `forget` removes that file. Words added within that window are not yet
+offered as prefix or typo alternatives; the words as typed are always queried,
+and alternatives match only current documents.
 Shared exact-mention queries have a four-second execution budget, including
 vocabulary expansion. Use `--match-mode strict` to skip the vocabulary lookup.
 The CLI preserves recognized budget errors from the API with this guidance.

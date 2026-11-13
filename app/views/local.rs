@@ -115,7 +115,8 @@ impl Local {
         )
         .await?
         .with_build(configuration.views.build.clone())
-        .with_response_redaction(configuration.redaction.output());
+        .with_response_redaction(configuration.redaction.output())
+        .with_vocabulary_file(crate::views::qdrant::vocabulary_file(&source));
         if exact {
             store = store.with_lexical_build(&scope).await?;
         }

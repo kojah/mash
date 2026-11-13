@@ -25,6 +25,10 @@ pub(super) async fn forget(
         // projection; readers reject the old gold certificate in the meantime.
         result.local_views_error = Some(error.error.message);
     }
+    if result.forgotten {
+        // A search that began before the forget may have kept its words again.
+        let _ = std::fs::remove_file(crate::views::qdrant::vocabulary_file(database));
+    }
     if let Some(config) = publication_config(configuration) {
         result.shared = Some(
             shared::publish(
@@ -59,6 +63,12 @@ fn local_install_models(models_dir: &Path) -> Result<ModelsInstallResponse, AppE
 fn local_forget(database_path: &Path, id: String) -> Result<ForgetResponse, AppError> {
     let mut storage = Storage::open_existing(database_path)?;
     let forgotten = storage.forget(&id)?;
+    if forgotten {
+        // Kept matching words may include the forgotten text's; searches read
+        // them again rather than keep them on disk. The history is already
+        // forgotten, so a failure here only leaves words that match nothing.
+        let _ = std::fs::remove_file(crate::views::qdrant::vocabulary_file(database_path));
+    }
     Ok(ForgetResponse {
         id,
         forgotten,
