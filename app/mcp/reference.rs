@@ -53,28 +53,65 @@ const INTRODUCTION: &str = "\
 
 These are the tools an agent sees once [Mash is connected](agents.md), or that
 [another MCP client](mcp.md) can call. You rarely call them yourself: ask your
-agent in plain words and it picks the tool. This page shows what each one does
-and accepts. The descriptions are the ones your agent reads.
+agent in plain words and it picks the tool. Open a tool to see what it does
+and accepts; the descriptions are the ones your agent reads.
 
-A tool marked **read-only** never changes your index. The dashboard's tool
-explorer runs those against your own history.
+**READ** tools never change your index. **WRITE** tools do. Nothing runs from
+this page: the dashboard's tool explorer runs the read tools against your own
+history.
 ";
 
-/// Text safe inside a Markdown table cell or paragraph.
+/// Text safe inside the page's HTML, on one line, with `backticked` words
+/// as code.
 fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
+    let text = text
+        .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
-        .replace('|', "\\|")
-        .replace('\n', " ")
+        .replace('\n', " ");
+    // An unpaired backtick stays as written.
+    if !text.matches('`').count().is_multiple_of(2) {
+        return text;
+    }
+    let mut html = String::with_capacity(text.len());
+    for (index, part) in text.split('`').enumerate() {
+        if index.is_multiple_of(2) {
+            html.push_str(part);
+        } else {
+            let _ = write!(html, "<code>{part}</code>");
+        }
+    }
+    html
 }
 
 fn code(values: &[String]) -> String {
     values
         .iter()
-        .map(|value| format!("`{value}`"))
+        .map(|value| format!("<code>{}</code>", escape(value)))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// A description as sentences: the first heads a tool's row, the rest are
+/// its points. Splits where a sentence ends before a capital letter.
+fn sentences(text: &str) -> Vec<String> {
+    let mut sentences = Vec::new();
+    let mut current = String::new();
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character.is_whitespace()
+            && current.ends_with(['.', '!', '?'])
+            && characters.peek().is_some_and(|next| next.is_uppercase())
+        {
+            sentences.push(std::mem::take(&mut current));
+        } else {
+            current.push(character);
+        }
+    }
+    if !current.is_empty() {
+        sentences.push(current);
+    }
+    sentences
 }
 
 /// The names a string-valued definition accepts, from `enum` or `const` alternatives.
@@ -153,7 +190,10 @@ fn kind(schema: &Map<String, Value>, definitions: Option<&Map<String, Value>>) -
         ["boolean"] => "true or false".to_owned(),
         ["string"] => "text".to_owned(),
         ["number"] => "number".to_owned(),
-        _ => name.map_or_else(|| "object".to_owned(), |name| format!("object (`{name}`)")),
+        _ => name.map_or_else(
+            || "object".to_owned(),
+            |name| format!("object (<code>{name}</code>)"),
+        ),
     }
 }
 
@@ -162,15 +202,17 @@ fn default(schema: &Map<String, Value>) -> Option<String> {
         Value::Null => None,
         Value::Array(values) if values.is_empty() => None,
         Value::Object(fields) if fields.is_empty() => None,
-        Value::String(text) => Some(format!("`{text}`")),
-        other => Some(format!("`{other}`")),
+        Value::String(text) => Some(format!("<code>{}</code>", escape(text))),
+        other => Some(format!("<code>{}</code>", escape(&other.to_string()))),
     }
 }
 
+/// The parameter rows of one tool, as HTML without blank lines so the whole
+/// tool stays one HTML block in Markdown.
 fn parameters(page: &mut String, schema: &Map<String, Value>) {
     let properties = schema.get("properties").and_then(Value::as_object);
     let Some(properties) = properties.filter(|properties| !properties.is_empty()) else {
-        page.push_str("Takes no parameters.\n");
+        page.push_str("<p class=\"none\">Takes no parameters.</p>\n");
         return;
     };
     let definitions = schema.get("$defs").and_then(Value::as_object);
@@ -178,7 +220,7 @@ fn parameters(page: &mut String, schema: &Map<String, Value>) {
         .get("required")
         .and_then(Value::as_array)
         .map_or_default(|names| names.iter().filter_map(Value::as_str).collect());
-    page.push_str("| Parameter | Accepts | Description |\n| --- | --- | --- |\n");
+    page.push_str("<h4>Parameters</h4>\n<div class=\"params\">\n");
     // Required parameters first, then the rest by name.
     let mut names: Vec<&String> = properties.keys().collect();
     names.sort_by_key(|name| (!required.contains(&name.as_str()), name.as_str()));
@@ -196,19 +238,20 @@ fn parameters(page: &mut String, schema: &Map<String, Value>) {
             if !description.is_empty() {
                 description.push(' ');
             }
-            let _ = write!(description, "Default: {value}.");
+            let _ = write!(description, "<small>Default {value}.</small>");
         }
         let marker = if required.contains(&name.as_str()) {
-            " (required)"
+            "<b>required</b>"
         } else {
             ""
         };
         let _ = writeln!(
             page,
-            "| `{name}`{marker} | {} | {description} |",
+            "<div class=\"param\"><span class=\"name\"><code>{name}</code><small>{}</small>{marker}</span><span class=\"about\">{description}</span></div>",
             kind(property, definitions)
         );
     }
+    page.push_str("</div>\n");
 }
 
 /// Render `docs/tools.md` from the Rust-owned tool definitions.
@@ -238,17 +281,33 @@ fn generate_tool_reference() -> Result<String, String> {
                 .find(|tool| tool.name == *name)
                 .ok_or_else(|| format!("the tool reference lists unknown tool {name}"))?;
             let annotations = tool.annotations.as_ref();
-            let effect = if annotations.and_then(|hints| hints.read_only_hint) == Some(true) {
-                "Read-only."
-            } else if annotations.and_then(|hints| hints.destructive_hint) == Some(true) {
-                "Changes or removes stored data."
+            let read = annotations.and_then(|hints| hints.read_only_hint) == Some(true);
+            let (class, badge) = if read {
+                ("read", "READ")
             } else {
-                "Changes data."
+                ("write", "WRITE")
             };
-            let _ = write!(page, "\n### `{name}`\n\n**{effect}** ");
-            let description = tool.description.as_deref().unwrap_or_default();
-            let _ = write!(page, "{}\n\n", escape(description));
+            let description = sentences(tool.description.as_deref().unwrap_or_default());
+            let (headline, points) = description
+                .split_first()
+                .map_or(("", [].as_slice()), |(first, rest)| (first.as_str(), rest));
+            let _ = write!(
+                page,
+                "\n<details class=\"mash-tool {class}\" id=\"tool-{name}\">\n<summary><span class=\"badge\">{badge}</span><code>{name}</code><span class=\"about\">{}</span></summary>\n",
+                escape(headline)
+            );
+            if !points.is_empty() {
+                page.push_str("<ul>\n");
+                for point in points {
+                    let _ = writeln!(page, "<li>{}</li>", escape(point));
+                }
+                page.push_str("</ul>\n");
+            }
+            if !read && annotations.and_then(|hints| hints.destructive_hint) == Some(true) {
+                page.push_str("<p class=\"none\">Changes or removes stored data.</p>\n");
+            }
             parameters(&mut page, &tool.input_schema);
+            page.push_str("</details>\n");
         }
     }
     Ok(page)

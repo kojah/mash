@@ -195,3 +195,157 @@ h4 {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* The MCP tool reference: one row per tool, as in the dashboard's tool
+   explorer, opening to its points and parameters. Nothing runs from here. */
+.sl-markdown-content .mash-tool {
+  margin-top: 0.625rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.625rem;
+  overflow: hidden;
+  scroll-margin-top: 5rem;
+}
+.sl-markdown-content .mash-tool.write {
+  border-style: dashed;
+}
+.sl-markdown-content .mash-tool[open] {
+  border-color: var(--sl-color-gray-3);
+}
+.mash-tool > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+.mash-tool > summary::-webkit-details-marker {
+  display: none;
+}
+/* Starlight draws its own marker before a summary; this row has one chevron. */
+.sl-markdown-content .mash-tool > summary::before,
+.sl-markdown-content .mash-tool > summary::marker {
+  content: none;
+}
+.mash-tool > summary::after {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline: auto 0.25rem;
+  border-right: 2px solid var(--sl-color-gray-3);
+  border-bottom: 2px solid var(--sl-color-gray-3);
+  rotate: 45deg;
+  transition: rotate 0.12s;
+}
+.mash-tool[open] > summary::after {
+  rotate: 225deg;
+}
+.mash-tool[open] > summary {
+  background: var(--sl-color-gray-6);
+}
+.mash-tool .badge {
+  flex: none;
+  padding: 0.125rem 0.5625rem;
+  border-radius: 0.3125rem;
+  background: var(--sl-color-gray-5);
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.mash-tool.read .badge {
+  background: var(--sl-color-blue-low);
+  color: var(--sl-color-blue-high);
+}
+.mash-tool > summary > code {
+  padding: 0;
+  background: none;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-base);
+  font-weight: 600;
+}
+.mash-tool > summary:hover > code {
+  color: var(--sl-color-accent-high);
+}
+.mash-tool > summary .about {
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-weight: 400;
+  color: var(--sl-color-gray-2);
+}
+.mash-tool.write > summary .about {
+  color: var(--sl-color-gray-3);
+}
+.sl-markdown-content .mash-tool > :not(summary) {
+  margin: 0.875rem 0.875rem 0;
+}
+.sl-markdown-content .mash-tool > :last-child:not(summary) {
+  margin-bottom: 1rem;
+}
+.sl-markdown-content .mash-tool h4 {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mash-tool .none {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-sm);
+}
+.sl-markdown-content .mash-tool .params {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}
+.mash-tool .param {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.9fr) minmax(0, 2fr);
+  gap: 0.25rem 1rem;
+  align-items: start;
+  padding: 0.5625rem 0.75rem;
+  border-top: 1px solid var(--sl-color-gray-6);
+  font-size: var(--sl-text-sm);
+}
+.mash-tool .param:first-child {
+  border-top: 0;
+}
+.mash-tool .param .name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 0.5625rem;
+}
+.mash-tool .param .name > code {
+  padding: 0;
+  background: none;
+  color: var(--sl-color-white);
+  font-weight: 500;
+}
+.mash-tool .param .name > small {
+  color: var(--sl-color-gray-3);
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+}
+.mash-tool .param .name > small code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+.mash-tool .param .name > b {
+  color: var(--sl-color-accent-high);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+.mash-tool .params .param .about {
+  color: var(--sl-color-gray-2);
+}
+.mash-tool .params .param .about small {
+  color: var(--sl-color-gray-3);
+}
+@media (width < 40rem) {
+  .mash-tool .param {
+    grid-template-columns: 1fr;
+  }
+}
