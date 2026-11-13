@@ -34,7 +34,7 @@ const Z_FAR = 11;
 const NARROW = 800;
 /** Surface seconds per real second: a slow swell and unhurried rings. */
 const SPEED = 0.55;
-/** Where the marks stand beside the copy, far side of the hero, by `u` and depth. */
+/** Where the marks stand, clear of the copy on the hero's far side, by `u` and depth. */
 const SPOTS: readonly (readonly [number, number])[] = [
   [0.62, 2.3],
   [0.9, 3.0],
@@ -89,7 +89,6 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
   // The pointer is one broad, soft swell. It trails the cursor and rises and
   // settles slowly, and is smooth at its centre, so nothing on the surface jumps.
   const pointer = { x: 0, z: 4, toX: 0, toZ: 4, gain: 0, want: 0 };
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   let width = 0;
   let height = 0;
@@ -142,9 +141,10 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     return y;
   }
 
-  /** Fades the surface out behind the copy and towards the hero's lower edge. */
+  /** Dims the surface behind the copy and fades it out towards the hero's lower edge. */
   const veil = (sx: number, sy: number): number =>
-    (narrow ? 1 : smooth(fadeFrom, fadeTo, sx)) * (1 - smooth(height * 0.8, height, sy));
+    (narrow ? 1 : 0.38 + 0.62 * smooth(fadeFrom, fadeTo, sx)) *
+    (1 - smooth(height * 0.8, height, sy));
 
   function drawMark(mark: Mark): void {
     const reach = 0.12;
@@ -174,9 +174,6 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     ctx.fillStyle = ink;
     const columns = Math.round(Math.min(150, Math.max(70, width / 9)));
     const rows = 58;
-    // Dots the copy's veil hides entirely are never computed.
-    const hidden = narrow ? 0 : ((fadeFrom - width / 2) / (width * 0.52) + 1) / 2;
-    const start = Math.max(0, Math.floor(hidden * (columns - 1)) - 2);
     for (let j = rows - 1; j >= 0; j--) {
       const f = j / (rows - 1);
       const z = Z_NEAR * (Z_FAR / Z_NEAR) ** f;
@@ -187,11 +184,11 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
       let beforeY = 0;
       let x0 = 0;
       let y0 = 0;
-      for (let i = start; i < columns; i++) {
+      for (let i = 0; i < columns; i++) {
         const x = ((i / (columns - 1)) * 2 - 1) * half;
         const sx = width / 2 + (x / z) * focal;
         const sy = horizon + ((1 - lift(x, z)) / z) * focal;
-        if (i >= start + 2) {
+        if (i >= 2) {
           // Brighter where the surface tilts towards the light on the left.
           const tilt = (sy - beforeY) / (sx - beforeX);
           const alpha = base * (0.55 + tilt * 2.2) * veil(x0, y0);
@@ -225,7 +222,7 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     narrow = width < NARROW;
     horizon = narrow ? height - Math.min(270, height * 0.42) : height * 0.16;
     focal = (height - horizon) * 1.45;
-    fadeFrom = box.left + box.width * 0.56;
+    fadeFrom = box.left + box.width * 0.5;
     fadeTo = box.left + box.width * 0.8;
     for (const mark of marks) {
       const u = narrow ? (mark.u - 0.68) * 2.6 : mark.u;
@@ -239,7 +236,7 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
       unmount();
       return;
     }
-    if (!visible || still) {
+    if (!visible) {
       looping = false;
       return;
     }
@@ -264,7 +261,7 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     requestAnimationFrame(frame);
   }
   function start(): void {
-    if (looping || still) return;
+    if (looping) return;
     looping = true;
     last = performance.now();
     requestAnimationFrame(frame);

@@ -105,6 +105,9 @@ h4 {
   color: var(--sl-color-accent);
 }
 /* The main action is the one clay button on the page. */
+.hero .actions {
+  gap: 0.75rem;
+}
 .hero .sl-link-button {
   font-weight: 600;
 }
