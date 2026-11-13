@@ -121,6 +121,26 @@ jobs:
           name: windows-export
           path: ${{ runner.temp }}/portable
           retention-days: 3
+      - name: Show disposable Qdrant state after a failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'qdrant'
+          $pidFile = Join-Path $root 'pid'
+          if (Test-Path $pidFile) {
+            $id = [int](Get-Content $pidFile)
+            $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+            if ($process) { "Qdrant process $id is still running." } else { "Qdrant process $id has exited." }
+          } else { 'No Qdrant PID file.' }
+          try {
+            Invoke-RestMethod 'http://127.0.0.1:6333/readyz' -TimeoutSec 5 | Out-Null
+            'Qdrant answers on 127.0.0.1:6333.'
+          } catch { "Qdrant does not answer on 127.0.0.1:6333: $($_.Exception.Message)" }
+          foreach ($log in 'stdout.log', 'stderr.log') {
+            $path = Join-Path $root $log
+            "===== $log (last 80 lines) ====="
+            if (Test-Path $path) { Get-Content $path -Tail 80 } else { 'missing' }
+          }
       - name: Stop disposable Qdrant
         if: always()
         shell: pwsh
