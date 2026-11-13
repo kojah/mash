@@ -474,7 +474,7 @@ async fn local_exact(
     filters: &crate::search_filter::Scope,
     output: crate::redaction::Policy,
 ) -> Result<SearchResponse, AppError> {
-    let local = crate::views::local::Local::open_exact(database, configuration).await?;
+    let local = crate::views::local::Local::open_words_current(database, configuration).await?;
     let input = local_request(
         &local,
         &query,

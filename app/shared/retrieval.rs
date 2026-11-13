@@ -105,7 +105,7 @@ pub(crate) async fn search_lexical(
         let Some((path, configuration)) = local_database else {
             return Ok(Vec::new());
         };
-        let local = crate::views::local::Local::open_exact(path, configuration).await?;
+        let local = crate::views::local::Local::open_words_current(path, configuration).await?;
         let input = request(local.scope.generation.clone(), false);
         let mut hits = local.candidates(input).await?.lexical;
         for hit in &mut hits {

@@ -31,7 +31,7 @@ pub(crate) async fn search(
         let Some((path, configuration)) = database else {
             return Ok(vec![]);
         };
-        let local = crate::views::local::Local::open_exact(path, configuration).await?;
+        let local = crate::views::local::Local::open_words_current(path, configuration).await?;
         let mut hits = local
             .candidates(protocol::Search {
                 match_mode: filters.match_mode,

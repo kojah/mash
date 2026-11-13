@@ -147,24 +147,35 @@ impl Local {
         database: &Path,
         configuration: &ResolvedConfig,
     ) -> Result<Self, AppError> {
-        Self::open_current_within(database, configuration, CATCH_UP).await
+        Self::open_current_within(database, configuration, CATCH_UP, false).await
+    }
+
+    /// The same brief wait for a model-free reader, which needs only the word
+    /// index to be current. Word search is the default, so it is the reader a
+    /// running watcher most often meets mid-pass.
+    pub(crate) async fn open_words_current(
+        database: &Path,
+        configuration: &ResolvedConfig,
+    ) -> Result<Self, AppError> {
+        Self::open_current_within(database, configuration, CATCH_UP, true).await
     }
 
     async fn open_current_within(
         database: &Path,
         configuration: &ResolvedConfig,
         patience: std::time::Duration,
+        words: bool,
     ) -> Result<Self, AppError> {
         let deadline = tokio::time::Instant::now() + patience;
         loop {
-            let local = Self::open(database, configuration).await?;
+            let local = Self::open_inner(database, configuration, words).await?;
             if local.current().await?.is_some() {
                 return Ok(local);
             }
             let path = database.to_path_buf();
             if !crate::blocking(move || crate::storage::admission::held(&path)).await? {
                 // The writer may have finished between the two looks.
-                let local = Self::open(database, configuration).await?;
+                let local = Self::open_inner(database, configuration, words).await?;
                 return if local.current().await?.is_some() {
                     Ok(local)
                 } else {
