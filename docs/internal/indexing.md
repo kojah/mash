@@ -135,7 +135,8 @@ but normalization stops so broken fragment ancestry cannot hide that diagnostic.
 For malformed Claude Code and Codex JSONL, `record_diagnostics` in the final
 CLI/MCP result contains the first rejected record per source: provider, path,
 one-based physical line, byte column, and `syntax`, `data`, or `unexpected-eof`
-category. Samples are capped at 32 sources; `omitted_sources` counts additional
+category. An Antigravity database whose version is unsupported is reported the
+same way, with line and column 0 and the `unsupported-format` category. Samples are capped at 32 sources; `omitted_sources` counts additional
 affected sources, while `malformed_records` still counts all rejected records.
 These diagnostics also appear in progress notifications. Opt-in tracing records
 a source fingerprint in place of its path, plus the provider, line, column and
@@ -508,10 +509,19 @@ fixture provenance and remaining captured-session validation gates.
 The [Cursor ingestion contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
 
-Antigravity IDE 2.5.5 is opt-in through `[providers.antigravity]`. Configure
-`~/.gemini/antigravity-ide/conversations` or explicit `<cascade-id>.db` files.
-Mash opens a read-only SQLite snapshot, including committed WAL changes; no
-editor or language server is required. Repeated prompts have distinct native
+Antigravity is opt-in through `[providers.antigravity]`; `init` detects
+`~/.gemini/antigravity/conversations` (the Antigravity 2.31 app) and
+`~/.gemini/antigravity-ide/conversations` (IDE 2.5.5). Configure those folders
+or explicit `<cascade-id>.db` files. Mash reads native databases with
+`user_version` 0 (IDE) and 1 (app); conversations started in the app's agent
+manager are dialogue like IDE cascades. The encrypted `.pb` conversation files
+beside them are not read. Mash opens a read-only SQLite snapshot, including
+committed WAL changes; a closed WAL database without a `-wal` file is read
+immutably and its stamp verified afterwards. No editor or language server is
+required. A database with another version, or one SQLite cannot open, rejects
+only that source: it is reported with the `unsupported-format` diagnostic
+category, keeps its previous contribution, and leaves the pass incomplete
+while other sources index. Repeated prompts have distinct native
 step IDs, and surviving IDs remain stable after a history suffix is removed.
 Displayed user prose and assistant responses enter search. Thinking, attached
 text-block bodies, system steps, subagent context and copied fork history do not.
@@ -523,7 +533,8 @@ Each native BLOB is limited to 8 MiB, each chat to 64 MiB of reads,
 65,536 steps/decoded fields and 32 MiB of retained normalized history. Unknown
 step formats, SQL/protobuf disagreements, malformed timestamps and oversized
 input fail explicitly and preserve the previous index revision. Native workspace
-and Git-root URIs supply project/repository filters when unambiguous. The
+and Git-root URIs, or the app's workspace URI list, supply project/repository
+filters when unambiguous; app conversations outside a project have none. The
 [Antigravity contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/antigravity-ingestion-contract.md) records native
 writer/fork evidence and remaining real UI, successful rewind, CLI/Hub and
 cross-version validation gates. These limits do not establish aggregate RSS.

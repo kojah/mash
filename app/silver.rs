@@ -671,11 +671,14 @@ fn apply_parsed_source(
             skipped = parsed.malformed_records,
             "unreadable records skipped; the rest of the source was applied");
     }
-    // A snapshot that ends in an unreadable record, or whose skipped records
-    // leave ancestry unprovable, cannot establish a complete source snapshot.
-    // Applying its fragments would replace prior messages and vectors while
-    // retaining an old checkpoint, so leave the contribution untouched.
-    if parsed.malformed_records != 0 && parsed.chat.is_none() {
+    // A snapshot that ends in an unreadable record, whose skipped records
+    // leave ancestry unprovable, or whose native format is unsupported cannot
+    // establish a complete source snapshot. Applying its fragments would
+    // replace prior messages and vectors while retaining an old checkpoint, so
+    // leave the contribution untouched.
+    if parsed.chat.is_none()
+        && (parsed.malformed_records != 0 || parsed.first_record_issue.is_some())
+    {
         summary.rejected_sources += 1;
         storage.reject_silver_source(
             provider,

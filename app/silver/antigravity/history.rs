@@ -9,6 +9,14 @@ use crate::{
     silver::{NormalizedMessage, parsers},
 };
 
+/// IDE cascades and the app's agent manager hold the user's own dialogue.
+fn interactive(root: &Root) -> bool {
+    matches!(
+        proto::TrajectorySource::try_from(root.source),
+        Ok(proto::TrajectorySource::CascadeClient | proto::TrajectorySource::GeminiApp)
+    )
+}
+
 pub(super) fn normalize(
     root: &Root,
     metadata: &proto::Metadata,
@@ -79,8 +87,7 @@ pub(super) fn normalize(
         r.trajectory != root.trajectory || r.cascade != root.cascade || i64::from(r.step) != index
     });
     let visible = proto::TrajectoryKind::try_from(root.kind) == Ok(proto::TrajectoryKind::Cascade)
-        && proto::TrajectorySource::try_from(root.source)
-            == Ok(proto::TrajectorySource::CascadeClient)
+        && interactive(root)
         && metadata.subagent.is_none()
         && !copied
         && proto::Status::try_from(step.status) == Ok(proto::Status::Done)

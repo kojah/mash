@@ -9,6 +9,7 @@ use rusqlite::{Connection, params};
 use serde::Deserialize;
 use std::path::PathBuf;
 
+mod app;
 mod bounds;
 mod history;
 mod mutations;

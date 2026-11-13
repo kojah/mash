@@ -28,7 +28,8 @@ impl Diagnostics {
 pub(crate) struct RecordIssue {
     pub provider: Provider,
     pub source: PathBuf,
-    /// One-based physical JSONL line, including blank and streamed records.
+    /// One-based physical JSONL line, including blank and streamed records;
+    /// zero when the whole source is unsupported.
     pub line: usize,
     /// Serde's byte column within this line (zero for errors before any byte).
     pub column: usize,
@@ -36,6 +37,17 @@ pub(crate) struct RecordIssue {
 }
 
 impl RecordIssue {
+    /// A source whose native format or version this reader cannot decode.
+    pub(super) fn unsupported(provider: Provider, source: &Path) -> Self {
+        Self {
+            provider,
+            source: source.to_owned(),
+            line: 0,
+            column: 0,
+            category: Category::UnsupportedFormat,
+        }
+    }
+
     pub(super) fn json(
         provider: Provider,
         source: &Path,
@@ -61,6 +73,15 @@ impl std::fmt::Display for RecordIssue {
     #[allow(clippy::unnecessary_debug_formatting)] // Escape untrusted path control characters.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Debug formatting quotes paths and escapes embedded control characters.
+        if self.line == 0 {
+            return write!(
+                f,
+                "{} {:?} ({})",
+                self.provider.as_str(),
+                self.source,
+                self.category
+            );
+        }
         write!(
             f,
             "{} {:?}:{}:{} ({})",
@@ -80,6 +101,8 @@ pub(crate) enum Category {
     Syntax,
     Data,
     UnexpectedEof,
+    /// The source's native format or version is not supported.
+    UnsupportedFormat,
 }
 
 impl std::fmt::Display for Category {
@@ -89,6 +112,7 @@ impl std::fmt::Display for Category {
             Self::Syntax => "syntax",
             Self::Data => "data",
             Self::UnexpectedEof => "unexpected-eof",
+            Self::UnsupportedFormat => "unsupported-format",
         })
     }
 }

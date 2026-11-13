@@ -6,8 +6,14 @@ fn schema_identity_and_duplicate_wire_fields_fail_explicitly() {
     let path = write(directory.path());
     let writer = Connection::open(&path).unwrap();
     let identity = source(&path);
-    writer.pragma_update(None, "user_version", 1).unwrap();
-    assert!(discover(&path).is_err());
+    writer.pragma_update(None, "user_version", 2).unwrap();
+    assert_eq!(discover(&path).unwrap()[0].identity, identity);
+    let rejected = parse(&identity).unwrap();
+    assert!(rejected.chat.is_none());
+    assert_eq!(
+        rejected.first_record_issue.unwrap().category,
+        crate::silver::diagnostics::Category::UnsupportedFormat
+    );
     writer.pragma_update(None, "user_version", 0).unwrap();
     let mut changed = identity.clone();
     changed.session = Some("wrong".into());

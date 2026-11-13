@@ -8,6 +8,39 @@ pub(super) const MAX_RECORD_BYTES: i64 = 8 * 1024 * 1024;
 pub(super) fn open(path: &Path) -> Result<Connection, AppError> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(AppError::database)?;
+    snapshot(connection)
+}
+
+/// Opens a database without locks or WAL lookup. Only for a file whose
+/// `-wal` and `-journal` are absent, whose committed pages are all in the main
+/// file; the caller must verify the file's stamp after reading.
+pub(super) fn open_immutable(path: &Path) -> Result<Connection, AppError> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| AppError::configuration("database path is not UTF-8"))?;
+    let mut uri = String::from("file:");
+    if cfg!(windows) && !text.starts_with(['/', '\\']) && path.is_absolute() {
+        uri.push('/');
+    }
+    for character in text.chars() {
+        match character {
+            '%' => uri.push_str("%25"),
+            '?' => uri.push_str("%3f"),
+            '#' => uri.push_str("%23"),
+            '\\' if cfg!(windows) => uri.push('/'),
+            other => uri.push(other),
+        }
+    }
+    uri.push_str("?immutable=1");
+    let connection = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(AppError::database)?;
+    snapshot(connection)
+}
+
+fn snapshot(connection: Connection) -> Result<Connection, AppError> {
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(AppError::database)?;

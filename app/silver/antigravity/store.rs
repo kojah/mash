@@ -16,14 +16,70 @@ pub(super) struct Store {
     bytes: usize,
     fields: usize,
 }
+/// A snapshot this reader cannot decode. It rejects only its own source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Unsupported {
+    /// SQLite could not open or read the file's header.
+    Unreadable,
+    /// A `user_version` other than the native formats below.
+    Version(i64),
+}
+impl std::fmt::Display for Unsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unreadable => f.write_str("unreadable native database"),
+            Self::Version(version) => write!(f, "unsupported native database version {version}"),
+        }
+    }
+}
+pub(super) enum Opened {
+    Store(Store),
+    Unsupported(Unsupported),
+}
+/// Native snapshot formats: IDE 2.5 writes `user_version` 0 and the
+/// Antigravity 2.31 app writes 1, with the same tables and step payloads.
+fn supported(version: i64) -> Result<(), Unsupported> {
+    match version {
+        0 | 1 => Ok(()),
+        other => Err(Unsupported::Version(other)),
+    }
+}
+fn user_version(connection: &Connection) -> rusqlite::Result<i64> {
+    connection.query_row("PRAGMA user_version", [], |row| row.get(0))
+}
+fn sidecar_exists(path: &Path, suffix: &str) -> Result<bool, AppError> {
+    let mut sidecar = path.as_os_str().to_os_string();
+    sidecar.push(suffix);
+    Path::new(&sidecar).try_exists().map_err(AppError::io)
+}
+/// A closed WAL database has no `-wal` file and a read-only connection cannot
+/// create its shared-memory index, so it is read immutably. The source stamp
+/// covers the main file and `-wal` presence and is verified after reading.
+fn connect(path: &Path) -> Result<Result<(Connection, i64), Unsupported>, AppError> {
+    let shared = sqlite_source::open(path)
+        .ok()
+        .and_then(|connection| Some((user_version(&connection).ok()?, connection)));
+    if let Some((version, connection)) = shared {
+        return Ok(Ok((connection, version)));
+    }
+    if sidecar_exists(path, "-wal")? || sidecar_exists(path, "-journal")? {
+        return Ok(Err(Unsupported::Unreadable));
+    }
+    let Ok(connection) = sqlite_source::open_immutable(path) else {
+        return Ok(Err(Unsupported::Unreadable));
+    };
+    Ok(user_version(&connection)
+        .map(|version| (connection, version))
+        .map_err(|_| Unsupported::Unreadable))
+}
 impl Store {
-    pub fn open(path: &Path) -> Result<Self, AppError> {
-        let connection = sqlite_source::open(path)?;
-        let version: i64 = connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .map_err(AppError::database)?;
-        if version != 0 {
-            return Err(invalid("unsupported native database version"));
+    pub fn open(path: &Path) -> Result<Opened, AppError> {
+        let (connection, version) = match connect(path)? {
+            Ok(opened) => opened,
+            Err(unsupported) => return Ok(Opened::Unsupported(unsupported)),
+        };
+        if let Err(unsupported) = supported(version) {
+            return Ok(Opened::Unsupported(unsupported));
         }
         let indexed: String = connection
             .query_row(
@@ -35,11 +91,11 @@ impl Store {
         if !indexed.eq_ignore_ascii_case("INTEGER") {
             return Err(invalid("unsupported native step primary key"));
         }
-        Ok(Self {
+        Ok(Opened::Store(Self {
             connection,
             bytes: 64 * 1024 * 1024,
             fields: 65_536,
-        })
+        }))
     }
     pub fn root(&self) -> Result<Root, AppError> {
         let mut statement = self.connection.prepare("SELECT CASE WHEN typeof(trajectory_id)='text' AND length(CAST(trajectory_id AS BLOB))<=1024 THEN trajectory_id END AS trajectory, CASE WHEN typeof(cascade_id)='text' AND length(CAST(cascade_id AS BLOB))<=1024 THEN cascade_id END AS cascade, trajectory_type AS kind, source FROM trajectory_meta LIMIT 2").map_err(AppError::database)?;

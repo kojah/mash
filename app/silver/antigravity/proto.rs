@@ -1,4 +1,5 @@
-//! Selected dialogue and identity fields from the pinned IDE 2.5.5 descriptors.
+//! Selected dialogue and identity fields from the pinned IDE 2.5.5 descriptors,
+//! unchanged in the Antigravity 2.31.2 app's embedded descriptors.
 pub(super) use super::super::native::{Timestamp, Workspace};
 use prost::Message;
 
@@ -39,6 +40,8 @@ pub(super) enum TrajectoryKind {
 pub(super) enum TrajectorySource {
     Unspecified = 0,
     CascadeClient = 1,
+    /// Conversations started in the Antigravity 2.31 app's agent manager.
+    GeminiApp = 21,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
@@ -118,6 +121,8 @@ pub(super) struct Metadata {
     pub parent: String,
     #[prost(string, tag = "6")]
     pub root: String,
+    #[prost(string, repeated, tag = "7")]
+    pub workspace_uris: Vec<String>,
     #[prost(message, optional, tag = "8")]
     pub subagent: Option<Subagent>,
 }
