@@ -217,8 +217,10 @@ impl Lease {
 
 /// How long a replaced executable must keep one identity before a stopped
 /// watcher starts it, so an installer still writing it is not executed.
+#[cfg(unix)]
 const SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
 /// After this long without a settled replacement, the watcher exits instead.
+#[cfg(unix)]
 const SETTLE_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// A stopped `index --watch` starts the executable that replaced it in its own

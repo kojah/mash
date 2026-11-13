@@ -311,7 +311,7 @@ impl Store {
         fresh: bool,
         views: &mut NodeViews,
     ) -> Result<(), AppError> {
-        let rewritten: BTreeSet<&String> = chat.map(|t| t.ids.iter().collect()).unwrap_or_default();
+        let rewritten: BTreeSet<&String> = chat.map_or_default(|t| t.ids.iter().collect());
         let stale: Vec<String> = amended
             .replaced
             .iter()

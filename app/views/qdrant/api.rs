@@ -57,7 +57,7 @@ pub(super) fn start_instruction(url: &reqwest::Url) -> &'static str {
 /// One sequence for an unreachable Qdrant: what failed, `note` (if any), how
 /// to start it, the single next step `then`, and the guide.
 pub(super) fn unavailable_message(url: &reqwest::Url, note: Option<&str>, then: &str) -> String {
-    let note = note.map(|note| format!(" {note}")).unwrap_or_default();
+    let note = note.map_or_default(|note| format!(" {note}"));
     format!(
         "Could not reach Qdrant at {url}; indexing and every search need it.{note} {} Then {then}. Guide: {START_GUIDE}",
         start_instruction(url)

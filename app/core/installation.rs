@@ -509,9 +509,7 @@ pub(crate) fn setup(paths: &super::Paths) -> Setup {
 /// The agents `mash init` recorded in the configuration; none when it
 /// cannot be loaded, which the resources section reports.
 fn recorded_agents(paths: &super::Paths) -> Vec<Agent> {
-    crate::config::load(paths.config.as_deref())
-        .map(|config| config.connected_agents)
-        .unwrap_or_default()
+    crate::config::load(paths.config.as_deref()).map_or_default(|config| config.connected_agents)
 }
 
 fn collect(environment: Option<&Environment>, agents: &[Agent], recorded: &[Agent]) -> Report {
@@ -584,9 +582,7 @@ pub(super) fn registration(agent: Agent) -> Registration {
 
 /// The files an agent's own CLI edits when `init` registers Mash with it.
 pub(super) fn edited_files(agent: Agent) -> Vec<PathBuf> {
-    Environment::discover()
-        .map(|environment| clients::edited_files(&environment, agent))
-        .unwrap_or_default()
+    Environment::discover().map_or_default(|environment| clients::edited_files(&environment, agent))
 }
 
 pub(super) fn summary(recorded: &[Agent]) -> Summary {
