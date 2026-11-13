@@ -1,15 +1,17 @@
 import { expect, type Page, test } from "@playwright/test";
-import { followRail, rail } from "./shell";
+import { followRail, openRail, rail } from "./shell";
 
 // Answers every read the rail's pages make with an empty but valid body.
-async function mockEmptyDashboard(page: Page): Promise<void> {
+async function mockEmptyDashboard(page: Page, fleet = true): Promise<void> {
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/records") return route.fulfill({ json: { records: [], next_offset: null } });
     if (path === "/api/services") return route.fulfill({ json: { machines: [] } });
     if (path === "/api/services/operations") return route.fulfill({ json: [] });
     if (path === "/api/services/fleet")
-      return route.fulfill({ json: { enabled: false, revision: null, actions: [], services: [] } });
+      return route.fulfill({
+        json: { enabled: fleet, revision: fleet ? "revision" : null, actions: [], services: [] },
+      });
     if (path === "/api/status") return route.fulfill({ json: statusFixture });
     return route.fulfill({ json: { local_node: "local", chats: [], truncated: false } });
   });
@@ -101,6 +103,18 @@ for (const width of [390, 1280]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("the rail offers the fleet manager only where fleet control is set up", async ({ page }) => {
+  await mockEmptyDashboard(page, false);
+  await page.goto("/#/services");
+  await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
+  await openRail(page);
+  await expect(rail(page).getByRole("link", { name: "services", exact: true })).toBeVisible();
+  await expect(rail(page).getByRole("link", { name: "fleet manager", exact: true })).toHaveCount(0);
+  // Its page still explains the setup to anyone who opens it directly.
+  await page.goto("/#/fleet");
+  await expect(page.getByText("Fleet control is not set up on this dashboard.")).toBeVisible();
+});
 
 test("an unknown address shows a missing page instead of the overview", async ({ page }) => {
   await mockEmptyDashboard(page);

@@ -22,6 +22,7 @@ import { catalogOptions } from "../lib/queries";
 import { kindIcons } from "../lib/recordIcons";
 import { label as kindLabel, kinds } from "../lib/records";
 import { agentHref, machineHref, projectHref, recordsHref, router } from "../lib/route.svelte";
+import { fleetCatalogOptions, serviceAccessOptions } from "../lib/services.svelte";
 import AgentMark from "./AgentMark.svelte";
 
 let { open, close }: { open: boolean; close: () => void } = $props();
@@ -60,6 +61,15 @@ type Section = (typeof sections)[number]["id"];
 const expandable: readonly Section[] = ["chats", "agents", "machines", "projects", "memory"];
 
 const route = $derived(router.current);
+// The fleet manager is offered only where fleet control is set up. Its page
+// still explains the setup to anyone who opens it directly.
+const access = createQuery(() => serviceAccessOptions);
+const fleet = createQuery(() => fleetCatalogOptions(access.data !== undefined));
+const offered = $derived(
+  sections.filter(
+    (section) => section.id !== "fleet" || fleet.data?.enabled === true || route.page === "fleet",
+  ),
+);
 const area = $derived.by((): Section | "" => {
   switch (route.page) {
     case "overview":
@@ -169,7 +179,7 @@ function toggle(id: Section): void {
   <a class="brand" href="#/" onclick={close}><img src={asset("mash-mark.svg")} alt="" /><span>mash<i aria-hidden="true">_</i></span></a>
   <button id="xdrawer" type="button" aria-label="Close navigation" onclick={close}>×</button>
   <nav class="nav" aria-label="Main">
-    {#each sections as section (section.id)}
+    {#each offered as section (section.id)}
       {@const on = section.id === area && !child}
       {@const isOpen = expanded.includes(section.id)}
       <div class="nav-row" class:on>

@@ -15,7 +15,7 @@ import {
   type FleetAction,
   type FleetRequest,
   fleetActionLabel,
-  fleetCatalog,
+  fleetCatalogOptions,
   fleetHistory,
   serviceAccessOptions,
   serviceRequestId,
@@ -30,12 +30,7 @@ let { action }: { action: string } = $props();
 const client = useQueryClient();
 const access = createQuery(() => serviceAccessOptions);
 const enabled = $derived(access.data !== undefined);
-const catalog = createQuery(() => ({
-  ...stableRead,
-  queryKey: ["fleet-catalog"],
-  enabled,
-  queryFn: ({ signal }) => fleetCatalog(signal),
-}));
+const catalog = createQuery(() => fleetCatalogOptions(enabled));
 const history = createQuery(() => ({
   ...stableRead,
   queryKey: ["fleet-jobs"],

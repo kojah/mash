@@ -270,6 +270,15 @@ export const serviceAccessOptions = queryOptions({
     return { localNode: row.local_node };
   },
 });
+/** What fleet control this dashboard offers, once service access is known. */
+export function fleetCatalogOptions(enabled: boolean) {
+  return queryOptions({
+    ...stableRead,
+    queryKey: ["fleet-catalog"],
+    enabled,
+    queryFn: ({ signal }) => fleetCatalog(signal),
+  });
+}
 export function serviceOptions(enabled: boolean) {
   return queryOptions({
     ...stableRead,
