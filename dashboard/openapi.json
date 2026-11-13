@@ -1067,18 +1067,27 @@
         "type": "string"
       },
       "Component": {
-        "enum": [
-          "configuration",
-          "plugin",
-          "skill",
-          "hooks",
-          "hook_trust",
-          "mcp",
-          "probe",
-          "index",
-          "runtime"
-        ],
-        "type": "string"
+        "oneOf": [
+          {
+            "enum": [
+              "configuration",
+              "plugin",
+              "skill",
+              "hooks",
+              "hook_trust",
+              "mcp",
+              "probe",
+              "index",
+              "runtime"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "qdrant",
+            "description": "The local Qdrant search service that indexing and every search use.",
+            "type": "string"
+          }
+        ]
       },
       "ConfigurationStatus": {
         "properties": {
@@ -3073,6 +3082,26 @@
         ],
         "type": "string"
       },
+      "Reachability": {
+        "description": "Whether the configured Qdrant process answers. This is liveness only:\ncollection schemas and search readiness are reported separately.",
+        "oneOf": [
+          {
+            "const": "reachable",
+            "description": "A supported Qdrant answered at the configured HTTP URL.",
+            "type": "string"
+          },
+          {
+            "const": "unreachable",
+            "description": "Nothing answered: the service is stopped, missing or on another port.",
+            "type": "string"
+          },
+          {
+            "const": "rejected",
+            "description": "Something answered but refused the request, or is not a supported\nQdrant (an API key mismatch or an old version, for example).",
+            "type": "string"
+          }
+        ]
+      },
       "ReadinessState": {
         "enum": [
           "missing",
@@ -3083,12 +3112,21 @@
         "type": "string"
       },
       "RecommendedAction": {
-        "enum": [
-          "init",
-          "index",
-          "models install"
-        ],
-        "type": "string"
+        "oneOf": [
+          {
+            "enum": [
+              "init",
+              "index",
+              "models install"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "start-qdrant",
+            "description": "Not a Mash command: start the Qdrant service at the reported URL.",
+            "type": "string"
+          }
+        ]
       },
       "Record": {
         "properties": {
@@ -4044,6 +4082,29 @@
         ],
         "type": "string"
       },
+      "ServiceStatus": {
+        "description": "The configured local Qdrant service, as one bounded request observed it.",
+        "properties": {
+          "message": {
+            "description": "Why it is not reachable, and how to start it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/Reachability"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "state"
+        ],
+        "type": "object"
+      },
       "Settings": {
         "description": "The settings, with whether this dashboard accepts changes to them.",
         "properties": {
@@ -4345,6 +4406,14 @@
           "local_artifacts": {
             "$ref": "#/components/schemas/Artifacts"
           },
+          "local_qdrant": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceStatus"
+              }
+            ],
+            "description": "Whether the configured local Qdrant answers, apart from schema\ncompatibility (`local_views_error`) and search readiness (`ready`)."
+          },
           "local_views_error": {
             "type": [
               "string",
@@ -4442,6 +4511,7 @@
           "installation",
           "local_artifacts",
           "ready",
+          "local_qdrant",
           "chats",
           "messages",
           "searchable_messages",

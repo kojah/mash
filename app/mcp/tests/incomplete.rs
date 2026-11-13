@@ -185,3 +185,50 @@ async fn cleanup(root: &std::path::Path) {
         .unwrap();
     crate::views::local::test_support::cleanup(&local, &configuration.qdrant.url).await;
 }
+
+#[tokio::test]
+async fn mcp_status_reports_unreachable_qdrant_and_recommends_starting_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config.toml");
+    std::fs::write(
+        &config,
+        concat!(
+            "version = 1\nproviders = {}\n",
+            "[views.build]\nrepresentations = 'lexical-only'\n",
+            "[views.query]\nintent = 'exact-mention'\n",
+            "[qdrant]\nurl = 'http://127.0.0.1:9'\ngrpc_url = 'http://127.0.0.1:9'\n",
+        ),
+    )
+    .unwrap();
+    let server = Mash {
+        runtime: None,
+        paths: Arc::new(Paths {
+            config: Some(config),
+            db: Some(dir.path().join("index.sqlite3")),
+            models_dir: Some(dir.path().join("models")),
+        }),
+        gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+    };
+    let result = server
+        .perform(Operation::Status {
+            shared: false,
+            coverage: None,
+        })
+        .await;
+    assert_ne!(result.is_error, Some(true));
+    let status = result.structured_content.unwrap();
+    assert_eq!(status["ready"], false);
+    assert_eq!(status["local_qdrant"]["state"], "unreachable", "{status}");
+    assert_eq!(status["local_qdrant"]["url"], "http://127.0.0.1:9");
+    assert_eq!(status["recommended_action"], "start-qdrant");
+    let text = &result.content[0].as_text().unwrap().text;
+    assert!(
+        text.contains("Local Qdrant: \"unreachable\" at http://127.0.0.1:9"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Start the configured Qdrant service"),
+        "{text}"
+    );
+}

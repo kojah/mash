@@ -122,23 +122,39 @@ async fn execute_inner(
     request: Request,
     capacity: Option<&tokio::sync::Semaphore>,
 ) -> Result<Response, AppError> {
-    let mut request = request;
-    let mut initialized = None;
-    if let Operation::Init(init) = &request.operation {
-        let index = init.index;
-        let agent = init.backfill_memory;
-        let paths = request.paths.clone();
-        let mut response = setup::init(paths.clone(), init.clone()).await?;
-        if !index {
-            if let Some(agent) = agent {
-                response.memory = Some(setup::backfill::run(paths, agent).await?);
+    let Operation::Init(init) = &request.operation else {
+        return execute_operation(request, capacity).await;
+    };
+    let index = init.index;
+    let agent = init.backfill_memory;
+    let paths = request.paths.clone();
+    setup::preflight(&paths, init).await?;
+    let mut response = setup::init(paths.clone(), init.clone()).await?;
+    if index {
+        // Setup is already applied, so a failed first index is reported with
+        // it rather than replacing it.
+        let first = Request {
+            paths: paths.clone(),
+            operation: setup::first_index(),
+        };
+        match execute_operation(first, capacity).await {
+            Ok(indexed) => response.index = Some(Box::new(indexed)),
+            Err(error) => {
+                response.index_failed(error);
+                return Ok(Response::Init(response));
             }
-            return Ok(Response::Init(response));
         }
-        // Continue as the first index, without re-entering this function.
-        initialized = Some((response, paths, agent));
-        request.operation = setup::first_index();
     }
+    if let Some(agent) = agent {
+        response.memory = Some(setup::backfill::run(paths, agent).await?);
+    }
+    Ok(Response::Init(response))
+}
+
+async fn execute_operation(
+    request: Request,
+    capacity: Option<&tokio::sync::Semaphore>,
+) -> Result<Response, AppError> {
     if let Operation::Installation { agents, probe } = &request.operation {
         return installation::inspect(agents.clone(), *probe, request.paths.clone())
             .boxed()
@@ -210,13 +226,6 @@ async fn execute_inner(
     if let Response::Search(search) = &mut response {
         search.notice = search::empty_notice(search, &configuration);
         search.query = configuration.redaction.output().text(&search.query);
-    }
-    if let Some((mut initialized, paths, agent)) = initialized {
-        initialized.index = Some(Box::new(response));
-        if let Some(agent) = agent {
-            initialized.memory = Some(setup::backfill::run(paths, agent).await?);
-        }
-        return Ok(Response::Init(initialized));
     }
     Ok(response)
 }

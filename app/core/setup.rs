@@ -41,9 +41,74 @@ pub(crate) struct InitResponse {
     agents: Vec<AgentOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(in crate::core) index: Option<Box<Response>>,
+    /// Why the first index failed. The configuration and agent steps above
+    /// were kept; the same error goes to stderr and sets the exit status.
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "error_body")]
+    pub(in crate::core) index_error: Option<AppError>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(in crate::core) memory: Option<backfill::Outcome>,
     next: Vec<String>,
+}
+
+#[expect(clippy::ref_option, reason = "serde's serialize_with signature")]
+fn error_body<S: serde::Serializer>(
+    error: &Option<AppError>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    error
+        .as_ref()
+        .map(|error| &error.error)
+        .serialize(serializer)
+}
+
+impl InitResponse {
+    /// Keep the setup report when the first index fails, and say what is
+    /// left: setup is saved, so `mash index` finishes it.
+    pub(in crate::core) fn index_failed(&mut self, error: AppError) {
+        let step = if error.error.kind == crate::ErrorKind::QdrantUnavailable {
+            "Setup was saved, but the first index stopped because Qdrant did not answer (see index_error for how to start it). Start Qdrant, then run `mash index` to finish."
+        } else {
+            "Setup was saved, but the first index failed (see index_error). Fix that, then run `mash index` to finish."
+        };
+        self.next.insert(0, step.to_owned());
+        self.index_error = Some(error);
+    }
+}
+
+/// Indexing needs Qdrant, so check it before `init` changes anything: a
+/// refused check leaves configuration and agent settings as they were.
+pub(super) async fn preflight(paths: &Paths, request: &InitRequest) -> Result<(), AppError> {
+    if !request.index {
+        return Ok(());
+    }
+    let config_path = match &paths.config {
+        Some(path) => path.clone(),
+        None => crate::config::default_path()?,
+    };
+    // A kept or reviewed configuration keeps its Qdrant settings; a newly
+    // written one uses the defaults.
+    let kept = config_path.exists()
+        && request
+            .plan
+            .as_ref()
+            .map_or(!request.force, |plan| plan.previous.is_some());
+    let qdrant = if kept {
+        crate::blocking(move || crate::config::load(Some(&config_path)))
+            .await?
+            .qdrant
+    } else {
+        crate::config::QdrantConfig::default()
+    };
+    crate::views::qdrant::check(&qdrant).await.map_err(|mut error| {
+        if error.error.kind == crate::ErrorKind::QdrantUnavailable {
+            error.error.recommended_action = Some(crate::Action::StartQdrant);
+        }
+        error.error.message = format!(
+            "`mash init` changed nothing: indexing needs the local Qdrant service. {} Then rerun `mash init`, or run `mash init --no-index` to save configuration and connect agents now and index later.",
+            error.error.message
+        );
+        error
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -146,12 +211,28 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
     }
     next.extend(agent_next_steps(&agents));
     if !request.index {
-        next.push("Index your history: mash index".to_owned());
+        // Indexing reports an unreadable configuration itself.
+        let path = config.path.clone();
+        let observed = match crate::blocking(move || crate::config::load(Some(&path))).await {
+            Ok(loaded) => Some(crate::views::qdrant::reachability(&loaded.qdrant).await),
+            Err(_) => None,
+        };
+        next.push(match observed {
+            Some(observed) if observed.state != crate::views::qdrant::Reachability::Reachable => {
+                format!(
+                    "Index your history with `mash index` once Qdrant answers at {}; indexing and every search need it. {}",
+                    observed.url,
+                    observed.message.unwrap_or_default()
+                )
+            }
+            _ => "Index your history: mash index".to_owned(),
+        });
     }
     Ok(InitResponse {
         config,
         agents,
         index: None,
+        index_error: None,
         memory: None,
         next,
     })
@@ -206,7 +287,7 @@ fn agent_next_steps(agents: &[AgentOutcome]) -> Vec<String> {
         ));
         } else if let Step::Failed { command, .. } = &agent.plugin {
             steps.push(format!(
-            "{}: Mash MCP search works, but the mash@mash plugin (history skill and session hooks) was not installed; when online, rerun `mash init` or run `{command}`.",
+            "{}: the Mash MCP server is registered, but the mash@mash plugin (history skill and session hooks) was not installed; when online, rerun `mash init` or run `{command}`.",
             agent.agent
         ));
         }

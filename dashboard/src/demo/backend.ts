@@ -284,6 +284,7 @@ function status(): Answer<"/api/status"> {
   const count = local.reduce((sum, chat) => sum + chat.messages.length, 0);
   return {
     ready: true,
+    local_qdrant: { url: "http://127.0.0.1:6333", state: "reachable" },
     chats: local.length,
     messages: count,
     searchable_messages: count,

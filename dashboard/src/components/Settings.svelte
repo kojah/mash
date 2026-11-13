@@ -104,7 +104,8 @@ async function save(): Promise<void> {
 {#if settings.error}<p class="meta warn" role="alert">Settings can't be changed right now: {settings.error.message}</p>{/if}
 {#if status.data && config}
   {#if !config.loaded}<p class="meta warn">No configuration file was found at that path, so built-in defaults apply. Run <code class="i">mash init</code> to create one.</p>{/if}
-  {#if status.data.nextStep}<p class="meta warn">Suggested next step: <code class="i">mash {status.data.nextStep}</code></p>{/if}
+  {#if status.data.nextStep === "start-qdrant"}<p class="meta warn">Suggested next step: start the Qdrant search service at <code class="i">{config.searchStore}</code>. Indexing and every search need it; <code class="i">mash status</code> shows how to start it.</p>
+  {:else if status.data.nextStep}<p class="meta warn">Suggested next step: <code class="i">mash {status.data.nextStep}</code></p>{/if}
 
   <section class="set-s">
     <h2 class="h2"><Bot size={15} aria-hidden="true" />agent histories</h2>

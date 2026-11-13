@@ -6,6 +6,7 @@ use crate::config::ResolvedConfig;
 use crate::semantic::Models;
 use crate::shared;
 use crate::storage::Storage;
+use crate::views::qdrant::{Reachability, ServiceStatus};
 use std::path::Path;
 
 pub(super) async fn list_attachments(
@@ -88,12 +89,28 @@ pub(super) async fn status(
     let db = database.to_path_buf();
     let models = models.to_path_buf();
     let config = configuration.clone();
-    let mut response = crate::blocking(move || local_status(&db, &models, &config)).await?;
+    let qdrant = crate::views::qdrant::reachability(&configuration.qdrant).await;
+    let mut response = crate::blocking(move || local_status(&db, &models, &config, qdrant)).await?;
     if response.silver.is_some() {
-        match local_gold_status(database, configuration, &mut response).await {
-            Ok(()) => {}
-            Err(error) => response.local_views_error = Some(error.error.message),
+        if response.local_qdrant.state == Reachability::Reachable {
+            match local_gold_status(database, configuration, &mut response).await {
+                Ok(()) => {}
+                Err(error) => response.local_views_error = Some(error.error.message),
+            }
+        } else {
+            response
+                .local_views_error
+                .clone_from(&response.local_qdrant.message);
         }
+    }
+    // Setup and indexing both need Qdrant, so recommending them would loop.
+    if response.local_qdrant.state == Reachability::Unreachable
+        && matches!(
+            response.recommended_action,
+            Some(crate::Action::Init | crate::Action::Index)
+        )
+    {
+        response.recommended_action = Some(crate::Action::StartQdrant);
     }
     if let Some(scope) = coverage {
         response.coverage = Some(super::coverage::local(database, configuration, scope).await?);
@@ -267,6 +284,7 @@ fn local_status(
     database_path: &Path,
     models_dir: &Path,
     configuration: &ResolvedConfig,
+    local_qdrant: ServiceStatus,
 ) -> Result<StatusResponse, AppError> {
     let models = Models::new(models_dir.to_path_buf());
     let models_installed = models.is_installed();
@@ -284,6 +302,7 @@ fn local_status(
             views: None,
             silver: None,
             ready: false,
+            local_qdrant,
             database_path: Some(database_path.to_path_buf()),
             chats: 0,
             messages: 0,
@@ -322,6 +341,7 @@ fn local_status(
         views: None,
         silver: snapshot.silver,
         ready: false,
+        local_qdrant,
         database_path: Some(database_path.to_path_buf()),
         chats: counts.chats,
         messages: counts.messages,
@@ -374,6 +394,14 @@ fn query_model_availability(
 mod tests {
     use super::*;
 
+    fn reachable() -> ServiceStatus {
+        ServiceStatus {
+            url: "http://127.0.0.1:6333".into(),
+            state: Reachability::Reachable,
+            message: None,
+        }
+    }
+
     #[tokio::test]
     #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
     async fn qdrant_status_rejects_a_changed_silver_snapshot() {
@@ -383,12 +411,12 @@ mod tests {
         let mut configuration = gold.configuration.clone();
         configuration.views.query.intent = crate::views::exact::Intent::ExactMention;
         let models = root.path().join("missing-models");
-        let mut current = local_status(&database, &models, &configuration).unwrap();
+        let mut current = local_status(&database, &models, &configuration, reachable()).unwrap();
         local_gold_status(&database, &configuration, &mut current)
             .await
             .unwrap();
         assert!(current.ready);
-        let mut stale = local_status(&database, &models, &configuration).unwrap();
+        let mut stale = local_status(&database, &models, &configuration, reachable()).unwrap();
         crate::storage::test_support::write(
             &database,
             "UPDATE silver_state SET revision=revision+1 WHERE singleton=1",
@@ -415,7 +443,7 @@ mod tests {
             )
             .unwrap();
             let configuration = crate::config::load(Some(&config)).unwrap();
-            let status = local_status(&database, &models, &configuration).unwrap();
+            let status = local_status(&database, &models, &configuration, reachable()).unwrap();
             assert!(!status.models_installed);
             assert_eq!(
                 matches!(status.query_models, ModelAvailability::Available),

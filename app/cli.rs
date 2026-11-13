@@ -35,6 +35,10 @@ pub(crate) struct Cli {
 enum Command {
     /// Set up Mash with a terminal wizard, or accept defaults with --yes.
     /// Configure histories, connect agent integrations, and index.
+    ///
+    /// Indexing and every search need a running local Qdrant service (by
+    /// default on this machine's port 6333); init checks it before changing
+    /// anything. Use --no-index to configure without it.
     Init {
         /// Accept defaults without prompting (also used automatically without a terminal).
         #[arg(short = 'y', long)]
@@ -45,7 +49,7 @@ enum Command {
         /// Leave agent settings unchanged.
         #[arg(long)]
         no_agents: bool,
-        /// Skip the first index.
+        /// Skip the first index, which needs Qdrant running.
         #[arg(long)]
         no_index: bool,
         /// Explicitly backfill memory with this signed-in agent (last 3 days by default).
@@ -155,7 +159,8 @@ enum Command {
         /// Query only the shared index (including this node).
         #[arg(long)]
         shared: bool,
-        /// Query only SQLite, without contacting the shared service.
+        /// Query only this machine's index (local SQLite and local Qdrant),
+        /// without contacting the shared service.
         #[arg(long, conflicts_with = "shared")]
         local: bool,
     },
@@ -172,9 +177,11 @@ enum Command {
         #[arg(long, value_name = "NODE_ID")]
         shared: Option<String>,
     },
-    /// Report readiness; --installation discovers providers and agent setup.
+    /// Report readiness, including whether local Qdrant answers; --installation
+    /// discovers providers and agent setup.
     Status {
-        /// Inspect agent integrations without opening the Mash configuration, index or models.
+        /// Inspect agent integrations and whether the configured Qdrant answers, without
+        /// opening the Mash index or models.
         #[arg(long, conflicts_with_all = ["coverage", "shared"])]
         installation: bool,
         /// Require this integration (repeatable); otherwise inspect detected clients.

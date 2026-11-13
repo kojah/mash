@@ -169,7 +169,7 @@ impl Build {
     pub(crate) fn require_intent(&self, intent: super::exact::Intent) -> Result<(), AppError> {
         if intent == super::exact::Intent::RelatedDiscussion && !self.dense_enabled() {
             return Err(AppError::usage(
-                "related-discussion needs semantic search, which this configuration turns off (word-exact search only); search with --intent exact-mention, or run `mash models install` and then `mash init --force` to turn it on",
+                "related-discussion needs semantic search, which this configuration turns off (word-exact search only); search with --intent exact-mention (it needs the local Qdrant service like every search), or run `mash models install` and then `mash init --force` to turn it on",
             ));
         }
         Ok(())

@@ -254,6 +254,7 @@ struct Status<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     silver: Option<&'a crate::silver::certificate::Certificate>,
     ready: bool,
+    local_qdrant: &'a crate::views::qdrant::ServiceStatus,
     chats: u64,
     messages: u64,
     searchable_messages: u64,
@@ -278,6 +279,7 @@ impl<'a> From<&'a StatusResponse> for Status<'a> {
             local_artifacts: &value.local_artifacts,
             silver: value.silver.as_ref(),
             ready: value.ready,
+            local_qdrant: &value.local_qdrant,
             chats: value.chats,
             messages: value.messages,
             searchable_messages: value.searchable_messages,

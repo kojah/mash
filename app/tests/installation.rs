@@ -376,7 +376,11 @@ fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init()
         next.starts_with("codex plugin marketplace add kojah/mash && codex plugin add mash@mash"),
         "{next}"
     );
-    assert!(next.contains("MCP search already works"), "{next}");
+    assert!(
+        next.contains("Mash MCP tools are available without it"),
+        "{next}"
+    );
+    assert!(!next.contains("search already works"), "{next}");
 }
 
 #[test]

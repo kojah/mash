@@ -199,6 +199,64 @@ enum PointKind {
     Views,
 }
 
+/// Whether the configured Qdrant process answers. This is liveness only:
+/// collection schemas and search readiness are reported separately.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Reachability {
+    /// A supported Qdrant answered at the configured HTTP URL.
+    Reachable,
+    /// Nothing answered: the service is stopped, missing or on another port.
+    Unreachable,
+    /// Something answered but refused the request, or is not a supported
+    /// Qdrant (an API key mismatch or an old version, for example).
+    Rejected,
+}
+
+/// The configured local Qdrant service, as one bounded request observed it.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ServiceStatus {
+    pub(crate) url: String,
+    pub(crate) state: Reachability,
+    /// Why it is not reachable, and how to start it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) message: Option<String>,
+}
+
+/// Ask the configured Qdrant for its version, waiting at most a few seconds.
+/// Never creates or inspects collections.
+pub(crate) async fn reachability(config: &crate::config::QdrantConfig) -> ServiceStatus {
+    let (state, message) = match check(config).await {
+        Ok(()) => (Reachability::Reachable, None),
+        Err(error) if error.error.kind == crate::ErrorKind::QdrantUnavailable => {
+            (Reachability::Unreachable, Some(error.error.message))
+        }
+        Err(error) => (Reachability::Rejected, Some(error.error.message)),
+    };
+    ServiceStatus {
+        url: config.url.clone(),
+        state,
+        message,
+    }
+}
+
+/// The typed error behind [`reachability`]; unreachable is `qdrant-unavailable`.
+pub(crate) async fn check(config: &crate::config::QdrantConfig) -> Result<(), AppError> {
+    let key = config
+        .api_key_env
+        .as_ref()
+        .map(|name| {
+            std::env::var(name).map_err(|_| {
+                AppError::configuration(format!("set {name} to the local Qdrant API key"))
+            })
+        })
+        .transpose()?;
+    let api = api::Client::new(&config.url, key.as_deref(), 1024 * 1024)?;
+    tokio::time::timeout(std::time::Duration::from_secs(5), api.verify_version())
+        .await
+        .unwrap_or_else(|_| Err(api.unavailable()))
+}
+
 fn collection(group: &str, metadata: bool) -> String {
     format!(
         "mash_views_{}_{}",

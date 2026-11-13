@@ -261,6 +261,15 @@ fn status(out: &mut String, value: &Status<'_>) -> Result<(), serde_json::Error>
         out,
         &format!("Mash status — local search ready: {}", value.ready),
     );
+    line(
+        out,
+        &format!(
+            "Local Qdrant: {} at {}",
+            serde_json::to_string(&value.local_qdrant.state)?,
+            safe(&value.local_qdrant.url)
+        ),
+    );
+    warning(out, "local Qdrant", value.local_qdrant.message.as_deref());
     json(out, "Artifacts", value.local_artifacts)?;
     json(out, "Installation", value.installation)?;
     json(out, "Query models", value.query_models)?;

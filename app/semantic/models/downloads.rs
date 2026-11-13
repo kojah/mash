@@ -68,7 +68,7 @@ fn download(
     {
         repo.get(file).map_err(|error| {
             let message = format!(
-                "failed to download model asset {file} from {endpoint}: {error}; semantic models (about 170 MB) need network access to {endpoint} or a Hugging Face mirror named by HF_ENDPOINT, and word-exact search works without them"
+                "failed to download model asset {file} from {endpoint}: {error}; semantic models (about 170 MB) need network access to {endpoint} or a Hugging Face mirror named by HF_ENDPOINT; word-exact search does not need them, only the local Qdrant service that every search uses"
             );
             if unreachable(&error.to_string()) {
                 AppError::model_unreachable(message)

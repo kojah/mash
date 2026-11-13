@@ -34,6 +34,51 @@ struct Scan {
     rejected_sources: u64,
 }
 
+impl Report {
+    /// Whether the configured local Qdrant answered; without it, setup and
+    /// every search fail, so its remedy names what to run afterward.
+    pub(super) fn add_qdrant(&mut self, observed: &crate::views::qdrant::ServiceStatus) {
+        use crate::views::qdrant::Reachability;
+        let then = if self.configuration_loaded {
+            "mash index"
+        } else {
+            "mash init"
+        };
+        let (state, message, remediation) = match observed.state {
+            Reachability::Reachable => (
+                State::Present,
+                format!(
+                    "Local Qdrant answers at {}. Indexing also needs its configured gRPC endpoint.",
+                    observed.url
+                ),
+                None,
+            ),
+            Reachability::Unreachable => (
+                State::Missing,
+                observed.message.clone().unwrap_or_default(),
+                Some(format!(
+                    "Start Qdrant at {} (see this finding's message for the commands), then run `{then}`. Until then, every search fails.",
+                    observed.url
+                )),
+            ),
+            Reachability::Rejected => (
+                State::Failed,
+                observed.message.clone().unwrap_or_default(),
+                Some(format!(
+                    "Fix the Qdrant service or its configuration as the message says, then run `{then}`."
+                )),
+            ),
+        };
+        self.findings.push(Finding {
+            component: Component::Qdrant,
+            state,
+            path: None,
+            message,
+            remediation,
+        });
+    }
+}
+
 pub(super) fn index_finding(database: &Path) -> Finding {
     let mut marker = database.as_os_str().to_owned();
     marker.push(".upgrade-in-progress");
@@ -212,7 +257,8 @@ fn inspect_configuration(report: &mut Report, paths: &Paths, storage: Option<&St
                 let scan = storage.as_ref().and_then(|storage| storage.coverage_scan(provider).ok()).map(|(state, rejected_sources)| Scan { state, rejected_sources });
                 report.providers.push(ProviderStatus {
                     provider,
-                    configured: roots.is_some_and(|roots| !roots.is_empty()),
+                    // Built-in default roots are not a configuration.
+                    configured: config.loaded && roots.is_some_and(|roots| !roots.is_empty()),
                     roots: roots.into_iter().flatten().map(|path| Root { path: path.clone(), state: root_state(path) }).collect(),
                     scan,
                     next_action: "Review configured roots and access first; run `mash index` after setup. Recorded scan completion does not certify current source freshness. Use `mash status --coverage` for retained-history details.",

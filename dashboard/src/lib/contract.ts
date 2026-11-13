@@ -645,8 +645,7 @@ export interface components {
         };
         /** @enum {string} */
         Completeness: "unverified" | "pending" | "incomplete" | "complete";
-        /** @enum {string} */
-        Component: "configuration" | "plugin" | "skill" | "hooks" | "hook_trust" | "mcp" | "probe" | "index" | "runtime";
+        Component: ("configuration" | "plugin" | "skill" | "hooks" | "hook_trust" | "mcp" | "probe" | "index" | "runtime") | "qdrant";
         ConfigurationStatus: {
             attachments: components["schemas"]["AttachmentConfiguration"];
             embeddings: components["schemas"]["Embeddings"];
@@ -1248,10 +1247,14 @@ export interface components {
          * @enum {string}
          */
         Ranking: "contextual-rerank" | "fusion";
+        /**
+         * @description Whether the configured Qdrant process answers. This is liveness only:
+         *     collection schemas and search readiness are reported separately.
+         */
+        Reachability: "reachable" | "unreachable" | "rejected";
         /** @enum {string} */
         ReadinessState: "missing" | "stale" | "ready" | "disabled";
-        /** @enum {string} */
-        RecommendedAction: "init" | "index" | "models install";
+        RecommendedAction: ("init" | "index" | "models install") | "start-qdrant";
         Record: {
             conflicted: boolean;
             /** Format: int64 */
@@ -1550,6 +1553,13 @@ export interface components {
         ServiceOutcome: "pending" | "succeeded" | "failed" | "unknown";
         /** @enum {string} */
         ServiceState: "healthy" | "degraded" | "stopped" | "failed" | "unknown";
+        /** @description The configured local Qdrant service, as one bounded request observed it. */
+        ServiceStatus: {
+            /** @description Why it is not reachable, and how to start it. */
+            message?: string | null;
+            state: components["schemas"]["Reachability"];
+            url: string;
+        };
         /** @description The settings, with whether this dashboard accepts changes to them. */
         Settings: {
             agents: {
@@ -1636,6 +1646,11 @@ export interface components {
             installation: components["schemas"]["Summary"];
             lexical?: components["schemas"]["LexicalManifest"] | null;
             local_artifacts: components["schemas"]["Artifacts"];
+            /**
+             * @description Whether the configured local Qdrant answers, apart from schema
+             *     compatibility (`local_views_error`) and search readiness (`ready`).
+             */
+            local_qdrant: components["schemas"]["ServiceStatus"];
             local_views_error?: string | null;
             /** Format: uint64 */
             messages: number;

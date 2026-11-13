@@ -33,6 +33,17 @@ pub(crate) fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
     Ok(url)
 }
 
+/// How to start Qdrant, readable offline. Only the default local endpoint
+/// gets the documented commands; any other endpoint is the user's own service.
+pub(super) fn start_instruction(url: &reqwest::Url) -> &'static str {
+    let local = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
+    if local && url.port_or_known_default() == Some(6333) {
+        "Start it on this machine: `docker start mash-local-qdrant` if you created the documented container, otherwise `docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.20.0`; without Docker, run a downloaded Qdrant 1.20 release from its folder with `QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant`. Then retry. Guide: https://getmash.io/installation/#start-the-local-search-service"
+    } else {
+        "Start the configured Qdrant service and check its HTTP port, then retry. Guide: https://getmash.io/installation/#start-the-local-search-service"
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct Client {
     mutations: Option<grpc::Client>,
@@ -572,15 +583,16 @@ impl Client {
         )
     }
 
-    fn unavailable(&self) -> AppError {
+    pub(super) fn unavailable(&self) -> AppError {
         // endpoint() accepts only an origin: no credentials, paths, or queries.
         // Never include reqwest's error or the upstream response body.
         AppError::new(
             11,
             crate::ErrorKind::QdrantUnavailable,
             format!(
-                "Could not reach Qdrant at {}; start the configured Qdrant service and check its HTTP port, then retry. For local setup, see https://getmash.io/installation/",
-                self.url
+                "Could not reach Qdrant at {}; Mash needs this search service running for indexing and every search. {}",
+                self.url,
+                start_instruction(&self.url)
             ),
             true,
         )

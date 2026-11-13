@@ -182,7 +182,7 @@ fn init_reports_why_a_plugin_could_not_be_installed() {
     let next = value["next"].to_string();
     for agent in ["claude-code", "codex"] {
         assert!(
-            next.contains(&format!("{agent}: Mash MCP search works")),
+            next.contains(&format!("{agent}: the Mash MCP server is registered")),
             "{next}"
         );
     }
@@ -267,9 +267,10 @@ fn init_without_history_writes_nothing() {
         ),
         ("PATH", "/usr/bin:/bin".to_owned()),
     ];
+    // Without --no-index the Qdrant check would come first.
     let output = Command::cargo_bin("mash")
         .unwrap()
-        .arg("init")
+        .args(["init", "--no-index"])
         .env_clear()
         .envs(env.iter().map(|(key, value)| (*key, value.as_str())))
         .output()
@@ -292,4 +293,149 @@ fn init_yes_accepts_defaults_and_preserves_existing_configuration() {
     let result = init(&env, &["--yes", "--no-index", "--no-agents"]);
     assert_eq!(result["config"]["written"], false);
     assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+}
+
+/// Run `mash` in the fixture home, returning the exit code, stdout and the
+/// last stderr line (progress events precede a final error).
+fn mash(env: &[(&str, String)], arguments: &[&str]) -> (i32, Value, Value) {
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args(arguments)
+        .env_clear()
+        .envs(env.iter().map(|(key, value)| (*key, value.as_str())))
+        .timeout(HANG_GUARD)
+        .output()
+        .unwrap();
+    let parse = |bytes: &[u8]| {
+        String::from_utf8_lossy(bytes)
+            .lines()
+            .last()
+            .map_or(Value::Null, |line| serde_json::from_str(line).unwrap())
+    };
+    (
+        output.status.code().unwrap(),
+        parse(&output.stdout),
+        parse(&output.stderr),
+    )
+}
+
+/// A configuration whose Qdrant endpoints refuse connections.
+fn unreachable_qdrant(home: &std::path::Path, url: &str) -> std::path::PathBuf {
+    let config = home.join(".config/mash/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(
+        &config,
+        format!(
+            "version = 1\n[providers.claude-code]\nroots = [{}]\n[views.build]\nrepresentations = 'lexical-only'\n[views.query]\nintent = 'exact-mention'\n[qdrant]\nurl = '{url}'\ngrpc_url = 'http://127.0.0.1:9'\n",
+            toml::Value::String(home.join(".claude/projects").display().to_string())
+        ),
+    )
+    .unwrap();
+    config
+}
+
+#[test]
+fn init_without_qdrant_changes_nothing_and_status_says_to_start_it() {
+    let (root, env) = fixture(false);
+    let home = root.path();
+    let config = unreachable_qdrant(home, "http://127.0.0.1:9");
+    let before = std::fs::read_to_string(&config).unwrap();
+    let (code, stdout, error) = mash(&env, &["init", "--yes"]);
+    assert_eq!(code, 11, "{error}");
+    assert!(stdout.is_null(), "{stdout}");
+    assert_eq!(error["error"]["kind"], "qdrant-unavailable", "{error}");
+    assert_eq!(error["error"]["recommended_action"], "start-qdrant");
+    let message = error["error"]["message"].as_str().unwrap();
+    for part in [
+        "changed nothing",
+        "http://127.0.0.1:9/",
+        "mash init --no-index",
+    ] {
+        assert!(message.contains(part), "{message}");
+    }
+    // No agent CLI ran, no history was read and the configuration is intact.
+    assert!(!home.join("calls.log").exists());
+    assert!(!home.join(".local/share/mash/mash.sqlite3").exists());
+    assert_eq!(std::fs::read_to_string(&config).unwrap(), before);
+
+    // Status keeps liveness apart from readiness and does not loop on index.
+    let (code, status, _) = mash(&env, &["status"]);
+    assert_eq!(code, 0, "{status}");
+    assert_eq!(status["ready"], false);
+    assert_eq!(status["local_qdrant"]["state"], "unreachable", "{status}");
+    assert_eq!(status["local_qdrant"]["url"], "http://127.0.0.1:9");
+    assert_eq!(status["recommended_action"], "start-qdrant");
+    let (code, installation, _) = mash(&env, &["status", "--installation"]);
+    assert_eq!(code, 0, "{installation}");
+    let finding = installation["resources"]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|finding| finding["component"] == "qdrant")
+        .unwrap();
+    assert_eq!(finding["state"], "missing", "{finding}");
+    let next = installation["summary"]["next_action"].as_str().unwrap();
+    assert!(
+        next.starts_with("Start Qdrant at http://127.0.0.1:9"),
+        "{next}"
+    );
+    assert!(next.contains("mash index"), "{next}");
+
+    // Setup without indexing still works, and says what indexing needs.
+    let (code, configured, _) = mash(&env, &["init", "--yes", "--no-index"]);
+    assert_eq!(code, 0, "{configured}");
+    let next = configured["next"].to_string();
+    assert!(
+        next.contains("once Qdrant answers at http://127.0.0.1:9"),
+        "{next}"
+    );
+    assert!(!next.contains("search works"), "{next}");
+}
+
+/// Answers every HTTP request as Qdrant 1.20 would answer its root, so the
+/// reachability check passes while every later collection request fails.
+fn version_only_qdrant() -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            let mut request = [0_u8; 8192];
+            let _ = stream.read(&mut request);
+            let body = r#"{"title":"qdrant - vector search engine","version":"1.20.0"}"#;
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    url
+}
+
+#[test]
+fn init_keeps_its_setup_report_when_the_first_index_fails() {
+    let (root, env) = fixture(false);
+    let home = root.path();
+    unreachable_qdrant(home, &version_only_qdrant());
+    let (code, report, error) = mash(&env, &["init", "--yes"]);
+    assert_ne!(code, 0, "{report}");
+    // The error still fails the command, on stderr as any failure would.
+    assert_eq!(report["index_error"], error["error"], "{report}");
+    assert!(report.get("index").is_none(), "{report}");
+    assert_eq!(report["config"]["written"], false, "{report}");
+    for agent in report["agents"].as_array().unwrap() {
+        assert_eq!(agent["mcp"]["state"], "done", "{report}");
+    }
+    let next = report["next"].as_array().unwrap();
+    let first = next[0].as_str().unwrap();
+    assert!(first.starts_with("Setup was saved"), "{first}");
+    assert!(first.contains("mash index"), "{first}");
+    assert!(report["next"].to_string().contains("Restart your agents"));
+    assert!(
+        std::fs::read_to_string(home.join("calls.log"))
+            .unwrap()
+            .contains("mcp add")
+    );
 }

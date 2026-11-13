@@ -21,14 +21,16 @@ pub(super) async fn run(cli: Cli) -> Result<Response, AppError> {
         return Ok(Response::InitCancelled { cancelled: true });
     };
     eprintln!("Checking local Qdrant (no changes yet)...");
-    let mut ready = qdrant_ready(&draft.qdrant).await;
+    let observed = crate::views::qdrant::reachability(&draft.qdrant).await;
+    let mut ready = observed.state == crate::views::qdrant::Reachability::Reachable;
     if ready {
         eprintln!(
             "Local Qdrant HTTP endpoint is reachable. Indexing will also require its gRPC endpoint."
         );
     } else {
         eprintln!(
-            "Local Qdrant is unavailable. Start it using https://getmash.io/installation/#start-the-local-search-service\nYou can save configuration now and run `mash init` again afterward."
+            "Local Qdrant is unavailable. {}\nYou can save configuration now and run `mash init` again afterward.",
+            observed.message.unwrap_or_default()
         );
     }
     if let Some(shared) = &draft.shared {
@@ -71,27 +73,6 @@ struct Draft {
     qdrant: QdrantConfig,
     shared: Option<config::SharedConfig>,
     summary: String,
-}
-
-async fn qdrant_ready(config: &QdrantConfig) -> bool {
-    let Ok(client) = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(5))
-        .build()
-    else {
-        return false;
-    };
-    let mut request = client.get(format!("{}/readyz", config.url.trim_end_matches('/')));
-    if let Some(name) = &config.api_key_env {
-        let Ok(key) = std::env::var(name) else {
-            return false;
-        };
-        request = request.header("api-key", key);
-    }
-    request
-        .send()
-        .await
-        .is_ok_and(|response| response.status().is_success())
 }
 
 #[cfg(test)]

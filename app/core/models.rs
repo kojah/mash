@@ -246,6 +246,15 @@ impl Response {
         matches!(self, Self::Installation(report) if report.required_attention())
     }
 
+    /// The error a partly completed operation ended with: `init` keeps its
+    /// setup report when its first index fails, and still exits with this.
+    pub(crate) fn failure(&self) -> Option<&crate::AppError> {
+        match self {
+            Self::Init(result) => result.index_error.as_ref(),
+            _ => None,
+        }
+    }
+
     pub(crate) fn needs_retry(&self) -> bool {
         match self {
             Self::Index(result) => result.needs_retry(),
@@ -329,6 +338,9 @@ pub(crate) struct StatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) silver: Option<crate::silver::certificate::Certificate>,
     pub(super) ready: bool,
+    /// Whether the configured local Qdrant answers, apart from schema
+    /// compatibility (`local_views_error`) and search readiness (`ready`).
+    pub(super) local_qdrant: crate::views::qdrant::ServiceStatus,
     pub(super) database_path: Option<PathBuf>,
     pub(super) chats: u64,
     pub(super) messages: u64,

@@ -117,21 +117,29 @@ where
     match cli::run(args) {
         // MCP owns stdout for its entire session, including shutdown.
         Ok(cli::Response::McpStopped) => 0,
-        Ok(response) => write_json(stdout, &response).map_or_else(
-            |error| {
-                // A reader that stopped early (`mash ... | head`) is not a failure.
-                if error.code == BROKEN_PIPE {
-                    return 0;
-                }
+        Ok(response) => match write_json(stdout, &response) {
+            // A reader that stopped early (`mash ... | head`) is not a failure.
+            Err(error) if error.code == BROKEN_PIPE => 0,
+            Err(error) => {
                 let _ = write_json(stderr, &error);
                 error.code
-            },
-            |()| match response {
-                cli::Response::Operation(value) if value.needs_retry() => 9,
-                cli::Response::Operation(value) if value.required_agent_needs_attention() => 1,
+            }
+            Ok(()) => match response {
+                // A partial success keeps its report on stdout and its typed
+                // error on stderr, as a failure would.
+                cli::Response::Operation(value) => {
+                    if let Some(error) = value.failure() {
+                        let _ = write_json(stderr, error);
+                        error.code
+                    } else if value.needs_retry() {
+                        9
+                    } else {
+                        i32::from(value.required_agent_needs_attention())
+                    }
+                }
                 _ => 0,
             },
-        ),
+        },
         Err(error) if error.code == BROKEN_PIPE => 0,
         Err(error) => {
             let _ = write_json(stderr, &error);
@@ -229,6 +237,9 @@ enum Action {
     Index,
     #[serde(rename = "models install")]
     ModelsInstall,
+    /// Not a Mash command: start the Qdrant service at the reported URL.
+    #[serde(rename = "start-qdrant")]
+    StartQdrant,
 }
 
 impl AppError {

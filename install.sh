@@ -40,4 +40,5 @@ case ":$PATH:" in
   *":$directory:"*) ;;
   *) echo "Add $directory to your PATH." ;;
 esac
-echo "Next: mash init"
+echo "Next: start the local Qdrant search service that Mash needs for indexing and search"
+echo "(see https://getmash.io/installation/#start-the-local-search-service), then run: mash init"

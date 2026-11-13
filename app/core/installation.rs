@@ -54,6 +54,8 @@ pub(crate) enum Component {
     Probe,
     Index,
     Runtime,
+    /// The local Qdrant search service that indexing and every search use.
+    Qdrant,
 }
 
 #[derive(Debug, Serialize)]
@@ -205,6 +207,18 @@ impl Report {
     }
 
     fn next_action(&self) -> Option<String> {
+        // Without Qdrant nothing searches, whatever the agents' state.
+        if let Some(remedy) = self.resources.as_ref().and_then(|resources| {
+            resources
+                .findings
+                .iter()
+                .find(|finding| {
+                    finding.component == Component::Qdrant && finding.state.needs_attention()
+                })
+                .and_then(|finding| finding.remediation.clone())
+        }) {
+            return Some(remedy);
+        }
         for client in &self.clients {
             if client.expected
                 && client.cli_path.is_none()
@@ -249,7 +263,7 @@ impl Report {
             Some("mash init".to_owned())
         } else if !plugins.is_empty() {
             Some(format!(
-                "{} (needs network access; Mash MCP search already works without the plugin, which adds the history skill and session hooks)",
+                "{} (needs network access; the plugin adds the history skill and session hooks, and the Mash MCP tools are available without it)",
                 plugins.join("; ")
             ))
         } else if self.summary.attention > 0 {
@@ -444,13 +458,20 @@ pub(super) async fn inspect(
     run_probe: bool,
     paths: super::Paths,
 ) -> Result<Report, crate::AppError> {
-    let mut report = crate::blocking(move || {
+    let (mut report, qdrant) = crate::blocking(move || {
         let mut report = collect(Environment::discover().as_ref(), &agents);
         report.resources = Some(resources::inspect(&paths));
-        report.update_summary();
-        Ok(report)
+        let qdrant = crate::config::load(paths.config.as_deref())
+            .ok()
+            .map(|config| config.qdrant);
+        Ok((report, qdrant))
     })
     .await?;
+    if let (Some(config), Some(resources)) = (qdrant, &mut report.resources) {
+        let observed = crate::views::qdrant::reachability(&config).await;
+        resources.add_qdrant(&observed);
+    }
+    report.update_summary();
     if run_probe {
         for client in &mut report.clients {
             probe::check(client).await;

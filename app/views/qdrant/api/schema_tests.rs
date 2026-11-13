@@ -25,7 +25,7 @@ async fn unavailable_qdrant_names_endpoint_and_repair_without_exposing_api_key()
             error
                 .error
                 .message
-                .contains("start the configured Qdrant service")
+                .contains("Start the configured Qdrant service")
         );
         assert!(error.error.recommended_action.is_none());
         let json = serde_json::to_string(&error).unwrap();
@@ -398,4 +398,20 @@ fn word_queries_rank_by_text_and_require_each_word_or_an_alternative() {
             {"key":"unit.text","match":{"text_any":"stall stalled stalls"}}
         ])
     );
+}
+
+#[test]
+fn default_local_qdrant_start_instruction_works_offline() {
+    for url in ["http://127.0.0.1:6333", "http://localhost:6333"] {
+        let text = start_instruction(&endpoint(url).unwrap());
+        assert!(text.contains("docker start mash-local-qdrant"), "{text}");
+        assert!(text.contains("qdrant/qdrant:v1.20.0"), "{text}");
+        assert!(
+            text.contains("QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant"),
+            "{text}"
+        );
+    }
+    let remote = start_instruction(&endpoint("https://qdrant.example:6333").unwrap());
+    assert!(!remote.contains("docker"), "{remote}");
+    assert!(remote.contains("Start the configured Qdrant service"));
 }
