@@ -1553,8 +1553,20 @@ h1:focus {
   color: var(--fg);
 }
 @media (hover: none) {
+  /* Without hover the button is always shown, so it sits under the message
+     where it cannot cover the text. */
   .cp {
-    opacity: 0.55;
+    position: static;
+    width: 36px;
+    height: 36px;
+    margin-left: auto;
+    opacity: 0.7;
+  }
+  .msg > .cp {
+    margin-top: -8px;
+  }
+  .you > .cp {
+    margin-top: 6px;
   }
 }
 @keyframes skp {
