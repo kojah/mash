@@ -27,6 +27,9 @@ and never downloads or starts Qdrant.
   for branch ancestry. Do not introduce a generic object model, external content
   connectors, connector ingress, or a Python SDK. Slack, Obsidian, and other
   non-agent content are outside the product boundary.
+- Search covers dialogue only. Tool calls and their outputs stay in silver for
+  viewing and export, but are never indexed for lexical or semantic search,
+  locally or on the shared server. Do not add tool-output search.
 - Prefer in-place SQLite migrations for supported older schemas, using the same
   migration definitions for local silver and each node's shared silver database.
   Reject newer and unsupported schemas untouched. Use `rusqlite_migration`
