@@ -30,7 +30,7 @@ interface Drop {
 
 const Z_NEAR = 1;
 const Z_FAR = 11;
-/** Starlight stacks the hero below this width; the surface then sits under the copy. */
+/** Starlight centres the hero below this width; the copy then covers the whole surface. */
 const NARROW = 800;
 /** Surface seconds per real second: a slow swell and unhurried rings. */
 const SPEED = 0.55;
@@ -143,7 +143,7 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
 
   /** Dims the surface behind the copy and fades it out towards the hero's lower edge. */
   const veil = (sx: number, sy: number): number =>
-    (narrow ? 1 : 0.38 + 0.62 * smooth(fadeFrom, fadeTo, sx)) *
+    (0.38 + (narrow ? 0 : 0.62 * smooth(fadeFrom, fadeTo, sx))) *
     (1 - smooth(height * 0.8, height, sy));
 
   function drawMark(mark: Mark): void {
@@ -203,7 +203,8 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
         y0 = sy;
       }
     }
-    for (const mark of marks) drawMark(mark);
+    // Under centred copy the marks would sit behind the words, so they stay off.
+    if (!narrow) for (const mark of marks) drawMark(mark);
     ctx.globalAlpha = 1;
   }
 
@@ -220,14 +221,11 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     canvas.height = Math.round(height * ratio);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     narrow = width < NARROW;
-    horizon = narrow ? height - Math.min(270, height * 0.42) : height * 0.16;
+    horizon = height * 0.16;
     focal = (height - horizon) * 1.45;
     fadeFrom = box.left + box.width * 0.5;
     fadeTo = box.left + box.width * 0.8;
-    for (const mark of marks) {
-      const u = narrow ? (mark.u - 0.68) * 2.6 : mark.u;
-      mark.x = ((u * (width / 2)) / focal) * mark.z;
-    }
+    for (const mark of marks) mark.x = ((mark.u * (width / 2)) / focal) * mark.z;
     draw();
   }
 
