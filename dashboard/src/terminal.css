@@ -69,7 +69,7 @@
   --fg: #2a2419;
   --body: #3a3225;
   --dim: #6b5f49;
-  --faint: #8a7c61;
+  --faint: #6f6450;
   --clay: #c0562f;
   --clay2: #a84a26;
   --tag: #f1d9c9;
@@ -82,7 +82,7 @@
   --lilac: #6a55c2;
   --teal: #177a70;
   --indigo: #4a57c4;
-  --sky: #2f7fa6;
+  --sky: #226a8e;
   --stone: #6f6a5e;
   --cream: #2a2419;
   --cream-ink: #f3e6c4;
@@ -243,6 +243,9 @@ summary::-webkit-details-marker {
 @media (prefers-reduced-motion: reduce) {
   .brand i {
     animation: none;
+  }
+  #theme .knob {
+    transition: none;
   }
 }
 .nav {
@@ -890,10 +893,16 @@ mark {
   content: "> ";
   color: var(--dim);
 }
+/* The message a search led to: a labelled rule beside it, not a frame. */
 .hit {
-  outline: 1px solid var(--clay);
-  outline-offset: 3px;
-  border-radius: 4px;
+  padding-left: 12px;
+  border-left: 2px solid var(--clay);
+}
+.hitlabel {
+  margin-bottom: 6px;
+  color: var(--clay2);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 code.i {
   padding: 1px 5px;
@@ -1728,7 +1737,8 @@ h1:focus {
   display: flex;
   gap: 8px;
   width: 100%;
-  min-height: 32px;
+  min-height: 40px;
+  align-items: center;
   padding: 5px 8px;
   border-radius: 5px;
   text-align: left;
@@ -1791,6 +1801,12 @@ h1:focus {
   z-index: 5;
   background: var(--bg);
   border-bottom: 1px solid var(--hair);
+}
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 8px;
 }
 .pager.end {
   position: static;
@@ -2083,12 +2099,16 @@ h1:focus {
     padding-top: max(8px, env(safe-area-inset-top, 0px));
     visibility: hidden;
   }
+  /* On a phone the menu opens just below the row of filters, as wide as the row. */
+  .chips:has(> .fwrap) {
+    position: relative;
+  }
+  .fwrap {
+    position: static;
+  }
   .fmenu {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    top: auto;
-    bottom: 16px;
+    left: 0;
+    right: 0;
     max-width: none;
     max-height: 55vh;
   }
@@ -2125,10 +2145,25 @@ h1:focus {
   .chat {
     flex-direction: column;
   }
+  /* Opened on demand as a panel above the transcript, not left below it. */
   .sess {
+    display: none;
     flex: none;
-    order: 3;
+    order: -1;
     width: 100%;
+  }
+  .sessclose {
+    float: right;
+    min-height: 40px;
+  }
+  .chat.sessopen .sess {
+    display: block;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--raised);
   }
   .log {
     flex: none;
@@ -2792,14 +2827,39 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  /* A switch: the knob sits under the sun in light mode, the moon in dark. */
+  position: relative;
+  gap: 6px;
+  width: 70px;
+  height: 38px;
+  padding: 0 5px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--body);
+  border-radius: 999px;
+  color: var(--dim);
 }
 #theme:hover {
   border-color: var(--strong);
+}
+#theme .knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--soft);
+  transition: transform 0.16s;
+}
+#theme[aria-checked="true"] .knob {
+  transform: translateX(32px);
+}
+#theme .ic {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  width: 28px;
+}
+#theme .ic.on {
   color: var(--clay2);
 }
 
@@ -3003,6 +3063,11 @@ summary.rw::-webkit-details-marker {
   white-space: nowrap;
   font-weight: 500;
   color: var(--body);
+}
+/* An open step shows its whole description. */
+.tc[open] > summary .tc-s {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tc .mt.ok {
   color: var(--ok);
@@ -3271,4 +3336,31 @@ summary.rw::-webkit-details-marker {
 }
 .signin-problem {
   color: var(--bad);
+}
+
+/* Phones: tool text wraps instead of hiding past the box edge, argument
+   names sit above their values, suggestions use the screen's width, and
+   search controls are large enough to tap. */
+@media (max-width: 700px) {
+  .tc-pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .tc-r {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .drop {
+    position: fixed;
+    top: 64px;
+    left: 12px;
+    right: 12px;
+    max-height: 60vh;
+  }
+  .box input {
+    min-height: 40px;
+  }
+  .go {
+    width: 40px;
+    height: 40px;
+  }
 }

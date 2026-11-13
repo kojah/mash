@@ -760,7 +760,7 @@ fn search_operation(params: SearchParams, shared_only: bool) -> Result<Operation
         shared_vector_search: None,
         query: params.q,
         intent: None,
-        limit: Some(20),
+        limit: Some(10),
         offset: params.offset,
         unit: Some(crate::search_results::SearchUnit::Chats),
         fusion: crate::views::config::FusionOverrides::default(),

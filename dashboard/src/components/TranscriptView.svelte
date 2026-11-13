@@ -1,11 +1,14 @@
 <script lang="ts">
 import Brain from "@lucide/svelte/icons/brain";
+import ChevronsDown from "@lucide/svelte/icons/chevrons-down";
+import ChevronsUp from "@lucide/svelte/icons/chevrons-up";
 import Copy from "@lucide/svelte/icons/copy";
 import Download from "@lucide/svelte/icons/download";
 import Lightbulb from "@lucide/svelte/icons/lightbulb";
 import PanelLeft from "@lucide/svelte/icons/panel-left";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import Terminal from "@lucide/svelte/icons/terminal";
+import X from "@lucide/svelte/icons/x";
 import { createQuery } from "@tanstack/svelte-query";
 import { tick, untrack } from "svelte";
 import { context, type MessagePage, PAGE_SIZE, transcript } from "../lib/api";
@@ -45,6 +48,24 @@ const chat = $derived(sessions.find((chat) => chat.id === id && chat.machine ===
 let offset = $state(0);
 let anchor = $state(untrack(() => messageId));
 let showSessions = $state(true);
+// On a phone the list is a panel at the top that the reader opens on demand.
+const phoneQuery =
+  typeof window === "undefined" ? undefined : window.matchMedia("(max-width: 700px)");
+let phone = $state(phoneQuery?.matches ?? false);
+let sessionsOpen = $state(false);
+$effect(() => {
+  if (!phoneQuery) return;
+  const update = (): void => {
+    phone = phoneQuery.matches;
+  };
+  phoneQuery.addEventListener("change", update);
+  return () => phoneQuery.removeEventListener("change", update);
+});
+const sessionsShown = $derived(phone ? sessionsOpen : showSessions);
+function toggleSessions(): void {
+  if (phone) sessionsOpen = !sessionsOpen;
+  else showSessions = !showSessions;
+}
 let exportOpen = $state(false);
 let currentMessage = $state("");
 // Other chats from the same project, with this one kept in view.
@@ -98,6 +119,7 @@ $effect(() => {
   offset = 0;
   notice = "";
   exportOpen = false;
+  sessionsOpen = false;
   window.scrollTo({ top: 0, behavior: "instant" });
   return () => exportController?.abort();
 });
@@ -111,6 +133,11 @@ const live = createQuery(() => ({
   ...stableRead,
 }));
 const loaded = $derived(snapshot?.key === key ? snapshot.page : undefined);
+const total = $derived(loaded?.total);
+/** Where the last page starts, when the chat's length is known. */
+const lastOffset = $derived(total ? Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE : undefined);
+/** Set when the reader asked for the end, so the last page opens at its bottom. */
+let toEnd = false;
 let rememberedKey = "";
 $effect(() => {
   const first = loaded?.messages[0];
@@ -128,7 +155,12 @@ const changed = $derived(
 $effect(() => {
   if (live.data && snapshot?.key !== key) {
     snapshot = { key, page: live.data };
-    if (anchor)
+    if (toEnd) {
+      toEnd = false;
+      void tick().then(() =>
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }),
+      );
+    } else if (anchor)
       tick()
         .then(() =>
           document.getElementById(`message-${anchor}`)?.scrollIntoView({ block: "center" }),
@@ -212,6 +244,15 @@ function page(next: number): void {
   offset = next;
   window.scrollTo({ top: 0, behavior: "instant" });
 }
+function latest(): void {
+  if (lastOffset === undefined) return;
+  if (!anchor && offset === lastOffset) {
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+    return;
+  }
+  toEnd = true;
+  page(lastOffset);
+}
 async function copySession(): Promise<void> {
   try {
     await navigator.clipboard.writeText(id);
@@ -286,14 +327,15 @@ const prompts = $derived(
 </script>
 
 <svelte:window onscroll={remember} onkeydown={(event) => { if (event.key === "Escape") exportOpen = false; }} />
-<div class="chat" class:nosess={!showSessions}>
+<div class="chat" class:nosess={!showSessions} class:sessopen={sessionsOpen}>
   <nav class="sess" aria-label="Prompts and sessions">
+    {#if phone && sessionsOpen}<button class="btn sessclose" type="button" onclick={() => (sessionsOpen = false)}><X size={15} aria-hidden="true" />Close</button>{/if}
     {#if prompts.length >= 2}
       <div class="outl">
         <h2 class="h2">your prompts on this page</h2>
         <div class="outl-l">
           {#each prompts as message, index (message.id)}
-            <button type="button" class:on={currentMessage === message.id} aria-current={currentMessage === message.id ? "location" : undefined} onclick={() => jump(message.id)}><small>{index + 1}</small><span>{plainText(message).replace(/\s+/g, " ").slice(0, 80)}</span></button>
+            <button type="button" class:on={currentMessage === message.id} aria-current={currentMessage === message.id ? "location" : undefined} onclick={() => { sessionsOpen = false; jump(message.id); }}><small>{index + 1}</small><span>{plainText(message).replace(/\s+/g, " ").slice(0, 80)}</span></button>
           {/each}
         </div>
       </div>
@@ -317,11 +359,11 @@ const prompts = $derived(
         <h1 class="h1">{chat ? plainTitle(chat.title) : `Chat ${id.slice(-8)}`}</h1>
         <p class="meta" style:margin-top="8px">
           {#if chat}<MetaChips {chat} />{:else}{displayMachine}{/if}
-          <span class="mtx">{anchor ? "around the selected match" : `messages ${offset.toLocaleString()}–${(offset + PAGE_SIZE - 1).toLocaleString()}`}</span>
+          <span class="mtx">{anchor ? "around the selected match" : total ? `messages ${(offset + 1).toLocaleString()}–${Math.min(offset + PAGE_SIZE, total).toLocaleString()} of ${total.toLocaleString()}` : `messages ${(offset + 1).toLocaleString()}–${(offset + PAGE_SIZE).toLocaleString()}`}</span>
         </p>
       </div>
       <span class="acts" style:position="relative">
-        <button class="btn" type="button" aria-pressed={showSessions} aria-label="{showSessions ? 'Hide' : 'Show'} session list" title="{showSessions ? 'Hide' : 'Show'} session list" onclick={() => (showSessions = !showSessions)} style:padding="0 11px"><PanelLeft size={15} /></button>
+        <button class="btn" type="button" aria-pressed={sessionsShown} aria-label="{sessionsShown ? 'Hide' : 'Show'} session list" title="{sessionsShown ? 'Hide' : 'Show'} session list" onclick={toggleSessions} style:padding="0 11px"><PanelLeft size={15} /></button>
         <button class="btn" type="button" onclick={copySession}><Copy size={15} aria-hidden="true" />Copy session ID</button>
         <button class="btn" type="button" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)}><Download size={15} aria-hidden="true" />Export</button>
         {#if exportOpen}
@@ -335,7 +377,13 @@ const prompts = $derived(
       </span>
     </header>
     {#if exporting}<p class="meta"><button class="a" type="button" onclick={() => exportController?.abort()}>Cancel export</button></p>{/if}
-    {#if anchor}<p class="meta">Showing the messages around a search match. <button class="a" type="button" onclick={() => page(0)}>Read from the beginning</button></p>{/if}
+    {#if anchor}<p class="meta">Showing the messages around a search match.</p>{/if}
+    {#if anchor || (total !== undefined && total > PAGE_SIZE)}
+      <nav class="jump" aria-label="Jump within this chat">
+        <button class="btn" type="button" disabled={!anchor && offset === 0} onclick={() => page(0)}><ChevronsUp size={15} aria-hidden="true" />First message</button>
+        {#if lastOffset !== undefined}<button class="btn" type="button" onclick={latest}><ChevronsDown size={15} aria-hidden="true" />Latest message</button>{/if}
+      </nav>
+    {/if}
     <QueryError title="Couldn’t load the chat list" query={catalogue} retryLabel="Retry catalogue" />
     {#each catalogue.data?.warnings ?? [] as warning (warning)}<p role="status" class="meta">{warning}</p>{/each}
     {#if live.isPending}
@@ -380,7 +428,8 @@ const prompts = $derived(
         {:else}
           {@const message = item.message}
           {@const selected = message.id === messageId}
-          <div class="hitbox" class:hit={selected} id="message-{message.id}" data-message={message.id} style:scroll-margin-top="80px" style:padding={selected ? "10px 12px" : "0"}>
+          <div class="hitbox" class:hit={selected} id="message-{message.id}" data-message={message.id} style:scroll-margin-top="80px">
+            {#if selected}<span class="hitlabel">Matched your search</span>{/if}
             {#if message.role === "user"}
               <div class="you"><MessageBody text={plainText(message)} own /><button class="cp" type="button" aria-label="Copy message" title="Copy message" onclick={() => copy(message)}><Copy size={14} /></button></div>
             {:else}
@@ -398,8 +447,10 @@ const prompts = $derived(
       {/each}
       {#if !anchor}
         <nav aria-label="Message pages" class="pager end">
+          <button class="btn" type="button" disabled={offset === 0} onclick={() => page(0)} aria-label="First message" title="First message"><ChevronsUp size={15} aria-hidden="true" /></button>
           <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}>Previous messages</button>
           <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)}>Next messages</button>
+          {#if lastOffset !== undefined}<button class="btn" type="button" disabled={offset === lastOffset} onclick={latest} aria-label="Latest message" title="Latest message"><ChevronsDown size={15} aria-hidden="true" /></button>{/if}
         </nav>
       {/if}
     {/if}

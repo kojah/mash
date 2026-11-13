@@ -38,7 +38,7 @@ import QueryError from "./QueryError.svelte";
 // first. The address is the applied search; the chips below are a draft
 // until "Apply filters" is chosen, so results never change under the reader.
 let { params }: { params: string } = $props();
-const pageSize = 25;
+const pageSize = 10;
 const applied = $derived(parseApplied(params));
 let draft = $state<Applied>(untrack(() => parseApplied(params)));
 const dirty = $derived(!sameSearch(draft, applied));
@@ -220,7 +220,7 @@ const rangeLabel = $derived.by(() => {
         <nav class="hd" aria-label="Pages" style:margin-top="14px">
           <span class="meta">{rangeLabel}</span>
           <span class="acts">
-            {#if result.data.first > 0}<a class="btn" rel="prev" href={page(Math.max(0, result.data.first - (applied.query ? 20 : pageSize)))}>Previous</a>{:else}<button class="btn" type="button" disabled>Previous</button>{/if}
+            {#if result.data.first > 0}<a class="btn" rel="prev" href={page(Math.max(0, result.data.first - pageSize))}>Previous</a>{:else}<button class="btn" type="button" disabled>Previous</button>{/if}
             {#if result.data.nextOffset !== null}<a class="btn" rel="next" href={page(result.data.nextOffset)}>Next</a>{:else}<button class="btn" type="button" disabled>Next</button>{/if}
           </span>
         </nav>

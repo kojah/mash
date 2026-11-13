@@ -4,15 +4,35 @@ import { markdown } from "../lib/markdown";
 // `own` marks a message the reader typed: its line breaks and tags are kept.
 let { text, own = false }: { text: string; own?: boolean } = $props();
 let expanded = $state(false);
+// A long message the reader typed opens at its first lines; agent replies
+// are shown whole unless they are huge.
+const huge = $derived(text.length > 16_384);
+let body = $state<HTMLDivElement>();
+let tall = $state(false);
+$effect(() => {
+  if (!own || !body) return;
+  const element = body;
+  const measure = (): void => {
+    tall = element.scrollHeight > 200;
+  };
+  measure();
+  const observer = new ResizeObserver(measure);
+  observer.observe(element);
+  return () => observer.disconnect();
+});
 </script>
 
-<div class="prose min-w-0 break-words" class:collapsed={!expanded && text.length > 16_384}>{@html markdown(text, own)}</div>
-{#if text.length > 16_384}
+<div bind:this={body} class="prose min-w-0 break-words" class:collapsed={!expanded && huge} class:clamped={!expanded && !huge && own && tall}>{@html markdown(text, own)}</div>
+{#if huge}
   <button type="button" class="a" style:align-self="flex-start" style:font-size="13.5px" onclick={() => expanded = !expanded}>{expanded ? "Collapse" : `Show full message (${text.length.toLocaleString()} characters)`}</button>
+{:else if own && tall}
+  <button type="button" class="a more" aria-expanded={expanded} onclick={() => expanded = !expanded}>{expanded ? "Show less" : "Show more"}</button>
 {/if}
 
 <style>
 .collapsed { max-height: 32rem; overflow: hidden; mask-image: linear-gradient(black 90%, transparent); }
+.clamped { max-height: 11rem; overflow: hidden; mask-image: linear-gradient(black 55%, transparent); -webkit-mask-image: linear-gradient(black 55%, transparent); }
+.more { align-self: flex-start; margin-top: 6px; font-size: 13.5px; font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .prose :global(p) { margin: 0 0 .75rem; }
 .prose :global(h1), .prose :global(h2), .prose :global(h3), .prose :global(h4) { font-weight: 650; line-height: 1.3; margin: 1.25rem 0 .65rem; }
 .prose :global(h1) { font-size: 16px; }

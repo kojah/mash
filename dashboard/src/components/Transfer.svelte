@@ -30,7 +30,7 @@ import Skeleton from "./Skeleton.svelte";
 // browser from the same read-only pages a single chat uses, so nothing here
 // changes history or writes on the machine.
 let { params }: { params: string } = $props();
-const pageSize = 25;
+const pageSize = 10;
 const base = "#/export";
 const now = Date.now();
 const applied = $derived(parseApplied(params));

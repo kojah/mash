@@ -15,6 +15,8 @@ export interface SearchPage {
 }
 export interface MessagePage {
   readonly messages: readonly Message[];
+  /** Messages in the whole chat, when the server reports it. */
+  readonly total?: number;
 }
 
 export function isAgent(value: string): value is Agent {
@@ -147,6 +149,7 @@ export function parseSearch(body: Answer<"/api/search">, localNode: string): Sea
 }
 export function parseMessages(body: Answer<"/api/chat">): MessagePage {
   return {
+    ...(typeof body.message_count === "number" ? { total: body.message_count } : {}),
     messages: body.messages.map((row) => {
       const tools = row.tools ?? {};
       const calls = tools.tool_calls ?? [];

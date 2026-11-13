@@ -125,7 +125,9 @@ function submit(event: SubmitEvent): void {
       </div>
     {/if}
   </div>
-  <button id="theme" type="button" aria-label={theme.current === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme.current === "dark" ? "Switch to light mode" : "Switch to dark mode"} onclick={toggleTheme}>
-    {#if theme.current === "dark"}<Sun size={18} aria-hidden="true" />{:else}<Moon size={18} aria-hidden="true" />{/if}
+  <button id="theme" type="button" role="switch" aria-checked={theme.current === "dark"} aria-label="Dark mode" title={theme.current === "dark" ? "Switch to light mode" : "Switch to dark mode"} onclick={toggleTheme}>
+    <span class="knob" aria-hidden="true"></span>
+    <span class="ic" class:on={theme.current === "light"}><Sun size={15} aria-hidden="true" /></span>
+    <span class="ic" class:on={theme.current === "dark"}><Moon size={15} aria-hidden="true" /></span>
   </button>
 </header>

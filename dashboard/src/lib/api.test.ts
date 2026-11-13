@@ -93,4 +93,8 @@ describe("dashboard API boundary", () => {
       { type: "text", markdown: "<img src=x onerror=alert(1)>" },
     ]);
   });
+  it("keeps the chat's length so a reader can jump to its last page", () => {
+    expect(parseMessages({ message_count: 342, messages: [] }).total).toBe(342);
+    expect(parseMessages({ messages: [] }).total).toBeUndefined();
+  });
 });
