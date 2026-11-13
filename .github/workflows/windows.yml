@@ -66,11 +66,17 @@ jobs:
             throw 'Qdrant archive checksum mismatch'
           }
           Expand-Archive $archive -DestinationPath $root
-          $env:QDRANT__SERVICE__HOST = '127.0.0.1'
-          $process = Start-Process (Join-Path $root 'qdrant.exe') -WorkingDirectory $root -PassThru -RedirectStandardOutput (Join-Path $root 'stdout.log') -RedirectStandardError (Join-Path $root 'stderr.log')
-          $process.Id | Set-Content (Join-Path $root 'pid')
+          # A process started from a step ends with that step on Windows
+          # runners. Create it through WMI so it lives outside the step's
+          # process tree and serves the later steps. WMI does not pass this
+          # shell's environment, so cmd sets the bind address and redirects
+          # the logs.
+          $command = 'cmd.exe /d /c "set QDRANT__SERVICE__HOST=127.0.0.1&& qdrant.exe > stdout.log 2> stderr.log"'
+          $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $command; CurrentDirectory = $root }
+          if ($created.ReturnValue -ne 0) { throw "Could not start Qdrant: Win32_Process.Create returned $($created.ReturnValue)" }
+          $created.ProcessId | Set-Content (Join-Path $root 'pid')
           for ($attempt = 0; $attempt -lt 60; $attempt++) {
-            if ($process.HasExited) { throw 'Qdrant exited before readiness' }
+            if (-not (Get-Process -Id $created.ProcessId -ErrorAction SilentlyContinue)) { throw 'Qdrant exited before readiness' }
             try {
               Invoke-RestMethod 'http://127.0.0.1:6333/readyz' -TimeoutSec 2 | Out-Null
               exit 0
@@ -130,7 +136,9 @@ jobs:
           if (Test-Path $pidFile) {
             $id = [int](Get-Content $pidFile)
             $process = Get-Process -Id $id -ErrorAction SilentlyContinue
-            if ($process) { "Qdrant process $id is still running." } else { "Qdrant process $id has exited." }
+            if ($process) { "Launcher process $id is still running." } else { "Launcher process $id has exited." }
+            $qdrant = Get-Process -Name qdrant -ErrorAction SilentlyContinue
+            if ($qdrant) { "qdrant.exe is running as $($qdrant.Id -join ', ')." } else { 'No qdrant.exe process is running.' }
           } else { 'No Qdrant PID file.' }
           try {
             Invoke-RestMethod 'http://127.0.0.1:6333/readyz' -TimeoutSec 5 | Out-Null
@@ -147,7 +155,8 @@ jobs:
         run: |
           $pidFile = Join-Path $env:RUNNER_TEMP 'qdrant/pid'
           if (Test-Path $pidFile) {
-            Stop-Process -Id ([int](Get-Content $pidFile)) -ErrorAction SilentlyContinue
+            # The recorded process is cmd; end Qdrant beneath it too.
+            taskkill /PID ([int](Get-Content $pidFile)) /T /F 2>&1 | Out-Null
           }
 
   # What Windows exported must import, search and display unchanged on Linux.
