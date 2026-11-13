@@ -3,7 +3,7 @@
 </script>
 
 <aside class="demo" aria-label="About this demo">
-  <span><b>Demo.</b> This history is made up<span class="more">, and nothing here can be changed</span>.</span>
+  <span><b>Demo.</b> This is a build of Mash with synthetic chat data.</span>
   <a href="https://getmash.io/quick-start/">Install Mash</a>
 </aside>
 
@@ -30,11 +30,6 @@
     font-weight: 600;
     text-decoration: underline;
     text-underline-offset: 3px;
-  }
-  @media (max-width: 600px) {
-    .more {
-      display: none;
-    }
   }
   /* The page and the rail end above the bar. */
   :global(body) {

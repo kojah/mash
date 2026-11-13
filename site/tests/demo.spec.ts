@@ -10,7 +10,7 @@ test("the landing page leads to a working demo of the dashboard", async ({ page 
   await page.locator(".hero").getByRole("link", { name: "Try it", exact: true }).click();
   await expect(page).toHaveURL(/\/demo\/$/);
   await expect(page.getByRole("complementary", { name: "About this demo" })).toContainText(
-    "This history is made up",
+    "This is a build of Mash with synthetic chat data.",
   );
   // The dashboard itself, answering from the made-up history.
   await page.getByRole("link", { name: "Move sign-in to short-lived tokens" }).first().click();
