@@ -146,8 +146,56 @@ copy Mash can restore, use
 [a portable backup](upgrades.md#make-a-portable-backup). Chats from your other
 machines appear in the dashboard through [sharing](shared-index.md).
 
+## Open it from your phone or another computer
+
+By default, only your machine can reach the dashboard. To use it from other
+devices, give it an access token and a private network path. The steps below
+use [Tailscale](https://tailscale.com), which gives the dashboard an HTTPS
+address only your own devices can open.
+
+1. On the machine that runs the dashboard, choose a token of at least 32
+   characters and keep it in an environment variable:
+
+   ```sh
+   export MASH_DASH_TOKEN="$(openssl rand -hex 24)"
+   echo "$MASH_DASH_TOKEN"
+   ```
+
+2. Publish the dashboard's port inside your tailnet. The command prints the
+   address, such as `https://laptop.your-tailnet.ts.net`:
+
+   ```sh
+   tailscale serve --bg 8790
+   ```
+
+3. Start the dashboard with that name and the token variable:
+
+   ```sh
+   mash dash --allow-host laptop.your-tailnet.ts.net --access-token-env MASH_DASH_TOKEN
+   ```
+
+4. On the phone, with Tailscale connected, open the address and enter the
+   token once. The browser stays signed in for 30 days.
+
+The dashboard searches whatever that machine can search: its own history and,
+with a [shared index](shared-index.md), your other machines' history too.
+
+`--allow-host` is the name browsers use for the dashboard, with its port when
+the address shows one (`laptop.your-tailnet.ts.net:8443`); repeat it for more
+than one. It works the same way behind another HTTPS reverse proxy, such as
+Caddy. Changing the token signs every browser out.
+
 ## Keep access private
 
-By default, only your machine can reach the dashboard. It has no login, so
-changing its listening address can expose your history to others. Keep it on
-your own machine or a trusted private network.
+With `--access-token-env`, every page of history needs the sign-in. Ten wrong
+tokens in a minute pause sign-in for everyone until the minute passes.
+
+Without it the dashboard has no login. Keep it on its default address, which
+only your machine can reach: `mash dash --listen` with another address serves
+your history to anyone who can connect, and prints a warning when started that
+way. `--allow-host` refuses to start without a token.
+
+Prefer a private network over a public address. On the public internet the
+token is the only thing protecting your full chat history, and a tunnel service
+that ends HTTPS for you, such as Cloudflare Tunnel, can read what passes
+through it.

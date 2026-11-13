@@ -13,6 +13,7 @@ use axum::response::{IntoResponse, Response};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+mod access;
 mod contract;
 mod services;
 
@@ -25,18 +26,39 @@ struct Dash {
     hosts: Vec<String>,
     /// Whether only this machine can reach the dashboard.
     loopback: bool,
+    access: access::Access,
     model_work: tokio::sync::Semaphore,
     services: services::Services,
     console: crate::mcp::console::Console,
 }
 
+/// How other devices reach this dashboard.
+pub(crate) struct Reach {
+    pub(crate) listen: SocketAddr,
+    /// Names a reverse proxy or private network gives the dashboard.
+    pub(crate) hosts: Vec<String>,
+    /// Environment variable holding the token every visitor signs in with.
+    pub(crate) access_token_env: Option<String>,
+}
+
 pub(crate) async fn run(
     paths: Paths,
-    listen: SocketAddr,
+    reach: Reach,
     services_config: Option<std::path::PathBuf>,
     fleet_config: Option<std::path::PathBuf>,
     fleet_node: Option<String>,
 ) -> Result<(), AppError> {
+    let Reach {
+        listen,
+        hosts: names,
+        access_token_env,
+    } = reach;
+    let access = access::Access::load(access_token_env.as_deref())?;
+    if !names.is_empty() && !access.required() {
+        return Err(AppError::configuration(
+            "--allow-host makes the dashboard reachable from other devices; set --access-token-env as well",
+        ));
+    }
     let services = tokio::task::spawn_blocking(move || {
         if let Some(path) = fleet_config {
             services::Services::load_fleet(&path, fleet_node.as_deref())
@@ -52,18 +74,23 @@ pub(crate) async fn run(
     let address = listener
         .local_addr()
         .map_err(|_| AppError::internal("get dashboard address"))?;
+    let loopback = address.ip().is_loopback() && names.is_empty();
+    let mut hosts = allowed_hosts(address);
+    hosts.extend(names);
+    let mut started = serde_json::json!({ "dashboard": format!("http://{address}/") });
+    if !loopback && !access.required() {
+        started["warning"] = "anyone who can reach this address can read your chat history; set --access-token-env to require sign-in".into();
+    }
     let state = Arc::new(Dash {
         console: crate::mcp::console::Console::new(paths.clone()),
         paths,
-        hosts: allowed_hosts(address),
-        loopback: address.ip().is_loopback(),
+        hosts,
+        loopback,
+        access,
         model_work: tokio::sync::Semaphore::new(1),
         services,
     });
-    crate::write_json(
-        &mut std::io::stderr(),
-        &serde_json::json!({ "dashboard": format!("http://{address}/") }),
-    )?;
+    crate::write_json(&mut std::io::stderr(), &started)?;
     axum::serve(listener, router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
@@ -205,6 +232,8 @@ fn router(state: Arc<Dash>) -> Router {
     api()
         .0
         .route("/api/openapi.json", axum::routing::get(openapi))
+        .route("/api/session", axum::routing::get(session).post(sign_in))
+        .route("/api/session/end", axum::routing::post(sign_out))
         .fallback(axum::routing::get(asset))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         // The chat catalogue is over a megabyte of JSON for a few thousand
@@ -271,8 +300,28 @@ async fn guard(
     {
         return (StatusCode::MISDIRECTED_REQUEST, "unexpected Host header").into_response();
     }
-    let service_path = request.uri().path() == "/api/services"
-        || request.uri().path().starts_with("/api/services/");
+    let path = request.uri().path();
+    let service_path = path == "/api/services" || path.starts_with("/api/services/");
+    let session_path = matches!(path, "/api/session" | "/api/session/end");
+    // The page and its assets say nothing about history; everything under
+    // /api does, except the build stamp and signing in. Another dashboard
+    // presents the services token instead of a session.
+    let peer =
+        service_path && state.services.has_token() && state.services.authorized(request.headers());
+    if path.starts_with("/api/")
+        && path != "/api/health"
+        && !session_path
+        && !peer
+        && !state.access.signed_in(request.headers())
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(AppError::configuration(
+                "Sign in with the dashboard access token",
+            )),
+        )
+            .into_response();
+    }
     if service_path
         && request.uri().path() != "/api/services/access"
         && !state.services.authorized(request.headers())
@@ -285,10 +334,12 @@ async fn guard(
         )
             .into_response();
     }
-    let service_action = matches!(
-        request.uri().path(),
-        "/api/services/action" | "/api/services/fleet/jobs" | "/api/services/settings"
-    ) && request.method() == axum::http::Method::POST;
+    let service_action = (session_path
+        || matches!(
+            request.uri().path(),
+            "/api/services/action" | "/api/services/fleet/jobs" | "/api/services/settings"
+        ))
+        && request.method() == axum::http::Method::POST;
     if service_action && let Some(origin) = request.headers().get(header::ORIGIN) {
         let valid = origin
             .to_str()
@@ -308,22 +359,31 @@ async fn guard(
     {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
-    let path = request.uri().path();
-    let cache = if path.starts_with("/api/") {
-        Cache::Api
-    } else if path.starts_with("/assets/") {
-        Cache::Hashed
-    } else if std::path::Path::new(path)
-        .extension()
-        .is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("svg") || extension.eq_ignore_ascii_case("png")
-        })
-    {
-        Cache::Image
-    } else {
-        Cache::Page
-    };
-    let mut response = next.run(request).await;
+    let cache = Cache::of(request.uri().path());
+    harden(next.run(request).await, cache)
+}
+
+impl Cache {
+    fn of(path: &str) -> Self {
+        if path.starts_with("/api/") {
+            Self::Api
+        } else if path.starts_with("/assets/") {
+            Self::Hashed
+        } else if std::path::Path::new(path)
+            .extension()
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("svg") || extension.eq_ignore_ascii_case("png")
+            })
+        {
+            Self::Image
+        } else {
+            Self::Page
+        }
+    }
+}
+
+/// The caching and browser-safety headers every response carries.
+fn harden(mut response: Response, cache: Cache) -> Response {
     let headers = response.headers_mut();
     // Built assets carry a content hash in their name, so a browser may keep
     // them for good. Logos change rarely. The page itself is always rechecked.
@@ -351,6 +411,75 @@ async fn guard(
         ),
     );
     response
+}
+
+/// Whether this dashboard asks visitors to sign in, and whether this one has.
+async fn session(State(state): State<Arc<Dash>>, headers: axum::http::HeaderMap) -> Response {
+    axum::Json(serde_json::json!({
+        "required": state.access.required(),
+        "signed_in": state.access.signed_in(&headers),
+    }))
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SignIn {
+    token: String,
+}
+
+/// A reverse proxy that ends TLS says so; the cookie is then kept to HTTPS.
+fn forwarded_https(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
+}
+
+async fn sign_in(
+    State(state): State<Arc<Dash>>,
+    headers: axum::http::HeaderMap,
+    input: Result<axum::Json<SignIn>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let Ok(axum::Json(input)) = input else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    match state
+        .access
+        .sign_in(&input.token, forwarded_https(&headers))
+    {
+        Ok(cookie) => (
+            [(header::SET_COOKIE, cookie)],
+            axum::Json(serde_json::json!({ "required": true, "signed_in": true })),
+        )
+            .into_response(),
+        Err(access::Refusal::Wrong) => (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(AppError::configuration("That access token is not right")),
+        )
+            .into_response(),
+        Err(access::Refusal::TooMany) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(AppError::configuration(
+                "Too many wrong tokens; wait a minute and try again",
+            )),
+        )
+            .into_response(),
+    }
+}
+
+async fn sign_out(State(state): State<Arc<Dash>>, headers: axum::http::HeaderMap) -> Response {
+    (
+        [(
+            header::SET_COOKIE,
+            access::Access::sign_out(forwarded_https(&headers)),
+        )],
+        axum::Json(serde_json::json!({
+            "required": state.access.required(),
+            "signed_in": !state.access.required(),
+        })),
+    )
+        .into_response()
 }
 
 #[derive(serde::Serialize, schemars::JsonSchema)]
@@ -858,6 +987,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_reachable_dashboard_serves_history_only_after_sign_in() {
+        const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+        let (_directory, paths, _) = record_fixture();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut hosts = allowed_hosts(address);
+        hosts.push("mash.example.ts.net".into());
+        let app = super::router(std::sync::Arc::new(super::Dash {
+            console: crate::mcp::console::Console::new(crate::core::Paths::default()),
+            paths,
+            hosts,
+            loopback: false,
+            access: super::access::Access::new(Some(TOKEN)),
+            model_work: tokio::sync::Semaphore::new(0),
+            services: super::services::Services::load(None).unwrap(),
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        let url = |path: &str| format!("http://{address}{path}");
+        // The page and build stamp are public; nothing that reads history is.
+        for path in ["/", "/api/health", "/api/session"] {
+            let status = client.get(url(path)).send().await.unwrap().status();
+            assert_ne!(status, reqwest::StatusCode::UNAUTHORIZED, "{path}");
+        }
+        for path in [
+            "/api/status",
+            "/api/chats",
+            "/api/search?q=port",
+            "/api/view?id=source",
+            "/api/records",
+            "/api/console/tools",
+            "/api/services",
+            "/api/services/access",
+            "/api/openapi.json",
+        ] {
+            let status = client.get(url(path)).send().await.unwrap().status();
+            assert_eq!(status, reqwest::StatusCode::UNAUTHORIZED, "{path}");
+        }
+        let sign_in = |token: &'static str, origin: Option<&'static str>| {
+            let mut request = client
+                .post(url("/api/session"))
+                .json(&serde_json::json!({ "token": token }));
+            if let Some(origin) = origin {
+                request = request.header("Origin", origin);
+            }
+            request.send()
+        };
+        assert_eq!(
+            sign_in("wrong", None).await.unwrap().status(),
+            reqwest::StatusCode::UNAUTHORIZED
+        );
+        // Another website cannot sign a visitor's browser in.
+        assert_eq!(
+            sign_in(TOKEN, Some("https://evil.invalid"))
+                .await
+                .unwrap()
+                .status(),
+            reqwest::StatusCode::FORBIDDEN
+        );
+        let accepted = sign_in(TOKEN, None).await.unwrap();
+        assert_eq!(accepted.status(), reqwest::StatusCode::OK);
+        let set = accepted.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(set.contains("HttpOnly") && !set.contains(TOKEN));
+        let cookie = set.split(';').next().unwrap().to_owned();
+        for path in ["/api/status", "/api/view?id=source&node=local"] {
+            let response = client
+                .get(url(path))
+                .header("Cookie", &cookie)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+        }
+        // The proxy's name is accepted; the session works under it too.
+        let named = client
+            .get(url("/api/session"))
+            .header("Host", "mash.example.ts.net")
+            .header("Cookie", &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(named.status(), reqwest::StatusCode::OK);
+        let named: serde_json::Value = named.json().await.unwrap();
+        assert_eq!(named["signed_in"], true);
+        let ended = client.post(url("/api/session/end")).send().await.unwrap();
+        assert!(
+            ended.headers()["set-cookie"]
+                .to_str()
+                .unwrap()
+                .contains("Max-Age=0")
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn dashboard_shared_chat_source_never_falls_back_to_local_node() {
         let (_directory, paths, _) = record_fixture();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -867,6 +1094,7 @@ mod tests {
             paths,
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
+            access: super::access::Access::new(None),
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -916,6 +1144,7 @@ mod tests {
             paths,
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
+            access: super::access::Access::new(None),
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1008,6 +1237,7 @@ mod tests {
             },
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
+            access: super::access::Access::new(None),
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1101,6 +1331,7 @@ mod tests {
             },
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
+            access: super::access::Access::new(None),
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1248,6 +1479,7 @@ mod tests {
                 paths: paths.clone(),
                 hosts: allowed_hosts(address),
                 loopback,
+                access: super::access::Access::new(None),
                 model_work: tokio::sync::Semaphore::new(0),
                 services: super::services::Services::load(None).unwrap(),
             }));

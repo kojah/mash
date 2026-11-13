@@ -18,6 +18,7 @@ import RecordView from "./components/RecordView.svelte";
 import Search from "./components/Search.svelte";
 import ServicesView from "./components/ServicesView.svelte";
 import Settings from "./components/Settings.svelte";
+import SignIn from "./components/SignIn.svelte";
 import TopBar from "./components/TopBar.svelte";
 import TranscriptView from "./components/TranscriptView.svelte";
 import Transfer from "./components/Transfer.svelte";
@@ -26,8 +27,16 @@ import { isAgent } from "./lib/api";
 import { projectLabel } from "./lib/browse";
 import { stableRead } from "./lib/queries";
 import { router } from "./lib/route.svelte";
+import { check, gate, open } from "./lib/session.svelte";
 
 const client = new QueryClient({ defaultOptions: { queries: stableRead } });
+// Nothing is read until the dashboard has said whether it wants a sign-in.
+void check();
+function signedIn(): void {
+  // Answers refused before the sign-in must not be shown as failures after it.
+  client.clear();
+  open();
+}
 const route = $derived(router.current);
 // Keep the submitted search mounted while a chat is open, so going back
 // returns to the same results.
@@ -50,6 +59,9 @@ $effect(() => {
     }
   }}
 />
+{#if gate.value === "locked"}
+  <SignIn done={signedIn} />
+{:else if gate.value === "open"}
 <QueryClientProvider {client}>
   <Rail open={railOpen} close={() => (railOpen = false)} />
   <div id="col">
@@ -121,3 +133,4 @@ $effect(() => {
   <!-- The drawer's own button and Escape close it for keyboards and screen readers. -->
   {#if railOpen}<div id="scrim" aria-hidden="true" onclick={() => (railOpen = false)}></div>{/if}
 </QueryClientProvider>
+{/if}

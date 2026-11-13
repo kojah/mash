@@ -102,6 +102,12 @@ impl Services {
         })
     }
 
+    /// Whether service routes have a token of their own, which other
+    /// dashboards present instead of signing in.
+    pub(super) fn has_token(&self) -> bool {
+        self.token_hash.is_some()
+    }
+
     /// Whether this dashboard was started with a services configuration: the
     /// operator's opt-in to managing the machine from it.
     pub(super) fn managed(&self) -> bool {
@@ -564,4 +570,10 @@ pub(super) fn routes(
                 ),
             ),
         )
+}
+
+/// A token read from the named environment variable, held to the same rules
+/// as service tokens.
+pub(super) fn token(name: &str) -> Result<String, crate::AppError> {
+    config::token(name)
 }

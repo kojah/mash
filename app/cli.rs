@@ -271,6 +271,15 @@ enum Command {
         /// Address to listen on; loopback by default.
         #[arg(long, value_name = "ADDRESS", default_value = "127.0.0.1:8790")]
         listen: std::net::SocketAddr,
+        /// Another name browsers use for this dashboard, such as the HTTPS name a
+        /// reverse proxy or `tailscale serve` gives it; repeatable. Requires
+        /// --access-token-env.
+        #[arg(long, value_name = "HOST")]
+        allow_host: Vec<String>,
+        /// Environment variable holding a token of at least 32 characters that
+        /// every visitor signs in with.
+        #[arg(long, value_name = "NAME")]
+        access_token_env: Option<String>,
         /// Explicit service inventory and authentication (TOML). Enables fleet management.
         #[arg(long, value_name = "PATH")]
         services_config: Option<PathBuf>,
@@ -680,6 +689,8 @@ where
     };
     if let Command::Dash {
         listen,
+        allow_host,
+        access_token_env,
         services_config,
         fleet_config,
         fleet_node,
@@ -692,7 +703,11 @@ where
         };
         runtime.block_on(crate::dash::run(
             paths,
-            listen,
+            crate::dash::Reach {
+                listen,
+                hosts: allow_host,
+                access_token_env,
+            },
             services_config,
             fleet_config,
             fleet_node,

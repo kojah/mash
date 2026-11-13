@@ -1,4 +1,5 @@
 import type { Answer, ReadPath, Wire } from "./routes";
+import { check } from "./session.svelte";
 import { send } from "./transport";
 import type { Agent, ChatSummary, Message, SearchFilters, SearchHit } from "./types";
 
@@ -52,6 +53,8 @@ export async function read<P extends ReadPath>(
     );
   });
   if (!response.ok) {
+    // A session can end while the page is open; ask again so the sign-in shows.
+    if (response.status === 401) void check();
     let detail = "Check that mash dash and the requested history source are available.";
     try {
       const failure = (await response.json()) as Wire["Failure"];
