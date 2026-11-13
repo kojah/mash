@@ -407,9 +407,8 @@ const reads: { readonly [P in ReadPath]: Read<P> } = {
   "/api/services": (_, now) => ({ machines: [machine(now)] }),
   "/api/services/local": (_, now) => machine(now),
   "/api/services/settings": settings,
-  "/api/services/fleet": () => ({ enabled: false, revision: null, actions: [], services: [] }),
-  "/api/services/fleet/jobs": () =>
-    refuse(400, "Fleet jobs are only available on the configured controller"),
+  "/api/services/fleet": fleet,
+  "/api/services/fleet/jobs": fleetJobs,
   "/api/services/operations": () => [],
   "/api/services/log": () => refuse(404, "No configured log source for this service"),
   "/api/services/installation": () => ({
@@ -427,6 +426,54 @@ const reads: { readonly [P in ReadPath]: Read<P> } = {
     })),
   }),
 };
+// The fleet manager is shown as a controller would see it: every machine in
+// the history is a target and a few runs have finished. Starting one is a
+// change, which the demo refuses like any other.
+const fleetMachines = [...new Set(chats.map((chat) => chat.machine))].sort();
+const fleetRevision = "demo";
+const fleetActions = [
+  "status",
+  "preflight",
+  "deploy",
+  "sync",
+  "local-views",
+  "watch-start",
+  "watch-stop",
+  "watch-status",
+  "watch-logs",
+] as const;
+function fleet(): Answer<"/api/services/fleet"> {
+  return {
+    enabled: true,
+    revision: fleetRevision,
+    actions: fleetActions.map((action) => ({ action, targets: fleetMachines })),
+    services: [],
+  };
+}
+function fleetJobs(_: URLSearchParams, now: number): Answer<"/api/services/fleet/jobs"> {
+  const seconds = Math.round(now / 1000);
+  const finished = (
+    id: string,
+    action: (typeof fleetActions)[number],
+    hoursAgo: number,
+    took: number,
+  ) => ({
+    request: { id, action, targets: fleetMachines, revision: fleetRevision },
+    requested_at: seconds - hoursAgo * 3600,
+    completed_at: seconds - hoursAgo * 3600 + took,
+    outcome: "succeeded" as const,
+    targets: fleetMachines.map((machine) => ({
+      id: machine,
+      state: "succeeded" as const,
+      detail: null,
+    })),
+  });
+  return [
+    finished("demo-status", "status", 3, 9),
+    finished("demo-sync", "sync", 26, 148),
+    finished("demo-deploy", "deploy", 50, 412),
+  ];
+}
 function isRead(path: string): path is ReadPath {
   return Object.hasOwn(reads, path);
 }

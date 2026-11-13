@@ -3,7 +3,12 @@ import { parseCatalog, parseMessages, parseSearch } from "../lib/api";
 import { parseConsole } from "../lib/console";
 import { parseRecord, parseRecordPage } from "../lib/records";
 import type { Answer, ReadPath } from "../lib/routes";
-import { parseFleetCatalog, parseMachines, parseSetup } from "../lib/services.svelte";
+import {
+  parseFleetCatalog,
+  parseFleetJob,
+  parseMachines,
+  parseSetup,
+} from "../lib/services.svelte";
 import { parseSettings } from "../lib/settings";
 import { parseStatus } from "../lib/status";
 import { type Reply, respond, terms } from "./backend";
@@ -108,12 +113,17 @@ describe("the demo answers in the shapes mash dash sends", () => {
     expect(parseSetup(body("/api/services/installation", "?machine=laptop")).agents).toHaveLength(
       2,
     );
-    expect(parseFleetCatalog(body("/api/services/fleet")).enabled).toBe(false);
+    const fleet = parseFleetCatalog(body("/api/services/fleet"));
+    expect(fleet.enabled).toBe(true);
+    expect(fleet.actions.every((item) => item.targets.includes(localMachine))).toBe(true);
+    const jobs = body("/api/services/fleet/jobs").map(parseFleetJob);
+    expect(jobs.map((job) => job.outcome)).toEqual(["succeeded", "succeeded", "succeeded"]);
     expect(parseConsole(body("/api/console/tools")).tools.length).toBeGreaterThan(0);
   });
 
   it("refuses to change or run anything", () => {
     expect(respond("/api/services/settings", "POST", now).status).toBe(403);
+    expect(respond("/api/services/fleet/jobs", "POST", now).status).toBe(403);
     expect(get("/api/console/call?name=search").status).toBe(403);
     expect(get("/api/elsewhere").status).toBe(404);
   });
