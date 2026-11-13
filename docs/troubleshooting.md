@@ -31,6 +31,11 @@ An empty result does not prove the conversation never happened.
 
 ## Qdrant connection failed
 
+`mash status` reports `local_qdrant`: `reachable`, `unreachable` (nothing
+answered at the configured URL) or `rejected` (it answered but refused the
+request or is not a supported version, with the reason). While Qdrant is
+unreachable, `recommended_action` is `start-qdrant`.
+
 For a native install, restart Qdrant from its original folder and inspect its
 terminal output. If you chose Docker, start the existing container and inspect
 its logs:

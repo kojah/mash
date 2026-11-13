@@ -239,6 +239,11 @@ authentication before confirmation. If a connection fails, save configuration
 and finish setup after fixing it. The Qdrant check verifies its HTTP endpoint;
 indexing also requires its configured gRPC endpoint.
 
+Without the wizard, `mash init` checks Qdrant before changing anything. If
+Qdrant does not answer, it exits with the commands to start it and leaves
+configuration and agent settings untouched. `mash init --no-index` skips the
+check and lists starting Qdrant among the next steps.
+
 Press Esc or Ctrl-C during the prompts to cancel without changing configuration
 or agent settings. Prompts go to stderr; stdout remains JSON. No models are
 downloaded during setup.
@@ -260,9 +265,12 @@ Non-interactive setup keeps existing configuration unless `--force` is passed.
 With `--yes --force`, Mash regenerates configuration from detected histories;
 in the wizard, `--force` opens the settings review directly.
 
-If indexing fails because Qdrant is stopped, the configuration and history
-already saved are kept. Start Qdrant and rerun `mash init`; `written: false`
-means the existing configuration was reused, not that setup failed.
+If the first index fails after setup has been applied (for example, Qdrant
+stops or its gRPC port is unreachable), the configuration, agent registrations
+and history already saved are kept. The result still lists them, adds
+`index_error`, and exits with that error. Fix the cause, then run `mash index`
+to finish. On a rerun of `mash init`, `written: false` means the existing
+configuration was reused, not that setup failed.
 
 Setup writes progress to stderr and the final JSON result to stdout. Both appear
 in your terminal by default. `"agents": []` means no agents were connected;

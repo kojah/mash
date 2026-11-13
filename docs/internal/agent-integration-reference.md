@@ -28,10 +28,12 @@ When an agent named with `--agent` needs attention, the command still prints the
 report and exits with status 1, so scripts can check wiring. `summary.clients[].connected`
 says whether each agent is configured with nothing left to fix, `missing` lists
 the parts not installed (`mcp`, `plugin`), and `summary.next_action` names what
-would make progress, or is null when there is nothing to do: `mash init` for a
+would make progress, or is null when there is nothing to do: starting Qdrant
+when the `qdrant` resource finding says it does not answer, `mash init` for a
 missing MCP registration, or the agent's own plugin commands when only the
-plugin is missing. Those need network access; Mash MCP search works without the
-plugin, which adds the history skill and session hooks.
+plugin is missing. Those need network access; the Mash MCP tools are available
+without the plugin, which adds the history skill and session hooks. The probe
+checks the MCP handshake and help contract only, not search readiness.
 Ordinary `status` includes a compact installation summary, and `--help` (also
 `help` and subcommand help) adds a short warning when local checks find an
 incomplete integration or an incompatible/unreadable local index. Help respects
