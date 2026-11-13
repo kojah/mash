@@ -41,8 +41,7 @@ fn users_only_cli_index_keeps_assistant_lexical_search_without_model_assets() {
         .concat(),
     );
     assert_eq!(result["results"].as_array().unwrap().len(), 1);
-    assert_eq!(result["results"][0]["author"]["id"], "assistant");
-    assert_eq!(result["results"][0]["author"]["kind"], "bot");
+    assert_eq!(result["results"][0]["role"], "assistant");
     assert_eq!(std::fs::read(&database).unwrap(), before);
     assert!(!models.exists());
     cleanup_local_gold(&database, "local");
