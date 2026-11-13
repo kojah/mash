@@ -133,8 +133,14 @@ Records scoped to a local project path stay local.
 
 ## Save a conclusion
 
-Read the supporting chat first, then call the `record` MCP tool with an
-operation ID and a change:
+To save something yourself, tell the agent. In Claude Code, run
+`/mash:remember` followed by what to keep, or with nothing after it to save the
+latest decision in the conversation. In Codex, pick the plugin's `remember`
+skill or say "remember this". The agent checks for an existing record, saves
+your words as the evidence, and confirms what it saved.
+
+To do it by hand, read the supporting chat first, then call the `record` MCP
+tool with an operation ID and a change:
 
 ```json
 {

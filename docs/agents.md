@@ -22,8 +22,10 @@ things, using the agent's own commands:
 
 - an **MCP server**: the Mash search tools the agent can call (MCP, the Model
   Context Protocol, is how agents run external tools);
-- the **Mash plugin**: a `mash-history` skill that tells the agent when and
-  how to search, and hooks that [keep new chats searchable](#keep-new-chats-searchable).
+- the **[Mash plugin](plugin.md)**: a `mash-history` skill that tells the
+  agent when and how to search, a `remember` skill that saves something to
+  [memory](records.md) when you ask (`/mash:remember` in Claude Code), and
+  hooks that [keep new chats searchable](#keep-new-chats-searchable).
 
 Those commands edit the agent's user settings: `~/.claude.json`,
 `~/.claude/settings.json` and `~/.claude/plugins` for Claude Code, and

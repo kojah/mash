@@ -38,7 +38,11 @@ export default defineConfig({
             { label: "Quick start", slug: "quick-start" },
             { label: "Installation", slug: "installation" },
             { label: "Search", collapsed: true, items: ["search", "indexing"] },
-            { label: "Agents", collapsed: true, items: ["agents", "records", "mcp", "tools"] },
+            {
+              label: "Agents",
+              collapsed: true,
+              items: ["agents", "plugin", "records", "mcp", "tools"],
+            },
             { label: "Dashboard", collapsed: true, items: ["dashboard", "services"] },
           ],
         },
