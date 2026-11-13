@@ -256,8 +256,7 @@ fn parse_tailnet_name(status: &str) -> Result<String, AppError> {
         name: String,
     }
     let name = serde_json::from_str::<Status>(status)
-        .map(|status| status.this.name.trim_end_matches('.').to_owned())
-        .unwrap_or_default();
+        .map_or_default(|status| status.this.name.trim_end_matches('.').to_owned());
     if name.is_empty() {
         return Err(AppError::configuration(
             "Tailscale is not connected; run `tailscale up` first",
