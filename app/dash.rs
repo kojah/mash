@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 mod access;
 mod contract;
+mod live;
 mod remote;
 mod services;
 
@@ -35,6 +36,7 @@ struct Dash {
     model_work: tokio::sync::Semaphore,
     services: services::Services,
     console: crate::mcp::console::Console,
+    live: live::Live,
 }
 
 /// How other devices reach this dashboard.
@@ -89,8 +91,24 @@ pub(crate) async fn run(
     if !loopback && !access.required() {
         started["warning"] = "anyone who can reach this address can read your chat history; set --access-token-env to require sign-in".into();
     }
+    // Live updates watch the local index and, when one is configured, listen
+    // to the shared one. A configuration that cannot be read leaves that out;
+    // the history routes report what is wrong with it.
+    let database =
+        (!shared_only).then(|| paths.db.clone().unwrap_or_else(core::default_database_path));
+    let config = paths.config.clone();
+    let upstream = tokio::task::spawn_blocking(move || crate::config::load(config.as_deref()))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .and_then(|config| config.shared)
+        .map(|config| live::Upstream {
+            config,
+            own: shared_only,
+        });
     let state = Arc::new(Dash {
         console: crate::mcp::console::Console::new(paths.clone()),
+        live: live::Live::new(database, upstream),
         paths,
         hosts,
         loopback,
@@ -100,9 +118,12 @@ pub(crate) async fn run(
         services,
     });
     crate::write_json(&mut std::io::stderr(), &started)?;
+    let stopping = state.clone();
     axum::serve(listener, router(state))
-        .with_graceful_shutdown(async {
+        .with_graceful_shutdown(async move {
             let _ = tokio::signal::ctrl_c().await;
+            // Open event streams would otherwise hold the server open.
+            stopping.live.close();
         })
         .await
         .map_err(|_| AppError::internal("dashboard server failed"))
@@ -123,8 +144,8 @@ fn api() -> (Router<Arc<Dash>>, aide::openapi::OpenApi) {
         },
         ..Default::default()
     };
-    let router =
-        history_routes(services::routes(aide::axum::ApiRouter::new())).finish_api(&mut document);
+    let router = history_routes(live::routes(services::routes(aide::axum::ApiRouter::new())))
+        .finish_api(&mut document);
     (router, document)
 }
 
@@ -1035,6 +1056,7 @@ mod tests {
             shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
+            live: super::live::Live::new(None, None),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1087,6 +1109,7 @@ mod tests {
             shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
+            live: super::live::Live::new(None, None),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1183,6 +1206,7 @@ mod tests {
             shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
+            live: super::live::Live::new(None, None),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1241,6 +1265,7 @@ mod tests {
             shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
+            live: super::live::Live::new(None, None),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1335,6 +1360,7 @@ mod tests {
             shared_only: false,
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
+            live: super::live::Live::new(None, None),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         // A client that leaves the body as sent shows the encoding on the wire.
@@ -1430,6 +1456,7 @@ mod tests {
             shared_only: false,
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
+            live: super::live::Live::new(None, None),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1602,6 +1629,7 @@ mod tests {
                 shared_only: false,
                 model_work: tokio::sync::Semaphore::new(0),
                 services: super::services::Services::load(None).unwrap(),
+                live: super::live::Live::new(None, None),
             }));
             tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
             addresses.push(address);

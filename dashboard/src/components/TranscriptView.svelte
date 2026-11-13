@@ -26,6 +26,7 @@ import {
 } from "../lib/export";
 import { countLabel, type FindMatch, findMatches } from "../lib/find";
 import { bringIntoView, clearMatches, paintMatches } from "../lib/findHighlight";
+import { concerns, onChange, pageUpdate } from "../lib/live";
 import { plainTitle } from "../lib/markdown";
 import { catalogOptions, stableRead } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
@@ -273,9 +274,52 @@ $effect(() => {
     untrack(() => reading.remember(position));
   }
 });
-const changed = $derived(
-  loaded && live.data && JSON.stringify(loaded) !== JSON.stringify(live.data),
+// When Mash indexes more of this chat the page is read again. Text already
+// shown never changes by itself: new messages are added at the end only while
+// the reader is at the bottom of the chat, and are otherwise offered.
+$effect(() => {
+  const chatId = id;
+  const from = displayMachine;
+  // The same chat ID may exist on another machine; follow the copy shown.
+  const local = !shared && (!machine || machine === catalogue.data?.localNode);
+  return onChange((change) => {
+    if (concerns(change, chatId, from, local)) void live.refetch();
+  });
+});
+const update = $derived(
+  loaded && live.data ? pageUpdate(loaded, live.data) : ({ kind: "same" } as const),
 );
+const changed = $derived(update.kind === "rewritten");
+const added = $derived(update.kind === "appended" ? update.added : 0);
+function atBottom(): boolean {
+  const page = document.documentElement;
+  return window.innerHeight + window.scrollY >= page.scrollHeight - 120;
+}
+function toBottom(): void {
+  void tick().then(() =>
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }),
+  );
+}
+$effect(() => {
+  const next = live.data;
+  if (update.kind !== "appended" || !update.onPage || !next) return;
+  if (anchor || sessionsOpen || snapshot?.key !== key || !untrack(atBottom)) return;
+  snapshot = { key, page: next };
+  toBottom();
+});
+/** Shows the messages that arrived while the reader was elsewhere in the chat. */
+function showNew(): void {
+  const next = live.data;
+  if (!next) return;
+  const last = next.total ? Math.floor((next.total - 1) / PAGE_SIZE) * PAGE_SIZE : offset;
+  if (!anchor && offset === last) {
+    snapshot = { key, page: next };
+    toBottom();
+  } else {
+    toEnd = true;
+    page(last);
+  }
+}
 
 $effect(() => {
   if (live.data && snapshot?.key !== key) {
@@ -561,6 +605,7 @@ const prompts = $derived(
     <QueryError title="Couldn’t load this conversation" query={live} />
     {#if changed}<button type="button" class="btn" onclick={() => { if (live.data) snapshot = { key, page: live.data }; }}>This page has changed. Show updated messages</button>{/if}
     {#if notice}<p role="status" class="meta">{notice}</p>{/if}
+    <div class="newpill" aria-live="polite">{#if added && !sessionsOpen}<button type="button" class="btn p" onclick={showNew}><ChevronsDown size={15} aria-hidden="true" />{added.toLocaleString()} new message{added === 1 ? "" : "s"}</button>{/if}</div>
     {#if loaded}
       {#if !loaded.messages.length}<div class="state-c"><p>No messages at this position. The chat may have been removed, or this is the end.</p></div>{/if}
       {#snippet saved(message: Message)}

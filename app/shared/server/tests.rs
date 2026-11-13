@@ -11,6 +11,7 @@ mod contexts;
 mod correlation;
 mod cursor;
 mod enrichment;
+mod events;
 mod exact;
 mod freshness;
 mod long_chats;

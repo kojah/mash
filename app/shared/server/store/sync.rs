@@ -93,6 +93,16 @@ impl Store {
             Ok((applied, file))
         })
         .await?;
+        // Chat reads come from silver, so listeners can reread as soon as it
+        // commits; they need not wait for views.
+        if !applied.duplicate {
+            self.events.announce(
+                identity,
+                applied.revision,
+                applied.supplied.iter().chain(&applied.deleted).cloned(),
+                applied.records,
+            );
+        }
         Ok(SilverCommit {
             identity: identity.clone(),
             file,

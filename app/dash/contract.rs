@@ -61,6 +61,14 @@ pub(super) fn changes<R: JsonSchema>(
 pub(super) fn document(api: &aide::openapi::OpenApi) -> Value {
     let mut document = serde_json::to_value(api).unwrap_or_default();
     crate::openapi::settle(&mut document, "Scope", &[("after", "CoverageScope")]);
+    // The event stream is described by the JSON each event carries, but it is
+    // not answered as JSON.
+    if let Some(Value::Object(content)) =
+        document.pointer_mut("/paths/~1api~1events/get/responses/200/content")
+        && let Some(event) = content.remove("application/json")
+    {
+        content.insert("text/event-stream".into(), event);
+    }
     crate::openapi::sorted(document)
 }
 

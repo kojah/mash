@@ -5,6 +5,23 @@ use crate::storage::Counts;
 pub(crate) use crate::views::documents::{ChatRecord, MessageRecord};
 pub(crate) use crate::views::retrieval::{Candidates, Document, Search, valid_vector};
 
+/// One node's committed publication, as `/v1/events` tells listening
+/// dashboards about it. It names chats and never carries their text.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+pub(crate) struct NodeChange {
+    /// The node whose history changed.
+    pub node: String,
+    /// That node's silver revision after the change.
+    pub revision: i64,
+    /// Chats added, changed or removed. Empty when `all` is set.
+    pub chats: Vec<String>,
+    /// Too many chats changed to name: reread everything from this node.
+    pub all: bool,
+    /// Whether the node's memories may have changed.
+    #[serde(default)]
+    pub records: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Start {

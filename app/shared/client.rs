@@ -62,6 +62,7 @@ pub(super) enum Endpoint {
     Attachments,
     Attachment,
     Query,
+    Events,
 }
 
 impl Endpoint {
@@ -92,12 +93,16 @@ impl Endpoint {
             Self::Attachments => "attachments",
             Self::Attachment => "attachment",
             Self::Query => "query",
+            Self::Events => "events",
         }
     }
 
     pub(super) const fn timeout(self) -> Duration {
         if self.bulk() {
             super::BULK_TIMEOUT
+        } else if matches!(self, Self::Events) {
+            // A stream stays open; its reader reconnects after this long.
+            Duration::from_secs(3600)
         } else if matches!(self, Self::Attachment) {
             Duration::from_secs(15)
         } else if matches!(self, Self::Fingerprints | Self::Catalog) {
@@ -380,6 +385,20 @@ pub(crate) async fn list_chats(
     input.validate()?;
     post(config, Endpoint::Chats, input).await
 }
+/// Opens the stream of `change` events for this node's group. The caller
+/// reads it and reconnects; nothing here retries.
+pub(crate) async fn events(config: &SharedConfig) -> Result<reqwest::Response, AppError> {
+    let response = request(config, reqwest::Method::GET, Endpoint::Events)?
+        .send()
+        .await
+        .map_err(|_| AppError::shared("could not reach the shared index for live changes"))?;
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        Err(AppError::shared("the shared index offers no live changes"))
+    }
+}
+
 pub(crate) async fn catalog(
     config: &SharedConfig,
 ) -> Result<Vec<crate::chat_catalog::Chat>, AppError> {

@@ -102,18 +102,36 @@ link produces an error rather than opening a local copy.
 
 ## Keep your place
 
-Nothing refreshes by itself. A submitted search and its filters are kept when
-you open a result and return with your browser's Back button. To load new
-data:
+The dashboard follows history as Mash updates it, on this machine and on the
+machines that publish to your shared index; what you are reading never moves
+by itself.
 
-- **reload chat list** at the foot of the rail, or **Check for updates** on
-  the overview, loads new chats.
-- **check for updates** reloads memory or an open record.
-- In a transcript, the refresh button checks for new messages and
-  **Show updated messages** applies them.
+- **Lists of chats and memories** (the overview, the rail, recent chats, the
+  session list beside a transcript, the agent, machine and project pages, and
+  the memory pages) show what is new within a few seconds.
+- **An open transcript** gains new messages at the end while you are at the
+  bottom of the chat, and the view follows them. Anywhere else in the chat, an
+  **N new messages** button appears instead; choose it to go to them. Text
+  already shown never changes by itself: if Mash re-reads an earlier message,
+  **Show updated messages** applies it.
+- **A submitted search**, of chats or of memories, keeps its results and
+  filters until you submit again, including when you open a result and return
+  with your browser's Back button.
+- **An open memory record** changes only when you choose **check for
+  updates**.
+
+Chats and memories from other machines arrive as each machine publishes them.
+That needs a shared server at least as new as this dashboard. With an older
+one, or with more than 16 dashboard tabs open at once, load them yourself:
+**reload chat list** at the foot of the rail, and the refresh button in a
+transcript.
+
+If the connection drops, in the browser or between the dashboard and the
+shared server, it reconnects by itself and then catches up.
 
 New conversations appear only after indexing: run `mash index`, or leave
-`mash index --watch` running in another terminal.
+`mash index --watch` running in another terminal. The dashboard notices either
+one; it does not index by itself.
 
 If a request fails, an error panel names what could not load and offers
 **Retry**. A connection error means the browser could not reach Mash, not that

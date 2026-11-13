@@ -13,8 +13,9 @@ visible partial-history warning rather than hiding local chats.
 
 ## Refresh and reading behavior
 
-- TanStack Query shares the catalogue between screens, refreshes stale data on
-  focus/reconnect, and polls every 30 seconds while visible. Counts describe
+- TanStack Query shares the catalogue between screens. One Server-Sent Events
+  stream per tab (`/api/events`, `src/lib/live.ts`) says when the local index
+  changed; the catalogue then rereads itself, at most once every five seconds. Counts describe
   indexed chats, not machine connectivity. The newest 10,000 chats are retained;
   a warning identifies incomplete counts and filter choices at that bound.
 - Search runs on submission. Editing filters does not change existing results.
@@ -25,9 +26,10 @@ visible partial-history warning rather than hiding local chats.
 - Routes retain machine identity and use the search result's canonical lookup
   anchor. Search matches open a bounded context view, respecting branch ancestry.
   Reading from the beginning uses 100-position pages in recorded display order.
-- The displayed transcript page stays stable while its query checks for changes.
-  A button applies changed content. This detects changes on the displayed page;
-  it does not monitor unseen later pages of a long conversation.
+- The displayed transcript page rereads itself when its chat changes. New
+  messages are appended only while the reader is at the bottom of the chat;
+  elsewhere a button offers them, and another applies changes to text already
+  shown. Nothing on screen changes or moves by itself.
 - Markdown passes through DOMPurify. Raw scripts, styles and remote images are
   excluded. Messages over 16,384 characters initially show a preview. Tool inputs
   remain inert text. Markdown export explicitly exports only the displayed page.

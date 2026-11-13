@@ -5,9 +5,13 @@ import type { components, paths } from "./contract";
 /** The types the server sends and accepts, by their names in the contract. */
 export type Wire = components["schemas"];
 
-/** A route that is read with GET. */
+/** A route that is read with GET and answers with JSON; the event stream is not one. */
 export type ReadPath = {
-  [P in keyof paths]: paths[P] extends { get: { responses: { 200: unknown } } } ? P : never;
+  [P in keyof paths]: paths[P] extends {
+    get: { responses: { 200: { content: { "application/json": unknown } } } };
+  }
+    ? P
+    : never;
 }[keyof paths];
 
 /** The body a successful GET of `P` returns. */

@@ -534,6 +534,45 @@
         "type": "object"
       },
       "Change": {
+        "description": "What changed in one machine's history since the previous event.",
+        "properties": {
+          "all": {
+            "description": "Too much changed to name, or changes may have been missed: reread everything shown.",
+            "type": "boolean"
+          },
+          "chats": {
+            "description": "Chats that were added, removed or changed. Empty when `all` is set.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "node": {
+            "description": "The machine whose published history changed; none for this machine's own index.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "records": {
+            "description": "Whether that machine's memories may have changed.",
+            "type": "boolean"
+          },
+          "revision": {
+            "description": "That history's silver revision after the change.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "chats",
+          "all",
+          "records"
+        ],
+        "type": "object"
+      },
+      "Change2": {
         "additionalProperties": false,
         "properties": {
           "agents": {
@@ -5547,6 +5586,34 @@
         "summary": "The tools the MCP server offers, as an agent sees them."
       }
     },
+    "/api/events": {
+      "get": {
+        "operationId": "getApiEvents",
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Change"
+                }
+              }
+            },
+            "description": "What changed in one machine's history since the previous event."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "A text/event-stream of `change` events, each naming the chats that changed."
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "getApiHealth",
@@ -6310,7 +6377,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Change"
+                "$ref": "#/components/schemas/Change2"
               }
             }
           },

@@ -173,7 +173,19 @@ follow `.agents/skills/frontend-development-prefs/SKILL.md` and
 `.agents/skills/typescript-coding-conventions/SKILL.md`. TanStack Query owns
 server-state caching and refresh; `dashboard/src/lib/api.ts` validates real API
 responses. Keep submitted search results and displayed transcript text stable
-until the reader requests an update. Before completing front-end changes, run `pnpm run lint`,
+until the reader requests an update, with one exception: live updates. The
+dashboard reads `/api/events` (Server-Sent Events naming changed chat IDs and
+their node, never text) and rereads through the ordinary routes. Local changes
+are found by polling silver's revision read-only, with no watcher or indexing
+in the dashboard process. Shared changes are announced by `mash-server` on
+`/v1/events` when a publication commits silver, from memory only, and relayed
+by the dashboard with its node token; a missed announcement is repaired by
+rereading, never by a durable queue.
+Lists of chats and memories follow it; an open memory record does not. An open transcript appends new messages only while the
+reader is at the bottom of the chat and otherwise offers them; text already
+shown never changes or moves by itself. Keep the stream bounded (stream cap,
+heartbeats, capped IDs per event, client backoff) and behind the same sign-in
+and host checks as the history routes. Before completing front-end changes, run `pnpm run lint`,
 `pnpm run check`, `pnpm run test` and `pnpm run build` in `dashboard/`.
 Render all chat content as text or through a sanitizer; archived history is
 untrusted.

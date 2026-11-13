@@ -13,6 +13,7 @@ mod admission;
 mod attachments;
 mod configuration;
 mod contexts;
+mod events;
 pub(crate) mod store;
 mod sync;
 
@@ -167,6 +168,7 @@ fn api() -> (Router<App>, aide::openapi::OpenApi) {
         .api_route("/v1/attachments", post(attachments::list))
         .api_route("/v1/attachment", post(attachments::get))
         .api_route("/v1/sync", get(sync::upgrade))
+        .api_route("/v1/events", get(events::listen))
         .finish_api(&mut document);
     (router, document)
 }
@@ -617,12 +619,15 @@ pub(crate) async fn run(
     }
     let expiry = sync::spawn_periodic_expiry(app.clone());
     let apply_retry = sync::spawn_apply_recovery(app.clone());
+    let stopping = app.store.clone();
     let served = axum::serve(listener, router(app))
-        .with_graceful_shutdown(async {
+        .with_graceful_shutdown(async move {
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {}
                 () = test_parent_exit() => {}
             }
+            // Open event streams would otherwise hold the server open.
+            stopping.events().stop();
         })
         .await
         .map_err(|_| AppError::internal("HTTP server failed"));

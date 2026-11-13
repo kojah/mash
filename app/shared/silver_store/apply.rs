@@ -106,6 +106,8 @@ pub(crate) struct Applied {
     pub(crate) deleted: BTreeSet<String>,
     /// Supplied chats this upload amended rather than replaced.
     pub(crate) amended: BTreeMap<String, Amended>,
+    /// Whether this upload carried memories or replaced them all.
+    pub(crate) records: bool,
 }
 
 /// What one amendment changed, so views can keep the rest of the chat.
@@ -624,6 +626,8 @@ fn apply(
             supplied: BTreeSet::new(),
             deleted: BTreeSet::new(),
             amended: BTreeMap::new(),
+            // A snapshot replaces the node's memories, whatever it carries.
+            records: input.snapshot,
         },
     };
     upload
@@ -664,6 +668,7 @@ fn apply(
                 }
                 match batch {
                     Batch::Records { records: rows } => {
+                        upload.applied.records = true;
                         for row in rows {
                             records.insert(tx, row)?;
                             progress.advance(1);

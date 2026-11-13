@@ -68,7 +68,10 @@ const options = $derived({
 
 const result = createQuery(() => ({
   ...stableRead,
-  queryKey: ["search", params],
+  // A list of chats without a question follows the chat list as it updates;
+  // a submitted search keeps its results until it is submitted again.
+  queryKey: ["search", params, applied.query ? 0 : catalogue.dataUpdatedAt],
+  placeholderData: (previous, query) => (query?.queryKey[1] === params ? previous : undefined),
   enabled: catalogue.data !== undefined,
   queryFn: async ({ signal }: { signal: AbortSignal }) => {
     const data = catalogue.data;

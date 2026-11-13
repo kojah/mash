@@ -13,3 +13,23 @@ export function install(next: Transport): void {
 export function send(path: string, init: RequestInit): Promise<Response> {
   return transport(path, init);
 }
+
+/** The part of `EventSource` the dashboard uses to hear that the index changed. */
+export interface EventStream {
+  onopen: ((event: Event) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void;
+  close(): void;
+}
+export type Events = (path: string) => EventStream;
+
+let events: Events | undefined =
+  typeof EventSource === "undefined" ? undefined : (path) => new EventSource(path);
+
+/** Replaces how the event stream is opened; `undefined` means there is none, as in the demo. */
+export function installEvents(next: Events | undefined): void {
+  events = next;
+}
+export function listen(path: string): EventStream | undefined {
+  return events?.(path);
+}

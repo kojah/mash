@@ -3145,6 +3145,9 @@
         }
       }
     },
+    "/v1/events": {
+      "get": {}
+    },
     "/v1/fingerprints": {
       "get": {
         "responses": {

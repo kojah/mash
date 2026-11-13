@@ -48,6 +48,8 @@ pub(crate) struct Store {
     replays: Arc<std::sync::Mutex<HashMap<String, NodeLock>>>,
     /// Whether HTTP read responses mask recognizable credentials.
     responses: crate::redaction::Policy,
+    /// Where committed publications are announced to listening dashboards.
+    events: Arc<super::events::Hub>,
     #[cfg(test)]
     replay_fault: Option<ReplayFault>,
     #[cfg(test)]
@@ -167,6 +169,7 @@ impl Store {
             views_writes: Arc::default(),
             replays: Arc::default(),
             responses: crate::redaction::Policy::ON,
+            events: Arc::default(),
             #[cfg(test)]
             replay_fault: None,
             #[cfg(test)]
@@ -189,6 +192,10 @@ impl Store {
         self.responses = responses;
         self.views = self.views.with_response_redaction(responses);
         self
+    }
+
+    pub(crate) fn events(&self) -> &super::events::Hub {
+        &self.events
     }
 
     pub(crate) fn responses(&self) -> crate::redaction::Policy {

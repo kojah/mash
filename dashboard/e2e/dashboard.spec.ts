@@ -198,11 +198,8 @@ test("real API shapes, explicit search, source identity, safe content and stable
   expect(errors).toEqual([]);
 });
 
-// The redesign removed the overview's "Check for updates" control and its
-// "New or updated chats" notice. Every catalogue read is now cached for the
-// life of the document (catalogOptions: staleTime Infinity, and nothing calls
-// refetch() except the error retry), so new chats appear only after a browser
-// reload. Until the source offers a way to ask, this records the lost request.
+// Chat lists follow the event stream. Where it is unavailable, the rail still
+// offers a way to ask.
 test("the reader can ask for new chats without reloading the document", async ({ page }) => {
   let title = chat.title;
   let documents = 0;
@@ -222,7 +219,7 @@ test("the reader can ask for new chats without reloading the document", async ({
   const main = page.getByRole("main");
   await expect(main.getByRole("link", { name: /Real fixture chat/ })).toBeVisible();
   title = "Refreshed catalogue";
-  await main.getByRole("button", { name: "Check for updates" }).click();
+  await page.getByRole("button", { name: "reload chat list" }).click();
   await expect(main.getByRole("link", { name: /Refreshed catalogue/ })).toBeVisible();
   expect(documents).toBe(1);
 });
@@ -233,7 +230,9 @@ test("chat navigation retains the sidebar and refresh requires an explicit reque
   let requests = 0;
   let documents = 0;
   page.on("request", (request) => {
-    if (request.url().includes("/api/")) requests++;
+    // No dashboard answers here, so the event stream keeps trying to connect;
+    // one that is connected and quiet asks for nothing.
+    if (request.url().includes("/api/") && !request.url().includes("/api/events")) requests++;
     if (request.resourceType() === "document") documents++;
   });
   let content = "Original answer";

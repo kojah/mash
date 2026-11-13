@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A text/event-stream of `change` events, each naming the chats that changed. */
+        get: operations["getApiEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -504,7 +521,23 @@ export interface components {
             /** Format: uint64 */
             revision: number;
         };
+        /** @description What changed in one machine's history since the previous event. */
         Change: {
+            /** @description Too much changed to name, or changes may have been missed: reread everything shown. */
+            all: boolean;
+            /** @description Chats that were added, removed or changed. Empty when `all` is set. */
+            chats: string[];
+            /** @description The machine whose published history changed; none for this machine's own index. */
+            node?: string | null;
+            /** @description Whether that machine's memories may have changed. */
+            records: boolean;
+            /**
+             * Format: int64
+             * @description That history's silver revision after the change.
+             */
+            revision: number;
+        };
+        Change2: {
             agents: {
                 antigravity?: boolean;
                 "claude-code"?: boolean;
@@ -2091,6 +2124,35 @@ export interface operations {
             };
         };
     };
+    getApiEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What changed in one machine's history since the previous event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["Change"];
+                };
+            };
+            /** @description What a failed request answers with, whatever the route. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Failure"];
+                };
+            };
+        };
+    };
     getApiHealth: {
         parameters: {
             query?: never;
@@ -2622,7 +2684,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Change"];
+                "application/json": components["schemas"]["Change2"];
             };
         };
         responses: {

@@ -21,10 +21,7 @@ const memories = createQuery(() => ({
   queryKey: ["records", ""],
   queryFn: ({ signal }: { signal: AbortSignal }) => recordPage("", signal),
 }));
-// Lists change only when the reader asks: nothing refreshes on its own.
-async function refresh(): Promise<void> {
-  await Promise.all([catalogue.refetch(), memories.refetch()]);
-}
+// Both lists follow the index by themselves (see lib/live.ts).
 const chats = $derived(catalogue.data?.chats ?? []);
 const recent = $derived(chats.slice(0, 8));
 const machines = $derived(groupChats(chats, (chat) => chat.machine));
@@ -38,7 +35,6 @@ const providers = $derived(groupChats(chats, (chat) => chat.agent));
     <div class="hd">
       <h2 class="h2"><Clock size={15} aria-hidden="true" />recent chats</h2>
       <span class="acts">
-        <button class="a meta" type="button" disabled={catalogue.isFetching} onclick={refresh} style:min-height="44px">{catalogue.isFetching ? "Checking…" : "Check for updates"}</button>
         {#if chats.length}<a class="meta" href="#/search" style:display="inline-flex" style:align-items="center" style:min-height="44px">1–{recent.length} of {chats.length.toLocaleString()}</a>{/if}
       </span>
     </div>

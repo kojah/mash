@@ -25,7 +25,8 @@ import Transfer from "./components/Transfer.svelte";
 import { agents } from "./lib/agents";
 import { isAgent } from "./lib/api";
 import { projectLabel } from "./lib/browse";
-import { stableRead } from "./lib/queries";
+import { connect, onChange, throttle } from "./lib/live";
+import { catalogOptions, stableRead } from "./lib/queries";
 import { router } from "./lib/route.svelte";
 import { check, gate, open } from "./lib/session.svelte";
 
@@ -37,6 +38,40 @@ function signedIn(): void {
   client.clear();
   open();
 }
+// One stream per tab says when the index changed. Chat lists follow it,
+// at most once every few seconds while indexing is busy.
+$effect(() => {
+  if (gate.value !== "open") return;
+  const refresh = throttle(
+    () => void client.invalidateQueries({ queryKey: catalogOptions.queryKey }),
+    5000,
+  );
+  // Lists of memories follow too. A memory search keeps its results, like
+  // any submitted search, and an open record is reread only on request.
+  const memories = throttle(
+    () =>
+      void client.invalidateQueries({
+        predicate: ({ queryKey: [kind, params] }) =>
+          kind === "chat-memory" ||
+          (kind === "records" &&
+            typeof params === "string" &&
+            !new URLSearchParams(params).has("q")),
+      }),
+    5000,
+  );
+  const off = onChange((change) => {
+    refresh();
+    if (change.all || change.records) memories();
+  });
+  // A stream refused because the session ended should bring up the sign-in.
+  const stop = connect(() => void check());
+  return () => {
+    stop();
+    off();
+    refresh.cancel();
+    memories.cancel();
+  };
+});
 const route = $derived(router.current);
 // Keep the submitted search mounted while a chat is open, so going back
 // returns to the same results.
