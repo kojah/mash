@@ -97,7 +97,11 @@ deploying.
 
 Watcher start installs the configured systemd user unit or macOS LaunchAgent
 and starts `mash index --watch` through your existing launcher. Stop disables
-that supervisor job. The same watcher definition supplies the individual
+that supervisor job. After an upgrade the watcher starts the new binary in its own
+process, so the supervisor never has to restart it; deploys do not touch it.
+`mash status` reports a `watcher` whose `running` is false when the unit or
+LaunchAgent is installed but no watcher runs for that index: start it again
+with **Start** or watcher start. The same watcher definition supplies the individual
 service controls, so unit names and plist paths do not need a second inventory.
 Fleet watcher operations require their action in `allow_actions`; the watcher's
 `allow_control` separately enables individual dashboard service buttons.
@@ -220,7 +224,7 @@ step. The dashboard build is not claimed to be the installed binary's version.
 
 An old-but-compatible runtime has a separate warning when its executable was
 replaced or differs from the observer. Reconnect agent-owned MCPs from the agent;
-restart a managed watcher through its supervisor. An already upgraded database
+a managed watcher restarts itself once its active pass ends. An already upgraded database
 does not need another migration just because an old MCP is still running.
 Older runtime records without schema evidence show **Unknown** compatibility.
 

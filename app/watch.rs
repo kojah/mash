@@ -36,6 +36,87 @@ pub(crate) fn active(database: &Path) -> std::io::Result<bool> {
     }
 }
 
+/// A watcher service that `mash-fleet watch start` installed for this user,
+/// observed without asking its service manager.
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+pub(crate) struct Service {
+    /// The service definition: a launchd agent on macOS, a systemd user unit on Linux.
+    pub(crate) definition: PathBuf,
+    /// Whether an `index --watch` process is running for this database, as
+    /// leader or standby; null when that cannot be checked. Running is not
+    /// evidence that indexing succeeds.
+    pub(crate) running: Option<bool>,
+}
+
+/// Where `mash-fleet watch start` installs the watcher service definition.
+fn service_definition(home: &Path) -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        Some(home.join("Library/LaunchAgents/dev.mash.index-watch.plist"))
+    } else if cfg!(target_os = "linux") {
+        Some(home.join(".config/systemd/user/mash-index-watch.service"))
+    } else {
+        None // A Windows scheduled task has no definition file to observe.
+    }
+}
+
+/// The installed watcher service, if any, and whether a watcher runs for
+/// `database`. A definition for another database's watcher also counts.
+pub(crate) fn service(database: &Path) -> Option<Service> {
+    let home = directories::BaseDirs::new()?.home_dir().to_path_buf();
+    service_at(service_definition(&home)?, database)
+}
+
+fn service_at(definition: PathBuf, database: &Path) -> Option<Service> {
+    if !definition.is_file() {
+        return None;
+    }
+    let paths = crate::core::Paths {
+        db: Some(database.to_path_buf()),
+        ..crate::core::Paths::default()
+    };
+    let registered = crate::runtime::inspect(&paths)
+        .processes
+        .iter()
+        .any(|process| matches!(process.kind, crate::runtime::Kind::IndexWatch));
+    let running = match active(database) {
+        _ if registered => Some(true),
+        Ok(leading) => Some(leading),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(false),
+        Err(_) => None,
+    };
+    Some(Service {
+        definition,
+        running,
+    })
+}
+
+#[test]
+fn an_installed_watcher_service_reports_whether_a_watcher_runs() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("silver.sqlite3");
+    let definition = directory.path().join("dev.mash.index-watch.plist");
+    assert!(service_at(definition.clone(), &database).is_none());
+    std::fs::write(&definition, "<plist/>").unwrap();
+    let stopped = service_at(definition.clone(), &database).unwrap();
+    assert_eq!(stopped.running, Some(false), "no index yet, no watcher");
+    std::fs::write(&database, []).unwrap();
+    assert_eq!(
+        service_at(definition.clone(), &database).unwrap().running,
+        Some(false)
+    );
+    let leader = try_lead(&directory.path().join("silver.sqlite3.watch-lock"))
+        .unwrap()
+        .unwrap();
+    let running = service_at(definition.clone(), &database).unwrap();
+    assert_eq!(running.running, Some(true));
+    assert_eq!(running.definition, definition);
+    drop(leader);
+    assert_eq!(
+        service_at(definition, &database).unwrap().running,
+        Some(false)
+    );
+}
+
 #[test]
 fn freshness_probe_observes_lock_ownership_not_file_existence() {
     let directory = tempfile::tempdir().unwrap();

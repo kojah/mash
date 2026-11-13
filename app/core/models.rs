@@ -409,6 +409,9 @@ pub(crate) struct StatusResponse {
     /// Whether the configured local Qdrant answers, apart from schema
     /// compatibility (`local_views_error`) and search readiness (`ready`).
     pub(super) local_qdrant: crate::views::qdrant::ServiceStatus,
+    /// The watcher service installed for this user, when there is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) watcher: Option<crate::watch::Service>,
     pub(super) database_path: Option<PathBuf>,
     pub(super) chats: u64,
     pub(super) messages: u64,

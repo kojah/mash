@@ -270,6 +270,19 @@ fn status(out: &mut String, value: &Status<'_>) -> Result<(), serde_json::Error>
         ),
     );
     warning(out, "local Qdrant", value.local_qdrant.message.as_deref());
+    if let Some(watcher) = value
+        .watcher
+        .filter(|watcher| watcher.running == Some(false))
+    {
+        warning(
+            out,
+            "watcher",
+            Some(&format!(
+                "a watcher service is installed ({}) but no `mash index --watch` runs for this index, so history changes are not indexed automatically. Start it with its service manager (`launchctl kickstart gui/$(id -u)/dev.mash.index-watch` on macOS, `systemctl --user start mash-index-watch.service` on Linux) and check its log.",
+                watcher.definition.display()
+            )),
+        );
+    }
     json(out, "Artifacts", value.local_artifacts)?;
     json(out, "Installation", value.installation)?;
     json(out, "Query models", value.query_models)?;
