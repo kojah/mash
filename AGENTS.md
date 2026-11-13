@@ -15,7 +15,14 @@ Mash with agent CLIs through their own commands, and indexes; it never downloads
 and never downloads or starts Qdrant.
 
 - Use Rusqlite as the sole SQLite library.
-- Use the common Qdrant engine and collection schema for local and shared lexical/vector search.
+- Qdrant is optional. Word search runs on SQLite FTS5 inside silver, locally and in
+  each node's shared silver database, and needs no other service: with one local
+  SQLite and, for sharing, one shared SQLite per node, Mash indexes, searches,
+  shares and serves the dashboard. Qdrant is an explicit opt-in that adds semantic
+  (dense) retrieval and hybrid ranking, locally and on the shared server. The
+  Qdrant rules below apply only when Qdrant is configured. Decided 2026-11-13;
+  the migration is in progress (Beads `mash-w4p7`), so until it lands parts of the
+  code still require Qdrant; do not add new hard Qdrant dependencies.
 - Keep one silver schema (`app/storage/silver.sql` with `app/storage/records.sql`) for local indexes and for
   each node's shared silver database on the server. Local views live in Qdrant;
   neither views store may be certified against history that silver lacks,
@@ -102,7 +109,7 @@ and never downloads or starts Qdrant.
   the pinned, SHA-256-verified release for the host under Mash's data directory,
   bound to loopback, under the user's own supervisor (systemd user unit,
   LaunchAgent, logon task); reruns repair or upgrade it without touching storage.
-  Qdrant remains the one search engine, and local operations stay offline once installed.
+  It is the opt-in path to semantic and hybrid search; local operations stay offline once installed.
 - Unsafe Rust is forbidden.
 
 ## Codebase discovery
