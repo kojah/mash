@@ -49,6 +49,12 @@ def reply(result: subprocess.CompletedProcess[str]) -> dict:
     return json.loads(lines[-1])
 
 
+def reply_from(output: str) -> dict:
+    """The last JSON line of one output stream."""
+    lines = [line for line in output.splitlines() if line.strip()]
+    return json.loads(lines[-1])
+
+
 def seed(home: Path) -> None:
     claude = home / ".claude" / "projects" / "-work-first"
     claude.mkdir(parents=True)
@@ -104,10 +110,16 @@ def main() -> int:
         home = Path(directory)
         seed(home)
         started = time.monotonic()
-        # 1. Indexing before setup fails, and says how to set up.
+        # 1. Indexing before setup never looks finished: it stops with an
+        #    error, or reads what it finds and reports what search by meaning
+        #    still needs. Either way it names setup.
         early = run(binary, home, "index")
         assert early.returncode != 0, early
-        message = reply(early)["error"]["message"]
+        if early.stdout.strip():
+            message = reply_from(early.stdout).get("embedding_error")
+            assert isinstance(message, str), early.stdout
+        else:
+            message = reply_from(early.stderr)["error"]["message"]
         assert "mash init" in message, message
         print(f"index before init points at setup: {message}")
         # 2. Setup finds both agents' histories without being told where.
