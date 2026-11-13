@@ -60,8 +60,6 @@ with the first published release. Choose one.
 | PowerShell script, Windows x64 | `irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 \| iex` | from the first release |
 | Homebrew | `brew install kojah/tap/mash` | from the first release |
 | apt, Debian and Ubuntu | [add the Mash repository](docs/installation.md#package-manager-alternatives), then `sudo apt install mash` | from the first release |
-| winget | `winget install --id kojah.mash --exact` | from the first release |
-| Chocolatey | `choco install mash` | from the first release |
 | Scoop | `scoop bucket add kojah https://github.com/kojah/mash`, then `scoop install kojah/mash` | from the first release |
 | mise | `mise use -g github:kojah/mash` | from the first release |
 | cargo-binstall | `cargo binstall --git https://github.com/kojah/mash mash` | from the first release |

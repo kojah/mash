@@ -92,18 +92,6 @@ echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://getma
 sudo apt update && sudo apt install mash
 ```
 
-**winget — Windows**
-
-```powershell
-winget install --id kojah.mash --exact
-```
-
-**Chocolatey — Windows**
-
-```powershell
-choco install mash
-```
-
 **Scoop — Windows**
 
 ```powershell

@@ -3,9 +3,8 @@ name: Release
 # Tagging vX.Y.Z publishes prebuilt binaries for the commit CI validated, then
 # updates this repository's Scoop bucket (no extra credential required).
 # Each other package channel is updated when its credential is configured, and
-# skipped otherwise: the Homebrew tap (HOMEBREW_TAP_TOKEN), winget
-# (WINGET_TOKEN), Chocolatey (CHOCOLATEY_API_KEY) and the signed apt repository
-# on GitHub Pages (APT_GPG_PRIVATE_KEY).
+# skipped otherwise: the Homebrew tap (HOMEBREW_TAP_TOKEN) and the signed apt
+# repository on GitHub Pages (APT_GPG_PRIVATE_KEY).
 # mise and cargo-binstall read the release assets directly. Releases build on
 # stable Rust so they need no nightly features.
 on:
@@ -195,39 +194,3 @@ jobs:
           git add -A
           git commit -m "apt: mash ${GITHUB_REF_NAME}"
           git push origin gh-pages
-
-  windows-packages:
-    needs: publish
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: SHA256SUMS
-          path: dist
-      - name: Render manifests
-        run: |
-          $version = "$env:GITHUB_REF_NAME".TrimStart('v')
-          foreach ($name in 'kojah.mash.yaml', 'kojah.mash.installer.yaml', 'kojah.mash.locale.en-US.yaml') {
-            python packaging/render.py $version dist/SHA256SUMS "packaging/winget/$name.in" "winget/$name"
-          }
-          python packaging/render.py $version dist/SHA256SUMS packaging/chocolatey/mash.nuspec.in chocolatey/mash.nuspec
-          python packaging/render.py $version dist/SHA256SUMS packaging/chocolatey/tools/chocolateyinstall.ps1.in chocolatey/tools/chocolateyinstall.ps1
-      - name: Submit to winget
-        env:
-          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
-        run: |
-          if (-not $env:WINGET_TOKEN) { "WINGET_TOKEN is not set; skipping winget."; exit 0 }
-          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
-          ./wingetcreate.exe submit --token $env:WINGET_TOKEN winget
-      - name: Push to Chocolatey
-        env:
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-        run: |
-          if (-not $env:CHOCOLATEY_API_KEY) { "CHOCOLATEY_API_KEY is not set; skipping Chocolatey."; exit 0 }
-          choco pack chocolatey/mash.nuspec --outputdirectory chocolatey
-          $package = Get-ChildItem chocolatey/mash.*.nupkg | Select-Object -First 1
-          choco push $package.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
