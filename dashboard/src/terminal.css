@@ -3367,3 +3367,66 @@ summary.rw::-webkit-details-marker {
     height: 40px;
   }
 }
+
+/* Find in chat: the bar stays under the top bar; matches are painted with
+   the CSS highlight API, the one in focus in clay. */
+.findbar {
+  position: sticky;
+  top: 60px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 10px;
+  padding: 5px 5px 5px 11px;
+  border: 1px solid var(--clay);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--dim);
+}
+.findbar input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 16px;
+}
+.findbar .btn {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  justify-content: center;
+}
+.findn {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.kbd {
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--dim);
+  font: 11px var(--mono);
+}
+@media (hover: none) {
+  .btn .kbd {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .findbar .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+::highlight(mash-find) {
+  background-color: rgb(233 196 106 / 0.38);
+}
+::highlight(mash-find-current) {
+  background-color: var(--clay);
+  color: var(--bg);
+  text-decoration: underline 2px var(--clay2);
+}

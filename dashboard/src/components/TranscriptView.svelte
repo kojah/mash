@@ -1,5 +1,7 @@
 <script lang="ts">
 import Brain from "@lucide/svelte/icons/brain";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import ChevronsDown from "@lucide/svelte/icons/chevrons-down";
 import ChevronsUp from "@lucide/svelte/icons/chevrons-up";
 import Copy from "@lucide/svelte/icons/copy";
@@ -7,6 +9,7 @@ import Download from "@lucide/svelte/icons/download";
 import Lightbulb from "@lucide/svelte/icons/lightbulb";
 import PanelLeft from "@lucide/svelte/icons/panel-left";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+import Search from "@lucide/svelte/icons/search";
 import Terminal from "@lucide/svelte/icons/terminal";
 import X from "@lucide/svelte/icons/x";
 import { createQuery } from "@tanstack/svelte-query";
@@ -21,6 +24,8 @@ import {
   markdownExport,
   messageText,
 } from "../lib/export";
+import { countLabel, type FindMatch, findMatches } from "../lib/find";
+import { bringIntoView, clearMatches, paintMatches } from "../lib/findHighlight";
 import { plainTitle } from "../lib/markdown";
 import { catalogOptions, stableRead } from "../lib/queries";
 import { reading } from "../lib/reading.svelte";
@@ -107,6 +112,109 @@ function jump(message: string): void {
 }
 
 let transcriptPane: HTMLElement | undefined = $state();
+
+// Find in chat reads the whole chat, every page, so matches on pages not
+// shown yet still count; going to one loads its page and opens any
+// collapsed step around it.
+let findOpen = $state(false);
+let findQuery = $state("");
+let findIndex = $state(0);
+let findActive = $state(false);
+let findProgress = $state(0);
+let findInput = $state<HTMLInputElement>();
+let pendingFind: FindMatch | undefined;
+const shortcut =
+  typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform) ? "⌘F" : "Ctrl F";
+const whole = createQuery(() => ({
+  queryKey: ["find-chat", id, machine, shared],
+  enabled: findOpen,
+  staleTime: 60_000,
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    collectChat(
+      id,
+      machine,
+      signal,
+      (count) => {
+        findProgress = count;
+      },
+      (id, node, offset, signal) => transcript(id, node, offset, signal, shared),
+    ),
+}));
+const matches = $derived(
+  findOpen && whole.data
+    ? findMatches(
+        whole.data.map((message) => ({ id: message.id, text: messageText(message) })),
+        findQuery,
+      )
+    : [],
+);
+const findStatus = $derived.by(() => {
+  if (whole.isPending) return `Reading the chat… ${findProgress.toLocaleString()} messages`;
+  if (whole.error) return "Couldn’t read the whole chat";
+  if (!findQuery.trim()) return "";
+  if (!matches.length) return "No matches";
+  return findActive
+    ? countLabel(findIndex, matches.length)
+    : `${countLabel(0, matches.length).replace(/^1 of /, "")} matches`;
+});
+$effect(() => {
+  void findQuery;
+  findActive = false;
+  findIndex = 0;
+});
+function openFind(): void {
+  findOpen = true;
+  void tick().then(() => {
+    findInput?.focus();
+    findInput?.select();
+  });
+}
+function closeFind(): void {
+  findOpen = false;
+  findActive = false;
+  clearMatches();
+}
+function go(step: 1 | -1): void {
+  const count = matches.length;
+  if (!count) return;
+  findIndex = findActive ? (findIndex + step + count) % count : step > 0 ? 0 : count - 1;
+  findActive = true;
+  const target = matches[findIndex];
+  if (!target) return;
+  const targetOffset = Math.floor(target.position / PAGE_SIZE) * PAGE_SIZE;
+  if (anchor || offset !== targetOffset) {
+    pendingFind = target;
+    anchor = "";
+    offset = targetOffset;
+  } else void reveal(target);
+}
+async function reveal(target: FindMatch): Promise<void> {
+  await tick();
+  const pane = transcriptPane;
+  if (!pane) return;
+  const element = pane.querySelector(`[data-message="${CSS.escape(target.messageId)}"]`);
+  if (!element) return;
+  if (element instanceof HTMLDetailsElement) element.open = true;
+  for (
+    let fold = element.closest("details");
+    fold;
+    fold = fold.parentElement?.closest("details") ?? null
+  )
+    fold.open = true;
+  await tick();
+  const spot = paintMatches(pane, findQuery, { element, occurrence: target.occurrence });
+  if (spot) bringIntoView(spot);
+}
+$effect(() => {
+  const query = findQuery;
+  const open = findOpen;
+  void loaded;
+  if (!open) return;
+  void tick().then(() => {
+    if (transcriptPane && !pendingFind) paintMatches(transcriptPane, query);
+  });
+});
+$effect(() => () => clearMatches());
 let notice = $state("");
 let exporting = $state(false);
 let exportController: AbortController | undefined;
@@ -155,7 +263,11 @@ const changed = $derived(
 $effect(() => {
   if (live.data && snapshot?.key !== key) {
     snapshot = { key, page: live.data };
-    if (toEnd) {
+    if (pendingFind) {
+      const target = pendingFind;
+      pendingFind = undefined;
+      void reveal(target);
+    } else if (toEnd) {
       toEnd = false;
       void tick().then(() =>
         window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }),
@@ -326,7 +438,18 @@ const prompts = $derived(
 );
 </script>
 
-<svelte:window onscroll={remember} onkeydown={(event) => { if (event.key === "Escape") exportOpen = false; }} />
+<svelte:window
+  onscroll={remember}
+  onkeydown={(event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openFind();
+    } else if (event.key === "Escape") {
+      exportOpen = false;
+      if (findOpen) closeFind();
+    }
+  }}
+/>
 <div class="chat" class:nosess={!showSessions} class:sessopen={sessionsOpen}>
   <nav class="sess" aria-label="Prompts and sessions">
     {#if phone && sessionsOpen}<button class="btn sessclose" type="button" onclick={() => (sessionsOpen = false)}><X size={15} aria-hidden="true" />Close</button>{/if}
@@ -364,6 +487,7 @@ const prompts = $derived(
       </div>
       <span class="acts" style:position="relative">
         <button class="btn" type="button" aria-pressed={sessionsShown} aria-label="{sessionsShown ? 'Hide' : 'Show'} session list" title="{sessionsShown ? 'Hide' : 'Show'} session list" onclick={toggleSessions} style:padding="0 11px"><PanelLeft size={15} /></button>
+        <button class="btn" type="button" aria-expanded={findOpen} onclick={openFind}><Search size={15} aria-hidden="true" />Find in chat<kbd class="kbd">{shortcut}</kbd></button>
         <button class="btn" type="button" onclick={copySession}><Copy size={15} aria-hidden="true" />Copy session ID</button>
         <button class="btn" type="button" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)}><Download size={15} aria-hidden="true" />Export</button>
         {#if exportOpen}
@@ -376,6 +500,31 @@ const prompts = $derived(
         <button class="btn" type="button" aria-label="Check for updates" title="Check for updates" disabled={live.isFetching} onclick={() => live.refetch()} style:padding="0 11px"><RefreshCw size={15} /></button>
       </span>
     </header>
+    {#if findOpen}
+      <div class="findbar" role="search">
+        <Search size={16} aria-hidden="true" />
+        <label class="sr-only" for="find-in-chat">Find in this chat</label>
+        <input
+          id="find-in-chat"
+          type="text"
+          enterkeyhint="search"
+          placeholder="Find in this chat"
+          autocomplete="off"
+          bind:this={findInput}
+          bind:value={findQuery}
+          onkeydown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              go(event.shiftKey ? -1 : 1);
+            }
+          }}
+        />
+        <span class="findn" role="status">{findStatus}</span>
+        <button class="btn" type="button" aria-label="Previous match" title="Previous match" disabled={!matches.length} onclick={() => go(-1)}><ChevronUp size={16} /></button>
+        <button class="btn" type="button" aria-label="Next match" title="Next match" disabled={!matches.length} onclick={() => go(1)}><ChevronDown size={16} /></button>
+        <button class="btn" type="button" aria-label="Close find" title="Close find" onclick={closeFind}><X size={16} /></button>
+      </div>
+    {/if}
     {#if exporting}<p class="meta"><button class="a" type="button" onclick={() => exportController?.abort()}>Cancel export</button></p>{/if}
     {#if anchor}<p class="meta">Showing the messages around a search match.</p>{/if}
     {#if anchor || (total !== undefined && total > PAGE_SIZE)}

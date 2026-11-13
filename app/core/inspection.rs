@@ -270,7 +270,17 @@ pub(super) async fn chat_messages(
             message.attachments = storage.list_attachments(&message.id)?.attachments;
             output.attachments(&mut message.attachments);
         }
-        Ok(ViewResponse::messages(chat_id, messages))
+        // A page states the chat's length, so a reader can go to its end.
+        let chat = match messages.first() {
+            Some(first) => storage.chat_window(&first.id, &messages)?,
+            None => None,
+        };
+        Ok(ViewResponse {
+            id: chat_id,
+            chat,
+            notice: None,
+            messages,
+        })
     })
     .await
 }

@@ -1190,6 +1190,13 @@ mod tests {
             let url = format!("http://{address}{path}&node=local");
             let local = client.get(&url).send().await.unwrap();
             assert_eq!(local.status(), reqwest::StatusCode::OK);
+            if path.starts_with("/api/chat?") {
+                // A page states the chat's length so a reader can jump to its end.
+                let page: serde_json::Value = local.json().await.unwrap();
+                let returned = page["messages"].as_array().unwrap().len() as u64;
+                assert!(returned > 0);
+                assert!(page["message_count"].as_u64().unwrap() >= returned);
+            }
             let shared = client
                 .get(format!("{url}&shared=true"))
                 .send()
