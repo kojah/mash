@@ -249,7 +249,7 @@ pub(super) async fn init(paths: Paths, request: InitRequest) -> Result<InitRespo
             crate::blocking(move || write_configuration(&path, semantic, request.plan.as_ref()))
                 .await?;
         if !semantic {
-            next.push("For semantic search, run `mash models install`, then update your existing configuration as shown at https://getmash.io/indexing/#enable-semantic-search".to_owned());
+            next.push("Search is set to word search (`exact-mention`): it finds the words you type and needs no models. For search by meaning, run `mash models install`, then update your existing configuration as shown at https://getmash.io/indexing/#enable-semantic-search".to_owned());
         }
         ConfigOutcome {
             path: config_path,

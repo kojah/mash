@@ -46,5 +46,7 @@ fail-fast = false
 test-threads = "num-cpus"
 status-level = "all"
 final-status-level = "all"
-retries = 0
+# Hosted runners stall on disk now and then, timing out several storage tests
+# at once. One retry absorbs that; a test that needed it is reported as flaky.
+retries = 1
 slow-timeout = { period = "60s", terminate-after = 2 }

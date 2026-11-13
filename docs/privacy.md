@@ -6,6 +6,10 @@ The default setup indexes and searches locally without changing your agents'
 original history files. The public documentation website receives none of
 your indexed chats.
 
+An agent that keeps history in a SQLite database, such as OpenCode, may gain
+`-wal` and `-shm` files beside that database when Mash reads it. SQLite
+creates them for any reader; the database's contents are unchanged.
+
 History leaves the machine only through features you turn on:
 
 - **Sharing across machines** uploads history to your configured Mash server.
