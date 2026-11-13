@@ -756,6 +756,8 @@ fn json_result(result: Result<core::Response, AppError>) -> Response {
         Err(error) => {
             let status = if error.error.retryable {
                 StatusCode::SERVICE_UNAVAILABLE
+            } else if error.error.kind == crate::ErrorKind::NotFound {
+                StatusCode::NOT_FOUND
             } else {
                 StatusCode::BAD_REQUEST
             };
@@ -1130,9 +1132,10 @@ mod tests {
                 // An explicitly empty name is not the local identity.
                 assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
             } else {
-                assert_eq!(response.status(), reqwest::StatusCode::OK);
+                // The local node resolves, and a missing message is not found.
+                assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
                 let body: serde_json::Value = response.json().await.unwrap();
-                assert_eq!(body["messages"], serde_json::json!([]));
+                assert_eq!(body["error"]["kind"], "not-found");
             }
         }
         assert_eq!(
