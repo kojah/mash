@@ -22,18 +22,41 @@ that provider is not used on this machine.
 The report also includes `resources.silver` and flags pending, incomplete or
 unverified history. A completed provider scan can coexist with older source
 checkpoints; matching the binary's database schema alone does not certify them.
-`--agent` explicitly requires an integration; without it, an enabled plugin or
-an MCP registration establishes that expectation. A CLI-only installation is valid.
-When an agent named with `--agent` needs attention, the command still prints the
-report and exits with status 1, so scripts can check wiring. `summary.clients[].connected`
-says whether each agent is configured with nothing left to fix, `missing` lists
-the parts not installed (`mcp`, `plugin`), and `summary.next_action` names what
-would make progress, or is null when there is nothing to do: starting Qdrant
-when the `qdrant` resource finding says it does not answer, `mash init` for a
-missing MCP registration, or the agent's own plugin commands when only the
-plugin is missing. Those need network access; the Mash MCP tools are available
-without the plugin, which adds the history skill and session hooks. The probe
-checks the MCP handshake and help contract only, not search readiness.
+An agent is expected when it is named with `--agent` (which also limits the
+report to the named agents), when `mash init` recorded connecting it under
+`[agents] connected` in the node configuration, or when its own settings have an
+enabled plugin or an MCP registration. A recorded agent stays expected after its
+registration disappears, and its MCP finding names the exact `mcp add` command.
+A CLI-only installation is valid. When any expected agent needs attention, the
+command still prints the report and exits with status 1, so scripts can check
+wiring; resource findings such as Qdrant do not affect the exit status.
+`clients[].recorded` shows the configuration record. `summary.clients[].connection`
+is `full` (expected, nothing needing attention), `mcp-only` (a usable MCP
+registration, with the plugin or another part needing attention) or `none`.
+`missing` lists the parts not installed (`mcp`, `plugin`), and each client's
+`next_action` names its repair: installing the agent CLI, the MCP finding's
+remediation, or the online plugin commands. `summary.next_action` names what
+would make progress, or is null when there is nothing to do: the first named
+agent's repair (prefixed with its name) when `--agent` is given, otherwise
+starting Qdrant when the `qdrant` resource finding says it does not answer,
+`mash init` for a missing MCP registration, or the agent's own plugin commands
+when only the plugin is missing. Those need network access; the Mash MCP tools
+are available without the plugin, which adds the history skill and session hooks.
+A registration whose executable is missing names the command and the exact
+`mcp remove` and `mcp add` commands, and the probe reports it as skipped. The
+probe checks the MCP handshake and help contract only, not search readiness;
+when it passes, the MCP finding says so and drops its probe suggestion.
+The dashboard's per-agent `connected` remains true only for `full`.
+
+`mash init` checks an existing user-level registration before keeping it. If
+its command is missing, not executable or another binary than the running
+`mash`, init removes it and adds the current binary through the agent CLI and
+reports `"state": "replaced"` with the old command as `stale`. If removal fails,
+it reports `"state": "stale"` with the exact commands and exits 1. Registrations
+it cannot resolve without the agent's own environment expansion are left alone.
+Each agent outcome lists the settings `files` its CLI edits and the `undo`
+commands; init then records the agents whose MCP registration is in place,
+appending the `[agents]` table so existing comments are kept.
 Ordinary `status` includes a compact installation summary, and `--help` (also
 `help` and subcommand help) adds a short warning when local checks find an
 incomplete integration or an incompatible/unreadable local index. Help respects
@@ -63,8 +86,8 @@ Multiple cached Codex versions are ambiguous, not evidence that a particular
 version is active. A Codex trust record does not prove its hash still matches:
 review current hooks with `/hooks`. A successful probe checks a **new** process,
 not an existing agent connection or actual hook execution. Restart clients after
-repairs. Inspection exits successfully when it produces a report; use
-`summary.attention` and the individual states for automation.
+repairs. Use the exit status for expected agents, and `summary.attention` and
+the individual states for resource findings.
 
 Client-format references: [Codex plugins](https://developers.openai.com/plugins/build/plugins)
 and [Codex hook trust](https://learn.chatgpt.com/docs/hooks).

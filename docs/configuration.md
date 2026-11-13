@@ -40,6 +40,21 @@ To include all ages permanently, replace `since_days = 90` with
 `all_history = true`. Do not set both. One-off indexing flags such as
 `--all-history` override the configured age selection.
 
+## Connected agents
+
+`mash init` records the agents it connected:
+
+```toml
+[agents]
+connected = ["claude-code", "codex"]
+```
+
+`mash status --installation` then reports a listed agent as needing repair if
+its Mash registration later disappears, instead of treating it as unused. Remove
+an agent from the list when you disconnect it on purpose. A configuration
+without this table keeps the older behaviour: an agent is expected only while
+its own settings register Mash. `mash init --no-agents` leaves the list as it is.
+
 ## Embedding inference
 
 Embedding generation runs locally by default. To send indexing batches to an

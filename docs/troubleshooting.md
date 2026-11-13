@@ -118,7 +118,8 @@ Run `mash status --installation` and follow its repair suggestion. Restart the
 agent after setup or a binary/plugin upgrade. A successful `--probe` tests a new
 MCP process; an existing chat may still hold an old connection.
 
-If MCP is configured but the plugin is missing, MCP tools may still work.
+If an agent's `connection` is `mcp-only`, its MCP tools work and only the
+plugin is missing.
 Plugin installation requires network access; hooks also need Python 3.9+.
 See [agent setup](agents.md).
 

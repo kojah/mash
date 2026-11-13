@@ -252,7 +252,9 @@ To choose them yourself before indexing, use `mash init --no-index`, edit the
 after setup.
 
 The history plugin's hooks need Python 3.9+; see [agent setup](agents.md).
-For CLI-only use, run `mash init --no-agents`. To configure without indexing,
+For CLI-only use, run `mash init --no-agents`. Each connected agent in the
+result lists the settings `files` its CLI edited and the `undo` commands that
+remove the connection. To configure without indexing,
 use `--no-index`. The wizard offers to keep existing settings or review them;
 reviewing preserves settings outside the wizard and backs up the previous file.
 Non-interactive setup keeps existing configuration unless `--force` is passed.

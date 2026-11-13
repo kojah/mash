@@ -13,8 +13,25 @@ mash init
 ```
 
 Mash registers its MCP server and history plugin with the supported agent CLIs
-it finds on your `PATH`. Restart those agents afterward so they load the new
-connection and instructions.
+it finds on your `PATH`, using each agent's own commands. Those commands edit
+the agent's user settings: `~/.claude.json`, `~/.claude/settings.json` and
+`~/.claude/plugins` for Claude Code, and `~/.codex/config.toml` and
+`~/.codex/plugins` for Codex. Restart those agents afterward so they load the
+new connection and instructions.
+
+Mash also records the connected agents in its own `config.toml`, so it can
+tell you later if one loses its connection. Running `mash init` again repairs
+a registration that points at a missing or different Mash executable.
+
+To disconnect an agent, run its own removal commands (`init` lists them as
+`undo`):
+
+```bash
+claude mcp remove --scope user mash
+claude plugin uninstall mash@mash
+codex mcp remove mash
+codex plugin remove mash@mash
+```
 
 The plugin's hooks require Python 3.9+ (`python3`, `python`, or the Windows
 `py` launcher). Plugin installation needs network access. MCP search can still
@@ -50,6 +67,11 @@ mash status --installation --agent codex --probe
 mash status --installation --agent claude-code --probe
 ```
 
+Each agent in the report's summary has a `connection`: `full` when nothing
+needs attention, `mcp-only` when the Mash tools work but the plugin (history
+skill and session hooks) is missing, and `none` when the agent cannot reach
+Mash. Its `next_action` gives the exact command that repairs it.
+
 A successful probe verifies a new process, not the connection in an already-open
 chat. Restart the agent after setup, repairs, or upgrades. If only the plugin is
 missing, follow the report's repair suggestion rather than repeatedly reindexing.
@@ -57,8 +79,9 @@ missing, follow the report's repair suggestion rather than repeatedly reindexing
 The report distinguishes an agent's data directory from its CLI being on `PATH`.
 Old histories can be searchable even when that agent is no longer installed.
 To connect an absent agent, install its CLI first, then rerun `mash init`.
-Requiring an incomplete integration with `--agent` exits with status 1 while
-still returning the diagnostic report.
+The command exits with status 1, still printing the report, when an agent that
+`mash init` connected, one configured for Mash, or one named with `--agent`
+needs attention. Agents you never connected are fine to leave unused.
 
 ## Keep new chats searchable
 
