@@ -404,13 +404,20 @@ fn word_queries_rank_by_text_and_require_each_word_or_an_alternative() {
 fn default_local_qdrant_start_instruction_works_offline() {
     for url in ["http://127.0.0.1:6333", "http://localhost:6333"] {
         let text = start_instruction(&endpoint(url).unwrap());
+        assert!(
+            text.starts_with("Install and start it with `mash qdrant install`."),
+            "{text}"
+        );
         assert!(text.contains("docker start mash-local-qdrant"), "{text}");
-        assert!(text.contains("qdrant/qdrant:v1.20.0"), "{text}");
         assert!(
             text.contains("QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant"),
             "{text}"
         );
     }
+    // Another local port is still one `mash qdrant install` can serve.
+    let other = start_instruction(&endpoint("http://127.0.0.1:16333").unwrap());
+    assert!(other.starts_with("Run `mash qdrant install`"), "{other}");
+    assert!(!other.contains("docker"), "{other}");
     let remote = start_instruction(&endpoint("https://qdrant.example:6333").unwrap());
     assert!(!remote.contains("docker"), "{remote}");
     assert!(remote.contains("Start the configured Qdrant service"));

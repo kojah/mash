@@ -36,14 +36,21 @@ pub(crate) fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
 /// The local-setup section of the installation guide.
 const START_GUIDE: &str = "https://getmash.io/installation/#start-the-local-search-service";
 
-/// How to start Qdrant, readable offline. Only the default local endpoint
-/// gets the documented commands; any other endpoint is the user's own service.
+/// How to start Qdrant, readable offline. A plain-HTTP endpoint on this
+/// machine is one `mash qdrant install` can provide; the default one also
+/// gets the documented commands for a Qdrant the user runs. Any other
+/// endpoint is the user's own service.
 pub(super) fn start_instruction(url: &reqwest::Url) -> &'static str {
-    let local = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
-    if local && url.port_or_known_default() == Some(6333) {
-        "Start it on this machine with `docker start mash-local-qdrant` if you created the documented container, otherwise create it with `docker run -d --name mash-local-qdrant --restart unless-stopped --memory 2g -p 127.0.0.1:6333:6333 -p 127.0.0.1:6334:6334 --mount type=volume,source=mash-qdrant-data,target=/qdrant/storage qdrant/qdrant:v1.20.0`, or without Docker run `QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant` in a downloaded Qdrant 1.20 release folder."
-    } else {
-        "Start the configured Qdrant service and check its HTTP port."
+    let local = url.scheme() == "http"
+        && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
+    match (local, url.port_or_known_default() == Some(6333)) {
+        (true, true) => {
+            "Install and start it with `mash qdrant install`. If you run Qdrant yourself, start that instead: `docker start mash-local-qdrant` for the documented container, or `QDRANT__SERVICE__HOST=127.0.0.1 ./qdrant` in a downloaded Qdrant 1.20 release folder."
+        }
+        (true, false) => {
+            "Run `mash qdrant install` to install and start it on the configured ports. Start the configured Qdrant service instead if you run your own, and check its HTTP port."
+        }
+        (false, _) => "Start the configured Qdrant service and check its HTTP port.",
     }
 }
 
