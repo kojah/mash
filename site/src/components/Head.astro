@@ -1,7 +1,15 @@
 ---
 import { ClientRouter } from "astro:transitions";
 import DefaultHead from "@astrojs/starlight/components/Head.astro";
+
+// The card that link previews show: the landing page's hero.
+const card = new URL("/og.png", Astro.site);
 ---
 
 <DefaultHead />
+<meta property="og:image" content={card} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Your agents forget. Mash doesn’t." />
+<meta name="twitter:image" content={card} />
 <ClientRouter fallback="swap" />
