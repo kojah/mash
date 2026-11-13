@@ -158,6 +158,7 @@ impl Build {
             && self.embedding_text == EmbeddingText::Dialogue
     }
 
+    #[cfg(test)]
     pub(crate) fn users_only(&self) -> bool {
         self.dense_content == DenseContent::UserMessages
     }

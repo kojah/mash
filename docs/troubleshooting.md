@@ -161,8 +161,8 @@ configuration that has custom history or sharing settings.
 **You see:** `embedding_error` in the result of `mash index`, which exits with
 the retry-required status.
 
-The pass finished but could not compute embeddings, for example because a
-remote embedding worker did not answer. The new messages are searchable by word
+The pass finished but could not compute embeddings, for example because the
+models are not installed or a remote embedding worker did not answer. The new messages are searchable by word
 (`exact-mention`) straight away. Searching by meaning (`related-discussion`)
 waits until a later `mash index` succeeds; fix the reported cause, then run it
 again.

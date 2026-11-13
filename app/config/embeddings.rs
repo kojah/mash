@@ -46,11 +46,6 @@ impl Embeddings {
         }
     }
 
-    /// Whether indexing can need the local model at all.
-    pub(crate) const fn uses_local_model(&self) -> bool {
-        self.runs_locally(0)
-    }
-
     pub(crate) fn validate(&self) -> Result<(), AppError> {
         let Self::Remote {
             url,

@@ -8,7 +8,6 @@ use crate::config::{self, ResolvedConfig};
 use crate::provider::Provider;
 #[cfg(test)]
 use crate::semantic;
-use crate::semantic::Models;
 use crate::storage::Storage;
 use crate::{shared, silver as history};
 #[cfg(test)]
@@ -198,9 +197,6 @@ async fn index(
     let total_started = Instant::now();
     let rebuild_local_views = matches!(input, LocalInput::StoredSilver);
     let database = database_path.to_path_buf();
-    let root = models_dir.to_path_buf();
-    let build = configuration.views.build.clone();
-    let local_inference = configuration.embeddings.uses_local_model();
     let (summary, certificate, storage_setup_milliseconds, ingestion_milliseconds) =
         crate::blocking(move || {
             let database_path = database.as_path();
@@ -209,10 +205,9 @@ async fn index(
                 // creation from becoming an implicit bronze-to-silver operation.
                 require_certified_silver(&Storage::open_silver(database_path)?)?;
             }
-            let models = Models::new(root);
-            if local_inference && build.dense_enabled() && !build.users_only() {
-                models.require_indexer()?;
-            }
+            // Missing models are not checked here: history is still read and
+            // word search made current, and the views build reports why the
+            // embeddings could not be computed.
             let storage_started = Instant::now();
             let mut storage = Storage::open_writer(database_path)?;
             if rebuild_local_views {

@@ -24,8 +24,11 @@ installed, it configures semantic search. A `lexical-only` views build supports
 `exact-mention`; semantic `related-discussion` requires `lexical-and-dense`.
 
 Word search and dense retrieval are certified separately on a local index.
-When inference fails during a pass (a model error, a missing token or a remote
-worker failure), that pass stores the remaining documents without vectors,
+Indexing does not check for models up front: history is read and saved, and
+the views build embeds what it can.
+When inference fails during a pass (missing models, a model error, a missing
+token or a remote worker failure), that pass stores the remaining documents
+without vectors, leaves unchanged chats that already lack vectors as they are,
 makes no further inference request, and still certifies the word index for the
 committed history. It reports `embedding_error`, realizes `lexical` mode and
 needs a retry; `related-discussion` stays unavailable until a later pass embeds

@@ -149,6 +149,12 @@ impl<'a> Writer<'a> {
         self
     }
 
+    /// Whether inference has already failed in this pass, so nothing more
+    /// will be embedded by it.
+    pub(crate) fn inference_failed(&self) -> bool {
+        self.build.inference_error.is_some()
+    }
+
     /// A replay starts from an empty node; do not query Qdrant for vectors to reuse.
     pub(crate) fn without_reuse(mut self) -> Self {
         self.reuse = false;

@@ -174,7 +174,7 @@ fn server_rejects_json_duplicate_keys_and_unknown_fields_before_connecting() {
 }
 
 #[test]
-fn public_index_flags_validate_before_models_database_or_scanning() {
+fn public_index_flags_validate_before_database_or_scanning() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
     let codex_root = directory.path().join("codex");
@@ -184,6 +184,9 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
             version = 1
             providers = {codex = {roots = [(codex_root.to_str().unwrap())]}}
             index = {since_days = 90}
+            // An accepted invocation must stop at the search service, never
+            // at a developer's running one.
+            qdrant = {url = "http://127.0.0.1:9", grpc_url = "http://127.0.0.1:9"}
         })
         .expect("config TOML"),
     )
@@ -227,9 +230,15 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
         ])
         .output()
         .expect("accepted index invocation");
-    let error: Value = serde_json::from_slice(&accepted.stderr).expect("model JSON");
-    assert_eq!(error["error"]["kind"], "model");
-    assert!(!database.exists());
+    // Valid flags are not a usage error: the run gets as far as the provider
+    // root, which does not exist. Progress lines may precede the error.
+    let last = accepted
+        .stderr
+        .split(|byte| *byte == b'\n')
+        .rfind(|line| !line.is_empty());
+    let error: Value = serde_json::from_slice(last.unwrap()).expect("error JSON");
+    assert_eq!(error["error"]["kind"], "configuration", "{error}");
+    assert!(!models.exists());
 }
 
 #[test]

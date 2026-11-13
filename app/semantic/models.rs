@@ -121,6 +121,7 @@ impl Models {
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn require_indexer(&self) -> Result<(), AppError> {
         self.require_installed()
     }

@@ -17,13 +17,13 @@ fn remote_embedding_configuration_is_explicit_strict_and_keeps_credentials_unres
         "{prefix}[embeddings]\nbackend = 'remote'\nurl = 'https://example.com/embed'\ntoken_env = 'MASH_TEST_NOT_PRESENT'\n"
     );
     let remote = parse_document(base.as_bytes()).unwrap().embeddings;
-    assert!(!remote.uses_local_model());
+    assert!(!remote.runs_locally(0));
     assert!(!remote.runs_locally(1));
     // A threshold places small batches locally and leaves full ones remote.
     let mixed = parse_document(format!("{base}local_below = 256\n").as_bytes())
         .unwrap()
         .embeddings;
-    assert!(mixed.uses_local_model());
+    assert!(mixed.runs_locally(0));
     assert!(mixed.runs_locally(255));
     assert!(!mixed.runs_locally(256));
     assert!(Embeddings::Local {}.runs_locally(usize::MAX));

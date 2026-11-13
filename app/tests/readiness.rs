@@ -305,7 +305,7 @@ fn status_recommends_init_before_setup_and_models_install_after_without_download
 }
 
 #[test]
-fn oversized_model_metadata_fails_before_indexing_or_loading_and_status_explains_recovery() {
+fn oversized_model_metadata_fails_before_loading_and_status_explains_recovery() {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("config.toml");
     std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
@@ -325,30 +325,27 @@ fn oversized_model_metadata_fails_before_indexing_or_loading_and_status_explains
     let status = run_json(&[base.as_slice(), &["status"]].concat());
     assert_eq!(status["ready"], false);
     assert_eq!(status["recommended_action"], "models install");
-    for args in [
-        vec!["index"],
-        vec![
+    // Only searching by meaning loads the models; indexing reads history
+    // without them (see `index_without_models_still_reads_history…`).
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args(base)
+        .args([
             "search",
             "cbioportal",
             "--intent",
             "related-discussion",
             "--local",
-        ],
-    ] {
-        let output = Command::cargo_bin("mash")
-            .unwrap()
-            .args(base)
-            .args(args)
-            .timeout(HANG_GUARD)
-            .output()
-            .unwrap();
-        assert_eq!(output.status.code(), Some(4));
-        assert_eq!(output.stdout, [] as [u8; 0]);
-        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(error["error"]["kind"], "model");
-        assert_eq!(error["error"]["recommended_action"], "models install");
-        assert!(!database.exists());
-    }
+        ])
+        .timeout(HANG_GUARD)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(4));
+    assert_eq!(output.stdout, [] as [u8; 0]);
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "model");
+    assert_eq!(error["error"]["recommended_action"], "models install");
+    assert!(!database.exists());
     assert_eq!(std::fs::read_dir(&models).unwrap().count(), 2);
     assert_eq!(marker.metadata().unwrap().len(), 1024 * 1024 + 1);
 }

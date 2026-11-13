@@ -96,7 +96,7 @@ fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
 }
 
 #[test]
-fn index_without_models_fails_before_creating_the_database() {
+fn index_without_models_still_reads_history_and_is_not_a_model_error() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
@@ -108,6 +108,10 @@ fn index_without_models_fails_before_creating_the_database() {
     std::fs::create_dir_all(&claude).expect("Claude root");
     std::fs::create_dir_all(&codex).expect("Codex root");
     write_config(&config, &claude, &codex);
+    // No search service either, so the pass stops there rather than at models.
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    text.push_str("\n[qdrant]\nurl = 'http://127.0.0.1:9'\ngrpc_url = 'http://127.0.0.1:9'\n");
+    std::fs::write(&config, text).unwrap();
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
         .args([
@@ -122,12 +126,16 @@ fn index_without_models_fails_before_creating_the_database() {
         .output()
         .expect("run index");
 
+    // Models matter only for searching by meaning: history is read and saved
+    // without them, and the failure that remains is the missing search service.
     assert!(!output.status.success());
-    assert_eq!(output.stdout, Vec::<u8>::new());
-    let error: Value = serde_json::from_slice(&output.stderr).expect("JSON error");
-    assert_eq!(error["error"]["kind"], "model");
-    assert_eq!(error["error"]["recommended_action"], "models install");
-    assert!(!database.exists());
+    let last = output
+        .stderr
+        .split(|byte| *byte == b'\n')
+        .rfind(|line| !line.is_empty());
+    let error: Value = serde_json::from_slice(last.unwrap()).expect("JSON error");
+    assert_eq!(error["error"]["kind"], "qdrant-unavailable", "{error}");
+    assert!(database.exists());
     assert!(!models.exists());
 }
 
