@@ -183,6 +183,12 @@ impl Local {
         }))
     }
 
+    /// Read what word matching needs while the caller loads its models.
+    pub(crate) async fn warm_matching(&self, input: &super::retrieval::Search) {
+        let active = std::collections::BTreeSet::from([self.scope.node_id.clone()]);
+        self.store.warm_matching(&self.scope, input, &active).await;
+    }
+
     pub(crate) async fn candidates(
         &self,
         input: super::retrieval::Search,

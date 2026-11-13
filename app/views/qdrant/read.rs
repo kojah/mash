@@ -131,6 +131,34 @@ pub(super) fn search_filter(
 }
 
 impl Store {
+    /// Read the matching vocabulary this search will need, so a process that
+    /// has other preparation to do (loading models) can do both at once.
+    /// Best effort: the search reads it again if this did not keep it.
+    pub(crate) async fn warm_matching(
+        &self,
+        identity: &Scope,
+        input: &protocol::Search,
+        active: &BTreeSet<String>,
+    ) {
+        if input.intent == crate::views::exact::Intent::ExactMention
+            || input.match_mode == crate::views::matching::Mode::Strict
+            || (input.query.trim().starts_with('"') && input.query.trim().ends_with('"'))
+        {
+            return;
+        }
+        let active = active
+            .iter()
+            .filter(|node| !input.exclude_self || **node != identity.node_id)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if active.is_empty() {
+            return;
+        }
+        if let Ok(filter) = search_filter(input, &active) {
+            let _ = self.vocabulary(identity, &active, &filter).await;
+        }
+    }
+
     /// Preserve original lexical candidates before considering expanded terms.
     async fn lexical(
         &self,

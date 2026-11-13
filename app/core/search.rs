@@ -519,14 +519,27 @@ async fn local_search(
     .await?;
     let local = crate::views::local::Local::open_current(database_path, configuration).await?;
     let text = query.clone();
-    let (backend, vector) = crate::blocking(move || {
-        let mut backend = models
-            .load_search(options.ranking)?
-            .ok_or_else(AppError::models_missing)?;
-        let vector = semantic::shared_query_vector(&mut backend, &text)?;
-        Ok((backend, vector))
-    })
-    .await?;
+    // A fresh process spends this time loading models; the matching
+    // vocabulary is the other slow read, and needs no model.
+    let probe = local_request(
+        &local,
+        &query,
+        options.unit,
+        filters,
+        crate::views::exact::Intent::RelatedDiscussion,
+        Vec::new(),
+    );
+    let (loaded, ()) = tokio::join!(
+        crate::blocking(move || {
+            let mut backend = models
+                .load_search(options.ranking)?
+                .ok_or_else(AppError::models_missing)?;
+            let vector = semantic::shared_query_vector(&mut backend, &text)?;
+            Ok((backend, vector))
+        }),
+        local.warm_matching(&probe),
+    );
+    let (backend, vector) = loaded?;
     let input = local_request(
         &local,
         &query,
