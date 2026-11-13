@@ -1,17 +1,169 @@
 ---
-// Starlight's hero, over the rippling surface.
-import Default from "@astrojs/starlight/components/Hero.astro";
+// The landing hero: Starlight's headline, tagline and actions over the rippling
+// surface, with the install command ready to copy.
+import { LinkButton } from "@astrojs/starlight/components";
 import Surface from "./Surface.astro";
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero ?? {};
+// Releases are not published yet, so this is the install that works today.
+const install = "cargo +stable install --locked --git https://github.com/kojah/mash mash";
 ---
 
 <div class="mash-hero">
   <Surface />
-  <Default />
+  <div class="hero">
+    <div class="sl-flex stack">
+      <div class="sl-flex copy">
+        <h1 id="_top" data-page-title set:html={title} />
+        {tagline && <div class="tagline" set:html={tagline} />}
+      </div>
+      <div class="mash-install">
+        <div class="command">
+          <span class="prompt" aria-hidden="true">$</span>
+          <code>{install}</code>
+          <button type="button" data-copy={install} aria-label="Copy the install command">Copy</button>
+        </div>
+        <p>Builds from source with Rust. <a href="/installation/">Other ways to install</a></p>
+      </div>
+      {
+        actions.length > 0 && (
+          <div class="sl-flex actions">
+            {actions.map(({ attrs: { class: className, ...attrs } = {}, icon, link, text, variant }) => (
+              <LinkButton href={link} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+                {text}
+                {icon?.html && <Fragment set:html={icon.html} />}
+              </LinkButton>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  </div>
 </div>
+
+<script>
+  // One listener serves every page change. The button says so once it has copied.
+  document.addEventListener("click", async (event) => {
+    const button = event.target instanceof Element ? event.target.closest("button[data-copy]") : null;
+    if (!(button instanceof HTMLButtonElement)) return;
+    try {
+      await navigator.clipboard.writeText(button.dataset.copy ?? "");
+      button.textContent = "Copied";
+      setTimeout(() => {
+        button.textContent = "Copy";
+      }, 2000);
+    } catch {
+      // Without clipboard access, select the command so it can be copied by hand.
+      const code = button.parentElement?.querySelector("code");
+      if (code) getSelection()?.selectAllChildren(code);
+    }
+  });
+</script>
 
 <style>
   .mash-hero {
     position: relative;
     isolation: isolate;
+  }
+  .hero {
+    display: grid;
+    grid-template-columns: 100%;
+    align-items: center;
+    padding-bottom: 1rem;
+  }
+  .stack {
+    flex-direction: column;
+    gap: clamp(1.5rem, calc(1.5rem + 1vw), 2rem);
+    text-align: center;
+  }
+  .copy {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+  }
+  .copy > * {
+    max-width: 50ch;
+  }
+  h1 {
+    font-size: clamp(var(--sl-text-3xl), calc(0.25rem + 5vw), var(--sl-text-6xl));
+    line-height: var(--sl-line-height-headings);
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+  .tagline {
+    font-size: clamp(var(--sl-text-base), calc(0.0625rem + 2vw), var(--sl-text-xl));
+    color: var(--sl-color-gray-2);
+  }
+
+  .mash-install {
+    display: grid;
+    gap: 0.5rem;
+    min-width: 0;
+    max-width: 100%;
+    align-self: center;
+  }
+  .command {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.375rem 0.375rem 0.375rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.625rem;
+    background: color-mix(in srgb, var(--sl-color-black) 82%, transparent);
+    font-family: var(--sl-font-mono);
+    font-size: var(--sl-text-sm);
+    text-align: start;
+  }
+  .prompt {
+    color: var(--sl-color-gray-3);
+    user-select: none;
+  }
+  code {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 0;
+    background: none;
+    color: var(--sl-color-white);
+    white-space: nowrap;
+  }
+  button {
+    flex: none;
+    min-width: 4.25rem;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.375rem;
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+    font: 500 var(--sl-text-sm) var(--sl-font);
+    cursor: pointer;
+  }
+  button:hover {
+    border-color: var(--sl-color-gray-3);
+  }
+  .mash-install p {
+    margin: 0;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+  .mash-install a {
+    color: var(--sl-color-text-accent);
+  }
+
+  @media (min-width: 50rem) {
+    .hero {
+      padding-block: clamp(2.5rem, calc(1rem + 10vmin), 10rem);
+    }
+    .stack {
+      text-align: start;
+    }
+    .copy {
+      align-items: flex-start;
+    }
+    .mash-install {
+      align-self: flex-start;
+    }
   }
 </style>

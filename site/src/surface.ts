@@ -83,8 +83,8 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     })
     .sort((a, b) => b.z - a.z);
   let drops: Drop[] = [
-    { x: -1.6, z: 3.2, born: 12.3, amp: 0.06 },
-    { x: 2.6, z: 5.2, born: 11.0, amp: 0.06 },
+    { x: -1.6, z: 3.2, born: 12.3, amp: 0.1 },
+    { x: 2.6, z: 5.2, born: 11.0, amp: 0.1 },
   ];
   // The pointer is one broad, soft swell. It trails the cursor and rises and
   // settles slowly, and is smooth at its centre, so nothing on the surface jumps.
@@ -114,16 +114,16 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
   function lift(x: number, z: number): number {
     const t = clock;
     let y =
-      0.22 * Math.sin(x * 0.42 + t * 0.11) * Math.cos(z * 0.36 - t * 0.08) +
-      0.1 * Math.sin((x + z) * 0.9 - t * 0.23);
+      0.32 * Math.sin(x * 0.42 + t * 0.11) * Math.cos(z * 0.36 - t * 0.08) +
+      0.14 * Math.sin((x + z) * 0.6 - t * 0.2);
     const first = Math.hypot(x + 2.2, z - 4.5);
     const second = Math.hypot(x - 3.1, z - 6.5);
     y +=
-      (0.06 * Math.sin(first * 3.2 - t * 1.3)) / (1 + first * 0.35) +
-      (0.05 * Math.sin(second * 2.6 - t * 1.1)) / (1 + second * 0.3);
+      (0.11 * Math.sin(first * 1.8 - t * 1.1)) / (1 + first * 0.3) +
+      (0.1 * Math.sin(second * 1.5 - t * 0.9)) / (1 + second * 0.25);
     for (const mark of marks) {
       const r = Math.hypot(x - mark.x, z - mark.z);
-      if (r < 2.4) y += 0.02 * Math.sin(r * 9 - t * 1.6) * Math.exp(-r * 1.6);
+      if (r < 2.4) y += 0.025 * Math.cos(r * 5 - t * 1.4) * Math.exp(-r * 1.3);
     }
     if (pointer.gain > 0.01) {
       const r = Math.hypot(x - pointer.x, z - pointer.z);
@@ -132,11 +132,11 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
     for (const drop of drops) {
       const age = t - drop.born;
       const offset = Math.hypot(x - drop.x, z - drop.z) - age * 1.1;
-      const q = offset / 0.55;
+      const q = offset / 0.95;
       if (q > 3 || q < -3) continue;
       // Fade in over the first moments so a new ring never pops.
       const swell = Math.min(1, age / 0.8) * Math.exp(-age / 4);
-      y += drop.amp * swell * Math.cos(offset * 5) * Math.exp(-q * q);
+      y += drop.amp * swell * Math.cos(offset * 3) * Math.exp(-q * q);
     }
     return y;
   }
@@ -250,7 +250,7 @@ export function mountSurface(canvas: HTMLCanvasElement): void {
         x: (random() * 2 - 1) * 5,
         z: 1.8 + random() * 5,
         born: clock,
-        amp: 0.04 + random() * 0.02,
+        amp: 0.09 + random() * 0.04,
       };
       drops = [...drops.filter((d) => clock - d.born < 12).slice(-7), drop];
       nextDrop = clock + 2.5 + random() * 2.5;

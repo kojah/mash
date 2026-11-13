@@ -54,3 +54,14 @@ test("the hero draws its surface in the theme's ink", async ({ page }) => {
     await page.evaluate(() => getComputedStyle(document.querySelector("h1") as Element).color),
   );
 });
+
+test("the hero's install command copies to the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  const command = await page.locator(".mash-install code").textContent();
+  expect(command).toMatch(/^cargo \+stable install /);
+  const copy = page.getByRole("button", { name: "Copy the install command" });
+  await copy.click();
+  await expect(copy).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+});
