@@ -82,6 +82,14 @@ start_api() {
     # The long-lived server must not inherit the short-lived rollout lock.
     nohup setsid "$1" --server-config "${5:-$config}" "${flags[@]}" {deploy_lock}>&- </dev/null >"$2" 2>&1 &
     new_pid=$!
+    # That process is nohup, then setsid, then the server, each replacing the
+    # last. Wait for the server's own image before anything checks its
+    # identity; a process that has already exited is left for the caller to find.
+    local attempt
+    for ((attempt=0; attempt<50; attempt++)); do
+        [[ "/proc/$new_pid/exe" -ef "$1" || ! -e "/proc/$new_pid" ]] && break
+        sleep 0.1
+    done
 }
 
 wait_exit() {
