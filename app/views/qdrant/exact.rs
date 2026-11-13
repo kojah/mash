@@ -71,20 +71,23 @@ impl Store {
                     )
                     .await?;
                 scanned += page.points.len();
-                let mut page_hits = page
+                let page_hits = page
                     .points
                     .into_iter()
                     .filter(|point| !point.payload.unit.text.is_empty())
                     .map(|point| hit(point, &active))
                     .collect::<Result<Vec<_>, _>>()?;
-                for hit in &mut page_hits {
+                // Most scanned candidates hold the words but not the literal.
+                // Masking a message is the costly step, so only the messages
+                // that match are masked and labelled, on the text they show.
+                let mut matched = crate::search_results::eligible(page_hits)
+                    .into_iter()
+                    .filter(|hit| literal.matches(&hit.content))
+                    .collect::<Vec<_>>();
+                for hit in &mut matched {
                     crate::views::matching::annotate(hit, &literal, self.responses);
                 }
-                hits.extend(
-                    crate::search_results::eligible(page_hits)
-                        .into_iter()
-                        .filter(|hit| literal.matches(&hit.content)),
-                );
+                hits.extend(matched);
                 exact::order(&mut hits);
                 hits.truncate(input.unit.candidate_limit());
                 if page.next_page_offset.is_none() {

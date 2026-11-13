@@ -62,51 +62,56 @@ pub(crate) fn tokens(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn digits(text: &str) -> String {
-    text.chars().filter(char::is_ascii_digit).collect()
+fn digits(text: &str) -> impl Iterator<Item = u8> + '_ {
+    text.bytes().filter(u8::is_ascii_digit)
 }
 
 /// Exact numbers remain exact even inside version strings and identifiers.
+///
+/// Literal search asks this of every word of every scanned message, so the
+/// cheap length and prefix tests come first and nothing here allocates.
 pub(crate) fn relation(query: &str, term: &str, mode: Mode) -> Option<Kind> {
     if query.eq_ignore_ascii_case(term) {
         return Some(Kind::Exact);
     }
-    if !query.is_ascii() || !term.is_ascii() || digits(query) != digits(term) {
+    let prefix = mode.prefix()
+        && query.len() >= 3
+        && term.len() > query.len()
+        && term.as_bytes()[..query.len()].eq_ignore_ascii_case(query.as_bytes());
+    let budget = if query.len() >= 9 { 2 } else { 1 };
+    let typo = mode.typo()
+        && (5..=64).contains(&query.len())
+        && term.len() <= 64
+        && query.len().abs_diff(term.len()) <= budget;
+    if !(prefix || typo)
+        || !query.is_ascii()
+        || !term.is_ascii()
+        || !digits(query).eq(digits(term))
+        || crate::search_query::is_stop_word(query)
+    {
         return None;
     }
-    if mode.prefix()
-        && query.len() >= 3
-        && !crate::search_query::is_stop_word(query)
-        && term.len() > query.len()
-        && term[..query.len()].eq_ignore_ascii_case(query)
-    {
+    if prefix {
         return Some(Kind::Prefix);
     }
-    if mode.typo()
-        && query.len() >= 5
-        && query.len() <= 64
-        && term.len() <= 64
-        && !crate::search_query::is_stop_word(query)
-        && distance(
-            query.as_bytes(),
-            term.as_bytes(),
-            if query.len() >= 9 { 2 } else { 1 },
-        )
-    {
-        return Some(Kind::Typo);
-    }
-    None
+    distance(query.as_bytes(), term.as_bytes(), budget).then_some(Kind::Typo)
 }
 
 /// Optimal-string-alignment distance, including adjacent transpositions.
+/// Both words are at most 64 bytes, so the rows live on the stack.
 fn distance(left: &[u8], right: &[u8], budget: usize) -> bool {
-    if left.len().abs_diff(right.len()) > budget {
+    const ROW: usize = 65;
+    if left.len().abs_diff(right.len()) > budget || left.len() >= ROW || right.len() >= ROW {
         return false;
     }
-    let mut older = vec![0; right.len() + 1];
-    let mut previous: Vec<_> = (0..=right.len()).collect();
+    let width = right.len() + 1;
+    let mut older = [0usize; ROW];
+    let mut previous = [0usize; ROW];
+    for (j, cell) in previous[..width].iter_mut().enumerate() {
+        *cell = j;
+    }
     for (i, &a) in left.iter().enumerate() {
-        let mut current = vec![i + 1; right.len() + 1];
+        let mut current = [i + 1; ROW];
         for (j, &b) in right.iter().enumerate() {
             current[j + 1] = (previous[j + 1] + 1)
                 .min(current[j] + 1)
@@ -119,7 +124,7 @@ fn distance(left: &[u8], right: &[u8], budget: usize) -> bool {
                 current[j + 1] = current[j + 1].min(older[j - 1] + 1);
             }
         }
-        if current.iter().copied().min().unwrap_or(budget + 1) > budget {
+        if current[..width].iter().copied().min().unwrap_or(budget + 1) > budget {
             return false;
         }
         older = previous;
@@ -249,6 +254,63 @@ mod tests {
         let quoted = Plan::new("\"idemp\"", Mode::Flexible, &words).unwrap();
         assert_eq!(quoted.groups, vec![vec!["idemp".to_owned()]]);
     }
+    /// The definition `relation` had before its checks were reordered.
+    fn reference(query: &str, term: &str, mode: Mode) -> Option<Kind> {
+        let digits = |text: &str| {
+            text.chars()
+                .filter(char::is_ascii_digit)
+                .collect::<String>()
+        };
+        if query.eq_ignore_ascii_case(term) {
+            return Some(Kind::Exact);
+        }
+        if !query.is_ascii() || !term.is_ascii() || digits(query) != digits(term) {
+            return None;
+        }
+        let stop = crate::search_query::is_stop_word(query);
+        if mode.prefix()
+            && query.len() >= 3
+            && !stop
+            && term.len() > query.len()
+            && term[..query.len()].eq_ignore_ascii_case(query)
+        {
+            return Some(Kind::Prefix);
+        }
+        (mode.typo()
+            && query.len() >= 5
+            && query.len() <= 64
+            && term.len() <= 64
+            && !stop
+            && distance(
+                query.as_bytes(),
+                term.as_bytes(),
+                if query.len() >= 9 { 2 } else { 1 },
+            ))
+        .then_some(Kind::Typo)
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn relation_keeps_its_meaning_for_any_pair_of_words(
+            query in "[a-cA-C0-2é]{0,12}",
+            term in "[a-cA-C0-2é]{0,12}",
+            long in "[ab]{60,70}",
+        ) {
+            for mode in [Mode::Strict, Mode::Prefix, Mode::Typo, Mode::Flexible] {
+                proptest::prop_assert_eq!(relation(&query, &term, mode), reference(&query, &term, mode));
+                proptest::prop_assert_eq!(relation(&long, &term, mode), reference(&long, &term, mode));
+                let near = format!("{long}a");
+                proptest::prop_assert_eq!(relation(&long, &near, mode), reference(&long, &near, mode));
+            }
+            for word in ["there", "these", "which", "where", "would"] {
+                proptest::prop_assert_eq!(
+                    relation(word, &term, Mode::Flexible),
+                    reference(word, &term, Mode::Flexible)
+                );
+            }
+        }
+    }
+
     #[test]
     fn typo_prefix_and_numeric_guards() {
         assert_eq!(
