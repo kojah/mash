@@ -40,7 +40,7 @@ test("mobile menu and theme still work after navigation", async ({ page }) => {
   await page.locator(".mash-theme:visible").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", other);
   await page.locator('nav.sidebar a[href="/search/"]').click();
-  await expect(page.locator("h1")).toHaveText("Find a conversation");
+  await expect(page.locator("h1")).toHaveText("Introduction to Mash search");
   await expect(page.locator("html")).toHaveAttribute("data-theme", other);
 });
 
@@ -50,6 +50,6 @@ test("direct links remain usable without JavaScript", async ({ browser }) => {
   await page.goto("http://127.0.0.1:8793/installation/");
   await expect(page.locator("h1")).toHaveText("Install Mash");
   await page.locator('nav.sidebar a[href="/search/"]').click();
-  await expect(page.locator("h1")).toHaveText("Find a conversation");
+  await expect(page.locator("h1")).toHaveText("Introduction to Mash search");
   await context.close();
 });

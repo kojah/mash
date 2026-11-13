@@ -1,4 +1,4 @@
-# Find a conversation
+# Introduction to Mash search
 
 Start with a distinctive word, filename, or phrase you remember:
 

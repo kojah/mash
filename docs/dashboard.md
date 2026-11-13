@@ -1,4 +1,4 @@
-# Browse chats and records in the dashboard
+# Navigating the dashboard
 
 After [setup](installation.md), run the command below. For a Cargo source
 installation, build the web interface using the instructions below first.
