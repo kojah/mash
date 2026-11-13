@@ -29,7 +29,7 @@ async fn dashboard_catalog_preserves_copies_and_partial_failure() {
     let directory = tempfile::tempdir().unwrap();
     let config = config(directory.path(), &url);
     let database = database(directory.path());
-    let response = dashboard(&config, &database).await.unwrap();
+    let response = dashboard(&config, &database, false).await.unwrap();
     assert_eq!(response.local_node, "laptop");
     assert_eq!(response.chats.len(), 2);
     assert_eq!(response.chats[0].node_id, "peer");
@@ -46,11 +46,20 @@ async fn dashboard_catalog_preserves_copies_and_partial_failure() {
     assert_eq!(response.chats[1].node_id, "laptop");
     assert!(!response.truncated);
     assert!(response.shared_error.is_none());
+    // A machine without history of its own lists the shared index alone and
+    // never opens a local database.
+    let missing = directory.path().join("no-such-database.sqlite3");
+    let shared = dashboard(&config, &missing, true).await.unwrap();
+    assert_eq!(shared.chats.len(), 1);
+    assert_eq!(shared.chats[0].node_id, "peer");
+    assert!(!missing.exists());
     server.abort();
     let _ = server.await;
-    let response = dashboard(&config, &database).await.unwrap();
+    let response = dashboard(&config, &database, false).await.unwrap();
     assert_eq!(response.chats.len(), 1);
     assert!(response.shared_error.is_some());
+    // With nothing local to fall back to, an unreachable server is the error.
+    assert!(dashboard(&config, &missing, true).await.is_err());
 }
 
 #[test]

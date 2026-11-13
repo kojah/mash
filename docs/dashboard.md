@@ -177,8 +177,20 @@ address only your own devices can open.
 4. On the phone, with Tailscale connected, open the address and enter the
    token once. The browser stays signed in for 30 days.
 
+On Linux, `tools/dashboard-remote.sh` in the source repository does steps 1 to
+3, keeps the dashboard running as a user service, and prints a QR code to scan
+instead of typing the token (`tools/dashboard-remote.sh --qr` shows it again).
+The code opens `https://…/#signin=TOKEN`; the dashboard signs in and removes
+the token from the address at once. Treat the code like the token itself.
+
 The dashboard searches whatever that machine can search: its own history and,
 with a [shared index](shared-index.md), your other machines' history too.
+
+A machine with no agent history of its own, such as the server that holds the
+shared index, can still host the dashboard. Give it a configuration with a
+`[shared]` table and start the dashboard with `--shared-only`: chats, search
+and memories then come from the shared index alone, and no local index is
+needed.
 
 `--allow-host` is the name browsers use for the dashboard, with its port when
 the address shows one (`laptop.your-tailnet.ts.net:8443`); repeat it for more

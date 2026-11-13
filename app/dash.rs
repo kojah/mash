@@ -27,6 +27,8 @@ struct Dash {
     /// Whether only this machine can reach the dashboard.
     loopback: bool,
     access: access::Access,
+    /// Read only the shared index: this machine has no agent history itself.
+    shared_only: bool,
     model_work: tokio::sync::Semaphore,
     services: services::Services,
     console: crate::mcp::console::Console,
@@ -39,6 +41,8 @@ pub(crate) struct Reach {
     pub(crate) hosts: Vec<String>,
     /// Environment variable holding the token every visitor signs in with.
     pub(crate) access_token_env: Option<String>,
+    /// Serve only the shared index.
+    pub(crate) shared_only: bool,
 }
 
 pub(crate) async fn run(
@@ -52,6 +56,7 @@ pub(crate) async fn run(
         listen,
         hosts: names,
         access_token_env,
+        shared_only,
     } = reach;
     let access = access::Access::load(access_token_env.as_deref())?;
     if !names.is_empty() && !access.required() {
@@ -87,6 +92,7 @@ pub(crate) async fn run(
         hosts,
         loopback,
         access,
+        shared_only,
         model_work: tokio::sync::Semaphore::new(1),
         services,
     });
@@ -586,7 +592,9 @@ fn settings_result(
 async fn list_chats(State(state): State<Arc<Dash>>) -> Response {
     let request = Request {
         paths: state.paths.clone(),
-        operation: Operation::DashboardCatalog,
+        operation: Operation::DashboardCatalog {
+            shared_only: state.shared_only,
+        },
     };
     json_result(core::execute(request).await)
 }
@@ -616,7 +624,7 @@ async fn list_records(
         state: params.state,
         review: params.review,
         chat: params.chat,
-        shared: params.shared,
+        shared: params.shared || state.shared_only,
         node_id: params.node,
         cursor: params.cursor_node.map(|node_id| crate::records::Cursor {
             node_id,
@@ -700,7 +708,7 @@ fn providers(list: &str) -> Result<Vec<crate::provider::Provider>, AppError> {
 }
 
 /// A query searches messages; an empty one lists the matching chats, newest first.
-fn search_operation(params: SearchParams) -> Result<Operation, AppError> {
+fn search_operation(params: SearchParams, shared_only: bool) -> Result<Operation, AppError> {
     let provider = providers(&params.provider)?;
     if params.q.trim().is_empty() {
         let input = crate::chat_catalog::Request {
@@ -711,7 +719,7 @@ fn search_operation(params: SearchParams) -> Result<Operation, AppError> {
         return Ok(Operation::ListChats {
             input: Box::new(input),
             local: false,
-            shared: false,
+            shared: shared_only,
             diagnostics: false,
         });
     }
@@ -733,7 +741,7 @@ fn search_operation(params: SearchParams) -> Result<Operation, AppError> {
         ranking: None,
         diagnostics: false,
         filters: Box::new(filters),
-        shared: false,
+        shared: shared_only,
         local: false,
     })
 }
@@ -742,7 +750,7 @@ async fn search(
     State(state): State<Arc<Dash>>,
     axum::extract::Query(params): axum::extract::Query<SearchParams>,
 ) -> Response {
-    match search_operation(params) {
+    match search_operation(params, state.shared_only) {
         Ok(operation) => json_result(
             core::execute_with_model_limit(
                 Request {
@@ -1000,6 +1008,7 @@ mod tests {
             hosts,
             loopback: false,
             access: super::access::Access::new(Some(TOKEN)),
+            shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1095,6 +1104,7 @@ mod tests {
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
             access: super::access::Access::new(None),
+            shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1145,6 +1155,7 @@ mod tests {
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
             access: super::access::Access::new(None),
+            shared_only: false,
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1238,6 +1249,7 @@ mod tests {
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
             access: super::access::Access::new(None),
+            shared_only: false,
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1332,6 +1344,7 @@ mod tests {
             hosts: allowed_hosts(address),
             loopback: address.ip().is_loopback(),
             access: super::access::Access::new(None),
+            shared_only: false,
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
         }));
@@ -1397,35 +1410,56 @@ mod tests {
 
     #[test]
     fn empty_queries_list_chats_and_queries_search_with_filters() {
-        let listed = search_operation(SearchParams {
+        let params = || SearchParams {
             provider: "claude-code, codex".into(),
             machine: "xenia".into(),
             ..Default::default()
-        })
-        .unwrap();
-        let Operation::ListChats { input, .. } = listed else {
+        };
+        let listed = search_operation(params(), false).unwrap();
+        let Operation::ListChats { input, shared, .. } = listed else {
             panic!("expected a chat listing")
         };
+        assert!(!shared);
         assert_eq!(input.provider.len(), 2);
         assert_eq!(input.node, ["xenia"]);
-        let searched = search_operation(SearchParams {
+        let query = || SearchParams {
             q: "backfill".into(),
             project: "/p".into(),
             days: Some(7),
             ..Default::default()
-        })
-        .unwrap();
-        let Operation::Search { query, filters, .. } = searched else {
+        };
+        let searched = search_operation(query(), false).unwrap();
+        let Operation::Search {
+            query: text,
+            filters,
+            shared,
+            ..
+        } = searched
+        else {
             panic!("expected a search")
         };
-        assert_eq!(query, "backfill");
+        assert!(!shared);
+        let query_text = text;
+        // A machine with no history of its own reads only the shared index.
+        assert!(matches!(
+            search_operation(params(), true).unwrap(),
+            Operation::ListChats { shared: true, .. }
+        ));
+        assert!(matches!(
+            search_operation(query(), true).unwrap(),
+            Operation::Search { shared: true, .. }
+        ));
+        assert_eq!(query_text, "backfill");
         assert_eq!(filters.project, ["/p"]);
         assert_eq!(filters.days, Some(7));
         assert!(
-            search_operation(SearchParams {
-                provider: "nope".into(),
-                ..Default::default()
-            })
+            search_operation(
+                SearchParams {
+                    provider: "nope".into(),
+                    ..Default::default()
+                },
+                false
+            )
             .is_err()
         );
     }
@@ -1480,6 +1514,7 @@ mod tests {
                 hosts: allowed_hosts(address),
                 loopback,
                 access: super::access::Access::new(None),
+                shared_only: false,
                 model_work: tokio::sync::Semaphore::new(0),
                 services: super::services::Services::load(None).unwrap(),
             }));

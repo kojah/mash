@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { check, gate, open, parseSession, signIn } from "./session.svelte";
+import { check, gate, linkToken, open, parseSession, signIn } from "./session.svelte";
 import { install, type Transport } from "./transport";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -38,6 +38,19 @@ describe("the dashboard's sign-in gate", () => {
       await check();
       expect(gate.value).toBe("open");
     }
+  });
+
+  it("reads a token only from a whole sign-in link", () => {
+    const token = "0123456789abcdef0123456789abcdef";
+    expect(linkToken(`#signin=${token}`)).toBe(token);
+    for (const hash of [
+      "",
+      "#/",
+      `#/search?q=signin=${token}`,
+      "#signin=short",
+      `#signin=${token} x`,
+    ])
+      expect(linkToken(hash)).toBeUndefined();
   });
 
   it("sends the token once and reports why it was refused", async () => {

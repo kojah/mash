@@ -41,6 +41,7 @@ async fn app_named(
         hosts: super::super::allowed_hosts(address),
         loopback: true,
         access: super::super::access::Access::new(None),
+        shared_only: false,
         model_work: tokio::sync::Semaphore::new(1),
         services: Services {
             fleet_path: root

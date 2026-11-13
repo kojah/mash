@@ -52,7 +52,7 @@ async fn execute_admitted(
         | Operation::ExtractionCheckpoint(_) => "records",
         Operation::Init(_) => "init",
         Operation::Index(_) => "index",
-        Operation::ListChats { .. } | Operation::DashboardCatalog => "list_chats",
+        Operation::ListChats { .. } | Operation::DashboardCatalog { .. } => "list_chats",
         Operation::Search { .. } => "search",
         Operation::View { .. } | Operation::ChatMessages { .. } | Operation::ChatContext { .. } => {
             "view"
@@ -483,9 +483,11 @@ async fn dispatch(
         } => inspection::get_attachment(configuration, database, message_id, attachment_id, shared)
             .await
             .map(Response::GetAttachment),
-        Operation::DashboardCatalog => chats::dashboard(configuration, database)
-            .await
-            .map(Response::DashboardCatalog),
+        Operation::DashboardCatalog { shared_only } => {
+            chats::dashboard(configuration, database, shared_only)
+                .await
+                .map(Response::DashboardCatalog)
+        }
         Operation::ListChats {
             input,
             local,

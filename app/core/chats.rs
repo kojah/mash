@@ -79,7 +79,13 @@ pub(crate) struct DashboardCatalog {
 pub(super) async fn dashboard(
     config: &ResolvedConfig,
     database: &Path,
+    shared_only: bool,
 ) -> Result<DashboardCatalog, AppError> {
+    if shared_only && config.shared.is_none() {
+        return Err(AppError::configuration(
+            "a shared-only dashboard needs a [shared] table in the configuration",
+        ));
+    }
     let local_node = config
         .shared
         .as_ref()
@@ -88,6 +94,9 @@ pub(super) async fn dashboard(
     let node = local_node.clone();
     let path = database.to_path_buf();
     let local = crate::blocking(move || {
+        if shared_only {
+            return Ok(Vec::new());
+        }
         Storage::open_silver(&path)?.chat_candidates(
             &Request {
                 limit: 100,
@@ -107,9 +116,16 @@ pub(super) async fn dashboard(
     let mut chats = local?;
     let shared_error = match remote {
         Ok(remote) => {
-            chats.extend(remote.into_iter().filter(|chat| chat.node_id != local_node));
+            // This machine's own chats come from its index unless it has none.
+            chats.extend(
+                remote
+                    .into_iter()
+                    .filter(|chat| shared_only || chat.node_id != local_node),
+            );
             None
         }
+        // Without a local index there is nothing to fall back to.
+        Err(error) if shared_only => return Err(error),
         Err(error) => Some(error.error.message),
     };
     let output = config.redaction.output();

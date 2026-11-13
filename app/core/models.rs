@@ -75,7 +75,11 @@ pub(crate) enum Operation {
     /// Configure, register with agents and index for the first time.
     Init(super::setup::InitRequest),
     Index(IndexRequest),
-    DashboardCatalog,
+    /// `shared_only` leaves out this machine's own index, for a machine that
+    /// only serves the shared one.
+    DashboardCatalog {
+        shared_only: bool,
+    },
     /// Dashboard node identities resolve locally without first listing chats.
     ChatContext {
         id: String,

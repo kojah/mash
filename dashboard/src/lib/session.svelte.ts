@@ -16,6 +16,29 @@ export function parseSession(body: unknown): { locked: boolean } | undefined {
   return { locked: required && !signedIn };
 }
 
+const LINK = /^#signin=([\x21-\x7e]{32,4096})$/;
+
+/**
+ * The token of a sign-in link (`…/#signin=TOKEN`, as a scanned QR code opens),
+ * or undefined for any other address. The fragment never reaches the server.
+ */
+export function linkToken(hash: string): string | undefined {
+  return LINK.exec(hash)?.[1];
+}
+
+/**
+ * Signs in with a sign-in link's token and takes it out of the address and
+ * the history entry at once, whether or not the dashboard accepted it.
+ */
+async function followLink(): Promise<void> {
+  const token = linkToken(globalThis.location?.hash ?? "");
+  if (token === undefined) return;
+  history.replaceState(null, "", `${location.pathname}${location.search}#/`);
+  // The router reads the address on hashchange, which replaceState does not fire.
+  globalThis.dispatchEvent(new HashChangeEvent("hashchange"));
+  await signIn(token);
+}
+
 /**
  * Asks the dashboard whether to show the sign-in screen. Never rejects: a
  * dashboard that cannot answer is treated as open, and the page's own
@@ -23,6 +46,7 @@ export function parseSession(body: unknown): { locked: boolean } | undefined {
  */
 export async function check(): Promise<void> {
   try {
+    await followLink();
     const response = await send("/api/session", {
       cache: "no-store",
       signal: AbortSignal.timeout(20_000),

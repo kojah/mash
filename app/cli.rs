@@ -280,6 +280,10 @@ enum Command {
         /// every visitor signs in with.
         #[arg(long, value_name = "NAME")]
         access_token_env: Option<String>,
+        /// Show only the shared index, for a machine with no agent history of
+        /// its own. Needs a [shared] table in the configuration.
+        #[arg(long)]
+        shared_only: bool,
         /// Explicit service inventory and authentication (TOML). Enables fleet management.
         #[arg(long, value_name = "PATH")]
         services_config: Option<PathBuf>,
@@ -691,6 +695,7 @@ where
         listen,
         allow_host,
         access_token_env,
+        shared_only,
         services_config,
         fleet_config,
         fleet_node,
@@ -707,6 +712,7 @@ where
                 listen,
                 hosts: allow_host,
                 access_token_env,
+                shared_only,
             },
             services_config,
             fleet_config,
