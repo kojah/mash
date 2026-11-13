@@ -43,6 +43,7 @@ export default defineConfig({
             "cli",
             "configuration",
             "mcp",
+            "tools",
           ],
         },
         {

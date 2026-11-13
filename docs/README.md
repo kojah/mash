@@ -29,3 +29,4 @@ then search. Multi-machine sharing is an optional extension to that setup.
 - [Useful commands](cli.md)
 - [Change your configuration](configuration.md)
 - [Connect another MCP client](mcp.md)
+- [MCP tool reference](tools.md)

@@ -41,7 +41,7 @@ iterate:
 validate-dev:
 	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=0 bash tools/build-dev-linux.sh --validate-only
 
-.PHONY: build check-skills generate-skills generate-queries check-generated coverage
+.PHONY: build check-skills generate-skills generate-docs generate-queries check-generated coverage
 build: check-skills
 ifeq ($(CODEGEN),1)
 	$(MAKE) generate-queries
@@ -54,6 +54,10 @@ check-skills:
 
 generate-skills:
 	bash tools/generate-history-skill.sh
+
+# Rewrites docs/tools.md from the MCP tool definitions.
+generate-docs:
+	MASH_WRITE_TOOL_REFERENCE=1 cargo test-clif --locked --lib -E 'test(tool_reference_is_current)' --no-tests fail
 
 generate-queries:
 	bash queries/generate.sh
