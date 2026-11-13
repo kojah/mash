@@ -390,6 +390,7 @@ fn installation_multiple_codex_copies_are_ambiguous() {
 }
 
 /// An environment whose PATH has discovery-only `claude` and `codex` files.
+#[cfg(unix)]
 fn with_agent_clis(root: &Path) -> Environment {
     let mut environment = environment(root);
     let bin = root.join("bin");
@@ -406,6 +407,7 @@ fn with_agent_clis(root: &Path) -> Environment {
     environment
 }
 
+#[cfg(unix)]
 fn finding(client: &Client, component: Component) -> &Finding {
     client
         .findings
