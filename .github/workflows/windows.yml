@@ -62,7 +62,7 @@ jobs:
           New-Item -ItemType Directory -Path $root -Force | Out-Null
           $archive = Join-Path $root 'qdrant.zip'
           Invoke-WebRequest 'https://github.com/qdrant/qdrant/releases/download/v1.20.0/qdrant-x86_64-pc-windows-msvc.zip' -OutFile $archive
-          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '9b6f69bd85f6abed4bc13f943099f55c6ffd55f5dd90388635320d8fbb569eb0') {
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6d13553584fd0411f00637519e293331ff0aa1fb79bd9e30db45839bb75de2be') {
             throw 'Qdrant archive checksum mismatch'
           }
           Expand-Archive $archive -DestinationPath $root

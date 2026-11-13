@@ -58,11 +58,13 @@ cd "$scratch"
 printf '# test-only server configuration\n' > fixture.toml
 "$scratch/server" --server-config fixture.toml &
 old_pid=$!
+# Right after the fork the process is still the shell; wait for its exec.
 for ((attempt=0; attempt<50; attempt++)); do
-    if [[ -e "/proc/$old_pid/exe" ]]; then break; fi
+    if [[ "$(readlink "/proc/$old_pid/exe" 2>/dev/null)" == "$scratch/server" ]]; then break; fi
     sleep 0.1
 done
 executable=$(readlink "/proc/$old_pid/exe")
+[[ "$executable" == "$scratch/server" ]] || { echo 'Fixture server did not start.' >&2; exit 1; }
 digest=$(sha256sum "$executable")
 jq -n --argjson pid "$old_pid" --arg binary_sha256 "${digest%% *}" \
     '{pid:$pid,binary_sha256:$binary_sha256,source_commit:"fixture"}' > "$TEST_API_POINTER"
