@@ -4,12 +4,14 @@ import Check from "@lucide/svelte/icons/check";
 import Database from "@lucide/svelte/icons/database";
 import Eye from "@lucide/svelte/icons/eye";
 import Lock from "@lucide/svelte/icons/lock";
+import MessagesSquare from "@lucide/svelte/icons/messages-square";
 import Save from "@lucide/svelte/icons/save";
 import Search from "@lucide/svelte/icons/search";
 import Server from "@lucide/svelte/icons/server";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 import { agents as agentInfo } from "../lib/agents";
+import { assistantOptions } from "../lib/assistant";
 import {
   type Draft,
   destinations,
@@ -31,6 +33,7 @@ import Skeleton from "./Skeleton.svelte";
 // finds them itself.
 const queryClient = useQueryClient();
 const status = createQuery(() => statusOptions);
+const assistant = createQuery(() => assistantOptions);
 const settings = createQuery(() => settingsOptions);
 const config = $derived(status.data?.configuration);
 const file = $derived(settings.data);
@@ -202,6 +205,14 @@ async function save(): Promise<void> {
       {@render row("vector search", config.vectorSearch.toUpperCase())}
       {@render row("ranking", config.ranking)}
     </dl>
+  </section>
+  <section class="set-s">
+    <h2 class="h2"><MessagesSquare size={15} aria-hidden="true" />assistant</h2>
+    <dl>
+      {@render row("Mashy", assistant.data?.enabled ? "on" : "off")}
+      {#if assistant.data?.model}{@render row("model", assistant.data.model)}{/if}
+    </dl>
+    {#if assistant.data && !assistant.data.enabled}<p class="meta">Mashy answers questions from your history using a model you choose, and sends it the chat text it reads. To turn it on, add an <code>[assistant]</code> table to the configuration file and set the key it names.</p>{/if}
   </section>
   <section class="set-s">
     <h2 class="h2"><Database size={15} aria-hidden="true" />storage</h2>

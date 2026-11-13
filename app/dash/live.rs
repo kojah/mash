@@ -530,6 +530,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(0),
             services: super::super::services::Services::load(None).unwrap(),
             live,
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         (address, server)

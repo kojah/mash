@@ -51,6 +51,7 @@ pub(super) fn load_from_paths(
             return Ok(ResolvedConfig {
                 embeddings: super::Embeddings::default(),
                 reranking: super::Reranking::default(),
+                assistant: None,
                 qdrant: super::QdrantConfig::default(),
                 attachments: crate::attachments::Configuration::default(),
                 redaction: crate::redaction::Settings::default(),
@@ -104,6 +105,7 @@ pub(super) fn load_from_paths(
     Ok(ResolvedConfig {
         embeddings: parsed.embeddings,
         reranking: parsed.reranking,
+        assistant: parsed.assistant,
         qdrant: parsed.qdrant,
         attachments: parsed.attachments,
         redaction: parsed.redaction,

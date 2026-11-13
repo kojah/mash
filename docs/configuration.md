@@ -120,6 +120,40 @@ batch goes to the worker. Each `mash index` result reports the texts the worker
 embedded (`remote_inferences`, out of `model_inferences`) and its request time
 (`remote_milliseconds`).
 
+## The dashboard assistant
+
+Mashy is a chat in the corner of the [dashboard](dashboard.md#ask-mashy) that
+answers questions about your history. Mash has no language model of its own,
+so Mashy exists only when you name one:
+
+```toml
+[assistant]
+base_url = "https://openrouter.ai/api/v1"
+token_env = "MASH_ASSISTANT_KEY"
+model = "anthropic/claude-haiku-5.5"
+```
+
+Any service that speaks the OpenAI chat-completions format works: a
+provider's own API, a gateway such as [OpenRouter](https://openrouter.ai), or
+a model server on your machine. The model must support tool calls and
+streaming.
+
+- `base_url` is the API's base; requests go to `chat/completions` beneath it.
+  It must use HTTPS, or HTTP on loopback.
+- `token_env` names the variable that holds the API key. Set it for the
+  process that runs `mash dash`. A dashboard run as a service can instead read
+  it from `~/.mash/node.env`, one `NAME=key` line, readable only by you.
+- `model` is the model's name as that service knows it.
+
+Mashy is off unless the table is present and the key is set. A key in your
+environment does not turn it on by itself.
+
+**What is sent.** When Mashy looks something up, the chat text and memories it
+reads are sent to that service, with recognizable credentials masked like any
+other output. Choose a service you trust with your history. Each question
+makes a few requests, which that service bills to your key; a failed request
+is never retried.
+
 ## Remote reranking
 
 Searches rerank their best candidates on your CPU by default. To score them on

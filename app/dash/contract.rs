@@ -63,11 +63,15 @@ pub(super) fn document(api: &aide::openapi::OpenApi) -> Value {
     crate::openapi::settle(&mut document, "Scope", &[("after", "CoverageScope")]);
     // The event stream is described by the JSON each event carries, but it is
     // not answered as JSON.
-    if let Some(Value::Object(content)) =
-        document.pointer_mut("/paths/~1api~1events/get/responses/200/content")
-        && let Some(event) = content.remove("application/json")
-    {
-        content.insert("text/event-stream".into(), event);
+    for stream in [
+        "/paths/~1api~1events/get/responses/200/content",
+        "/paths/~1api~1assistant/post/responses/200/content",
+    ] {
+        if let Some(Value::Object(content)) = document.pointer_mut(stream)
+            && let Some(event) = content.remove("application/json")
+        {
+            content.insert("text/event-stream".into(), event);
+        }
     }
     crate::openapi::sorted(document)
 }

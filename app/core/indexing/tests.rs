@@ -59,6 +59,7 @@ fn test_configuration(
     ResolvedConfig {
         embeddings: config::Embeddings::default(),
         reranking: config::Reranking::default(),
+        assistant: None,
         records: crate::records::capture::Policy::default(),
         qdrant: config::QdrantConfig::default(),
         attachments: crate::attachments::Configuration::default(),

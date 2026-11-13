@@ -20,7 +20,11 @@ export type Answer<P extends ReadPath> =
 
 /** A route that is changed with POST. */
 export type WritePath = {
-  [P in keyof paths]: paths[P] extends { post: { responses: { 200: unknown } } } ? P : never;
+  [P in keyof paths]: paths[P] extends {
+    post: { responses: { 200: { content: { "application/json": unknown } } } };
+  }
+    ? P
+    : never;
 }[keyof paths];
 
 /** The body a POST to `P` sends. */

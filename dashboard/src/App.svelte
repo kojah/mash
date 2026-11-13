@@ -9,6 +9,7 @@ import Console from "./components/Console.svelte";
 import Fleet from "./components/Fleet.svelte";
 import History from "./components/History.svelte";
 import MachineExtras from "./components/MachineExtras.svelte";
+import Mashy from "./components/Mashy.svelte";
 import Missing from "./components/Missing.svelte";
 import Overview from "./components/Overview.svelte";
 import Projects from "./components/Projects.svelte";
@@ -167,5 +168,6 @@ $effect(() => {
   </div>
   <!-- The drawer's own button and Escape close it for keyboards and screen readers. -->
   {#if railOpen}<div id="scrim" aria-hidden="true" onclick={() => (railOpen = false)}></div>{/if}
+  <Mashy />
 </QueryClientProvider>
 {/if}

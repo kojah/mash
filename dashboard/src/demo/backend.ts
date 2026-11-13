@@ -386,6 +386,8 @@ type Read<P extends ReadPath> = (params: URLSearchParams, now: number) => Answer
 // demo answers it or declines to.
 const reads: { readonly [P in ReadPath]: Read<P> } = {
   "/api/health": () => ({ build: tools.build_revision }),
+  // The demo has no model to ask.
+  "/api/assistant": () => ({ enabled: false, model: null }),
   "/api/chats": (_, now) => ({
     local_node: localMachine,
     truncated: false,

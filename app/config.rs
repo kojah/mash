@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+mod assistant;
 mod document;
 mod embeddings;
 pub(crate) mod init;
@@ -16,6 +17,7 @@ pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use assistant::Assistant;
 pub(crate) use document::validate_identifier;
 pub(crate) use embeddings::Embeddings;
 pub(crate) use loading::{default_path, load};
@@ -29,6 +31,8 @@ const MAX_SINCE_DAYS: u32 = 36_500;
 pub(crate) struct ResolvedConfig {
     pub(crate) embeddings: Embeddings,
     pub(crate) reranking: Reranking,
+    /// The model behind the dashboard's assistant, when one is configured.
+    pub(crate) assistant: Option<Assistant>,
     pub(crate) qdrant: QdrantConfig,
     pub(crate) attachments: crate::attachments::Configuration,
     pub(crate) redaction: crate::redaction::Settings,
@@ -69,11 +73,17 @@ impl SharedConfig {
     /// This node's API token: the variable `token_env` names, or the copy a
     /// join saved for it under Mash's own directory.
     pub(crate) fn token(&self) -> Option<String> {
-        std::env::var(&self.token_env)
-            .ok()
-            .filter(|token| !token.is_empty())
-            .or_else(|| saved_token(&saved_tokens()?, &self.token_env))
+        secret(&self.token_env)
     }
+}
+
+/// A credential by the name of its environment variable: the variable itself,
+/// or the copy saved under Mash's own directory.
+fn secret(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|token| !token.is_empty())
+        .or_else(|| saved_token(&saved_tokens()?, name))
 }
 
 /// Where `mash init --join` keeps a node token, readable only by the user, so

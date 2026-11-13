@@ -3453,3 +3453,281 @@ summary.rw::-webkit-details-marker {
   color: var(--bg);
   text-decoration: underline 2px var(--clay2);
 }
+
+/* Mashy, the assistant: a circle in the corner that opens a chat. */
+#mashy-fab {
+  position: fixed;
+  z-index: 34;
+  right: max(18px, env(safe-area-inset-right, 0px));
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--raised);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+#mashy-fab:hover {
+  border-color: var(--clay2);
+}
+#mashy-fab img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+#mashy-fab .dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--clay);
+}
+#mashy {
+  position: fixed;
+  z-index: 34;
+  right: max(18px, env(safe-area-inset-right, 0px));
+  bottom: calc(max(18px, env(safe-area-inset-bottom, 0px)) + 68px);
+  display: flex;
+  flex-direction: column;
+  width: 390px;
+  max-width: calc(100vw - 36px);
+  height: min(560px, calc(100dvh - 120px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+#mashy > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  border-bottom: 1px solid var(--hair);
+}
+#mashy > header img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+#mashy > header div {
+  flex: 1;
+  min-width: 0;
+}
+#mashy > header strong {
+  display: block;
+  color: var(--fg);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+#mashy > header small {
+  display: block;
+  color: var(--faint);
+  font-size: 12px;
+}
+#mashy > header button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  color: var(--dim);
+}
+#mashy > header button:hover {
+  background: var(--soft);
+  color: var(--fg);
+}
+.mashy-log {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mashy-ctx {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mashy-ctx i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--clay);
+}
+.mashy-q {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px 10px 3px 10px;
+  background: var(--cream);
+  color: var(--cream-ink);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mashy-a {
+  min-width: 0;
+  font-size: 14px;
+}
+.mashy-a p {
+  margin: 0;
+}
+.mashy-a a {
+  color: var(--clay2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mashy-src {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mashy-src a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--body);
+  font-size: 13px;
+}
+.mashy-src a:hover {
+  border-color: var(--clay2);
+}
+.mashy-src a span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mashy-src a svg {
+  flex: none;
+  color: var(--dim);
+}
+.mashy-wait {
+  color: var(--faint);
+  font-size: 13px;
+}
+.mashy-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.mashy-note.bad {
+  border-color: var(--bad);
+}
+.mashy-note strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+.mashy-note .btn {
+  min-height: 32px;
+  margin-top: 4px;
+}
+.mashy-sugg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.mashy-sugg button {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 12.5px;
+}
+.mashy-sugg button:hover {
+  border-color: var(--clay2);
+  color: var(--clay2);
+}
+#mashy > form {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--hair);
+}
+#mashy textarea {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  resize: none;
+}
+#mashy .go {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--clay);
+  color: var(--bg);
+}
+#mashy .go[disabled] {
+  background: var(--soft);
+  color: var(--faint);
+  cursor: default;
+}
+/* On a phone the chat is a sheet over the page, and the circle hides under it. */
+@media (max-width: 700px) {
+  #mashy {
+    inset: 0;
+    width: auto;
+    max-width: none;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #mashy textarea {
+    /* Below 16px, iOS zooms the page when the field is focused. */
+    font-size: 16px;
+  }
+  #mashy ~ #mashy-fab {
+    display: none;
+  }
+}
+@media print {
+  #mashy,
+  #mashy-fab {
+    display: none;
+  }
+}

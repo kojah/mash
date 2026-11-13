@@ -18,6 +18,10 @@ History leaves the machine only through features you turn on:
   query embeddings always stay local.
 - **A remote reranking worker** receives each query and the excerpts being
   ranked. Reranking stays local unless you opt in.
+- **The dashboard assistant** sends your questions, and the chat text and
+  memories it reads to answer them, to the
+  [model service you configure](configuration.md#the-dashboard-assistant).
+  There is no assistant unless you configure one.
 
 The local dashboard has no login. Keep its default address or restrict access
 to a trusted private network.

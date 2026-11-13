@@ -160,6 +160,17 @@ fields (indexed agents, history range, destination, memory capture, credential
 masking) against a stated file revision; history locations come from the
 machine's own detection, never from the browser. A dashboard bound beyond
 loopback accepts those changes only with a services configuration.
+The dashboard assistant (Mashy) is the one place Mash calls a language model,
+and only when `[assistant]` names an OpenAI-compatible service and its key is
+set; a key alone never enables it. It is chat, not an agent: the model may
+write text or ask for a lookup from a fixed read-only list enforced in code
+(`search`, `list_chats`, `view`, `list_records`, and reading a chat's
+dialogue), within a hard cap per question. Never give it a tool that writes,
+runs commands, reads files or reaches the network, and do not adopt an agent
+framework for it. The key stays server-side; lookups pass through output
+masking; requests are bounded, single-attempt and never retried. Treat model
+output as untrusted text and render it through the sanitizer. Mash still never
+downloads or runs a model itself.
 Service checks must not migrate databases. Keep process liveness, schema
 compatibility and application readiness distinct. Persist action receipts before
 calling a supervisor, never retry ambiguous mutations automatically, and keep

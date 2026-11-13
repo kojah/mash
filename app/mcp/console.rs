@@ -32,6 +32,17 @@ pub(crate) struct Answer {
     text: String,
 }
 
+impl Answer {
+    /// The answer as one piece of text: the structured reply when there is
+    /// one, otherwise the text beside it.
+    pub(crate) fn read(&self) -> String {
+        match &self.reply {
+            Some(reply) => reply.to_string(),
+            None => self.text.clone(),
+        }
+    }
+}
+
 fn rejected(kind: &str, message: &str) -> Answer {
     Answer {
         failed: true,

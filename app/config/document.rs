@@ -13,6 +13,7 @@ use crate::provider::{Provider, ProviderRoots};
 pub(super) struct ParsedDocument {
     pub(super) embeddings: super::Embeddings,
     pub(super) reranking: super::Reranking,
+    pub(super) assistant: Option<super::Assistant>,
     pub(super) qdrant: super::QdrantConfig,
     pub(super) attachments: crate::attachments::Configuration,
     pub(super) redaction: crate::redaction::Settings,
@@ -34,6 +35,8 @@ struct RawDocument {
     embeddings: super::Embeddings,
     #[serde(default)]
     reranking: super::Reranking,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assistant: Option<super::Assistant>,
     #[serde(default)]
     records: crate::records::capture::Policy,
     #[serde(default)]
@@ -145,6 +148,18 @@ pub(super) fn edit(text: &str, edit: &Edit) -> Result<String, AppError> {
     Ok(text)
 }
 
+/// Each table's own rules, before the rules that span tables.
+fn validate_tables(raw: &RawDocument) -> Result<(), AppError> {
+    raw.qdrant.validate()?;
+    raw.embeddings.validate()?;
+    raw.reranking.validate()?;
+    raw.assistant
+        .as_ref()
+        .map_or(Ok(()), super::Assistant::validate)?;
+    raw.views.validate()?;
+    raw.attachments.validate()
+}
+
 pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     let contents = std::str::from_utf8(bytes)
         .map_err(|_| AppError::configuration("configuration must be UTF-8 TOML"))?;
@@ -162,11 +177,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             raw.version
         )));
     }
-    raw.qdrant.validate()?;
-    raw.embeddings.validate()?;
-    raw.reranking.validate()?;
-    raw.views.validate()?;
-    raw.attachments.validate()?;
+    validate_tables(&raw)?;
     if raw.index.all_history && raw.index.since_days.is_some() {
         return Err(AppError::configuration(
             "index all_history and since_days cannot both be specified",
@@ -229,6 +240,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     Ok(ParsedDocument {
         embeddings: raw.embeddings,
         reranking: raw.reranking,
+        assistant: raw.assistant,
         qdrant: raw.qdrant,
         attachments: raw.attachments,
         redaction: raw.redaction,

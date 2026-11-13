@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether this dashboard has an assistant. */
+        get: operations["getApiAssistant"];
+        put?: never;
+        /** Ask the assistant; the answer is a text/event-stream of these events. */
+        post: operations["postApiAssistant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat": {
         parameters: {
             query?: never;
@@ -445,6 +463,11 @@ export interface components {
             lexical: components["schemas"]["ReadinessState"];
             metadata: components["schemas"]["ReadinessState"];
         };
+        /** @description A conversation so far, ending with the reader's question. */
+        Ask: {
+            messages: components["schemas"]["Turn"][];
+            open_chat?: components["schemas"]["OpenChat"] | null;
+        };
         AttachmentConfiguration: {
             /**
              * @description Only explicit provider attachment references within these roots can be retained.
@@ -873,6 +896,24 @@ export interface components {
         };
         /** @enum {string} */
         ErrorKind: "shared-index" | "qdrant-unavailable" | "qdrant-failure" | "configuration" | "usage" | "database-missing" | "index-busy" | "model-busy" | "database" | "io" | "internal" | "model" | "search-not-ready" | "schema-incompatible" | "remote-inference" | "conflict" | "source-changed" | "search-timeout" | "not-found" | "qdrant-install";
+        /** @description One step of an answer, as the browser reads it. */
+        Event: {
+            /** @constant */
+            type: "searching";
+        } | {
+            delta: string;
+            /** @constant */
+            type: "text";
+        } | {
+            partial: boolean;
+            /** @constant */
+            type: "done";
+        } | {
+            message: string;
+            reason: components["schemas"]["Reason"];
+            /** @constant */
+            type: "failed";
+        };
         EvidenceUse: ("context" | "report") | "endorsement";
         /** @enum {string} */
         FactState: "current" | "superseded" | "retracted";
@@ -1189,6 +1230,16 @@ export interface components {
             views_current: boolean;
             views_manifest?: components["schemas"]["SharedViewsManifest"] | null;
         };
+        /** @description The chat the reader has on screen, so "this chat" means something. */
+        OpenChat: {
+            id: string;
+            /** @default null */
+            node: string | null;
+            /** @default false */
+            shared: boolean;
+            /** @default null */
+            title: string | null;
+        };
         Origin: {
             /** @constant */
             kind: "unknown";
@@ -1304,6 +1355,8 @@ export interface components {
         Reachability: "reachable" | "unreachable" | "rejected";
         /** @enum {string} */
         ReadinessState: "missing" | "stale" | "ready" | "disabled";
+        /** @description Why an answer could not be given. */
+        Reason: "failed" | "unreachable" | "refused" | "limited";
         RecommendedAction: ("init" | "index" | "models install") | "start-qdrant";
         Record: {
             conflicted: boolean;
@@ -1722,7 +1775,15 @@ export interface components {
         /** @enum {string} */
         SourceField: "cwd" | "session.title" | "threads.title" | "session.directory" | "project.worktree";
         /** @enum {string} */
+        Speaker: "user" | "assistant";
+        /** @enum {string} */
         Stage: "local-exact" | "shared-candidates" | "context" | "embed" | "rerank" | "fusion" | "local-metadata" | "shared-metadata" | "metadata-merge" | "local-candidates";
+        /** @description Whether this dashboard has an assistant. */
+        Status: {
+            enabled: boolean;
+            /** @description The configured model's name, when the assistant is on. */
+            model?: string | null;
+        };
         StatusResponse: {
             /** Format: uint64 */
             chats: number;
@@ -1908,6 +1969,10 @@ export interface components {
             /** @description Present only where the provider records an error flag. */
             is_error?: boolean | null;
         };
+        Turn: {
+            content: string;
+            role: components["schemas"]["Speaker"];
+        };
         /** @enum {string} */
         Unit: "bytes" | "records" | "chats";
         View: {
@@ -1992,6 +2057,96 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getApiAssistant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether this dashboard has an assistant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Status"];
+                };
+            };
+            /** @description What a failed request answers with, whatever the route. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Failure"];
+                };
+            };
+        };
+    };
+    postApiAssistant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A conversation so far, ending with the reader's question. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Ask"];
+            };
+        };
+        responses: {
+            /** @description One step of an answer, as the browser reads it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["Event"];
+                };
+            };
+            /** @description Failed to parse the request body as JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Expected request with `Content-Type: application/json` */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Failed to deserialize the JSON body into the target type */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description What a failed request answers with, whatever the route. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Failure"];
+                };
+            };
+        };
+    };
     getApiChat: {
         parameters: {
             query: {

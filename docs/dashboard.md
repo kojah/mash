@@ -138,6 +138,29 @@ If a request fails, an error panel names what could not load and offers
 chats or memories were deleted. Check the connection and that `mash dash` is
 still running, then choose **Retry**.
 
+## Ask Mashy
+
+If you have [configured a model](configuration.md#the-dashboard-assistant),
+a circle with the Mash mascot sits in the bottom-right corner of every page.
+Choose it to open a chat with Mashy, and ask about your history in plain
+words:
+
+- "What did I work on yesterday?"
+- "What did we decide about the restart test?"
+- On a chat's page: "Summarise this chat."
+
+Mashy searches your chats and memories, answers briefly, and lists the chats
+and memories it drew on; choose one to open it in the dashboard behind. If it
+finds nothing, it says so. Use the stop button to cut an answer short.
+
+Mashy is a chat, not an agent. It can read your history and nothing else: it
+cannot index, forget, save memories, run commands or change settings. The
+conversation lasts as long as the browser tab and is not added to your
+history.
+
+Each question sends the text Mashy reads to the model you configured. Without
+that configuration there is no circle and nothing is sent.
+
 ## Save a transcript
 
 Use the transcript's **Export** menu to download the whole chat as Markdown or

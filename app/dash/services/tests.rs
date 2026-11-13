@@ -43,6 +43,7 @@ async fn app_named(
         access: super::super::access::Access::new(None),
         shared_only: false,
         live: super::super::live::Live::new(None, None),
+        questions: Arc::new(tokio::sync::Semaphore::new(2)),
         model_work: tokio::sync::Semaphore::new(1),
         services: Services {
             fleet_path: root

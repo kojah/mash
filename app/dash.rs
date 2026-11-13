@@ -14,6 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 mod access;
+mod assistant;
 mod contract;
 mod live;
 pub(crate) mod remote;
@@ -37,6 +38,8 @@ struct Dash {
     services: services::Services,
     console: crate::mcp::console::Console,
     live: live::Live,
+    /// Questions the assistant may be answering at once.
+    questions: Arc<tokio::sync::Semaphore>,
 }
 
 /// How other devices reach this dashboard.
@@ -109,6 +112,7 @@ pub(crate) async fn run(
     let state = Arc::new(Dash {
         console: crate::mcp::console::Console::new(paths.clone()),
         live: live::Live::new(database, upstream),
+        questions: Arc::new(tokio::sync::Semaphore::new(assistant::MAX_QUESTIONS)),
         paths,
         hosts,
         loopback,
@@ -144,8 +148,10 @@ fn api() -> (Router<Arc<Dash>>, aide::openapi::OpenApi) {
         },
         ..Default::default()
     };
-    let router = history_routes(live::routes(services::routes(aide::axum::ApiRouter::new())))
-        .finish_api(&mut document);
+    let router = history_routes(assistant::routes(live::routes(services::routes(
+        aide::axum::ApiRouter::new(),
+    ))))
+    .finish_api(&mut document);
     (router, document)
 }
 
@@ -369,7 +375,10 @@ async fn guard(
         || path == "/api/session/code"
         || matches!(
             request.uri().path(),
-            "/api/services/action" | "/api/services/fleet/jobs" | "/api/services/settings"
+            "/api/services/action"
+                | "/api/services/fleet/jobs"
+                | "/api/services/settings"
+                | "/api/assistant"
         ))
         && request.method() == axum::http::Method::POST;
     if service_action && let Some(origin) = request.headers().get(header::ORIGIN) {
@@ -1057,6 +1066,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
             live: super::live::Live::new(None, None),
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1110,6 +1120,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
             live: super::live::Live::new(None, None),
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1207,6 +1218,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
             live: super::live::Live::new(None, None),
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1266,6 +1278,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(0),
             services: super::services::Services::load(None).unwrap(),
             live: super::live::Live::new(None, None),
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1361,6 +1374,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
             live: super::live::Live::new(None, None),
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         // A client that leaves the body as sent shows the encoding on the wire.
@@ -1457,6 +1471,7 @@ mod tests {
             model_work: tokio::sync::Semaphore::new(1),
             services: super::services::Services::load(None).unwrap(),
             live: super::live::Live::new(None, None),
+            questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = reqwest::Client::new();
@@ -1600,6 +1615,7 @@ mod tests {
         assert_eq!(content_type("/unknown"), "application/octet-stream");
     }
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn settings_are_changed_only_where_the_dashboard_is_private() {
         let directory = tempfile::tempdir().unwrap();
         let config = directory.path().join("config.toml");
@@ -1630,6 +1646,7 @@ mod tests {
                 model_work: tokio::sync::Semaphore::new(0),
                 services: super::services::Services::load(None).unwrap(),
                 live: super::live::Live::new(None, None),
+                questions: std::sync::Arc::new(tokio::sync::Semaphore::new(2)),
             }));
             tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
             addresses.push(address);

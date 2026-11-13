@@ -270,6 +270,32 @@
         ],
         "type": "object"
       },
+      "Ask": {
+        "additionalProperties": false,
+        "description": "A conversation so far, ending with the reader's question.",
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "type": "array"
+          },
+          "open_chat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenChat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "type": "object"
+      },
       "AttachmentConfiguration": {
         "additionalProperties": false,
         "properties": {
@@ -1817,6 +1843,77 @@
         ],
         "type": "string"
       },
+      "Event": {
+        "description": "One step of an answer, as the browser reads it.",
+        "oneOf": [
+          {
+            "description": "History is being read; no text has arrived for this step yet.",
+            "properties": {
+              "type": {
+                "const": "searching",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "delta": {
+                "type": "string"
+              },
+              "type": {
+                "const": "text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "delta"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The answer is complete. `partial` says the lookups ran out first.",
+            "properties": {
+              "partial": {
+                "type": "boolean"
+              },
+              "type": {
+                "const": "done",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "partial"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/Reason"
+              },
+              "type": {
+                "const": "failed",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "reason",
+              "message"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "EvidenceUse": {
         "oneOf": [
           {
@@ -2878,6 +2975,37 @@
         ],
         "type": "object"
       },
+      "OpenChat": {
+        "additionalProperties": false,
+        "description": "The chat the reader has on screen, so \"this chat\" means something.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "node": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shared": {
+            "default": false,
+            "type": "boolean"
+          },
+          "title": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Origin": {
         "oneOf": [
           {
@@ -3239,6 +3367,32 @@
           "disabled"
         ],
         "type": "string"
+      },
+      "Reason": {
+        "description": "Why an answer could not be given.",
+        "oneOf": [
+          {
+            "enum": [
+              "failed"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "unreachable",
+            "description": "The model's service could not be reached or did not answer in time.",
+            "type": "string"
+          },
+          {
+            "const": "refused",
+            "description": "The service turned the key down, or the account has no credit.",
+            "type": "string"
+          },
+          {
+            "const": "limited",
+            "description": "The service is limiting requests for now.",
+            "type": "string"
+          }
+        ]
       },
       "RecommendedAction": {
         "oneOf": [
@@ -4639,6 +4793,13 @@
         ],
         "type": "string"
       },
+      "Speaker": {
+        "enum": [
+          "user",
+          "assistant"
+        ],
+        "type": "string"
+      },
       "Stage": {
         "enum": [
           "local-exact",
@@ -4653,6 +4814,25 @@
           "local-candidates"
         ],
         "type": "string"
+      },
+      "Status": {
+        "description": "Whether this dashboard has an assistant.",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "description": "The configured model's name, when the assistant is on.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
       },
       "StatusResponse": {
         "properties": {
@@ -5227,6 +5407,22 @@
         },
         "type": "object"
       },
+      "Turn": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Speaker"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "type": "object"
+      },
       "Unit": {
         "enum": [
           "bytes",
@@ -5403,6 +5599,101 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/assistant": {
+      "get": {
+        "operationId": "getApiAssistant",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            },
+            "description": "Whether this dashboard has an assistant."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Whether this dashboard has an assistant."
+      },
+      "post": {
+        "operationId": "postApiAssistant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ask"
+              }
+            }
+          },
+          "description": "A conversation so far, ending with the reader's question.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "description": "One step of an answer, as the browser reads it."
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to parse the request body as JSON"
+          },
+          "415": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Expected request with `Content-Type: application/json`"
+          },
+          "422": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Failed to deserialize the JSON body into the target type"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            },
+            "description": "What a failed request answers with, whatever the route."
+          }
+        },
+        "summary": "Ask the assistant; the answer is a text/event-stream of these events."
+      }
+    },
     "/api/chat": {
       "get": {
         "operationId": "getApiChat",
