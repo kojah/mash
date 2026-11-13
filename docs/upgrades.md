@@ -1,5 +1,73 @@
 # Back up, restore, and upgrade
 
+An ordinary upgrade keeps your history and search data: install the new
+release, run `mash index` once, and restart your agents. Back up first; the
+backup is also how you move history into a release that cannot upgrade your
+index in place.
+
+## Upgrade an existing installation
+
+1. **Back up**, and keep the old `mash` executable until step 6 succeeds:
+
+   ```sh
+   mash export /absolute/path/to/new-backup
+   ```
+
+2. **Stop everything that uses the old version**: `mash index --watch`
+   processes and the agent sessions connected to Mash.
+
+3. **Install the new release** the same way you
+   [installed Mash](installation.md#install-the-cli).
+
+4. **Update Qdrant if the release needs a newer one.** Rerun
+   `mash qdrant install`; it upgrades the service Mash installed and leaves
+   its data alone. If you run Qdrant yourself, upgrade it on the same storage.
+
+5. **Upgrade the index:**
+
+   ```sh
+   mash index
+   ```
+
+   This is the step that converts the database. Search, `status` and other
+   read-only commands never do, and report that an upgrade is required until
+   `mash index` has run.
+
+6. **Check, then restart** your agents and watchers:
+
+   ```sh
+   mash status
+   mash search 'a word you remember' --local
+   ```
+
+The upgrade keeps your history, identities and existing search data. It does
+not rebuild Qdrant collections or recompute embeddings.
+
+**Saved open questions are deleted.** Upgrading an index written before open
+questions were retired as a kind of saved record removes them, with their
+revisions and the links that resolved them. Decisions, preferences and facts
+are untouched. The export from step 1 still contains them.
+
+**Which indexes can be upgraded.** `mash --version` on the new release prints
+`silver_schema_min`, the oldest index format it upgrades in place; this
+release accepts schema 62 and later. If `mash index` reports an older index,
+it changes nothing: follow
+[Replace an index that cannot be upgraded](#replace-an-index-that-cannot-be-upgraded).
+If it reports a newer index, a newer Mash wrote it and an old executable or
+agent session is still running: upgrade or restart that instead. Never edit
+database version numbers or delete the index to get past either message.
+
+### Upgrade a shared index
+
+If you [share history across machines](shared-index.md), upgrade the server
+and every computer to the same release together. Mismatched releases refuse to
+synchronize; that never requires deleting or rebuilding search data.
+
+On the server, upgrade Qdrant first, then start the new `mash-server`. It
+upgrades each machine's database on the server as it opens it. `mash export`
+on a computer backs up that computer only, so preserve the server's own data
+before upgrading it.
+
 ## Make a portable backup
 
 Export to a new directory:
@@ -8,16 +76,17 @@ Export to a new directory:
 mash export /absolute/path/to/new-backup
 ```
 
-This saves your indexed conversations and retained attachments. Keep your
-configuration and credentials separately; models and the agents' original
-history files are not included.
+This saves your indexed conversations and retained attachments. It does not
+include your configuration, credentials or models, or the agents' original
+history files; keep copies of the configuration and credentials yourself.
 
-**Keep backups private.** They can contain sensitive text and credentials,
-even when those credentials are masked in search results.
+**Keep backups private.** They contain the full text of your chats, including
+any credentials that appeared in them, even though search results mask those.
 
 ## Restore without replacing your current history
 
-Use a compatible Mash release and a new destination:
+Import into a new database file, rebuild its search data, and try a search.
+Keep the local search service running:
 
 ```sh
 mash import /absolute/path/to/new-backup --into /absolute/path/to/restored.sqlite3
@@ -25,87 +94,86 @@ mash --db /absolute/path/to/restored.sqlite3 index --rebuild-local-views --full
 mash --db /absolute/path/to/restored.sqlite3 search 'a word you remember' --local
 ```
 
-Keep the local search service running. The restored copy is separate from your
-usual index; keep passing `--db` to use it. If you use a custom configuration
-or model directory, also pass `--config PATH` or `--models-dir PATH`.
+The restored copy is separate from your usual index: pass `--db` every time
+you want to use it. Also pass `--config PATH` or `--models-dir PATH` if yours
+are not in the default locations.
 
-## Upgrade an existing installation
+The backup must come from a release whose archive format this one reads. If
+import fails, keep the backup and the release that wrote it.
 
-Mash upgrades schema-62 through schema-65 databases in place to schema 66 when
-opening them for writing. Run `mash index` with the new release after stopping
-old watchers and agent connections. The shared server uses the same migration when opening each
-node's database. The upgrade preserves history, identities and existing
-chat search data; it does not require a Qdrant rebuild. Schema 66 retires open
-questions as a kind of saved record: any that exist are deleted, with their
-revisions and the links that resolved them. Decisions, preferences and facts
-are untouched. Read-only commands never
-migrate a database. Restart agent connections and watchers after the upgrade.
+## Replace an index that cannot be upgraded
 
-This release needs Qdrant 1.20 or later. Upgrade Qdrant first: stop the 1.19
-service, start 1.20 on the same storage, then install the new Mash and run
+Use this when Mash reports an unsupported older index. Ordinary indexing
+cannot upgrade it; keep the old executable and the old index until the
+replacement works.
+
+1. Export with the version that wrote the index, then import with the new
+   version at a separate path. Add `--db PATH` to the export if the old index
+   is outside its default location:
+
+   ```sh
+   /path/to/old/mash export /absolute/path/to/new-backup
+   /path/to/new/mash import /absolute/path/to/new-backup --into /absolute/path/to/staged.sqlite3 --keep-identity
+   ```
+
+   Some older backups cannot be imported either. If import fails, keep the
+   original data and executable.
+
+2. `--keep-identity` makes the replacement continue as the same machine on a
+   shared index. Stop the old watcher and agent connections before switching,
+   and never publish from both copies.
+
+3. Move the staged database to its final path, then build its search data:
+
+   ```sh
+   mash --db /absolute/path/to/replacement.sqlite3 index --rebuild-local-views --full
+   mash --db /absolute/path/to/replacement.sqlite3 status
+   ```
+
+4. If the replacement is not at the default location, keep passing `--db`,
+   including in your agents' MCP setup. Restart your agents and watchers.
+
+## Other changes you may meet
+
+### Coming from Qdrant 1.19
+
+Mash needs Qdrant 1.20 or later. Upgrade Qdrant before Mash: stop the 1.19
+service, start 1.20 on the same storage, install the new Mash, and run
 `mash index` once. That run adds a word-search index to your existing search
-data; it does not rebuild it or recompute embeddings. Until it has run, search
-reports that the views need upgrading. Qdrant storage opened by 1.20 should not
-be opened by 1.19 again, so back up first if you may need to go back.
+data without rebuilding it or recomputing embeddings; until then, search
+reports that the views need upgrading. On a shared server, starting the new
+`mash-server` adds the index.
 
-For shared indexing, upgrade the server and publishing nodes to a matching
-release. The synchronization handshake rejects older peers that cannot publish
-native records. A protocol mismatch does not require deleting or rebuilding
-valid chat search data. Upgrade the server's Qdrant to 1.20 before starting
-the new `mash-server`; it adds the word-search index when it starts.
+**Storage opened by Qdrant 1.20 should not be opened by 1.19 again.** Back up
+first if you may need to go back.
 
-Earlier schemas, including schema 54, are not supported by this migration. Use
-the export/import fallback below for those versions. Do not change database
-version numbers by hand.
+### Settings that are no longer accepted
 
-Back up before replacing Mash, and keep the old executable until you have
-checked that the new version can read your history.
+- `views.query.experimental_gpu_reranking`: remove it. Reranking runs on the
+  CPU. Nothing needs reindexing and no new models are needed.
+- Old `[embeddings]` remote-provider settings: replace them with the
+  configuration in
+  [embedding inference](configuration.md#embedding-inference).
+- `redaction.remote_embeddings`: remove it, from node and server
+  configuration.
 
-If your configuration contains `views.query.experimental_gpu_reranking`, remove
-that setting. Experimental GPU reranking has been removed; contextual reranking
-uses CPU. This configuration change does not require reindexing or new models.
+### Changing the embedding model
 
-Legacy remote-provider settings are unsupported. Replace old `[embeddings]`
-settings with the explicit local/remote configuration described in
-[embedding inference](configuration.md#embedding-inference), and remove
-`redaction.remote_embeddings`. Server configuration still rejects these settings.
-If you previously used a different embedding model, run `mash models install`
-to install the local query model and rebuild local views with
-`mash index --rebuild-local-views --full`. Existing local-model installations
-and their vectors remain valid.
-
-For a shared index that used a different embedding space, coordinate the upgrade
-across its server and nodes. Install models on the server, then explicitly
-activate and replay its views with `mash-server --server-config PATH
---models-dir PATH --activate-views --replay-views`. This rebuilds search data
-from retained shared history; it does not replace silver. Keep a backup and
-allow for search downtime during replay.
-
-If Mash reports an unsupported older index, ordinary indexing cannot upgrade it.
-Export with the version that wrote the index, then test an import with the new
-version at a separate path:
+Vectors from the local model you already use stay valid across upgrades. If
+you change to a different embedding model, run `mash models install`, then
+rebuild local search data:
 
 ```sh
-/path/to/old/mash export /absolute/path/to/new-backup
-/path/to/new/mash import /absolute/path/to/new-backup --into /absolute/path/to/staged.sqlite3 --keep-identity
+mash index --rebuild-local-views --full
 ```
 
-Use `--db PATH` with the old executable if your index is outside its default
-location. Some older backups are incompatible too: if import fails, keep the
-original data and executable. Do not delete the index or edit version numbers.
-
-The `--keep-identity` option is for replacing an installation. Stop the old
-watcher and agent connections before switching to the replacement; do not
-publish from both copies at once. At the replacement's final path, run:
+On a shared index, change the server and all computers together. Install the
+models on the server, then start it once with:
 
 ```sh
-mash --db /absolute/path/to/replacement.sqlite3 index --rebuild-local-views --full
-mash --db /absolute/path/to/replacement.sqlite3 status
+mash-server --server-config PATH --models-dir PATH --activate-views --replay-views
 ```
 
-Continue passing `--db` when the replacement is outside the default location,
-including in your agent's MCP setup. Restart your agents and watchers after upgrading.
-
-If you share history, upgrade the server and machines together. A local export
-is not a complete shared-server backup; have the server administrator preserve
-the existing installation before changing it.
+This rebuilds the server's search data from the history it already holds; the
+history itself is not replaced. Back up first and expect shared search to be
+unavailable during the rebuild.

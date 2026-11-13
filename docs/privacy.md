@@ -6,12 +6,14 @@ The default setup indexes and searches locally without changing your agents'
 original history files. The public documentation website receives none of
 your indexed chats.
 
-Sharing across machines uploads history to your configured Mash server.
-Embedding inference runs locally by default. Opting into a remote embedding
-worker sends prepared searchable text to that endpoint; this text may contain
-sensitive history. Query embeddings stay local. Reranking stays local unless
-you opt into a remote reranking worker, which receives each query and the
-excerpts being ranked.
+History leaves the machine only through features you turn on:
+
+- **Sharing across machines** uploads history to your configured Mash server.
+- **A remote embedding worker** receives prepared searchable text, which may
+  contain sensitive history. Embedding inference runs locally by default, and
+  query embeddings always stay local.
+- **A remote reranking worker** receives each query and the excerpts being
+  ranked. Reranking stays local unless you opt in.
 
 The local dashboard has no login. Keep its default address or restrict access
 to a trusted private network.
@@ -30,7 +32,7 @@ remove text from the agent's own files or hide content inside attachments.
 
 ## Remove a chat
 
-Find its `chat_id` with `mash list-chats` or search, then run:
+Find its `chat_id` with `mash list-chats` or `mash search`, then run:
 
 ```sh
 mash forget CHAT_ID

@@ -1,85 +1,128 @@
 # Search across your machines
 
-A shared index lets your laptop find chats indexed on your desktop, and vice
-versa. Each machine keeps its own local history and search service, then
-publishes to one authenticated Mash server. Machines in the same group can
-search each other's published history.
+A shared index lets your laptop find chats indexed on your desktop, and the
+reverse. Each computer keeps its own local index and also publishes it to one
+Mash server that you run. Computers in the same group can then search and read
+each other's published history.
 
-For one machine, skip this setup: local search already works offline.
+Sharing is optional. On one computer, skip this guide: local search already
+works offline.
 
-## What you need
+**Sharing uploads chat history.** A computer that publishes sends the chats it
+has indexed, with their retained attachments, to your server, where every
+computer holding a token for the same group can read them. Run the server only
+on a machine and network you trust.
 
-- Mash installed and initialized on each publishing machine.
-- A local Qdrant instance on each machine.
-- A server running the same Mash release, with Qdrant 1.20+ and persistent storage.
-- An HTTPS endpoint for the Mash API, or a trusted private network.
+## What runs where
 
-Run Qdrant [directly on each host](installation.md#start-the-local-search-service).
-The [official Docker image](installation.md#optional-qdrant-docker-image) is
-another option; an existing Qdrant service also works.
+| Where | What runs | You set it up |
+| --- | --- | --- |
+| One server machine | `mash-server` and a Qdrant 1.20+ instance for it, both with persistent storage | once, in step 1 |
+| Each computer | `mash` with its local index and local Qdrant, as in [installation](installation.md) | in steps 2 and 3 |
 
-Run the API on the host with `mash-server`, as shown below. It ships with `mash`
-at the same release version; `mash` remains the local CLI and MCP executable.
-Connecting to an already-running shared API does not require another server or Docker just for that
-connection; each publishing machine still needs its own local search service.
+The server machine can be one of your computers or a separate always-on host.
+`mash-server` ships with `mash`; run the same release on the server and on
+every computer.
 
-## Configure a new server
+Before you connect a computer you need:
 
-This minimal example uses lexical search so no model download is needed.
-Save it as `server.toml` on the API host:
+- a server URL that the computer can reach: HTTPS, or a private-network address
+  you trust;
+- a group ID, shared by all your computers (the examples use `personal`);
+- a node ID, unique to that computer (`laptop`, `desktop`);
+- a token for that computer, different from every other computer's.
 
-```toml
-version = 1
-listen = "127.0.0.1:8787"
-qdrant_url_env = "MASH_QDRANT_URL"
-qdrant_grpc_url_env = "MASH_QDRANT_GRPC_URL"
+If someone already runs the server for you, get these four from them and go to
+[step 2](#2-connect-each-computer).
 
-[views.build]
-representations = "lexical-only"
+## 1. Set up the server
 
-[[nodes]]
-group_id = "personal"
-node_id = "laptop"
-token_env = "MASH_LAPTOP_TOKEN"
+On the server machine:
 
-[[nodes]]
-group_id = "personal"
-node_id = "desktop"
-token_env = "MASH_DESKTOP_TOKEN"
-```
+1. Start Qdrant for the server.
+   [`mash qdrant install`](installation.md#start-the-local-search-service)
+   runs one on `127.0.0.1`, ports 6333 (HTTP) and 6334 (gRPC). The
+   [Docker image](installation.md#optional-qdrant-docker-image) or an existing
+   Qdrant 1.20+ service also works. Keep Qdrant's ports private to this host.
 
-Set the two Qdrant URL variables to the HTTP and gRPC addresses of the **same**
-server-side Qdrant instance. Set each node-token variable to a different random
-secret of at least 32 printable ASCII bytes. Keep tokens out of Git.
+2. Create one token per computer. Each must be 32 to 4096 printable ASCII
+   characters with no spaces, for example:
 
-Start the API:
+   ```sh
+   openssl rand -hex 32
+   ```
 
-```sh
-mash-server --server-config /absolute/path/to/server.toml
-```
+3. Save this as `server.toml`. It lists every computer allowed to connect and
+   uses word search only, so the server needs no model download:
 
-The example listens only on loopback. Put an HTTPS reverse proxy in front of it
-for other machines to reach it, or change `listen` to the host's private-network
-IP and use that private URL. Keep Qdrant's own ports private to the API host.
+   ```toml
+   version = 1
+   listen = "127.0.0.1:8787"
+   qdrant_url_env = "MASH_QDRANT_URL"
+   qdrant_grpc_url_env = "MASH_QDRANT_GRPC_URL"
 
-These settings are for a new service. Back up an existing installation before
-changing it.
+   [views.build]
+   representations = "lexical-only"
 
-## Connect each machine
+   [[nodes]]
+   group_id = "personal"
+   node_id = "laptop"
+   token_env = "MASH_LAPTOP_TOKEN"
 
-In a terminal, run `mash init` and choose **Connect to an existing shared server**.
-For an existing configuration, first choose **Review and edit settings**. Enter
-the server URL, group ID, this machine's unique ID, and the **name** of the
-environment variable containing its token. Set that variable before running the
-wizard and make it available to your agent clients too; the wizard does not
-store token values. It checks authentication before offering to index and upload.
-If you are not ready to host a server, choose **Set up sharing later** to finish
-local setup and return to this guide afterward.
+   [[nodes]]
+   group_id = "personal"
+   node_id = "desktop"
+   token_env = "MASH_DESKTOP_TOKEN"
+   ```
 
-For manual configuration:
+   The file names environment variables; it never holds the secrets. Keep
+   tokens out of Git.
 
-Edit the node configuration created by `mash init`. Preserve its providers and
-local Qdrant settings. Change the existing `[index]` table and add:
+4. Set those variables and start the server. Both Qdrant variables must point
+   at the **same** Qdrant instance:
+
+   ```sh
+   export MASH_QDRANT_URL=http://127.0.0.1:6333
+   export MASH_QDRANT_GRPC_URL=http://127.0.0.1:6334
+   export MASH_LAPTOP_TOKEN='the token you made for the laptop'
+   export MASH_DESKTOP_TOKEN='the token you made for the desktop'
+   mash-server --server-config /absolute/path/to/server.toml
+   ```
+
+   Keep it running under your service manager, with the same variables.
+
+5. Make it reachable. `listen = "127.0.0.1:8787"` accepts connections from the
+   server machine only. Put an HTTPS reverse proxy in front of it, or set
+   `listen` to the machine's private-network IP and use that address as the
+   server URL.
+
+This configuration is for a new server. Back up an existing one before
+changing its settings.
+
+## 2. Connect each computer
+
+Do this on every computer that should publish or search shared history. Mash
+must already be [installed and set up](installation.md) there, with its local
+Qdrant running.
+
+First put this computer's token in an environment variable, for example
+`MASH_NODE_TOKEN`. Mash stores only the variable's name, so the variable must
+be set wherever Mash runs: your shell, the
+[watcher](synchronization.md), and the agent clients that start Mash's MCP
+server.
+
+Then either use the wizard or edit the configuration.
+
+**Wizard.** Run `mash init` in a terminal and choose **Connect to an existing
+shared server**. If Mash is already configured, choose **Review and edit
+settings** first. Enter the server URL, group ID, this computer's node ID, and
+the name of the token variable. The wizard checks that the server accepts the
+token, then offers to index and upload. **Set up sharing later** finishes local
+setup without sharing.
+
+**By hand.** Edit the node configuration that `mash init` created. Keep its
+providers and local Qdrant settings. In the existing `[index]` table set
+`destination`, and add a `[shared]` table:
 
 ```toml
 [index]
@@ -93,62 +136,69 @@ api_url = "https://mash.example.net"
 token_env = "MASH_NODE_TOKEN"
 ```
 
-Replace the URL with your reachable API endpoint. On the other machine, use
-`node_id = "desktop"`. Set `MASH_NODE_TOKEN` to that machine's matching server
-token. Make the variable available to the CLI, watcher, and agent's MCP process.
+`group_id` and `node_id` must match one `[[nodes]]` entry on the server, and
+the variable must hold that entry's token. On the desktop, use
+`node_id = "desktop"` and the desktop's token.
 
-For the lexical server above, use `[views.build] representations = "lexical-only"`
-and `[views.query] intent = "exact-mention"` on each node. These are the normal
-model-free `init` settings. For semantic search, ask the server administrator for matching model settings.
+Search settings must suit the server. For the word-search server above, each
+computer uses `[views.build] representations = "lexical-only"` and
+`[views.query] intent = "exact-mention"`, which is what `mash init` writes
+when no models are installed. For semantic search, ask the server
+administrator for matching model settings.
 
-## Publish and search
+## 3. Publish and check
 
-On **each** machine:
+On **each** computer:
 
 ```sh
 mash index
 mash status --shared
 ```
 
-For older history, use `mash index --all-history`. Check each node's publication
-and search readiness before expecting its chats to appear elsewhere.
+`mash index` updates the local index, then uploads it. It publishes history
+from the last `since_days` days; `mash index --all-history` includes older
+chats. `mash status --shared` reports the server's view under `shared_index`,
+or a `shared_error` when the server could not be reached or refused the token.
+
+A computer's chats appear on the others only after that computer has
+published. If publishing fails, local history is kept: fix the reported error
+and run `mash index` again. To keep publishing new chats, run a
+[watcher](synchronization.md) on each computer.
+
+## Search
 
 ```sh
-mash search 'authentication'
-mash search 'authentication' --shared
-mash search 'authentication' --local
+mash search 'authentication'            # this computer and the shared index
+mash search 'authentication' --shared   # the shared index only, including this computer's published chats
+mash search 'authentication' --local    # this computer only; the server is not contacted
 ```
 
-The first combines local history and other nodes. The second searches published
-history only, including this node. The third stays local.
-Use `--node desktop` to narrow by publishing identity, not to connect to a host.
-
-Run a watcher on each publishing machine for [ongoing updates](synchronization.md).
-If publication fails, local history is retained; inspect the reported shared
-error and retry indexing once the connection is fixed.
+Add `--node desktop` to keep only chats published by that node ID. It filters
+results; it does not connect to that computer.
 
 ## Remove a machine, or let a rebuilt one publish again
 
-The server ties each machine's name to the local index that first published
-under it, so another machine cannot overwrite its history by using its name.
-That also stops the same machine after its index is deleted and rebuilt:
-publishing fails with "shared node ownership or revision changed". Restoring
-the index from a [backup](upgrades.md) keeps the name. Otherwise, retire the
-name on the server:
+The server ties each node ID to the local index that first published under it,
+so another machine cannot overwrite that history by reusing the name. A machine
+whose index was deleted and rebuilt is refused for the same reason: publishing
+fails with "shared node ownership or revision changed". Restoring the index
+from a [backup](upgrades.md#replace-an-index-that-cannot-be-upgraded) with
+`--keep-identity` keeps the name. Otherwise, retire the name on the server:
 
 ```sh
-# On the API host, with the mash-server service stopped.
+# On the server machine, with mash-server stopped.
 mash-server --server-config /absolute/path/to/server.toml --retire-node personal/laptop
 ```
 
-This permanently deletes everything that machine published: its chats and
-records on the server, their search data, and its shared attachments. It
-prints how many chats and messages it removed and exits without serving.
-Start the service again, then run `mash index` on the machine to publish from
-its current index. Other machines are not affected, and the machine's own
-local history is untouched.
+**This permanently deletes everything that machine published:** its chats and
+records on the server, their search data, and its shared attachments. The
+command prints how many chats and messages it removed and exits without
+serving. Other machines and the retired machine's own local history are not
+touched.
 
-To remove a machine for good, retire it and then delete its `[[nodes]]` entry
-from the server configuration.
+Start `mash-server` again, then run `mash index` on the machine to publish
+from its current index. To remove a machine for good, retire it and delete its
+`[[nodes]]` entry from `server.toml` instead.
 
-For schema changes, follow [upgrades and backups](upgrades.md).
+Before installing a new Mash release, read
+[upgrades and backups](upgrades.md#upgrade-a-shared-index).

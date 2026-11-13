@@ -1,9 +1,8 @@
 # Connect another MCP client
 
-Claude Code and Codex can be connected automatically with `mash init`.
-See [agent setup](agents.md) for the simplest path.
-
-Other clients that support local MCP servers can start Mash themselves.
+`mash init` connects Claude Code and Codex for you; see [agent setup](agents.md).
+Any other client that can start a local (stdio) MCP server can run `mash mcp`
+itself.
 
 ## Connect another MCP client
 
@@ -26,14 +25,18 @@ The exact configuration format depends on your client. For shared history,
 also make your configured token environment variable available to the client.
 
 Restart the client, then ask it to use Mash to find an earlier conversation.
+It should call Mash's `search` tool and answer from your history. Restart the
+client again after each Mash upgrade so that it starts the new executable.
 
 ## What your agent can do
 
 Your agent can search chats, list conversations, read messages and available
 attachments, and check whether history is current. It can also refresh history,
 forget a chat, make backups, or download optional models when you request it.
+The [MCP tool reference](tools.md) lists every tool and its parameters.
 
-If new chats are missing, run `mash index`. For ongoing updates, see
+Searching does not refresh the index. If new chats are missing, run
+`mash index`; for ongoing updates, see
 [keep history up to date](synchronization.md).
 
 ## Read saved attachments
