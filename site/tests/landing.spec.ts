@@ -33,3 +33,24 @@ test("the landing page fits a phone", async ({ page }) => {
   await page.goto("/");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test("the hero draws its surface in the theme's ink", async ({ page }) => {
+  await page.goto("/");
+  const surface = page.locator("canvas.mash-surface");
+  // It spans the window without widening the page.
+  await expect
+    .poll(() => surface.evaluate((node) => node.getBoundingClientRect().width))
+    .toBe(await page.evaluate(() => document.documentElement.clientWidth));
+  const painted = () =>
+    surface.evaluate((node) => {
+      const canvas = node as HTMLCanvasElement;
+      const pixels = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data;
+      let count = 0;
+      for (let i = 3; pixels && i < pixels.length; i += 4) if (pixels[i]) count += 1;
+      return count;
+    });
+  await expect.poll(painted).toBeGreaterThan(1000);
+  expect(await surface.evaluate((node) => getComputedStyle(node).color)).toBe(
+    await page.evaluate(() => getComputedStyle(document.querySelector("h1") as Element).color),
+  );
+});

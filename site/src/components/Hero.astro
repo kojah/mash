@@ -1,0 +1,23 @@
+---
+// Starlight's hero, over the rippling surface.
+import Default from "@astrojs/starlight/components/Hero.astro";
+import Surface from "./Surface.astro";
+---
+
+<div class="mash-hero">
+  <Surface />
+  <Default />
+</div>
+
+<style>
+  .mash-hero {
+    position: relative;
+    isolation: isolate;
+  }
+  /* Stacked, the copy takes the top and the surface gets its own band below it. */
+  @media (width < 50rem) {
+    .mash-hero {
+      padding-bottom: 13rem;
+    }
+  }
+</style>

@@ -1,0 +1,48 @@
+---
+// The hero's background: a rippling surface with the supported agents' marks
+// standing on it. The marks are the dashboard's own files, as in Agents.astro.
+import { agents } from "../../../dashboard/src/lib/agents.ts";
+import type { Logo } from "../surface.ts";
+
+const files = import.meta.glob<string>("../../../dashboard/public/agents/*.svg", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+const shown = ["claude-code", "codex", "copilot", "cursor", "opencode", "antigravity"] as const;
+const logos: Logo[] = shown.map((key) => {
+  const agent = agents[key];
+  const svg = files[`../../../dashboard/public${agent.logo}`] ?? "";
+  const paths = [...svg.matchAll(/\sd="([^"]+)"/g)];
+  const d = paths.length === 1 ? paths[0]?.[1] : undefined;
+  if (!d) throw new Error(`${agent.logo} must hold exactly one path to stand on the surface`);
+  return { name: agent.name, d, rule: svg.includes('fill-rule="evenodd"') ? "evenodd" : "nonzero" };
+});
+---
+
+<canvas class="mash-surface" aria-hidden="true" data-logos={JSON.stringify(logos)}></canvas>
+
+<script>
+  import { mountSurface } from "../surface.ts";
+
+  // Runs on the first load and after each page change.
+  document.addEventListener("astro:page-load", () => {
+    for (const canvas of document.querySelectorAll<HTMLCanvasElement>("canvas.mash-surface")) {
+      mountSurface(canvas);
+    }
+  });
+</script>
+
+<style>
+  /* The script widens it to the window; it is drawn in this colour. */
+  .mash-surface {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 100%;
+    z-index: -1;
+    color: var(--sl-color-white);
+    pointer-events: none;
+  }
+</style>
