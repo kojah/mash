@@ -136,17 +136,20 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
         )
     };
     let request = json!({"operation_id":"sdk-create","change":{"action":"create","scope":{"kind":"chat","id":"decision-thread"},"body":{"statement":"Use Qdrant","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}});
+    // An index pass holds the writer lock: record waits for it rather than
+    // failing, and saves once the pass releases within the bound.
     let guard = crate::storage::admission::acquire(&database).unwrap();
-    let blocked = call("record", request.clone()).await.unwrap();
-    assert_eq!(blocked.is_error, Some(true));
+    let mut waiting = Box::pin(call("record", request.clone()));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(400), &mut waiting)
+            .await
+            .is_err()
+    );
     drop(guard);
-    let created = tokio::time::timeout(
-        crate::test_support::HANG_GUARD,
-        call("record", request.clone()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let created = tokio::time::timeout(crate::test_support::HANG_GUARD, waiting)
+        .await
+        .unwrap()
+        .unwrap();
     assert_ne!(created.is_error, Some(true), "{created:?}");
     let receipt = created.structured_content.unwrap();
     let retry = call("record", request).await.unwrap();

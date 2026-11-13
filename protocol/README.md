@@ -198,9 +198,18 @@ permits taking a non-head waiter and must violate `FairOrder`.
 `LocalWriter.tla` models two processes targeting one local database. `Acquire`
 maps to `storage::admission::acquire` and the OS-held sibling `.writer.lock`.
 Core dispatch admits indexing (including init's first index and views rebuild),
-forgetting, and import to its destination database.
+forgetting, record mutations and import to its destination database.
 Readers do not acquire this lock. Contention
-returns retryable `index-busy`; there is no queue or fairness claim.
+returns retryable `index-busy`; there is no queue or fairness claim. MCP
+`record` (`Mash::record_within`, `admission::acquire_until`) instead repeats the
+same non-blocking `Acquire` every 100 ms for at most 45 s, then returns
+retryable `index-busy`; cancellation also ends the wait. A waiter holds nothing
+between attempts, so the model's idle process with a disabled `Acquire` already
+covers waiting, and giving up is a step from idle that changes neither phase
+ownership nor `held`. The admitted owner is handed to core dispatch, which reuses
+it rather than acquiring twice. No model change is needed; the runtime check of
+`RuntimeUpgrade` runs after this admission, so a replacement during the wait is
+still refused.
 
 `StartBlocking` maps to `crate::blocking` capturing an Arc of the task's owner.
 `Cancel` can drop the caller while that worker continues; `Commit` ends the
@@ -346,7 +355,8 @@ watcher eventually stops after replacement. MCP itself stays available for reads
 the polling/liveness portion applies only to CLI watching.
 
 Source mapping: [runtime.rs](../app/runtime.rs) `Lease::ensure_current`,
-[mcp.rs](../app/mcp.rs) `Mash::perform_response`, and
+[mcp.rs](../app/mcp.rs) `Mash::perform_response` (and `Mash::record_within`,
+which checks after both the gate and local writer admission), and
 [cli.rs](../app/cli.rs) `run_parsed`. Registry liveness uses held OS locks;
 filesystem metadata identity, lock correctness, successful registration and
 eventual operation completion are assumptions, not modeled proofs. Older binaries

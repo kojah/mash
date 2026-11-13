@@ -109,6 +109,57 @@ pub(crate) fn acquire(database: &Path) -> Result<Arc<Owner>, AppError> {
     }
 }
 
+/// How often a waiting writer retries admission.
+const RETRY: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Retry `acquire` until it succeeds, `deadline` passes or `cancelled`
+/// resolves. A waiter holds nothing between attempts: each is the same
+/// non-blocking lock attempt, so exclusion is unchanged and there is no queue
+/// or fairness claim. Other failures return at once.
+pub(crate) async fn acquire_until(
+    database: &Path,
+    deadline: tokio::time::Instant,
+    cancelled: impl std::future::Future<Output = ()>,
+) -> Result<Arc<Owner>, AppError> {
+    tokio::pin!(cancelled);
+    loop {
+        let path = database.to_path_buf();
+        match crate::blocking(move || acquire(&path)).await {
+            Err(error) if error.error.kind == crate::ErrorKind::IndexBusy => {}
+            result => return result,
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(still_busy());
+        }
+        tokio::select! {
+            () = &mut cancelled => return Err(abandoned()),
+            () = tokio::time::sleep_until(deadline.min(now + RETRY)) => {}
+        }
+    }
+}
+
+/// A bounded wait for admission ran out. Nothing was written.
+pub(crate) fn still_busy() -> AppError {
+    AppError::new(
+        6,
+        crate::ErrorKind::IndexBusy,
+        "an index pass is still updating this local index, so nothing was saved; \
+         retry this call with the same operation_id",
+        true,
+    )
+}
+
+/// The caller cancelled while waiting for admission. Nothing was written.
+pub(crate) fn abandoned() -> AppError {
+    AppError::new(
+        6,
+        crate::ErrorKind::IndexBusy,
+        "cancelled while waiting for the local index, so nothing was saved",
+        true,
+    )
+}
+
 /// Whether some process is updating this database right now. A reader uses it
 /// to tell search that is about to catch up from search nobody is refreshing.
 /// The probe takes a shared lock for an instant, so a writer arriving in that
@@ -172,6 +223,78 @@ mod tests {
             acquire(&alias).unwrap_err().error.kind,
             crate::ErrorKind::IndexBusy
         );
+    }
+
+    #[tokio::test]
+    async fn bounded_admission_waits_for_release_and_gives_up_retryably() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("index.sqlite3");
+        let deadline = |patience| tokio::time::Instant::now() + patience;
+        let never = std::future::pending::<()>;
+        let owner = acquire(&database).unwrap();
+        // Exceeding the bound reports a retryable busy index.
+        let error = acquire_until(
+            &database,
+            deadline(std::time::Duration::from_millis(250)),
+            never(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.error.kind, crate::ErrorKind::IndexBusy);
+        assert!(error.error.retryable);
+        assert!(
+            error.error.message.contains("retry"),
+            "{}",
+            error.error.message
+        );
+        // Cancellation ends the wait long before the bound.
+        let (cancel, cancelled) = tokio::sync::oneshot::channel::<()>();
+        let waiting = tokio::spawn({
+            let database = database.clone();
+            async move {
+                acquire_until(
+                    &database,
+                    deadline(std::time::Duration::from_secs(60)),
+                    async {
+                        let _ = cancelled.await;
+                    },
+                )
+                .await
+            }
+        });
+        cancel.send(()).unwrap();
+        let error = tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.error.kind, crate::ErrorKind::IndexBusy);
+        // A writer released within the bound admits the waiter, exclusively.
+        let waiting = tokio::spawn({
+            let database = database.clone();
+            async move {
+                acquire_until(
+                    &database,
+                    deadline(std::time::Duration::from_secs(60)),
+                    never(),
+                )
+                .await
+            }
+        });
+        tokio::time::sleep(3 * RETRY).await;
+        assert!(!waiting.is_finished());
+        drop(owner);
+        let admitted = tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(held(&database).unwrap());
+        assert_eq!(
+            acquire(&database).unwrap_err().error.kind,
+            crate::ErrorKind::IndexBusy
+        );
+        drop(admitted);
     }
 
     #[tokio::test]

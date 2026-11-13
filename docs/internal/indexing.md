@@ -74,7 +74,11 @@ are added to this diagnostic metadata.
 
 Local mutations also hold a database-scoped `.writer.lock` across silver commits,
 model work and views refresh. A competing CLI or MCP writer returns retryable
-`index-busy`; readers do not take this lock. Import locks its destination database.
+`index-busy`; readers do not take this lock. MCP `record` is the exception: it
+retries admission for up to 45 s, longer than a typical watcher pass, and stops
+early if the request is cancelled; only then does it return retryable
+`index-busy` asking the agent to retry with the same `operation_id`. Import
+locks its destination database.
 The lock file persists after the operation, but its OS-held lock does not. Do not
 delete or replace it while Mash is running. Blocking workers retain ownership if
 their caller stops waiting. This coordination does not fence requests already

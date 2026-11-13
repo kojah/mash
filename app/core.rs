@@ -187,10 +187,16 @@ async fn execute_inner(
         Operation::ImportSilver { database, .. } => Some(database.clone()),
         _ => None,
     };
+    // A caller that already waited for admission (MCP `record`) passes it in.
+    let ambient = crate::storage::admission::current();
     let owner = match writer_database {
-        Some(path) => {
-            Some(crate::blocking(move || crate::storage::admission::acquire(&path)).await?)
-        }
+        Some(path) => Some(
+            crate::blocking(move || match ambient {
+                Some(owner) if owner.covers(&path)? => Ok(owner),
+                _ => crate::storage::admission::acquire(&path),
+            })
+            .await?,
+        ),
         None => None,
     };
     let mut response = crate::storage::admission::scope(
