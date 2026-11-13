@@ -6,37 +6,35 @@ import Surface from "./Surface.astro";
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero ?? {};
-// Set once the first release is published; until then each prebuilt install
-// says that it has nothing to download yet.
-const released = false;
-const pending = released ? "" : "Works from the first release; until then, build with Cargo. ";
 // What a visitor pastes into a coding agent to have it do the setup.
-const ask = "Read https://getmash.io/setup.md and set up Mash on this machine.";
+const agent = {
+  id: "agent",
+  label: "Ask your agent",
+  prompt: "›",
+  command: "Read https://getmash.io/setup.md and set up Mash on this machine.",
+};
 
 const cargo = {
   id: "cargo",
   label: "Cargo",
   prompt: "$",
   command: "cargo +stable install --locked --git https://github.com/kojah/mash mash",
-  note: "Builds from source with Rust.",
 };
 const brew = {
   id: "brew",
   label: "Homebrew",
   prompt: "$",
   command: "brew install kojah/tap/mash",
-  note: `${pending}Installs a prebuilt binary from the Mash tap.`,
 };
-const script = (machines: string) => ({
+const script = {
   id: "script",
   label: "Script",
   prompt: "$",
   command: "curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh",
-  note: `${pending}Installs a prebuilt binary for ${machines} to ~/.local/bin and verifies its checksum.`,
-});
+};
 const systems = [
-  { id: "macos", label: "macOS", methods: [script("Apple silicon"), brew, cargo] },
-  { id: "linux", label: "Linux", methods: [script("x86-64 or ARM64"), brew, cargo] },
+  { id: "macos", label: "macOS", methods: [script, brew, cargo, agent] },
+  { id: "linux", label: "Linux", methods: [script, brew, cargo, agent] },
   {
     id: "windows",
     label: "Windows",
@@ -46,21 +44,20 @@ const systems = [
         label: "PowerShell",
         prompt: ">",
         command: "irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex",
-        note: `${pending}Installs a prebuilt x64 binary and verifies its checksum.`,
       },
       {
         id: "scoop",
         label: "Scoop",
         prompt: ">",
         command: "scoop bucket add kojah https://github.com/kojah/mash; scoop install kojah/mash",
-        note: `${pending}Installs a prebuilt x64 binary from the Mash bucket.`,
       },
       cargo,
+      agent,
     ],
   },
 ];
 // Without scripting the page shows the macOS and Linux script.
-const first = script("Apple silicon, or Linux x86-64 or ARM64,");
+const first = script;
 ---
 
 <div class="mash-hero">
@@ -96,11 +93,6 @@ const first = script("Apple silicon, or Linux x86-64 or ARM64,");
           <code>{first.command}</code>
           <button type="button" data-copy={first.command} aria-label="Copy the install command">Copy</button>
         </div>
-        <p><span class="note">{first.note}</span> <a href="/installation/">Other ways to install</a></p>
-        <p class="ask">
-          Or tell your coding agent: <q>{ask}</q>
-          <button type="button" data-copy={ask} aria-label="Copy the prompt for your agent">Copy</button>
-        </p>
       </div>
       {
         actions.length > 0 && (
@@ -276,22 +268,6 @@ const first = script("Apple silicon, or Linux x86-64 or ARM64,");
     margin: 0;
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-sm);
-  }
-  .ask q {
-    color: var(--sl-color-gray-2);
-  }
-  .ask button {
-    margin-inline-start: 0.375rem;
-    padding: 0.0625rem 0.5rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.375rem;
-    background: var(--sl-color-gray-6);
-    color: var(--sl-color-white);
-    font: 500 var(--sl-text-xs) var(--sl-font);
-    cursor: pointer;
-  }
-  .ask button:hover {
-    border-color: var(--sl-color-gray-3);
   }
   .mash-install a {
     color: var(--sl-color-text-accent);

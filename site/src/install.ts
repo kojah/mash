@@ -1,6 +1,6 @@
 /**
  * The landing hero's install picker: choose an operating system and an install
- * method, and the command, its prompt and its note follow.
+ * method, and the command and its prompt follow.
  */
 
 interface Method {
@@ -8,7 +8,6 @@ interface Method {
   readonly label: string;
   readonly prompt: string;
   readonly command: string;
-  readonly note: string;
 }
 
 interface System {
@@ -22,9 +21,7 @@ const STORED = "mash-install";
 function isMethod(value: unknown): value is Method {
   if (typeof value !== "object" || value === null) return false;
   const method = value as Record<string, unknown>;
-  return ["id", "label", "prompt", "command", "note"].every(
-    (key) => typeof method[key] === "string",
-  );
+  return ["id", "label", "prompt", "command"].every((key) => typeof method[key] === "string");
 }
 
 function isSystem(value: unknown): value is System {
@@ -86,8 +83,7 @@ export function mountInstall(picker: HTMLElement): void {
   const prompt = picker.querySelector<HTMLElement>(".prompt");
   const code = picker.querySelector<HTMLElement>("code");
   const copy = picker.querySelector<HTMLButtonElement>("button[data-copy]");
-  const note = picker.querySelector<HTMLElement>(".note");
-  if (picker.dataset.mounted || !systemRow || !methodRow || !prompt || !code || !copy || !note) {
+  if (picker.dataset.mounted || !systemRow || !methodRow || !prompt || !code || !copy) {
     return;
   }
   const [fallback] = systems;
@@ -117,7 +113,6 @@ export function mountInstall(picker: HTMLElement): void {
     if (prompt) prompt.textContent = method.prompt;
     if (code) code.textContent = method.command;
     if (copy) copy.dataset.copy = method.command;
-    if (note) note.textContent = method.note;
     picker.dataset.system = system.id;
     picker.dataset.method = method.id;
     if (keep) remember(system.id, method.id);
