@@ -217,6 +217,33 @@ async fn local_qdrant_exact_uses_certified_recipe_without_activating_dense_chang
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
+async fn local_qdrant_word_retrieval_requires_every_word_in_any_order_without_models() {
+    let fixture = Fixture::new();
+    fixture.write("rotate the application logs daily");
+    fixture.build(false).await;
+    let local = Local::open_exact(&fixture.database, &fixture.configuration)
+        .await
+        .unwrap();
+    let count = |text: &'static str| {
+        let local = &local;
+        async move { local.candidates(query(text)).await.unwrap().lexical.len() }
+    };
+    let found = local.candidates(query("logs rotate")).await.unwrap();
+    assert_eq!(found.lexical.len(), 1);
+    assert!(found.semantic.is_empty());
+    assert!(found.lexical[0].lexical_score.is_some());
+    // A missing word disqualifies; quotes ask for the words as one phrase.
+    assert_eq!(count("logs absent").await, 0);
+    assert_eq!(count("\"logs rotate\"").await, 0);
+    assert_eq!(count("\"application logs\"").await, 1);
+    let mut vector = query("logs daily");
+    vector.vector = vec![0.5; 384];
+    assert!(local.candidates(vector).await.is_err());
+    fixture.cleanup(&fixture.open().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
 async fn local_qdrant_reader_rejects_replaced_silver_with_the_same_certificate() {
     let fixture = Fixture::new();
     fixture.write("native sentinel");

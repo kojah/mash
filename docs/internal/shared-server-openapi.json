@@ -1285,11 +1285,18 @@
         "type": "object"
       },
       "Intent": {
-        "enum": [
-          "related-discussion",
-          "exact-mention"
-        ],
-        "type": "string"
+        "oneOf": [
+          {
+            "const": "related-discussion",
+            "description": "What a shared-API request that omits its intent means; the configured\ndefault for searches is `views.query.intent`.",
+            "type": "string"
+          },
+          {
+            "const": "exact-mention",
+            "description": "Model-free: every query word in any order, ranked by BM25, or a quoted\nquery as one literal phrase.",
+            "type": "string"
+          }
+        ]
       },
       "Kind": {
         "enum": [

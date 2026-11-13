@@ -141,7 +141,7 @@ pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
         limit: 5,
         ..Default::default()
     };
-    let mut local = search("Qdrant", Intent::ExactMention);
+    let mut local = search("Qdrant upgrade", Intent::ExactMention);
     local.local = true;
     let mut shared = search("why we chose Qdrant", Intent::RelatedDiscussion);
     shared.shared = true;

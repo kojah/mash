@@ -586,7 +586,7 @@ impl Store {
     ) -> Result<protocol::Candidates, AppError> {
         qdrant_index::validate_search(&input, identity)?;
         self.views.views_configuration(identity).await?;
-        let exact = input.intent == crate::views::exact::Intent::ExactMention;
+        let exact = !input.intent.semantic();
         let active = self
             .searchable_nodes(identity, !exact, input.exclude_self)
             .await?;

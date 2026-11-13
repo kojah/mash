@@ -12,22 +12,29 @@ const TEXT: &str = "unit.text";
 pub(crate) fn validate_search(input: &protocol::Search, identity: &Scope) -> Result<(), AppError> {
     if let Some(policy) = input.vector_policy {
         policy.validate_request()?;
-        if input.intent == crate::views::exact::Intent::ExactMention {
+        if !input.intent.semantic() {
             return Err(AppError::usage(
                 "vector overrides require related-discussion intent",
             ));
         }
     }
     if input.intent == crate::views::exact::Intent::ExactMention {
-        return Ok(()); // Literal syntax and filters are validated by search_exact.
-    }
-    crate::search_query::validate(&input.query)?;
-    if !crate::search_query::has_terms(&input.query)
-        || input.query.len() > 16384
-        || !protocol::valid_vector(&input.vector, identity.dimensions)
-        || input.generation != identity.generation
-    {
-        return Err(AppError::usage("invalid search query or vector"));
+        if crate::views::exact::literal(&input.query) {
+            return Ok(()); // Literal syntax and filters are validated by search_exact.
+        }
+        crate::search_query::validate_words(&input.query)?;
+        if !input.vector.is_empty() {
+            return Err(AppError::usage("exact-mention search takes no vector"));
+        }
+    } else {
+        crate::search_query::validate(&input.query)?;
+        if !crate::search_query::has_terms(&input.query)
+            || input.query.len() > 16384
+            || !protocol::valid_vector(&input.vector, identity.dimensions)
+            || input.generation != identity.generation
+        {
+            return Err(AppError::usage("invalid search query or vector"));
+        }
     }
     if let Some(filter) = &input.filter {
         filter.validate()?;
@@ -160,13 +167,15 @@ impl Store {
     }
 
     /// Preserve original lexical candidates before considering expanded terms.
+    /// `build` checks each document's dense recipe, which only meaning search
+    /// depends on.
     async fn lexical(
         &self,
         identity: &Scope,
         input: &protocol::Search,
         active: &BTreeSet<String>,
         filter: &api::Filter,
-        ef: usize,
+        build: Option<&crate::views::config::Build>,
     ) -> Result<Vec<SearchHit>, AppError> {
         let name = collection(&identity.group_id, false);
         let original = crate::views::matching::Plan::new(
@@ -189,7 +198,7 @@ impl Store {
                 filter: scoped,
                 params: api::Params {
                     exact: true,
-                    hnsw_ef: ef,
+                    hnsw_ef: 200,
                 },
                 limit: input.unit.candidate_limit(),
                 with_payload: true,
@@ -210,12 +219,12 @@ impl Store {
             Ok::<_, AppError>((plan, points))
         };
         let (points, (plan, expanded)) = tokio::try_join!(strict, expand)?;
-        let mut lexical = hits(points, true, identity, active, &self.build)?;
+        let mut lexical = hits(points, true, identity, active, build)?;
         let mut seen = lexical
             .iter()
             .map(|h| (h.node_id.clone(), h.id.clone()))
             .collect::<BTreeSet<_>>();
-        for mut hit in hits(expanded, true, identity, active, &self.build)? {
+        for mut hit in hits(expanded, true, identity, active, build)? {
             if seen.insert((hit.node_id.clone(), hit.id.clone())) {
                 hit.lexical_match =
                     plan.evidence(&self.responses.text(&hit.content), input.match_mode);
@@ -225,6 +234,28 @@ impl Store {
         lexical.truncate(input.unit.candidate_limit());
         Ok(lexical)
     }
+    /// Every query word in one message, ranked by BM25; no vectors.
+    async fn search_words(
+        &self,
+        identity: &Scope,
+        input: &protocol::Search,
+        active: &BTreeSet<String>,
+    ) -> Result<protocol::Candidates, AppError> {
+        let active = active
+            .iter()
+            .filter(|node| !input.exclude_self || **node != identity.node_id)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if active.is_empty() {
+            return Ok(candidates(Vec::new(), Vec::new()));
+        }
+        let filter = search_filter(input, &active)?;
+        let lexical = self
+            .lexical(identity, input, &active, &filter, None)
+            .await?;
+        Ok(candidates(lexical, Vec::new()))
+    }
+
     #[tracing::instrument(name = "backend_search", skip_all, fields(backend = "qdrant"))]
     pub(crate) async fn search(
         &self,
@@ -234,12 +265,20 @@ impl Store {
     ) -> Result<protocol::Candidates, AppError> {
         validate_search(&input, identity)?;
         if input.intent == crate::views::exact::Intent::ExactMention {
-            return tokio::time::timeout(
-                crate::views::retrieval::EXACT_SEARCH_TIMEOUT,
-                self.search_exact(identity, input, active),
-            )
-            .await
-            .map_err(|_| AppError::usage(crate::views::retrieval::EXACT_SEARCH_BUDGET_ERROR))?;
+            // Several unquoted words rank by BM25; one term or a quoted
+            // query is a verified literal.
+            let search = async {
+                if crate::views::exact::literal(&input.query) {
+                    self.search_exact(identity, input, active).await
+                } else {
+                    self.search_words(identity, &input, active).await
+                }
+            };
+            return tokio::time::timeout(crate::views::retrieval::EXACT_SEARCH_TIMEOUT, search)
+                .await
+                .map_err(|_| {
+                    AppError::usage(crate::views::retrieval::EXACT_SEARCH_BUDGET_ERROR)
+                })?;
         }
         self.build.require_intent(input.intent)?;
         let configuration = self.active_configuration(identity).await?;
@@ -270,34 +309,38 @@ impl Store {
             with_payload: true,
         };
         let name = collection(&identity.group_id, false);
-        let lexical_query = self.lexical(identity, &input, &active, &filter, ef);
+        let lexical_query = self.lexical(identity, &input, &active, &filter, Some(&self.build));
         let (lexical, semantic) = tokio::try_join!(
             lexical_query,
             self.api.query::<Document>(&name, &semantic_query)
         )?;
-        let semantic = hits(semantic, false, identity, &active, &self.build)?;
-        let documents: BTreeMap<_, _> = lexical
-            .iter()
-            .chain(&semantic)
-            .map(|h| {
-                (
-                    (h.node_id.clone().unwrap_or_default(), h.id.clone()),
-                    h.content.clone(),
-                )
-            })
-            .collect();
-        Ok(protocol::Candidates {
-            lexical,
-            semantic,
-            documents: documents
-                .into_iter()
-                .map(|((node_id, id), projection)| protocol::Document {
-                    node_id,
-                    id,
-                    projection,
-                })
-                .collect(),
+        let semantic = hits(semantic, false, identity, &active, Some(&self.build))?;
+        Ok(candidates(lexical, semantic))
+    }
+}
+
+fn candidates(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> protocol::Candidates {
+    let documents: BTreeMap<_, _> = lexical
+        .iter()
+        .chain(&semantic)
+        .map(|h| {
+            (
+                (h.node_id.clone().unwrap_or_default(), h.id.clone()),
+                h.content.clone(),
+            )
         })
+        .collect();
+    protocol::Candidates {
+        lexical,
+        semantic,
+        documents: documents
+            .into_iter()
+            .map(|((node_id, id), projection)| protocol::Document {
+                node_id,
+                id,
+                projection,
+            })
+            .collect(),
     }
 }
 fn hits(
@@ -305,7 +348,7 @@ fn hits(
     lexical: bool,
     identity: &Scope,
     active: &BTreeSet<String>,
-    build: &crate::views::config::Build,
+    build: Option<&crate::views::config::Build>,
 ) -> Result<Vec<SearchHit>, AppError> {
     let mut output = Vec::new();
     let mut seen = BTreeSet::new();
@@ -314,7 +357,7 @@ fn hits(
             &point.id,
             point.payload,
             active,
-            Some((identity, build, lexical)),
+            build.map(|build| (identity, build, lexical)),
         )?;
         if !seen.insert((hit.node_id.clone(), hit.id.clone())) {
             return Err(failure());

@@ -237,7 +237,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
                 "vector_search": {"algorithm": "hnsw", "ef_runtime": 200}
             },
             "views": {"build": {"embedding_text": "dialogue"}, "query": {
-                "intent": "related-discussion", "unit": "chats", "limit": 20,
+                "intent": "exact-mention", "unit": "chats", "limit": 20,
                 "fusion": {"rank_constant": 60, "lexical_weight": 1, "recency_weight": 50, "semantic_weight": 1},
                 "ranking": "contextual-rerank",
                 "freshness_warnings": true
@@ -325,7 +325,16 @@ fn oversized_model_metadata_fails_before_indexing_or_loading_and_status_explains
     let status = run_json(&[base.as_slice(), &["status"]].concat());
     assert_eq!(status["ready"], false);
     assert_eq!(status["recommended_action"], "models install");
-    for args in [vec!["index"], vec!["search", "cbioportal", "--local"]] {
+    for args in [
+        vec!["index"],
+        vec![
+            "search",
+            "cbioportal",
+            "--intent",
+            "related-discussion",
+            "--local",
+        ],
+    ] {
         let output = Command::cargo_bin("mash")
             .unwrap()
             .args(base)

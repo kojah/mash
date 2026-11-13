@@ -84,10 +84,13 @@ This first pass takes longer because it prepares your existing history for
 semantic search; later passes reuse unchanged work. Semantic queries currently
 need English.
 
-You can still search for exact words:
+Word search still works, and is faster because it loads no models:
 
 ```sh
 mash search 'auth_token' --intent exact-mention
 ```
+
+To keep it as what plain `mash search` does, leave `intent` as `exact-mention`
+above and pass `--intent related-discussion` when you want meaning.
 
 If something fails, see [troubleshooting](troubleshooting.md).

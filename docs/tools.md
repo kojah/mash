@@ -14,7 +14,7 @@ explorer runs those against your own history.
 
 ### `search`
 
-**Read-only.** Find past chats or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift.
+**Read-only.** Find past chats or messages. Use exact-mention for remembered words or identifiers (every word must appear in one message, any order; a single term matches as written; fastest, no inference; wrap the query in double quotes for an exact phrase) and related-discussion for semantic questions. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift.
 
 | Parameter | Accepts | Description |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ explorer runs those against your own history.
 | `diagnostics` | true or false | Include resolved retrieval policy, source outcomes and core timing. Default: `false`. |
 | `filter` | object (`Filter`) | Boolean expression using all/any/not and metadata predicates. |
 | `fusion` | object (`FusionOverrides`) | Advanced related-discussion fusion overrides; omitted fields inherit TOML. Invalid for exact-mention. |
-| `intent` | one of `related-discussion`, `exact-mention` | related-discussion or model-free exact-mention; omitted uses views.query.intent, which is exact-mention when semantic models were not installed at setup. |
+| `intent` | one of `related-discussion`, `exact-mention` | Model-free exact-mention (every word in any order; a "quoted" query is one phrase) or related-discussion (by meaning); omitted uses views.query.intent, which is exact-mention unless configured. |
 | `limit` | whole number | Results per page, from 1 to 200; omitted uses views.query.limit (20 by default). Use `next_offset` to fetch another page. |
 | `local` | true or false | Search only the local SQLite index. Default: `false`. |
 | `match_mode` | one of `strict`, `prefix`, `typo`, `flexible` | flexible (default) enables prefix and typo matching; strict preserves literals. Default: `flexible`. |

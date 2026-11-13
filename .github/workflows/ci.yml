@@ -174,7 +174,7 @@ jobs:
       - name: Verify local Qdrant search presentation and privacy
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
-          -E 'test(exact_cli_thread_excerpts) or test(cli_search_pages_partition) or test(exact_cli_search_needs_no_models) or test(empty_word_exact_search_explains_phrase_matching) or test(cli_masks_archived_credentials) or test(output_redaction_can_be_turned_off) or test(private_spans_never_reach_silver) or test(core_retrieves_native_cursor_threads)'
+          -E 'test(exact_cli_thread_excerpts) or test(cli_search_pages_partition) or test(exact_cli_search_needs_no_models) or test(exact_search_requires_every_word_and_explains_an_empty_result) or test(cli_masks_archived_credentials) or test(output_redaction_can_be_turned_off) or test(private_spans_never_reach_silver) or test(core_retrieves_native_cursor_threads)'
       - name: Verify Qdrant restart and snapshot restoration
         env:
           MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart

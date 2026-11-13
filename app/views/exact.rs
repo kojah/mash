@@ -18,9 +18,33 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Intent {
+    /// What a shared-API request that omits its intent means; the configured
+    /// default for searches is `views.query.intent`.
     #[default]
     RelatedDiscussion,
+    /// Model-free: every query word in any order, ranked by BM25, or a quoted
+    /// query as one literal phrase.
     ExactMention,
+}
+
+/// A query wrapped in double quotes asks for that exact phrase.
+pub(crate) fn quoted(query: &str) -> bool {
+    let query = query.trim();
+    query.len() > 1 && query.starts_with('"') && query.ends_with('"')
+}
+
+/// Whether exact-mention verifies `query` as one literal: a quoted phrase, or
+/// a single term, so an identifier such as `voyage-code-4` is not split into
+/// independent words. Several unquoted terms are each required in any order.
+pub(crate) fn literal(query: &str) -> bool {
+    quoted(query) || query.split_whitespace().count() == 1
+}
+
+impl Intent {
+    /// Only meaning search embeds the query and needs dense views.
+    pub(crate) fn semantic(self) -> bool {
+        self == Self::RelatedDiscussion
+    }
 }
 
 #[derive(Clone)]

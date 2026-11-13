@@ -234,7 +234,7 @@ fn views_query_defaults_are_typed_bounded_and_reported_in_status() {
     let status = serde_json::to_value(resolved.status()).unwrap();
     assert_eq!(status["views"]["query"]["unit"], "messages");
     assert_eq!(status["views"]["query"]["limit"], 7);
-    assert_eq!(status["views"]["query"]["intent"], "related-discussion");
+    assert_eq!(status["views"]["query"]["intent"], "exact-mention");
     let exact =
         parse_document(format!("{VALID}\n[views.query]\nintent='exact-mention'\n").as_bytes())
             .unwrap();

@@ -160,7 +160,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
         .search(Parameters(Search {
             detail: Detail::Extended,
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
-            intent: None,
+            intent: Some(crate::views::exact::Intent::RelatedDiscussion),
             limit: None,
             offset: None,
             fusion: None,
@@ -473,7 +473,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     assert_eq!(status.structured_content.as_ref(), Some(&body));
     assert_eq!(body["configuration"]["loaded"], true);
     let args = json!({
-        "query":"--models-dir=untrusted", "shared":false,
+        "query":"--models-dir=untrusted", "shared":false, "intent":"related-discussion",
         "unit":"messages", "provider":["codex", "claude-code"],
         "chat":["thread-a", "thread-b"], "after":2, "before":3
     })

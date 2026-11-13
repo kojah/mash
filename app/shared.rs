@@ -40,7 +40,7 @@ pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;
 pub(crate) use publication::write_event;
 pub(crate) use publication::{publish, status};
-pub(crate) use retrieval::{SearchOutcome, require_dense, search};
+pub(crate) use retrieval::{SearchOutcome, require_dense, search, search_lexical};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]

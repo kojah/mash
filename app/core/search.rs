@@ -145,7 +145,7 @@ pub(super) fn validate_vector(
 ) -> Result<(), AppError> {
     if let Some(policy) = policy {
         policy.validate_request()?;
-        if intent == crate::views::exact::Intent::ExactMention || local || !configured {
+        if !intent.semantic() || local || !configured {
             return Err(AppError::usage(
                 "shared vector overrides require related-discussion search against a configured shared index",
             ));
@@ -172,7 +172,7 @@ pub(super) fn resolve_ranking(
     intent: crate::views::exact::Intent,
     default: crate::views::config::Ranking,
 ) -> Result<crate::views::config::Ranking, AppError> {
-    if intent == crate::views::exact::Intent::ExactMention && ranking.is_some() {
+    if !intent.semantic() && ranking.is_some() {
         return Err(AppError::usage(
             "ranking overrides require related-discussion intent",
         ));
@@ -195,9 +195,10 @@ pub(super) fn resolve(
     }
     match intent {
         crate::views::exact::Intent::RelatedDiscussion => crate::search_query::validate(query)?,
-        crate::views::exact::Intent::ExactMention => {
+        crate::views::exact::Intent::ExactMention if crate::views::exact::literal(query) => {
             crate::views::exact::Literal::new(query)?;
         }
+        crate::views::exact::Intent::ExactMention => crate::search_query::validate_words(query)?,
     }
     filters.resolve(node)
 }
@@ -325,6 +326,11 @@ async fn run_inner(
         node(configuration),
     )?;
     let output = options.output_redaction;
+    if intent == crate::views::exact::Intent::ExactMention && !crate::views::exact::literal(&query)
+    {
+        let scope = (configuration, database, use_shared, use_local);
+        return lexical(scope, query, (options, page), &filters).await;
+    }
     if intent == crate::views::exact::Intent::ExactMention {
         let literal = crate::views::exact::Literal::with_mode(&query, filters.match_mode)?;
         if use_shared || (!use_local && configuration.shared.is_some()) {
@@ -499,6 +505,46 @@ async fn local_exact(
     })
 }
 
+/// Exact-mention for several unquoted words: each required, ranked by BM25
+/// and recency.
+async fn lexical(
+    (configuration, database, use_shared, use_local): (&ResolvedConfig, &Path, bool, bool),
+    query: String,
+    (options, page): (crate::views::config::Options, crate::search_results::Page),
+    filters: &crate::search_filter::Scope,
+) -> Result<SearchResponse, AppError> {
+    let database = (!use_shared).then_some(database);
+    let shared = use_shared || (!use_local && configuration.shared.is_some());
+    let (hits, shared_error) = shared::search_lexical(
+        shared.then(|| required_shared(configuration)).transpose()?,
+        database.map(|database| (database, configuration)),
+        &query,
+        options,
+        filters,
+    )
+    .await?;
+    let collected =
+        crate::search_results::collect(hits, options.unit, page, &query, options.output_redaction);
+    Ok(SearchResponse {
+        notice: None,
+        freshness_warnings: Vec::new(),
+        diagnostics: None,
+        intent: crate::views::exact::Intent::ExactMention,
+        realized_mode: if shared {
+            exact_mode(shared_error.is_some(), database.is_none())
+        } else {
+            SearchMode::Lexical
+        },
+        unit: options.unit,
+        results: collected.results,
+        next_offset: collected.next_offset,
+        query,
+        shared: shared && shared_error.is_none(),
+        shared_error,
+        shared_context_error: None,
+    })
+}
+
 #[tracing::instrument(name = "local_search", skip_all)]
 async fn local_search(
     database_path: &Path,
@@ -646,8 +692,8 @@ fn search_mode(failed: bool, shared_only: bool) -> SearchMode {
     }
 }
 
-/// Word-exact search matches the whole query as one phrase, so an empty result
-/// for several words often means "not in this order", not "never discussed".
+/// Exact-mention needs every word in one message, and a quoted query in that
+/// order, so an empty result often means "not together", not "never discussed".
 pub(super) fn empty_notice(
     search: &SearchResponse,
     configuration: &crate::config::ResolvedConfig,
@@ -657,13 +703,15 @@ pub(super) fn empty_notice(
         crate::search_results::Results::Messages(messages) => messages.is_empty(),
     };
     let query = search.query.trim();
-    let quoted = query.len() > 1 && query.starts_with('"') && query.ends_with('"');
+    let quoted = crate::views::exact::quoted(query);
     if !empty || search.intent != crate::views::exact::Intent::ExactMention {
         return None;
     }
     // The query itself stays out of the notice: it is redacted separately.
-    let mut notice = if !quoted && crate::views::matching::tokens(query).len() > 1 {
-        "No chat contains these words together in this order: word-exact search matches the whole query as one phrase. Try fewer words or the most distinctive one"
+    let mut notice = if quoted && crate::views::matching::tokens(query).len() > 1 {
+        "No chat contains this exact phrase. Remove the quotes to match the words in any order"
+    } else if crate::views::matching::tokens(query).len() > 1 {
+        "No message contains all of these words. Try fewer words or the most distinctive one"
     } else {
         "No indexed message contains this text. Word-exact search reads message text, not project paths or chat IDs (use --project or `mash list-chats` for those)"
     }

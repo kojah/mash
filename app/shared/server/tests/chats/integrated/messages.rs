@@ -74,7 +74,7 @@ async fn assert_scoped(
             ranking,
             diagnostics: true,
             query: "authentication".into(),
-            intent: None,
+            intent: Some(crate::views::exact::Intent::RelatedDiscussion),
             limit: None,
             offset: 0,
             unit: None,

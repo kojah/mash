@@ -115,8 +115,8 @@ See [agent setup](agents.md).
 An empty result does not prove the conversation never happened. Work through
 these:
 
-1. Try one distinctive word with `--intent exact-mention`. A multiword query
-   matches a phrase; those words may not appear together in that order.
+1. Try fewer words, or one distinctive word. Every word of the query must
+   appear in the same message.
 2. Remove filters, then add them back one at a time. Project paths and repository
    URLs must exactly match recorded metadata.
 3. Run `mash index` for new conversations, or `mash index --all-history` for

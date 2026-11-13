@@ -134,6 +134,9 @@ mod budget_tests {
                 .route(&format!("/collections/{}/points", collection(&identity.group_id, true)), post(|| async {
                     r#"{"status":"ok","result":[]}"#
                 }))
+                .route(&format!("/collections/{name}/points/query"), post(|| async {
+                    r#"{"status":"ok","result":{"points":[]}}"#
+                }))
                 .route(&format!("/collections/{name}/points/scroll"), post(|| async {
                     r#"{"status":"ok","result":{"points":[],"next_page_offset":null}}"#
                 }));

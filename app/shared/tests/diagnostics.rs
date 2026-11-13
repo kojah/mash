@@ -44,7 +44,7 @@ async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
         operation: Operation::Search {
             shared_vector_search: None,
             query: "needle".into(),
-            intent: None,
+            intent: Some(crate::views::exact::Intent::RelatedDiscussion),
             limit: None,
             offset: 0,
             unit: None,
@@ -145,7 +145,7 @@ async fn fixture() -> Fixture {
         operation: Operation::Search {
             shared_vector_search: None,
             query: "hello".into(),
-            intent: None,
+            intent: Some(crate::views::exact::Intent::RelatedDiscussion),
             limit: Some(10),
             offset: 0,
             unit: Some(SearchUnit::Messages),

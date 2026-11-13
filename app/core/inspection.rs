@@ -199,16 +199,15 @@ async fn local_gold_status(
     if configuration.views.build.dense_enabled() && dense_current {
         response.local_artifacts.dense = ArtifactState::publication(true, true);
     }
-    let exact = configuration.views.query.intent == crate::views::exact::Intent::ExactMention;
+    let exact = !configuration.views.query.intent.semantic();
     response.ready = (exact || dense_current)
         && !matches!(response.query_models, ModelAvailability::Unavailable);
     if response.ready {
-        response.realized_mode =
-            if configuration.views.query.intent == crate::views::exact::Intent::ExactMention {
-                SearchMode::Lexical
-            } else {
-                SearchMode::Hybrid
-            };
+        response.realized_mode = if exact {
+            SearchMode::Lexical
+        } else {
+            SearchMode::Hybrid
+        };
         response.recommended_action = None;
     }
     Ok(())
@@ -322,6 +321,8 @@ fn local_status(
     let dense_enabled = configuration.views.build.dense_enabled();
     let query_models = query_model_availability(&models, &configuration.views.query)?;
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
+    // Building dense views needs the models even when searches default to words.
+    let can_index = query_models_available && (models_installed || !dense_enabled);
     if !database_path.is_file() {
         return Ok(StatusResponse {
             local_views_error: None,
@@ -349,7 +350,7 @@ fn local_status(
             // that works without models.
             recommended_action: Some(if !configuration.loaded {
                 crate::Action::Init
-            } else if query_models_available {
+            } else if can_index {
                 crate::Action::Index
             } else {
                 crate::Action::ModelsInstall
@@ -385,7 +386,7 @@ fn local_status(
         query_models,
         semantic_support: dense_enabled,
         realized_mode: SearchMode::Unavailable,
-        recommended_action: Some(if query_models_available {
+        recommended_action: Some(if can_index {
             crate::Action::Index
         } else {
             crate::Action::ModelsInstall
@@ -413,7 +414,7 @@ fn query_model_availability(
     models: &Models,
     query: &crate::views::config::Query,
 ) -> Result<ModelAvailability, AppError> {
-    if query.intent == crate::views::exact::Intent::ExactMention {
+    if !query.intent.semantic() {
         return Ok(ModelAvailability::NotRequired);
     }
     match models.require_installed() {

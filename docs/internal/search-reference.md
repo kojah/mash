@@ -25,6 +25,15 @@ Shared aggregate certificates do not prove provider/time coverage; scoped shared
 counts and provider scan details are `null` when unreported. Shared status failures
 preserve local facts with `shared_error`.
 
+`exact-mention` intent, the default, takes a query of several unquoted terms as
+words: each (or an accepted prefix or typo alternative) is required in one
+message, ranked by BM25, then recency. It loads no models, needs no dense
+views, and merges this machine with the shared nodes by score. A single term or
+a query wrapped in double quotes is instead verified as one literal, so
+identifiers such as `voyage-code-4` are not split. Ranking and vector overrides are rejected for both. The shared
+API applies the same rule to `exact-mention` requests, so a node older than
+this change rejects unquoted multiword answers as nonliteral until upgraded.
+
 Semantic (related-discussion) search supports English queries. Exact-mention
 search does not use this model-language check. Unsupported scripts and confidently
 detected non-English queries return a usage error asking for an English query,

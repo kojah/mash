@@ -8,21 +8,21 @@ for reading but are not searched.
 
 There are two ways to search, chosen with `--intent`:
 
-- **Word search** (`--intent exact-mention`) finds messages containing the
-  words you type. It needs no models.
+- **Word search** (`--intent exact-mention`, the default) finds messages
+  containing every word you type, in any order. It needs no models.
 - **[Search by meaning](#search-by-meaning)** (`--intent related-discussion`)
   finds messages about the same idea even when the wording differs. It needs
-  the optional semantic models.
+  the optional semantic models and takes about a second longer.
 
-Without `--intent`, Mash uses the default that `mash init` chose:
-`related-discussion` if the models were installed, `exact-mention` if not.
+Without `--intent`, Mash searches by word unless your configuration sets
+another [default](configuration.md#search-defaults).
 
 ## Your first search
 
-Search for a distinctive word, filename, or phrase you remember:
+Search for the distinctive words, filename, or identifier you remember:
 
 ```bash
-mash search 'authentication' --intent exact-mention
+mash search 'authentication token'
 ```
 
 Results are JSON, grouped by chat, best match first. Abbreviated:
@@ -123,7 +123,8 @@ mash search 'token' --chat CHAT_ID --unit messages
 | The project directory | `mash search 'authentication' --project /absolute/path/to/project` |
 | The repository | `mash search 'authentication' --repository https://github.com/owner/repo.git` |
 | Something I said | `mash search 'authentication' --role user` |
-| The exact spelling | `mash search 'auth_token' --intent exact-mention --match-mode strict` |
+| The exact spelling | `mash search 'auth_token' --match-mode strict` |
+| The exact phrase | `mash search '"rotate the logs"'` |
 
 Different filters combine: a result must satisfy all of them. Repeat one flag
 to accept alternatives, such as `--provider codex --provider claude-code`.
@@ -153,12 +154,24 @@ Choose the intent by what you remember:
 | --- | --- | --- |
 | Use for | Words, identifiers, filenames, error text | A question or idea whose wording may differ |
 | Needs models | No | Yes |
-| Several words | Must appear together as a phrase | Need not appear at all |
+| Several words | Each must appear in the message, in any order | Need not appear at all |
 
-Because `exact-mention` matches a multiword query as a phrase, “log rotation”
-won't find “rotate the application logs.” If a phrase finds nothing, search for
-its most distinctive word. By default a word also matches as a prefix and
-tolerates small typos; `--match-mode strict` requires the exact spelling.
+Word search matches the words themselves, so “log rotation” won't find “rotate
+the application logs”; try “rotate”, or search by meaning. A single term such
+as `auth_token` or `voyage-code-4` matches as written, not as separate words.
+By default a word also matches as a prefix and tolerates small typos;
+`--match-mode strict` requires the exact spelling.
+
+## Search for an exact phrase
+
+Put double quotes around the query, inside the shell's own quotes:
+
+```bash
+mash search '"rotate the logs"'
+```
+
+A quoted query matches as one phrase with exact spelling, not as independent
+words scattered through a message. If it finds nothing, remove the quotes.
 
 ## More results and local-only searches
 

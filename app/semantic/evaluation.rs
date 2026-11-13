@@ -163,7 +163,7 @@ pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
                     ranking: None,
                     diagnostics: false,
                     query: query.text.clone(),
-                    intent: None,
+                    intent: Some(crate::views::exact::Intent::RelatedDiscussion),
                     limit: Some(5),
                     offset: 0,
                     unit: Some(unit),

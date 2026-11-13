@@ -57,7 +57,9 @@ limit = 20
 intent = "exact-mention"
 ```
 
-CLI and MCP arguments override these for one request. Changes take effect
+`intent` is `exact-mention` (every word, in any order, best matches first; the
+default) or `related-discussion` (by meaning). CLI and MCP arguments override
+these for one request. Changes take effect
 without rebuilding. To search by meaning, follow
 [semantic model setup](indexing.md#enable-semantic-search); changing `intent`
 alone does not create dense search data.

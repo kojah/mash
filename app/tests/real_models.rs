@@ -263,6 +263,8 @@ fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
                 models,
                 "search",
                 "qdrant",
+                "--intent",
+                "related-discussion",
             ])
             .output()
             .unwrap();
@@ -409,6 +411,8 @@ fn assert_views_query_defaults(config: &Path, database: &Path, models: &str) {
             "search",
             "--local",
             "authentication",
+            "--intent",
+            "related-discussion",
         ]);
         if let Some(weight) = override_weight {
             let weight = weight.to_string();
@@ -505,6 +509,8 @@ fn assert_views_ranking_defaults(config: &Path, database: &Path, models: &str) {
                 unit,
                 "--diagnostics",
                 "authentication",
+                "--intent",
+                "related-discussion",
             ]);
 
             if let Some(override_ranking) = override_ranking {
@@ -555,6 +561,8 @@ fn assert_scoped_message_search(config: &Path, database: &Path, model_arg: &str)
         "claude-code",
         "--chat",
         &thread,
+        "--intent",
+        "related-discussion",
         "authentication",
     ]);
     assert_eq!(found["realized_mode"], "hybrid");
@@ -598,6 +606,8 @@ fn assert_thread_search_and_view(config: &Path, database: &Path, model_arg: &str
         model_arg,
         "search",
         "authentication",
+        "--intent",
+        "related-discussion",
         "--limit",
         "1",
     ]);

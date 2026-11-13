@@ -223,7 +223,7 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission() {
 fn configuration(root: &std::path::Path, constant: u16, lexical: u16) -> String {
     let qdrant = crate::views::local::test_support::qdrant_configuration();
     format!(
-        "version=1\n[providers.codex]\nroots=[{:?}]\n[views.query]\nunit='messages'\n[views.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n[qdrant]\nurl={:?}\ngrpc_url={:?}\n",
+        "version=1\n[providers.codex]\nroots=[{:?}]\n[views.query]\nintent='related-discussion'\nunit='messages'\n[views.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n[qdrant]\nurl={:?}\ngrpc_url={:?}\n",
         root.join("codex").to_str().unwrap(),
         qdrant.url,
         qdrant.grpc_url

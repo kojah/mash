@@ -38,8 +38,9 @@ struct Search {
     shared_vector: Option<crate::views::vector::Search>,
     /// Words, a semantic question, or an exact-mention phrase/identifier; search never ingests.
     query: String,
-    /// related-discussion or model-free exact-mention; omitted uses views.query.intent,
-    /// which is exact-mention when semantic models were not installed at setup.
+    /// Model-free exact-mention (every word in any order; a "quoted" query is one
+    /// phrase) or related-discussion (by meaning); omitted uses views.query.intent,
+    /// which is exact-mention unless configured.
     intent: Option<crate::views::exact::Intent>,
     /// Results per page, from 1 to 200; omitted uses views.query.limit (20 by default).
     /// Use `next_offset` to fetch another page.
@@ -597,7 +598,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Find past chats or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
+        description = "Find past chats or messages. Use exact-mention for remembered words or identifiers (every word must appear in one message, any order; a single term matches as written; fastest, no inference; wrap the query in double quotes for an exact phrase) and related-discussion for semantic questions. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         let detail = request.detail;

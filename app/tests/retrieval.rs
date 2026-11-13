@@ -339,10 +339,18 @@ fn cli_validates_search_before_accessing_models_or_index() {
             "exact-mention",
             "--local",
         ],
-        vec!["search", "the and of", "--local"],
+        vec![
+            "search",
+            "the and of",
+            "--intent",
+            "related-discussion",
+            "--local",
+        ],
         vec![
             "search",
             "wie konfiguriere ich den gemeinsamen Suchindex",
+            "--intent",
+            "related-discussion",
             "--local",
         ],
         vec![
@@ -383,6 +391,8 @@ fn unsupported_language_is_explained_before_model_or_index_access() {
             models.to_str().unwrap(),
             "search",
             "wie konfiguriere ich den gemeinsamen Suchindex",
+            "--intent",
+            "related-discussion",
             "--local",
         ])
         .output()
@@ -418,6 +428,8 @@ fn search_without_models_fails_before_database_access() {
             models.to_str().unwrap(),
             "search",
             "needle",
+            "--intent",
+            "related-discussion",
         ])
         .output()
         .expect("run search");
@@ -532,6 +544,8 @@ fn invalid_installed_assets_fail_without_lexical_results() {
             models.to_str().unwrap(),
             "search",
             "needle",
+            "--intent",
+            "related-discussion",
         ])
         .output()
         .expect("run search");
@@ -562,6 +576,8 @@ fn missing_listed_model_asset_is_a_typed_model_error() {
             models.to_str().unwrap(),
             "search",
             "needle",
+            "--intent",
+            "related-discussion",
         ])
         .output()
         .expect("run search");
@@ -590,7 +606,7 @@ fn view_returns_context_only_canonical_content_without_models() {
 
 #[test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL and MASH_TEST_QDRANT_GRPC_URL"]
-fn empty_word_exact_search_explains_phrase_matching() {
+fn exact_search_requires_every_word_and_explains_an_empty_result() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("claude");
     std::fs::create_dir(&root).unwrap();
@@ -618,18 +634,32 @@ fn empty_word_exact_search_explains_phrase_matching() {
     ];
     run_json(&[base.as_slice(), &["index"]].concat());
     let search = |query: &str| run_json(&[base.as_slice(), &["search", query, "--local"]].concat());
-    // Both words occur, but not together in this order.
-    let apart = search("deploy 401");
-    assert_eq!(apart["results"], serde_json::json!([]), "{apart}");
-    let notice = apart["notice"].as_str().unwrap();
-    assert!(notice.contains("one phrase"), "{notice}");
-    assert!(notice.contains("mash models install"), "{notice}");
-    assert!(search("deploy fails").get("notice").is_none());
-    // A missing single word or quoted phrase says what was searched.
-    for query in ["nowhere", "\"deploy 401\""] {
-        let notice = search(query)["notice"].as_str().unwrap().to_owned();
-        assert!(notice.contains("message text"), "{query}: {notice}");
-        assert!(!notice.contains("one phrase"), "{query}: {notice}");
+    // Both words occur apart and out of order: each is required, not a phrase.
+    for query in ["deploy 401", "rotation deploy", "deploy fails"] {
+        let found = search(query);
+        assert_eq!(found["results"].as_array().unwrap().len(), 1, "{found}");
+        assert_eq!(found["intent"], "exact-mention");
+        assert_eq!(found["realized_mode"], "lexical");
+        assert!(found.get("notice").is_none(), "{found}");
     }
+    let missing = search("deploy nowhere");
+    assert_eq!(missing["results"], serde_json::json!([]), "{missing}");
+    let notice = missing["notice"].as_str().unwrap();
+    assert!(notice.contains("all of these words"), "{notice}");
+    assert!(notice.contains("mash models install"), "{notice}");
+    // Quotes ask for the words together, in order.
+    let phrase = search("\"deploy 401\"");
+    assert_eq!(phrase["results"], serde_json::json!([]), "{phrase}");
+    let notice = phrase["notice"].as_str().unwrap();
+    assert!(notice.contains("Remove the quotes"), "{notice}");
+    assert_eq!(
+        search("\"deploy fails\"")["results"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let notice = search("nowhere")["notice"].as_str().unwrap().to_owned();
+    assert!(notice.contains("message text"), "{notice}");
     cleanup_local_gold(&database, "local");
 }

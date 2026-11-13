@@ -966,7 +966,6 @@ export interface components {
             /** Format: uint32 */
             since_days?: number | null;
         };
-        /** @enum {string} */
         Intent: "related-discussion" | "exact-mention";
         Job: {
             /** Format: uint64 */
@@ -1248,7 +1247,7 @@ export interface components {
              *     }
              */
             fusion: components["schemas"]["Fusion"];
-            /** @default related-discussion */
+            /** @default exact-mention */
             intent: components["schemas"]["Intent"];
             /**
              * Format: uint
@@ -1929,7 +1928,7 @@ export interface components {
              *         "recency_weight": 50,
              *         "semantic_weight": 1
              *       },
-             *       "intent": "related-discussion",
+             *       "intent": "exact-mention",
              *       "limit": 20,
              *       "ranking": "contextual-rerank",
              *       "unit": "chats"
