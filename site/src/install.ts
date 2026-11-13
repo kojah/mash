@@ -80,9 +80,9 @@ export function mountInstall(picker: HTMLElement): void {
   const systems = parseSystems(picker.dataset.systems);
   const systemRow = picker.querySelector<HTMLElement>('[data-pick="system"]');
   const methodRow = picker.querySelector<HTMLElement>('[data-pick="method"]');
-  const prompt = picker.querySelector<HTMLElement>(".prompt");
-  const code = picker.querySelector<HTMLElement>("code");
-  const copy = picker.querySelector<HTMLButtonElement>(".command button[data-copy]");
+  const prompt = picker.querySelector<HTMLElement>(".picked .prompt");
+  const code = picker.querySelector<HTMLElement>(".picked code");
+  const copy = picker.querySelector<HTMLButtonElement>(".picked button[data-copy]");
   if (picker.dataset.mounted || !systemRow || !methodRow || !prompt || !code || !copy) {
     return;
   }

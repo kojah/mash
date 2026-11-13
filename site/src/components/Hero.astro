@@ -21,6 +21,13 @@ const brew = {
   prompt: "$",
   command: "brew install kojah/tap/mash",
 };
+const apt = {
+  id: "apt",
+  label: "apt",
+  prompt: "$",
+  command:
+    'curl -fsSL https://getmash.io/apt/mash-archive-keyring.gpg | sudo tee /usr/share/keyrings/mash-archive-keyring.gpg >/dev/null && echo "deb [signed-by=/usr/share/keyrings/mash-archive-keyring.gpg] https://getmash.io/apt stable main" | sudo tee /etc/apt/sources.list.d/mash.list && sudo apt update && sudo apt install mash',
+};
 const script = {
   id: "script",
   label: "Script",
@@ -29,7 +36,7 @@ const script = {
 };
 const systems = [
   { id: "macos", label: "macOS", methods: [script, brew, cargo] },
-  { id: "linux", label: "Linux", methods: [script, brew, cargo] },
+  { id: "linux", label: "Linux", methods: [script, apt, cargo] },
   {
     id: "windows",
     label: "Windows",
@@ -70,11 +77,12 @@ const first = script;
         }
       </div>
       <div class="mash-install" data-systems={JSON.stringify(systems)}>
-        <p class="ask">
-          Tell your coding agent: <q>{ask}</q>
+        <h2>Paste into your coding agent</h2>
+        <div class="command">
+          <code class="wrap">{ask}</code>
           <button type="button" data-copy={ask} aria-label="Copy the prompt for your agent">Copy</button>
-        </p>
-        <p class="or">or install it yourself</p>
+        </div>
+        <h2>or install it yourself</h2>
         <div class="choices">
           <div class="choice" role="group" aria-label="Operating system" data-pick="system">
             {
@@ -87,7 +95,7 @@ const first = script;
           </div>
           <div class="choice" role="group" aria-label="Install method" data-pick="method"></div>
         </div>
-        <div class="command">
+        <div class="command picked">
           <span class="prompt" aria-hidden="true">{first.prompt}</span>
           <code>{first.command}</code>
           <button type="button" data-copy={first.command} aria-label="Copy the install command">Copy</button>
@@ -268,25 +276,21 @@ const first = script;
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-sm);
   }
-  .mash-install .ask {
+  .mash-install h2 {
+    margin: 0;
     color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .mash-install h2:not(:first-child) {
+    margin-top: 0.75rem;
+  }
+  /* The prompt is a sentence, so it wraps instead of scrolling. */
+  code.wrap {
+    font-family: var(--sl-font);
     font-size: var(--sl-text-base);
-  }
-  .ask q {
-    color: var(--sl-color-white);
-  }
-  .ask button {
-    margin-inline-start: 0.375rem;
-    padding: 0.0625rem 0.5rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.375rem;
-    background: var(--sl-color-gray-6);
-    color: var(--sl-color-white);
-    font: 500 var(--sl-text-xs) var(--sl-font);
-    cursor: pointer;
-  }
-  .ask button:hover {
-    border-color: var(--sl-color-gray-3);
+    white-space: normal;
   }
   .mash-install a {
     color: var(--sl-color-text-accent);

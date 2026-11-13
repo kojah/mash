@@ -64,7 +64,7 @@ test("the hero draws its surface in the theme's ink", async ({ page }) => {
 test("the hero's install command copies to the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
-  const command = page.locator(".mash-install code");
+  const command = page.locator(".mash-install .picked code");
   // The browser under test runs on Linux, so the picker opens on the shell script.
   await expect(command).toHaveText(/^curl .*install\.sh \| sh$/);
   const copy = page.getByRole("button", { name: "Copy the install command" });
@@ -82,10 +82,10 @@ test("the hero's install picker follows the chosen system and method", async ({
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
   const install = page.locator(".mash-install");
-  const command = install.locator("code");
+  const command = install.locator(".picked code");
   await install.getByRole("button", { name: "Windows", exact: true }).click();
   await expect(command).toHaveText(/^irm .*install\.ps1 \| iex$/);
-  await expect(install.locator(".prompt")).toHaveText(">");
+  await expect(install.locator(".picked .prompt")).toHaveText(">");
   await install.getByRole("button", { name: "Cargo", exact: true }).click();
   await expect(command).toHaveText(/^cargo \+stable install /);
   await page.getByRole("button", { name: "Copy the install command" }).click();
@@ -98,6 +98,11 @@ test("the hero's install picker follows the chosen system and method", async ({
   await page.reload();
   await expect(command).toHaveText(/^cargo \+stable install /);
   await expect(install.getByRole("button", { name: "Homebrew", exact: true })).toBeVisible();
+  // Linux offers apt and not Homebrew.
+  await install.getByRole("button", { name: "Linux", exact: true }).click();
+  await expect(install.getByRole("button", { name: "Homebrew", exact: true })).toHaveCount(0);
+  await install.getByRole("button", { name: "apt", exact: true }).click();
+  await expect(command).toHaveText(/sudo apt install mash$/);
 });
 
 test("the hero offers a prompt that hands setup to a coding agent", async ({
