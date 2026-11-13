@@ -580,7 +580,10 @@ fn unstable_source_retries_are_bounded_and_actionable() {
     let error = parse_source_with_retries(&source, &mut stamp, Parser::Custom(parse_then_append))
         .err()
         .unwrap();
-    assert_eq!(fs::metadata(&path).unwrap().len(), initial_size + 3);
+    assert_eq!(
+        fs::metadata(&path).unwrap().len(),
+        initial_size + SOURCE_ATTEMPTS
+    );
     assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
     assert!(error.error.retryable);
     assert!(matches!(

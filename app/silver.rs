@@ -590,6 +590,9 @@ pub(crate) fn codex_session_source(
     codex_store::session_source(store, session)
 }
 
+/// How many times one source is read before it is reported as still changing.
+const SOURCE_ATTEMPTS: u64 = 8;
+
 #[tracing::instrument(name = "parse_source", skip_all, fields(attempts = tracing::field::Empty))]
 fn parse_source_with_retries(
     source: &HistorySource,
@@ -598,8 +601,10 @@ fn parse_source_with_retries(
 ) -> Result<ParsedFile, AppError> {
     // Discovery can precede a source's turn in the bounded parser queue by
     // minutes. Capture a fresh stamp for each attempt and verify the consumed
-    // snapshot. Never retry malformed input or other parser errors.
-    for attempt in 0..3 {
+    // snapshot. Never retry malformed input or other parser errors. An agent
+    // that is mid-conversation commits every few tens of milliseconds, so each
+    // attempt can lose that race; eight make losing them all rare.
+    for attempt in 0..SOURCE_ATTEMPTS {
         tracing::Span::current().record("attempts", attempt + 1);
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(50));
