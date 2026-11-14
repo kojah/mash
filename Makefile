@@ -9,7 +9,9 @@ DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local
 # `make iterate` builds library unit tests only; TARGETS=all adds the CLI
 # contract test, both executables and the example. It runs Clippy and the test
 # build at the same time, each as its own $(DEV_RUN) job.
-# PACKAGE=mash-silver builds and runs only that crate's tests; Clippy still
+# It builds and runs one crate's unit tests: `mash-app` unless PACKAGE names
+# another (mash-dash, mash-silver, mash-model, mash, ...) or `all`. With
+# TARGETS=all it builds every crate unless PACKAGE names one. Clippy always
 # covers the workspace.
 TARGETS ?= lib
 PACKAGE ?=

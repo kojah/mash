@@ -33,16 +33,24 @@ cheap_checks() {
 }
 if [[ $mode == focused ]]; then
     run cargo fmt --check
+    # One crate's tests need only that crate and the ones below it. Building
+    # every crate's tests also compiles the application library twice, with
+    # and without its tests, so the library alone is the default.
+    # Integration targets belong to the executables' crate, so asking for
+    # them builds every crate unless one is named.
+    chosen=${MASH_ITERATE_PACKAGE:-}
+    if [[ -z $chosen ]]; then
+        if (( ${#scope[@]} )); then chosen=mash-app; else chosen=all; fi
+    fi
+    package=(-p "$chosen")
+    [[ $chosen != all ]] || package=()
     if (( ${#scope[@]} )); then
-        echo 'Building library unit tests only; pass TARGETS=all (or name a binary in FOCUS) for the CLI contract and other integration targets.'
+        echo "Building library unit tests of $chosen only; set PACKAGE to another crate (or all), and TARGETS=all (or name a binary in FOCUS) for the CLI contract and other integration targets."
     fi
     # Clippy and the test build share no artifacts, so they run at the same
     # time and one loop reports both. Cargo locks a target directory for a
     # whole build, so Clippy gets its own. With a launcher each is its own
     # job: together in one they would exceed a single job's memory limit.
-    # One crate's tests need only that crate and the ones below it.
-    package=()
-    [[ -z ${MASH_ITERATE_PACKAGE:-} ]] || package=(-p "$MASH_ITERATE_PACKAGE")
     launch=()
     [[ -z ${MASH_ITERATE_LAUNCHER:-} ]] || launch=("$MASH_ITERATE_LAUNCHER" env "TMPDIR=$TMPDIR")
     clippy_log=$(mktemp "$TMPDIR/mash-iterate-clippy.XXXXXXXX")

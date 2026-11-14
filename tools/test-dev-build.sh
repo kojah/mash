@@ -54,7 +54,7 @@ timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
 [[ $(sed -n '1p' "$TEST_BUILD_CALLS") == 'fmt --check' ]]
 # Clippy and the tests run at the same time, so their order is not fixed.
 grep -q '^clippy' "$TEST_BUILD_CALLS"
-grep -Fxq 'test-clif --locked --lib -E test(contract) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
+grep -Fxq 'test-clif --locked -p mash-app --lib -E test(contract) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
 [[ $(wc -l < "$TEST_BUILD_CALLS") == 3 ]]
 # A Clippy failure fails the loop, and the tests still ran and reported.
 : > "$TEST_BUILD_CALLS"

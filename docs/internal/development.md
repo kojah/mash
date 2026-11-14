@@ -105,14 +105,20 @@ Use the Make targets while developing; they carry the settings that keep
 rebuilds short:
 
 ```bash
-make iterate FOCUS='test(changed_behavior)'              # fmt, Clippy, library unit tests
-make iterate FOCUS='test(changed_behavior)' TARGETS=all  # also the CLI contract test and executables
-make iterate FOCUS='test(dialogue)' PACKAGE=mash-silver  # only that crate's tests
+make iterate FOCUS='test(changed_behavior)'                       # fmt, Clippy, mash-app's unit tests
+make iterate FOCUS='test(assistant)' PACKAGE=mash-dash            # another crate's unit tests
+make iterate FOCUS='binary(cli_contract)'                         # the CLI contract tests
+make iterate FOCUS='test(changed_behavior)' PACKAGE=all           # every crate's unit tests
 make dev-build                                           # a debug `mash` to try by hand
 ```
 
-With `PACKAGE` the test build compiles only that crate and the ones below it;
-Clippy still checks the whole workspace. After `mash-silver` was split out, a
+The test build compiles one crate and the ones below it: `mash-app` unless
+`PACKAGE` names another, or `all`. A filter that matches no test in that crate
+fails, so a wrong `PACKAGE` is not silent. Asking for integration targets
+builds every crate unless `PACKAGE` names one. Clippy always checks the whole
+workspace. `PACKAGE=all` costs about twice as much after a library edit (63 s
+against 32 s), because the crates above the library then need it compiled a
+second time, without its tests. After `mash-silver` was split out, a
 one-line edit there rebuilt and ran its tests in about 2 s (20 s for the loop,
 nearly all of it Clippy over the workspace). With the dashboard in
 `mash-dash`, the edit the first table measures
@@ -120,8 +126,8 @@ nearly all of it Clippy over the workspace). With the dashboard in
 instead of about 80 s: nothing below the dashboard is rebuilt. An edit in
 `mash-app` still rebuilds that crate and everything above it, about 35–50 s.
 
-`make iterate` builds only the library unit-test binaries unless `TARGETS=all`
-is given or the filter names a binary (`binary(cli_contract)`). A dashboard-only
+`make iterate` builds only unit-test binaries unless `TARGETS=all` is given or
+the filter names a binary (`binary(cli_contract)`). A dashboard-only
 change needs none of these: `pnpm dev` in `dashboard/` serves the front end
 against a running `mash dash`.
 

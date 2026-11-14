@@ -294,10 +294,11 @@ incremental compilation off and adds a compiler cache wrapper, which makes a
 raw `cargo build-clif` after a one-line edit recompile the whole crate, about
 90 seconds instead of 25). After the formatting check it runs Clippy and the
 tests at the same time, as two `agent-test` jobs, and reports both; do not wrap
-it in `agent-test` yourself. It builds library unit tests only; add `PACKAGE=mash-dash` (or another
-workspace crate) when the change and its tests are inside one crate under
-`crates/`, so only that crate is built: a dashboard edit then takes about 13
-seconds. Add `TARGETS=all`,
+it in `agent-test` yourself. It builds and runs the unit tests of one crate: `mash-app` by default, or the
+one `PACKAGE` names (`PACKAGE=mash-dash`, `mash-silver`, `mash-model`, `mash`,
+or `all`). Name the crate the change and its tests are in: a dashboard edit
+with `PACKAGE=mash-dash` takes about 13 seconds, and a filter that matches no
+test in the chosen crate fails. Add `TARGETS=all`,
 or name a binary in the filter such as `binary(cli_contract)`, when the change
 touches the CLI contract or another integration target; do so for public CLI/MCP
 boundary changes. Use `make dev-build` for a debug `mash` to try by hand; it
