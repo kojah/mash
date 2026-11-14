@@ -11,7 +11,7 @@ mod inspection;
 pub mod installation;
 mod maintenance;
 mod models;
-pub(crate) mod output;
+pub mod output;
 pub(crate) mod qdrant;
 mod search;
 pub mod setup;
@@ -158,7 +158,7 @@ async fn execute_operation(
     capacity: Option<&tokio::sync::Semaphore>,
 ) -> Result<Response, AppError> {
     if let Operation::Installation { agents, probe } = &request.operation {
-        return installation::inspect(agents.clone(), *probe, request.paths.clone())
+        return installation::inspect(agents.clone(), probe.clone(), request.paths.clone())
             .boxed()
             .await
             .map(Response::Installation);
@@ -243,8 +243,8 @@ async fn execute_operation(
     Ok(response)
 }
 
-#[cfg(test)]
-pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn validate_search_request(request: &Request) -> Result<(), AppError> {
     let Operation::Search {
         shared_vector_search,
         query,
@@ -292,7 +292,7 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     .map(|_| ())
 }
 
-pub(crate) fn validate_chat_request(
+pub fn validate_chat_request(
     input: &crate::chat_catalog::Request,
     local: bool,
     shared: bool,

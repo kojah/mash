@@ -8,8 +8,8 @@ mod models;
 pub(crate) mod remote;
 pub mod remote_reranker;
 mod retrieval;
-#[cfg(test)]
-pub(crate) mod test_embeddings;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_embeddings;
 #[cfg(test)]
 mod tests;
 

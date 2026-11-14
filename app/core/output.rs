@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, rmcp::schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Detail {
+pub enum Detail {
     #[default]
     Compact,
     Extended,
@@ -16,9 +16,9 @@ pub(crate) enum Detail {
 /// Characters of one excerpt. Enough to judge a match; `view` has the whole message.
 const EXCERPT_CHARS: usize = 400;
 
-pub(crate) mod text;
+pub mod text;
 
-pub(crate) fn serialize(
+pub fn serialize(
     response: &Response,
     detail: Detail,
 ) -> Result<serde_json::Value, serde_json::Error> {

@@ -6,7 +6,12 @@ description = "Vocabulary shared by the Mash crates: roles, providers, tool acti
 license = "MIT"
 publish = false
 
+[features]
+# Fixtures the tests of other workspace crates need.
+test-support = ["dep:axum"]
+
 [dependencies]
+axum = { version = "0.8", features = ["ws"], optional = true }
 base64 = "0.22.1"
 blake3 = "1.8.5"
 directories = "6.0.0"
@@ -18,7 +23,7 @@ schemars = "1.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
 tempfile = "3.27.0"
-tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+tokio = { version = "1", features = ["rt", "sync", "macros", "time", "net"] }
 url = "2.5.8"
 
 [lints.rust]

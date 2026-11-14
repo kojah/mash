@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 pub struct QdrantConfig {
     pub url: String,
-    pub(crate) grpc_url: String,
+    pub grpc_url: String,
     pub api_key_env: Option<String>,
     pub(crate) memory: MemoryTier,
     pub(crate) vector_search: VectorIndex,

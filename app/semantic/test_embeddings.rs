@@ -6,13 +6,13 @@ use std::sync::{Arc, LazyLock, Mutex};
 static FIXTURES: LazyLock<Mutex<HashMap<PathBuf, Arc<State>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub(crate) struct State {
+pub struct State {
     dimensions: usize,
-    pub(crate) calls: Mutex<Vec<usize>>,
+    pub calls: Mutex<Vec<usize>>,
 }
 
 impl State {
-    pub(crate) fn embed(&self, count: usize) -> Vec<Vec<f32>> {
+    pub fn embed(&self, count: usize) -> Vec<Vec<f32>> {
         self.calls.lock().unwrap().push(count);
         let mut vector = vec![0.0; self.dimensions];
         vector[0] = 1.0;
@@ -20,21 +20,21 @@ impl State {
     }
 }
 
-pub(crate) struct Fixture {
+pub struct Fixture {
     root: PathBuf,
-    pub(crate) state: Arc<State>,
+    pub state: Arc<State>,
     directory: Option<tempfile::TempDir>,
 }
 
 impl Fixture {
-    pub(crate) fn new(dimensions: usize) -> Self {
+    pub fn new(dimensions: usize) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut fixture = Self::at(directory.path(), dimensions);
         fixture.directory = Some(directory);
         fixture
     }
 
-    pub(crate) fn at(root: &Path, dimensions: usize) -> Self {
+    pub fn at(root: &Path, dimensions: usize) -> Self {
         assert!(dimensions > 0);
         let state = Arc::new(State {
             dimensions,
@@ -54,7 +54,7 @@ impl Fixture {
         }
     }
 
-    pub(crate) fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.root
     }
 }

@@ -1,7 +1,7 @@
 //! Disposable local gold with deterministic local inference.
-use super::*;
+use super::{Local, Path, ResolvedConfig, Storage, build};
 
-pub(crate) fn qdrant_configuration() -> crate::config::QdrantConfig {
+pub fn qdrant_configuration() -> crate::config::QdrantConfig {
     crate::config::QdrantConfig {
         url: std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
         grpc_url: std::env::var("MASH_TEST_QDRANT_GRPC_URL").unwrap(),
@@ -9,7 +9,7 @@ pub(crate) fn qdrant_configuration() -> crate::config::QdrantConfig {
     }
 }
 
-pub(crate) async fn cleanup(local: &Local, url: &str) {
+pub async fn cleanup(local: &Local, url: &str) {
     for suffix in ["state", "messages"] {
         reqwest::Client::new()
             .delete(format!(
@@ -25,7 +25,7 @@ pub(crate) async fn cleanup(local: &Local, url: &str) {
     }
 }
 
-pub(crate) fn configure(config: &Path) -> String {
+pub fn configure(config: &Path) -> String {
     use std::io::Write;
     let qdrant = qdrant_configuration();
     let mut file = std::fs::OpenOptions::new()
@@ -42,7 +42,7 @@ pub(crate) fn configure(config: &Path) -> String {
 }
 
 /// Build lexical gold for public-interface fixtures using their actual configuration.
-pub(crate) async fn lexical(database: &Path, config: &Path) -> (Local, String) {
+pub async fn lexical(database: &Path, config: &Path) -> (Local, String) {
     let url = configure(config);
     let configuration = crate::config::load(Some(config)).unwrap();
     assert!(
@@ -59,14 +59,14 @@ pub(crate) async fn lexical(database: &Path, config: &Path) -> (Local, String) {
     (Local::open(database, &configuration).await.unwrap(), url)
 }
 
-pub(crate) struct Fixture {
-    pub(crate) configuration: ResolvedConfig,
-    pub(crate) local: Local,
-    pub(crate) model: crate::semantic::test_embeddings::Fixture,
+pub struct Fixture {
+    pub configuration: ResolvedConfig,
+    pub local: Local,
+    pub model: crate::semantic::test_embeddings::Fixture,
 }
 
 impl Fixture {
-    pub(crate) async fn new(database: &Path, node: &str) -> Self {
+    pub async fn new(database: &Path, node: &str) -> Self {
         let root = database.parent().unwrap();
         let path = root.join("gold-test.toml");
         std::fs::write(&path, "version=1\nproviders={}\n").unwrap();
@@ -103,6 +103,7 @@ impl Fixture {
         }
     }
 
+    #[cfg(test)]
     pub(crate) async fn candidates(
         &self,
         query: &str,
@@ -130,7 +131,7 @@ impl Fixture {
             .unwrap()
     }
 
-    pub(crate) async fn cleanup(&self) {
+    pub async fn cleanup(&self) {
         for suffix in ["state", "messages"] {
             reqwest::Client::new()
                 .delete(format!(

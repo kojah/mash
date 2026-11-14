@@ -338,7 +338,7 @@ fn contract() -> Result<Value, serde_json::Error> {
     ))
 }
 
-pub(crate) fn fingerprint() -> Result<String, serde_json::Error> {
+pub fn fingerprint() -> Result<String, serde_json::Error> {
     Ok(blake3::hash(&serde_json::to_vec(&contract()?)?)
         .to_hex()
         .to_string())
@@ -347,7 +347,7 @@ pub(crate) fn fingerprint() -> Result<String, serde_json::Error> {
 pub(super) fn instructions() -> String {
     format!(
         "{WORKFLOW} Build revision: {}. Contract fingerprint: {}. Read-only tools include help, search, list_chats, view and status; index/forget write data and models_install explicitly downloads models.",
-        env!("MASH_BUILD_REVISION"),
+        crate::BUILD_REVISION,
         fingerprint().unwrap_or_else(|_| "unknown".into())
     )
 }
@@ -373,7 +373,7 @@ fn runtime(expected: Option<&str>) -> Result<Runtime, serde_json::Error> {
         None
     };
     Ok(Runtime {
-        build_revision: env!("MASH_BUILD_REVISION"),
+        build_revision: crate::BUILD_REVISION,
         silver_schema: crate::storage::schema::SCHEMA_VERSION,
         views_schema: crate::views::qdrant::SCHEMA_VERSION,
         contract_fingerprint,
@@ -494,11 +494,12 @@ pub fn generate_history_skill() -> Result<(String, String), String> {
     );
     let skill =
         include_str!("../templates/history_skill.md").replace("{{API_REFERENCE}}", &reference);
-    let plugin: PluginManifest =
-        serde_json::from_str(include_str!("../../plugins/mash/.codex-plugin/plugin.json"))
-            .map_err(|error| error.to_string())?;
+    let plugin: PluginManifest = serde_json::from_str(include_str!(
+        "../../../plugins/mash/.codex-plugin/plugin.json"
+    ))
+    .map_err(|error| error.to_string())?;
     let claude: PluginManifest = serde_json::from_str(include_str!(
-        "../../plugins/mash/.claude-plugin/plugin.json"
+        "../../../plugins/mash/.claude-plugin/plugin.json"
     ))
     .map_err(|error| error.to_string())?;
     if plugin.version != claude.version {

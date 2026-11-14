@@ -3,7 +3,7 @@ use super::{AppError, PointKind, Scope, Store, api, collection, failure, point_i
 use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const SCHEMA_VERSION: u32 = 13;
+pub const SCHEMA_VERSION: u32 = 13;
 /// Views whose word search ranked from sparse vectors. Their documents are
 /// unchanged; explicit setup builds the text index and then records 13, which
 /// also makes binaries that still expect sparse vectors fail closed.

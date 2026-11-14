@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 pub mod capture;
-pub(crate) mod extraction;
+pub mod extraction;
 pub(crate) mod live;
-pub(crate) mod matches;
-pub(crate) mod recall;
+pub mod matches;
+pub mod recall;
 pub(crate) mod transfer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

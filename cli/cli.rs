@@ -617,7 +617,13 @@ impl Cli {
                 if installation {
                     Operation::Installation {
                         agents: agent,
-                        probe,
+                        probe: if probe {
+                            Some(crate::mcp::guidance::fingerprint().map_err(|_| {
+                                AppError::internal("cannot encode this CLI's MCP contract")
+                            })?)
+                        } else {
+                            None
+                        },
                     }
                 } else {
                     Operation::Status {

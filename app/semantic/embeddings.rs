@@ -20,7 +20,7 @@ pub(crate) struct EmbeddingPool {
 }
 
 pub(super) enum EmbeddingPoolBackend {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     Fixture(std::sync::Arc<super::test_embeddings::State>),
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     Cpu(Vec<TextEmbedding>),
@@ -147,7 +147,7 @@ impl EmbeddingPool {
         groups: &[EmbeddingGroup],
     ) -> Result<Vec<Vec<f32>>, AppError> {
         match &mut self.backend {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             EmbeddingPoolBackend::Fixture(state) => Ok(state.embed(groups.len())),
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             EmbeddingPoolBackend::Cpu(workers) => cpu::embed_wave(workers, groups),

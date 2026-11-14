@@ -17,7 +17,7 @@ enum ScanState {
 }
 
 impl Storage {
-    pub(crate) fn silver_certificate(&self) -> Result<Certificate, AppError> {
+    pub fn silver_certificate(&self) -> Result<Certificate, AppError> {
         self.silver_certificate_for(INTERPRETATION_VERSION)
     }
 
@@ -50,7 +50,7 @@ impl Storage {
         })
     }
 
-    pub(crate) fn begin_silver_scan(&mut self, provider: Provider) -> Result<(), AppError> {
+    pub fn begin_silver_scan(&mut self, provider: Provider) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection.execute(
             "INSERT INTO silver_scans(provider,interpretation_version,state) VALUES(?1,?2,?3)
@@ -61,7 +61,7 @@ impl Storage {
         Ok(())
     }
 
-    pub(crate) fn finish_silver_scan(
+    pub fn finish_silver_scan(
         &mut self,
         provider: Provider,
         complete: bool,
@@ -81,7 +81,7 @@ impl Storage {
         Ok(())
     }
 
-    pub(crate) fn finish_silver_ingestion(&mut self) -> Result<(), AppError> {
+    pub fn finish_silver_ingestion(&mut self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
             .execute(

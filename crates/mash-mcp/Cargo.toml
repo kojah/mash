@@ -1,0 +1,46 @@
+[package]
+name = "mash-mcp"
+version.workspace = true
+edition = "2024"
+description = "Mash's stdio MCP server, its tool contract and the generated history skill"
+license = "MIT"
+publish = false
+
+[dependencies]
+mash-app = { path = "../../app" }
+mash-model = { path = "../mash-model" }
+mash-silver = { path = "../mash-silver" }
+base64 = "0.22.1"
+blake3 = "1.8.5"
+futures-util = "0.3"
+rmcp = { version = "3.4.0", default-features = false, features = ["client", "server", "macros", "transport-io", "transport-child-process"] }
+schemars = "1.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["raw_value"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "fs", "net", "io-util", "process"] }
+tracing = "0.1"
+
+[dev-dependencies]
+mash-model = { path = "../mash-model", features = ["test-support"] }
+mash-silver = { path = "../mash-silver", features = ["test-support"] }
+mash-app = { path = "../../app", features = ["test-support"] }
+pulldown-cmark = { version = "0.13.4", default-features = false }
+shlex = "2.0.1"
+tempfile = "3.27.0"
+axum = { version = "0.8", features = ["ws"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+# Items here are public only so the other workspace crates can use them. These
+# lints document a published API; they did not apply to the same items while
+# they were crate-private in `mash`, and still do not.
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+return_self_not_must_use = { level = "allow", priority = 1 }

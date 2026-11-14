@@ -15,7 +15,8 @@ mod vocabulary;
 use crate::AppError;
 use crate::views::scope::Scope;
 pub(crate) use api::endpoint;
-pub(crate) use configuration::{SCHEMA_VERSION, Settings};
+pub use configuration::SCHEMA_VERSION;
+pub(crate) use configuration::Settings;
 use serde::{Deserialize, Serialize};
 pub(crate) use vocabulary::file_beside as vocabulary_file;
 

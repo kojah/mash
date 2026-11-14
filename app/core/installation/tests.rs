@@ -171,7 +171,7 @@ async fn installation_probe_reports_failed_handshake_without_leaking_stderr() {
         "[mcp_servers.mash]\ncommand = '/bin/sh'\nargs = ['-c', 'echo SECRET >&2; exit 1']\n",
     );
     let mut report = collect(Some(&environment), &[Agent::Codex], &[]);
-    probe::check(&mut report.clients[0]).await;
+    probe::check(&mut report.clients[0], &"0".repeat(64)).await;
     assert!(
         report.clients[0]
             .findings
@@ -355,7 +355,7 @@ async fn installation_probe_skips_watch_and_preserves_disabled_registration() {
             ) && finding.state
                 == State::Outdated));
         }
-        probe::check(&mut report.clients[0]).await;
+        probe::check(&mut report.clients[0], &"0".repeat(64)).await;
         assert!(report.clients[0].findings.iter().any(|finding| matches!(
             finding.component,
             Component::Probe
@@ -475,7 +475,7 @@ async fn installation_names_a_missing_registered_executable_and_its_replacement(
         remedy.starts_with("Run `codex mcp remove mash && codex mcp add mash -- "),
         "{remedy}"
     );
-    probe::check(&mut report.clients[0]).await;
+    probe::check(&mut report.clients[0], &"0".repeat(64)).await;
     assert_eq!(
         finding(&report.clients[0], Component::Probe).message,
         "Skipped: the registered MCP executable does not exist."

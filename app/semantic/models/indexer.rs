@@ -124,8 +124,8 @@ pub(crate) struct LoadedIndexer {
 }
 
 impl LoadedIndexer {
-    #[cfg(test)]
-    pub(crate) fn fixture(state: std::sync::Arc<crate::semantic::test_embeddings::State>) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fixture(state: std::sync::Arc<crate::semantic::test_embeddings::State>) -> Self {
         Self {
             pool: Some(EmbeddingPool {
                 backend: crate::semantic::embeddings::EmbeddingPoolBackend::Fixture(state),

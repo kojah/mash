@@ -1,7 +1,20 @@
-use crate::core::output::Detail;
-use crate::core::{self, IndexRequest, Operation, Paths, Request};
-use crate::provider::Provider;
 use futures_util::FutureExt;
+use mash_app::core::output::Detail;
+use mash_app::core::{self, IndexRequest, Operation, Paths, Request};
+use mash_app::{
+    BUILD_REVISION, blocking, chat_catalog, records, runtime, search_filter, search_results,
+    silver_query, storage, views,
+};
+#[cfg(test)]
+use mash_app::{config, shared};
+use mash_model::provider::Provider;
+#[cfg(test)]
+use mash_model::test_support;
+use mash_model::{AppError, attachments, progress};
+#[cfg(test)]
+use mash_model::{ErrorKind, database_error, message_context, provider, role, tools};
+#[cfg(test)]
+use mash_silver as silver;
 use std::sync::Arc;
 
 use rmcp::{
@@ -13,7 +26,7 @@ use rmcp::{
 use serde::Deserialize;
 
 pub mod console;
-pub(crate) mod guidance;
+pub mod guidance;
 // Renders docs/tools.md; only its currency test runs it.
 #[cfg(test)]
 mod reference;

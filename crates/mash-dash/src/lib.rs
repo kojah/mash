@@ -14,9 +14,10 @@ use axum::http::{HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use mash_app::core::{self, Operation, Paths, Request};
 use mash_app::{
-    BUILD_REVISION, chat_catalog, config, mcp, observability, openapi, records, runtime,
-    search_filter, search_results, shared, storage, views, watch, write_json,
+    BUILD_REVISION, chat_catalog, config, observability, openapi, records, runtime, search_filter,
+    search_results, shared, storage, views, watch, write_json,
 };
+use mash_mcp as mcp;
 use mash_model::{AppError, ErrorBody, ErrorKind, progress, provider, redaction};
 use std::net::SocketAddr;
 use std::sync::Arc;

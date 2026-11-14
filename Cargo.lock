@@ -1804,6 +1804,7 @@ dependencies = [
  "inquire",
  "mash-app",
  "mash-dash",
+ "mash-mcp",
  "mash-model",
  "mash-silver",
  "ort",
@@ -1899,6 +1900,7 @@ dependencies = [
  "hex",
  "mash-app",
  "mash-fleet",
+ "mash-mcp",
  "mash-model",
  "regex",
  "reqwest",
@@ -1932,9 +1934,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "mash-mcp"
+version = "0.7.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "blake3",
+ "futures-util",
+ "mash-app",
+ "mash-model",
+ "mash-silver",
+ "pulldown-cmark",
+ "rmcp",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "shlex",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "mash-model"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "base64 0.22.1",
  "blake3",
  "clap",

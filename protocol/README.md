@@ -373,7 +373,7 @@ under the new identity, the same as a supervisor restart, so it adds no
 interleaving to this model: the stopped phase is final for the old runtime.
 
 Source mapping: [runtime.rs](../app/runtime.rs) `Lease::ensure_current`,
-[mcp.rs](../app/mcp.rs) `Mash::perform_response` (and `Mash::record_within`,
+[lib.rs](../crates/mash-mcp/src/lib.rs) `Mash::perform_response` (and `Mash::record_within`,
 which checks after both the gate and local writer admission), and
 [cli.rs](../cli/cli.rs) `run_parsed` (with `runtime::restart` from
 [lib.rs](../app/lib.rs) `execute` after it returns). Registry liveness uses held OS locks;

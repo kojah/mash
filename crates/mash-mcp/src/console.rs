@@ -71,7 +71,7 @@ impl Console {
         let mut tools = Mash::tools().list_all();
         tools.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(Catalogue {
-            build_revision: env!("MASH_BUILD_REVISION"),
+            build_revision: crate::BUILD_REVISION,
             contract_fingerprint: super::guidance::fingerprint()
                 .map_err(|_| AppError::internal("fingerprint the tool contract"))?,
             tools,

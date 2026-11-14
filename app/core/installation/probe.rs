@@ -14,7 +14,7 @@ struct Runtime {
     contract_fingerprint: String,
 }
 
-pub(super) async fn check(client: &mut Client) {
+pub(super) async fn check(client: &mut Client, contract: &str) {
     let Some(launch) = &client.launch else {
         let message = client.probe_skipped.unwrap_or(
             "No unambiguous enabled user-level stdio registration is available to probe.",
@@ -66,7 +66,7 @@ pub(super) async fn check(client: &mut Client) {
         .current_dir(&launch.cwd)
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    let result = tokio::time::timeout(Duration::from_secs(10), handshake(command)).await;
+    let result = tokio::time::timeout(Duration::from_secs(10), handshake(command, contract)).await;
     let (state, message) = match result {
         Ok(Ok(())) => (
             State::Passed,
@@ -91,7 +91,7 @@ pub(super) async fn check(client: &mut Client) {
     }
 }
 
-async fn handshake(command: tokio::process::Command) -> Result<(), &'static str> {
+async fn handshake(command: tokio::process::Command, contract: &str) -> Result<(), &'static str> {
     let (transport, _) = TokioChildProcess::builder(command)
         .stderr(Stdio::null())
         .spawn()
@@ -121,9 +121,7 @@ async fn handshake(command: tokio::process::Command) -> Result<(), &'static str>
                 .ok_or("Mash help omitted structured runtime identity.")?,
         )
         .map_err(|_| "Mash help returned an unsupported runtime identity.")?;
-        if !contract_matches(&help.runtime.contract_fingerprint)
-            .map_err(|_| "Cannot encode this CLI's MCP contract.")?
-        {
+        if help.runtime.contract_fingerprint != contract {
             return Err(
                 "MCP contract differs from this CLI; update the binary/launcher and reconnect.",
             );
@@ -134,18 +132,4 @@ async fn handshake(command: tokio::process::Command) -> Result<(), &'static str>
     // A bounded cancellation prevents a server ignoring shutdown from hanging status.
     let _ = tokio::time::timeout(Duration::from_secs(1), service.cancel()).await;
     result
-}
-
-fn contract_matches(observed: &str) -> Result<bool, serde_json::Error> {
-    Ok(observed == crate::mcp::guidance::fingerprint()?)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn installation_probe_matches_compiled_contract_and_rejects_another() {
-        let current = crate::mcp::guidance::fingerprint().unwrap();
-        assert!(super::contract_matches(&current).unwrap());
-        assert!(!super::contract_matches(&"0".repeat(64)).unwrap());
-    }
 }

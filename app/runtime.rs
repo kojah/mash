@@ -144,8 +144,8 @@ impl Drop for RecordFile {
 }
 
 impl Lease {
-    #[cfg(test)]
-    pub(crate) fn fixture(paths: &Paths, executable: &Path) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fixture(paths: &Paths, executable: &Path) -> Self {
         Self::create(
             &directory(paths).unwrap(),
             executable.to_path_buf(),

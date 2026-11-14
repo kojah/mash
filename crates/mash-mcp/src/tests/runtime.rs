@@ -28,7 +28,7 @@ async fn superseded_mcp_checks_admission_after_the_mutation_gate() {
     assert!(error.error.message.contains("executable was replaced"));
     assert!(!database.exists());
     let help = server
-        .help(Parameters(crate::mcp::guidance::Help {
+        .help(Parameters(crate::guidance::Help {
             tool: None,
             topic: None,
             expected_contract: None,

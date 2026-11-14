@@ -5,8 +5,7 @@ use serde_json::Value;
 use std::path::Path;
 
 mod support;
-#[path = "../../app/test_support.rs"]
-mod test_support;
+use mash_model::test_support;
 use support::*;
 
 mod chats;

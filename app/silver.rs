@@ -17,7 +17,7 @@ pub(crate) use mash_silver::*;
 pub(crate) mod archive;
 #[cfg(test)]
 mod benchmarks;
-pub(crate) mod local;
+pub mod local;
 #[cfg(test)]
 mod tests;
 

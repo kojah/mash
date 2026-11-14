@@ -37,7 +37,7 @@ impl Storage {
             .map_err(AppError::database)
     }
 
-    pub(crate) fn replace_chat(&mut self, chat: &Chat) -> Result<ChatChange, AppError> {
+    pub fn replace_chat(&mut self, chat: &Chat) -> Result<ChatChange, AppError> {
         if chat.provider == Provider::ClaudeCode && chat.claude_lineage.is_some() {
             return self.replace_claude_source(chat);
         }

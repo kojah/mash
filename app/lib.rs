@@ -4,8 +4,8 @@
 // Silver canonical history and the vocabulary used by native adapters.
 pub mod openapi;
 pub use mash_model::{message_context, provider, role, tools};
-mod silver;
-mod silver_query;
+pub mod silver;
+pub mod silver_query;
 
 // View materialization, retrieval models, policies and query-oriented views.
 pub mod chat_catalog;
@@ -22,9 +22,6 @@ pub use mash_model::{attachments, database_error, platform, progress, redaction,
 pub mod config;
 pub mod core;
 mod export;
-pub mod mcp;
-/// Build-time generation of the bundled history skill from the live MCP contract.
-pub use mcp::guidance::{generate_history_skill, validate_history_release};
 /// Registers the silver text codec on a raw connection, as tests need to read silver directly.
 #[doc(hidden)]
 pub use storage::packed::register as register_silver_codec;
@@ -37,7 +34,7 @@ pub mod runtime;
 pub mod shared;
 pub mod storage;
 #[cfg(test)]
-mod test_support;
+use mash_model::test_support;
 pub mod watch;
 
 use std::io::{self, Write};

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppError;
 
 // View views and materialized retrieval data.
-pub(crate) mod admission;
+pub mod admission;
 mod catalog;
 pub(crate) mod chat_facts;
 mod coverage;
@@ -66,7 +66,7 @@ pub(crate) struct StatusSnapshot {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct SearchHit {
+pub struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<crate::search_results::lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -143,7 +143,7 @@ impl MessageContent {
 }
 
 #[derive(Default)]
-pub(crate) struct ChatChange {
+pub struct ChatChange {
     pub(crate) unchanged: bool,
     pub(crate) tombstoned: bool,
     pub(crate) changed_message_ids: Vec<String>,

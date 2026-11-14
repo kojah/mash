@@ -624,7 +624,7 @@ pub fn help_notice(paths: &super::Paths) -> Option<&'static str> {
 
 pub(super) async fn inspect(
     agents: Vec<Agent>,
-    run_probe: bool,
+    probe: Option<String>,
     paths: super::Paths,
 ) -> Result<Report, crate::AppError> {
     let (mut report, qdrant) = crate::blocking(move || {
@@ -642,9 +642,9 @@ pub(super) async fn inspect(
         resources.add_qdrant(&observed);
     }
     report.update_summary();
-    if run_probe {
+    if let Some(contract) = &probe {
         for client in &mut report.clients {
-            probe::check(client).await;
+            probe::check(client, contract).await;
         }
         report.update_summary();
     }

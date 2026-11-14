@@ -10,10 +10,11 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 
 use mash_app::{
-    BROKEN_PIPE, blocking, chat_catalog, config, core, mcp, observability, remote, runtime,
+    BROKEN_PIPE, blocking, chat_catalog, config, core, observability, remote, runtime,
     search_filter, search_results, semantic, shared, storage, views, watch, write_json,
 };
 use mash_dash as dash;
+use mash_mcp as mcp;
 use mash_model::{AppError, platform, provider, redaction, role};
 use serde::Serialize;
 
@@ -21,7 +22,7 @@ use serde::Serialize;
 #[doc(hidden)]
 pub use mash_app::register_silver_codec;
 /// Build-time generation of the bundled history skill from the live MCP contract.
-pub use mash_app::{generate_history_skill, validate_history_release};
+pub use mash_mcp::guidance::{generate_history_skill, validate_history_release};
 
 /// Runs mash with the process arguments, writing JSON or serving stdio MCP.
 ///

@@ -72,8 +72,9 @@ The workspace is the application crate `mash` (`app/`) and the crates under
 | `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
 | `mash-silver` | The provider-independent chat model and the native history adapters: discovery, parsing, reconciliation inputs. Never opens the index | `mash-model` |
 | `mash-app` (`app/`) | The application library: storage, views, search, sync, the shared server, MCP and the dashboard | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver` |
-| `mash-dash` | The local web dashboard served by `mash dash`, and the build script that embeds its front end | `mash-app`, `mash-fleet`, `mash-model` |
-| `mash` (`cli/`) | Both executables: argument parsing and output, and the CLI contract tests | `mash-app`, `mash-dash`, `mash-model` |
+| `mash-mcp` | The stdio MCP server, its tool contract, the dashboard's console and the generated history skill | `mash-app`, `mash-model`, `mash-silver` |
+| `mash-dash` | The local web dashboard served by `mash dash`, and the build script that embeds its front end | `mash-app`, `mash-mcp`, `mash-fleet`, `mash-model` |
+| `mash` (`cli/`) | Both executables: argument parsing and output, and the CLI contract tests | `mash-app`, `mash-mcp`, `mash-dash`, `mash-model` |
 
 The application library is being divided from the bottom up so that an edit recompiles only its
 own crate and the ones above it; the measurements under
@@ -91,8 +92,10 @@ A test belongs to the highest crate it touches. Adapter tests that index
 through storage therefore stay in `mash-app` under `app/silver/`, in modules that
 mirror the adapter (`silver::copilot::tests`), and reach it through its public
 items; tests of an adapter's internals stay in `mash-silver`. Fixtures another
-crate's tests need sit behind `mash-silver`'s `test-support` feature, which
-`mash-app` enables as a development dependency. The CLI lives in `mash`, above
+crate's tests need sit behind a `test-support` feature (`mash-model`,
+`mash-silver`, `mash-app`), which the crates above enable as a development
+dependency; an item gated that way is `pub`, since the library is also built
+with the feature on. The CLI lives in `mash`, above
 the library, so that crates such as the dashboard can later sit between them;
 an item the executables need from `mash-app` is `pub` there, and nothing else is. For an isolated query edit cycle,
 use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
@@ -343,7 +346,7 @@ MCP `help` provides live schemas and typed examples without an index or models.
 Help/status report the running build revision and contract fingerprint; supply
 the installed skill fingerprint as `expected_contract` to detect stale guidance.
 
-The `mash-history` skill's workflow template is `app/templates/history_skill.md`.
+The `mash-history` skill's workflow template is `crates/mash-mcp/templates/history_skill.md`.
 Its generated files live in `plugins/mash/skills/mash-history/`.
 Its small live-help bootstrap and release stamp are generated from Rust with
 `make generate-skills`; do not edit the generated `SKILL.md` or `contract.json`.

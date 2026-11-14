@@ -69,7 +69,7 @@ pub(crate) enum Index {
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct Member {
+pub struct Member {
     pub(crate) node_id: String,
     pub(crate) index: Index,
     pub(crate) source_silver: Option<crate::silver::certificate::Certificate>,

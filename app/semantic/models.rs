@@ -195,7 +195,7 @@ impl Models {
 
     #[tracing::instrument(name = "load_embedding_models", skip_all)]
     pub(crate) fn load_indexer(&self) -> Result<Option<indexer::LoadedIndexer>, AppError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(pool) = super::test_embeddings::load(&self.root) {
             return Ok(Some(pool));
         }

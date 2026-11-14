@@ -7,7 +7,7 @@ use axum::{
 use serde_json::{Value, json};
 
 /// A group freshness response advertising one views build and no nodes.
-pub(crate) fn freshness(build: &Value) -> Value {
+pub fn freshness(build: &Value) -> Value {
     json!({
         "group_id": "transport",
         "group_views": {
@@ -20,16 +20,16 @@ pub(crate) fn freshness(build: &Value) -> Value {
     })
 }
 
-pub(crate) struct Service {
-    pub(crate) url: String,
-    pub(crate) requests: tokio::sync::mpsc::UnboundedReceiver<Value>,
+pub struct Service {
+    pub url: String,
+    pub requests: tokio::sync::mpsc::UnboundedReceiver<Value>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Service {
-    pub(crate) async fn new() -> Self {
+    pub async fn new() -> Self {
         Self::with_dense(true).await
     }
-    pub(crate) async fn with_dense(dense: bool) -> Self {
+    pub async fn with_dense(dense: bool) -> Self {
         let (sender, requests) = tokio::sync::mpsc::unbounded_channel();
         let router = Router::new()
             .route(
@@ -62,13 +62,13 @@ impl Service {
             task,
         }
     }
-    pub(crate) fn configuration(&self) -> String {
+    pub fn configuration(&self) -> String {
         format!(
             "version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n[shared]\ngroup_id='transport'\nnode_id='node'\napi_url='{}'\ntoken_env='PATH'\n",
             self.url
         )
     }
-    pub(crate) async fn received(&mut self) -> Value {
+    pub async fn received(&mut self) -> Value {
         tokio::time::timeout(std::time::Duration::from_secs(5), self.requests.recv())
             .await
             .unwrap()

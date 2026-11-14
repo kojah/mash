@@ -2,7 +2,7 @@
 use crate::{AppError, silver, storage::Storage};
 use std::time::Instant;
 
-pub(crate) struct Ingestion {
+pub struct Ingestion {
     pub(crate) summary: silver::IndexSummary,
     pub(crate) milliseconds: u64,
     pub(crate) certificate: silver::certificate::Certificate,
@@ -16,7 +16,7 @@ impl Ingestion {
 }
 
 #[tracing::instrument(name = "silver_ingest", skip_all)]
-pub(crate) fn ingest(
+pub fn ingest(
     storage: &mut Storage,
     options: &silver::IndexOptions,
 ) -> Result<Ingestion, AppError> {

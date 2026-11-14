@@ -6,7 +6,7 @@ use crate::{
 };
 
 impl Freshness {
-    pub(crate) fn coverage_members(&self, scope: &Scope) -> Result<Vec<Member>, AppError> {
+    pub fn coverage_members(&self, scope: &Scope) -> Result<Vec<Member>, AppError> {
         let unscoped = scope.provider.is_empty() && scope.after.is_none() && scope.before.is_none();
         self.nodes
             .iter()

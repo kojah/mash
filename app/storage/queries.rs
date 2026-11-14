@@ -22,7 +22,7 @@ use crate::database_error::Operation;
 impl Storage {
     /// Canonical history has no dependency on the availability or format of gold.
     /// This reader never attaches or creates a views database, including temp views.
-    pub(crate) fn open_silver(path: &Path) -> Result<Self, AppError> {
+    pub fn open_silver(path: &Path) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
         }

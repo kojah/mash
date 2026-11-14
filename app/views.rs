@@ -5,7 +5,7 @@ pub(crate) mod diagnostics;
 pub(crate) mod documents;
 pub mod exact;
 pub(crate) mod lexical_manifest;
-pub(crate) mod local;
+pub mod local;
 pub(crate) mod manifest;
 pub mod matching;
 pub(crate) mod materialize;

@@ -73,6 +73,7 @@ ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"]
 tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 
 [dev-dependencies]
+mash-model = { path = "../crates/mash-model", features = ["test-support"] }
 mash-silver = { path = "../crates/mash-silver", features = ["test-support"] }
 tonic-prost = "0.14.9"
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }

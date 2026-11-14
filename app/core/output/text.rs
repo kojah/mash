@@ -376,7 +376,7 @@ fn freshness(
     Ok(())
 }
 
-pub(crate) fn render(
+pub fn render(
     response: &Response,
     detail: Detail,
     structured: &serde_json::Value,
@@ -471,7 +471,7 @@ pub(crate) fn render(
     Ok(out)
 }
 
-pub(crate) fn error(value: &crate::AppError) -> Result<String, serde_json::Error> {
+pub fn error(value: &crate::AppError) -> Result<String, serde_json::Error> {
     let mut out = format!("Mash error — {}\n", safe(&value.error.message));
     json(&mut out, "Kind", &value.error.kind)?;
     line(&mut out, &format!("Retryable: {}", value.error.retryable));

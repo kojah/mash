@@ -18,8 +18,8 @@ const CATCH_UP: std::time::Duration = std::time::Duration::from_secs(8);
 
 mod projection;
 
-#[cfg(test)]
-pub(crate) mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 #[cfg(test)]
 mod tests;
 
@@ -38,7 +38,7 @@ pub(crate) struct Build {
     pub(crate) embedding_milliseconds: u64,
 }
 
-pub(crate) struct Local {
+pub struct Local {
     database: std::path::PathBuf,
     instance: String,
     /// A model-free reader needs the documents' text, not their vectors.
@@ -85,10 +85,7 @@ fn revision(
 
 impl Local {
     /// Readers verify existing collections and settings without creating them.
-    pub(crate) async fn open(
-        database: &Path,
-        configuration: &ResolvedConfig,
-    ) -> Result<Self, AppError> {
+    pub async fn open(database: &Path, configuration: &ResolvedConfig) -> Result<Self, AppError> {
         Self::open_inner(database, configuration, false).await
     }
 

@@ -10,6 +10,7 @@ build = "build.rs"
 [dependencies]
 mash-app = { path = "../../app" }
 mash-fleet = { path = "../mash-fleet" }
+mash-mcp = { path = "../mash-mcp" }
 mash-model = { path = "../mash-model" }
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", default-features = false, features = ["std"] }

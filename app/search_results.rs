@@ -132,7 +132,7 @@ impl ChatMetadata {
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(untagged)]
-pub(crate) enum Results {
+pub enum Results {
     Chats(Vec<ChatHit>),
     Messages(Vec<SearchHit>),
 }
@@ -152,7 +152,7 @@ impl Results {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct ChatHit {
+pub struct ChatHit {
     pub(crate) chat_id: String,
     pub(crate) provider: crate::provider::Provider,
     pub(crate) node_id: Option<String>,
@@ -160,11 +160,11 @@ pub(crate) struct ChatHit {
     pub(crate) metadata: ChatMetadata,
     pub(crate) score: f32,
     /// Up to three distinct matching excerpts, ordered by relevance.
-    pub(crate) matches: Vec<ChatMatch>,
+    pub matches: Vec<ChatMatch>,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct ChatMatch {
+pub struct ChatMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -175,9 +175,9 @@ pub(crate) struct ChatMatch {
     pub(crate) node_id: Option<String>,
     pub(crate) role: crate::role::Role,
     pub(crate) created_at: Option<i64>,
-    pub(crate) snippet: String,
+    pub snippet: String,
     /// Primary message's search projection; excludes display ellipses.
-    pub(crate) projection_span: ProjectionSpan,
+    pub projection_span: ProjectionSpan,
     pub(crate) rerank_score: Option<f32>,
     pub(crate) fusion_score: f32,
     /// Other indexed copies of this evidence, usable as view anchors.
@@ -186,9 +186,9 @@ pub(crate) struct ChatMatch {
 
 /// Half-open Unicode-scalar character offsets, not bytes or canonical offsets.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct ProjectionSpan {
-    pub(crate) start_char: usize,
-    pub(crate) end_char: usize,
+pub struct ProjectionSpan {
+    pub start_char: usize,
+    pub end_char: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]

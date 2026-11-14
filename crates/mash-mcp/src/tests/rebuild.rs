@@ -14,7 +14,7 @@ async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_sh
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("models");
     let mut storage = crate::storage::Storage::open_writer(&database).unwrap();
-    crate::silver::local::ingest(
+    mash_app::silver::local::ingest(
         &mut storage,
         &crate::silver::IndexOptions {
             providers: std::collections::BTreeMap::default(),

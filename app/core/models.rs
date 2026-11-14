@@ -125,7 +125,9 @@ pub enum Operation {
     },
     Installation {
         agents: Vec<super::installation::Agent>,
-        probe: bool,
+        /// The MCP contract fingerprint each configured server must report
+        /// when started and asked; `None` starts nothing.
+        probe: Option<String>,
     },
     Forget {
         id: String,

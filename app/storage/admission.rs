@@ -8,7 +8,7 @@ use std::{
 };
 
 #[derive(Debug)]
-pub(crate) struct Owner {
+pub struct Owner {
     _file: File,
     database: PathBuf,
 }
@@ -48,10 +48,7 @@ pub(crate) fn on_blocking_thread<T>(owner: Option<Arc<Owner>>, work: impl FnOnce
     work()
 }
 
-pub(crate) async fn scope<T>(
-    owner: Option<Arc<Owner>>,
-    work: impl std::future::Future<Output = T>,
-) -> T {
+pub async fn scope<T>(owner: Option<Arc<Owner>>, work: impl std::future::Future<Output = T>) -> T {
     OWNER.scope(owner, work).await
 }
 
@@ -84,7 +81,7 @@ fn canonical(database: &Path) -> Result<PathBuf, AppError> {
 }
 
 /// Fail promptly if another process owns the exact database's writer lock.
-pub(crate) fn acquire(database: &Path) -> Result<Arc<Owner>, AppError> {
+pub fn acquire(database: &Path) -> Result<Arc<Owner>, AppError> {
     let database = canonical(database)?;
     let mut path = database.clone().into_os_string();
     path.push(".writer.lock");
@@ -116,7 +113,7 @@ const RETRY: std::time::Duration = std::time::Duration::from_millis(100);
 /// resolves. A waiter holds nothing between attempts: each is the same
 /// non-blocking lock attempt, so exclusion is unchanged and there is no queue
 /// or fairness claim. Other failures return at once.
-pub(crate) async fn acquire_until(
+pub async fn acquire_until(
     database: &Path,
     deadline: tokio::time::Instant,
     cancelled: impl std::future::Future<Output = ()>,
@@ -140,7 +137,7 @@ pub(crate) async fn acquire_until(
 }
 
 /// A bounded wait for admission ran out. Nothing was written.
-pub(crate) fn still_busy() -> AppError {
+pub fn still_busy() -> AppError {
     AppError::new(
         6,
         crate::ErrorKind::IndexBusy,
@@ -151,7 +148,7 @@ pub(crate) fn still_busy() -> AppError {
 }
 
 /// The caller cancelled while waiting for admission. Nothing was written.
-pub(crate) fn abandoned() -> AppError {
+pub fn abandoned() -> AppError {
     AppError::new(
         6,
         crate::ErrorKind::IndexBusy,
