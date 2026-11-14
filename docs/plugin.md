@@ -1,7 +1,7 @@
 # The Mash plugin for Claude Code and Codex
 
 The plugin is what makes an agent use Mash without being told to. It adds
-three skills, their slash commands, and hooks that bring earlier work into a session
+eleven skills, their slash commands, and hooks that bring earlier work into a session
 and keep the index current. `mash init` installs it for each agent it
 connects; this page says what you get and how to control it.
 
@@ -14,6 +14,14 @@ for them by name.
 | Skill | In Claude Code | In Codex | What it does |
 | --- | --- | --- | --- |
 | `remember` | `/mash:remember what to keep` | pick the `remember` skill, or say "remember this" | Saves a decision, preference or fact to [memory](records.md), with your words as the evidence. With nothing after it, saves the latest decision in the conversation. |
+| `resume` | `/mash:resume` | pick the `resume` skill, or ask "where did we leave off?" | Reads this project's most recent chats, from every agent and machine, and tells you what was in progress, what was left open and what was decided. |
+| `handoff` | `/mash:handoff` | pick the `handoff` skill, or say "hand this off" | Writes a brief of the session into the conversation: goal, what is done, what is half done, decisions and the next step. `resume` finds it from any agent or machine once the chat is indexed. |
+| `recall` | `/mash:recall a topic` | pick the `recall` skill, or ask "what does Mash remember about…?" | Shows the [memory](records.md) records for a topic or this project, with where each came from. Ask it to review memory to see unconfirmed and conflicting ones. |
+| `forget` | `/mash:forget what to remove` | pick the `forget` skill, or say "forget that" | Finds one memory record or indexed chat, shows exactly what would go, and removes it only after you say yes. Offers to correct a wrong record instead of deleting it. |
+| `standup` | `/mash:standup`, or `/mash:standup this week` | pick the `standup` skill, or ask "what did I work on yesterday?" | Summarises your work over a period, grouped by project, across agents and machines. With nothing after it, covers the previous working day. |
+| `why` | `/mash:why a file or decision` | pick the `why` skill, or ask "why is this done this way?" | Explains why a file, setting or design choice is the way it is: from saved decisions first, then from the conversations where it was discussed, with quotes. |
+| `export` | `/mash:export`, or `/mash:export a chat` | pick the `export` skill, or say "export this chat" | Saves one chat as a Markdown file, or opens the [dashboard](dashboard.md#save-a-transcript) on it for HTML, PDF, very long chats and bulk export. |
+| `status` | `/mash:status` | pick the `status` skill, or ask "is Mash working?" | A plain-language check of the index, search, agent connections and your other machines, with the one next step when something is off. |
 | `dashboard` | `/mash:dashboard` | pick the `dashboard` skill, or say "open the Mash dashboard" | Starts the [dashboard](dashboard.md) if it is not running and opens it in your browser. Ask for "this chat" to land on the current conversation. |
 | `mash-history` | `/mash:mash-history`, or just ask | pick the `mash-history` skill, or just ask | Searches your past chats and answers with the messages behind the result. The agent also uses it unprompted when you refer to earlier work. |
 
@@ -23,9 +31,13 @@ You do not need the commands for everyday use. Ask in plain words:
 - "Find the chat where we set up deployment."
 - "Remember that we deploy from `main` only."
 - "Open the Mash dashboard."
+- "Where did we leave off on this project?"
+- "What does Mash remember about deployment?"
+- "That memory about the staging URL is wrong, fix it."
 
 After saving, the agent confirms the statement it saved. It refuses to save
-credentials and tokens.
+credentials and tokens. Removing is permanent: `forget` handles one record or
+chat at a time and always shows it and asks first.
 
 ## What happens without asking
 
