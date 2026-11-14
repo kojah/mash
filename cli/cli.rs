@@ -1,3 +1,7 @@
+// Clap generates the subcommand parser as one function over every command;
+// newer Clippy flags its unoptimized stack frame, which only debug builds have.
+// Older toolchains do not know the lint.
+#![allow(unknown_lints, clippy::large_unopt_stack_frames)]
 use crate::provider::Provider;
 use std::ffi::OsString;
 use std::io::Write;
