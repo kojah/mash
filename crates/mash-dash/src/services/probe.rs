@@ -27,7 +27,7 @@ pub(super) fn local_files(paths: &Paths) -> (Vec<Service>, Vec<String>) {
     let database = compatibility(
         schema,
         Some(crate::storage::schema::SCHEMA_VERSION),
-        env!("MASH_BUILD_REVISION"),
+        crate::BUILD_REVISION,
     );
     let mut services = vec![Service {
         id: "sqlite".into(),
@@ -117,7 +117,7 @@ pub(super) async fn local(config: Option<&Configuration>, paths: &Paths) -> Mach
         state: State::Healthy, summary: "Running · serving this request".into(), checked_at: now(),
         pid: Some(std::process::id()), actions: vec![],
         control_note: "This process serves the current page. Use an external supervisor to stop or restart it.".into(),
-        diagnostics: vec![Diagnostic { label: "Build".into(), value: env!("MASH_BUILD_REVISION").into() }],
+        diagnostics: vec![Diagnostic { label: "Build".into(), value: crate::BUILD_REVISION.into() }],
         compatibility: None, control_revision: None, logs_available: false,
     });
     let mut running: Vec<String> = vec![];
@@ -135,7 +135,7 @@ pub(super) async fn local(config: Option<&Configuration>, paths: &Paths) -> Mach
                     let compatibility = compatibility(
                         schema,
                         Some(crate::storage::schema::SCHEMA_VERSION),
-                        env!("MASH_BUILD_REVISION"),
+                        crate::BUILD_REVISION,
                     );
                     Service {
                         id: format!("database-{}", database.id),

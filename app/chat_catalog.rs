@@ -14,7 +14,7 @@ mod tests;
     Debug, Clone, Copy, Default, Deserialize, Serialize, clap::ValueEnum, rmcp::schemars::JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Sort {
+pub enum Sort {
     #[default]
     UpdatedAt,
     CreatedAt,
@@ -25,7 +25,7 @@ pub(crate) enum Sort {
     Debug, Clone, Copy, Default, Deserialize, Serialize, clap::ValueEnum, rmcp::schemars::JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Direction {
+pub enum Direction {
     Asc,
     #[default]
     Desc,
@@ -35,35 +35,35 @@ pub(crate) enum Direction {
 #[serde(default, deny_unknown_fields)]
 pub struct Request {
     #[arg(long)]
-    pub(crate) provider: Vec<Provider>,
+    pub provider: Vec<Provider>,
     #[arg(long)]
-    pub(crate) node: Vec<String>,
+    pub node: Vec<String>,
     /// Literal substring, ASCII case insensitive; no wildcard syntax. Omit when unused;
     /// supplied text must be nonempty, at most 4096 bytes, without control characters.
     #[schemars(length(min = 1, max = 4096))]
     #[arg(long)]
-    pub(crate) title_contains: Option<String>,
+    pub title_contains: Option<String>,
     /// Inclusive thread activity cutoff in Unix seconds.
     #[arg(long)]
-    pub(crate) after: Option<i64>,
+    pub after: Option<i64>,
     /// Exclusive thread activity cutoff in Unix seconds.
     #[arg(long)]
-    pub(crate) before: Option<i64>,
+    pub before: Option<i64>,
     #[arg(long, value_enum, default_value = "updated-at")]
-    pub(crate) sort: Sort,
+    pub sort: Sort,
     #[arg(long, value_enum, default_value = "desc")]
-    pub(crate) direction: Direction,
+    pub direction: Direction,
     /// Results per page, from 1 to 100; use `next_offset` to fetch another page.
     #[schemars(range(min = 1, max = 100))]
     #[arg(long, default_value_t = 50)]
-    pub(crate) limit: usize,
+    pub limit: usize,
     /// Page offset, from 0 to 10000.
     #[schemars(range(min = 0, max = 10000))]
     #[arg(long, default_value_t = 0)]
-    pub(crate) offset: usize,
+    pub offset: usize,
     /// Exclude the caller's published copy, for combined local/shared discovery.
     #[arg(skip)]
-    pub(crate) exclude_self: bool,
+    pub exclude_self: bool,
 }
 
 impl Default for Request {

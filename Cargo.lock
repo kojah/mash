@@ -1803,6 +1803,7 @@ dependencies = [
  "clap",
  "inquire",
  "mash-app",
+ "mash-dash",
  "mash-model",
  "mash-silver",
  "ort",
@@ -1882,6 +1883,36 @@ dependencies = [
  "walkdir",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "mash-dash"
+version = "0.1.0"
+dependencies = [
+ "aide",
+ "axum",
+ "base64 0.22.1",
+ "blake3",
+ "chrono",
+ "futures-util",
+ "getrandom 0.4.3",
+ "hex",
+ "mash-app",
+ "mash-fleet",
+ "mash-model",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tower-http",
+ "tracing",
 ]
 
 [[package]]

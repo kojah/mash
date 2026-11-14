@@ -16,7 +16,7 @@ pub(crate) mod qdrant;
 mod search;
 pub mod setup;
 
-pub(crate) use chats::DashboardCatalog;
+pub use chats::DashboardCatalog;
 #[cfg(test)]
 pub(crate) use chats::Response as ChatList;
 pub(crate) use indexing::watch_targets;
@@ -30,7 +30,7 @@ pub async fn execute(request: Request) -> Result<Response, AppError> {
     execute_admitted(request, None).await
 }
 
-pub(crate) async fn execute_with_model_limit(
+pub async fn execute_with_model_limit(
     request: Request,
     capacity: &tokio::sync::Semaphore,
 ) -> Result<Response, AppError> {
@@ -620,7 +620,7 @@ pub(crate) fn publication_config(configuration: &ResolvedConfig) -> Option<&conf
         .flatten()
 }
 
-pub(crate) fn default_database_path() -> PathBuf {
+pub fn default_database_path() -> PathBuf {
     crate::platform::mash_home().map_or_else(
         || PathBuf::from("mash.sqlite3"),
         |directory| directory.join("mash.sqlite3"),

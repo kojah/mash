@@ -53,7 +53,7 @@ impl Storage {
         }
     }
 
-    pub(crate) fn open_existing(path: &Path) -> Result<Self, AppError> {
+    pub fn open_existing(path: &Path) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
         }

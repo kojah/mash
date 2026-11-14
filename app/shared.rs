@@ -17,7 +17,7 @@ mod exact;
 pub mod join;
 mod lexical_manifest;
 mod output;
-pub(crate) mod protocol;
+pub mod protocol;
 pub(crate) mod publication;
 #[cfg(test)]
 use crate::views::qdrant as qdrant_index;
@@ -31,11 +31,12 @@ mod sync;
 mod validation;
 mod views_manifest;
 
+pub use client::events;
 pub use client::freshness;
 #[cfg(test)]
 pub(crate) use client::query_with_token;
 pub(crate) use client::{
-    catalog, chat_page, events, fingerprints, get_record, list_chats, list_records, query, view,
+    catalog, chat_page, fingerprints, get_record, list_chats, list_records, query, view,
 };
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};

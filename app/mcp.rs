@@ -12,7 +12,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-pub(crate) mod console;
+pub mod console;
 pub(crate) mod guidance;
 // Renders docs/tools.md; only its currency test runs it.
 #[cfg(test)]

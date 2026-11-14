@@ -72,7 +72,8 @@ The workspace is the application crate `mash` (`app/`) and the crates under
 | `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
 | `mash-silver` | The provider-independent chat model and the native history adapters: discovery, parsing, reconciliation inputs. Never opens the index | `mash-model` |
 | `mash-app` (`app/`) | The application library: storage, views, search, sync, the shared server, MCP and the dashboard | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver` |
-| `mash` (`cli/`) | Both executables: argument parsing and output, and the CLI contract tests | `mash-app`, `mash-model` |
+| `mash-dash` | The local web dashboard served by `mash dash`, and the build script that embeds its front end | `mash-app`, `mash-fleet`, `mash-model` |
+| `mash` (`cli/`) | Both executables: argument parsing and output, and the CLI contract tests | `mash-app`, `mash-dash`, `mash-model` |
 
 The application library is being divided from the bottom up so that an edit recompiles only its
 own crate and the ones above it; the measurements under
@@ -113,8 +114,11 @@ make dev-build                                           # a debug `mash` to try
 With `PACKAGE` the test build compiles only that crate and the ones below it;
 Clippy still checks the whole workspace. After `mash-silver` was split out, a
 one-line edit there rebuilt and ran its tests in about 2 s (20 s for the loop,
-nearly all of it Clippy over the workspace), and the same edit in `mash` took
-about 38 s for the loop.
+nearly all of it Clippy over the workspace). With the dashboard in
+`mash-dash`, the edit the first table measures
+(`make iterate FOCUS='test(assistant)' PACKAGE=mash-dash`) takes 12.5–14 s
+instead of about 80 s: nothing below the dashboard is rebuilt. An edit in
+`mash-app` still rebuilds that crate and everything above it, about 35–50 s.
 
 `make iterate` builds only the library unit-test binaries unless `TARGETS=all`
 is given or the filter names a binary (`binary(cli_contract)`). A dashboard-only
@@ -122,7 +126,7 @@ change needs none of these: `pnpm dev` in `dashboard/` serves the front end
 against a running `mash dash`.
 
 Measured on Xenia in November 2026 for a one-line edit in
-`app/dash/assistant.rs`, warm caches, four Cargo jobs under `agent-test`, no
+`app/dash/assistant.rs` (now `crates/mash-dash/src/assistant.rs`), warm caches, four Cargo jobs under `agent-test`, no
 other builds running (logs in `mash-artifacts/build-speed/`):
 
 | Step | Time |

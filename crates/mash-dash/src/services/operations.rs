@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(in crate::dash) struct ActionRequest {
+pub(crate) struct ActionRequest {
     pub machine: String,
     pub service: String,
     pub action: Action,

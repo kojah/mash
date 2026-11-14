@@ -5,7 +5,7 @@
 //! that is already running here and downloads nothing.
 use super::configuration;
 use crate::AppError;
-use crate::dash::remote::{self, Layout, ServiceName, Supervisor};
+use crate::remote::{self, Layout, ServiceName, Supervisor};
 use std::path::{Path, PathBuf};
 
 const SERVICE: ServiceName = ServiceName {

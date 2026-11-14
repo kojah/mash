@@ -40,7 +40,7 @@ async fn inventory(state: &super::super::Dash) -> Result<Option<Inventory>, Stri
     Ok((inventory.controller.node == state.services.local_id()).then_some(inventory))
 }
 
-pub(in crate::dash) async fn catalog(State(state): State<Arc<super::super::Dash>>) -> Response {
+pub(crate) async fn catalog(State(state): State<Arc<super::super::Dash>>) -> Response {
     match inventory(&state).await {
         Ok(Some(inventory)) => {
             let revision = match inventory.revision() {
@@ -88,7 +88,7 @@ pub(in crate::dash) async fn catalog(State(state): State<Arc<super::super::Dash>
     }
 }
 
-pub(in crate::dash) async fn history(State(state): State<Arc<super::super::Dash>>) -> Response {
+pub(crate) async fn history(State(state): State<Arc<super::super::Dash>>) -> Response {
     let inventory = match inventory(&state).await {
         Ok(Some(inventory)) => inventory,
         Ok(None) => {
@@ -109,7 +109,7 @@ pub(in crate::dash) async fn history(State(state): State<Arc<super::super::Dash>
     }
 }
 
-pub(in crate::dash) async fn submit(
+pub(crate) async fn submit(
     State(state): State<Arc<super::super::Dash>>,
     headers: HeaderMap,
     axum::Json(request): axum::Json<Request>,

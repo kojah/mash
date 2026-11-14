@@ -645,8 +645,8 @@ fn confirmation_history(
 
 pub(crate) use reading::{read, read_page};
 impl Storage {
-    #[cfg(test)]
-    pub(crate) fn mutate_record(&mut self, request: &Mutation) -> Result<Receipt, AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn mutate_record(&mut self, request: &Mutation) -> Result<Receipt, AppError> {
         self.mutate_record_citing(request, &[])
     }
 

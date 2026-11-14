@@ -15,7 +15,7 @@ pub(super) enum State {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[schemars(rename = "ServiceAction")]
-pub(in crate::dash) enum Action {
+pub(crate) enum Action {
     Start,
     Stop,
     Restart,
@@ -103,7 +103,7 @@ pub(super) fn compatibility(
         database_schema: database,
         supported_schema: supported,
         running_build: build.into(),
-        observer_build: env!("MASH_BUILD_REVISION").into(),
+        observer_build: crate::BUILD_REVISION.into(),
         state,
         blocked: blocked.into(),
         next_step: next_step.into(),

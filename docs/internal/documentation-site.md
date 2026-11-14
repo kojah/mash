@@ -80,7 +80,7 @@ carries none of it.
 ## The dashboard's API contract
 
 `mash dash` describes its own API. Its routes are registered with `aide`
-(`app/dash.rs`, `app/dash/services.rs`), which builds the router and an
+(`crates/mash-dash/src/lib.rs`, `crates/mash-dash/src/services.rs`), which builds the router and an
 OpenAPI 3.1 document together from the handlers' extractors and the Rust types
 each route answers with. A running dashboard serves the document at
 `/api/openapi.json`.

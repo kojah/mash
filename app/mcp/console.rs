@@ -11,13 +11,13 @@ use std::time::Duration;
 const DEADLINE: Duration = Duration::from_secs(120);
 
 #[derive(Clone)]
-pub(crate) struct Console {
+pub struct Console {
     server: Mash,
 }
 
 /// What the server publishes about itself: the same listing an agent reads.
 #[derive(serde::Serialize, schemars::JsonSchema)]
-pub(crate) struct Catalogue {
+pub struct Catalogue {
     build_revision: &'static str,
     contract_fingerprint: String,
     tools: Vec<Tool>,
@@ -26,7 +26,7 @@ pub(crate) struct Catalogue {
 /// A tool's answer as an agent receives it: the structured reply and the text
 /// beside it. `failed` covers tool errors and rejected arguments alike.
 #[derive(serde::Serialize, schemars::JsonSchema)]
-pub(crate) struct Answer {
+pub struct Answer {
     failed: bool,
     reply: Option<serde_json::Value>,
     text: String,
@@ -34,12 +34,12 @@ pub(crate) struct Answer {
 
 impl Answer {
     /// Whether the tool failed or turned its arguments down.
-    pub(crate) fn failed(&self) -> bool {
+    pub fn failed(&self) -> bool {
         self.failed
     }
 
     /// The structured reply, when the tool gave one.
-    pub(crate) fn reply(&self) -> Option<&serde_json::Value> {
+    pub fn reply(&self) -> Option<&serde_json::Value> {
         self.reply.as_ref()
     }
 }
@@ -55,7 +55,7 @@ fn rejected(kind: &str, message: &str) -> Answer {
 }
 
 impl Console {
-    pub(crate) fn new(paths: Paths) -> Self {
+    pub fn new(paths: Paths) -> Self {
         Self {
             server: Mash {
                 paths: Arc::new(paths),
@@ -67,7 +67,7 @@ impl Console {
         }
     }
 
-    pub(crate) fn catalogue() -> Result<Catalogue, AppError> {
+    pub fn catalogue() -> Result<Catalogue, AppError> {
         let mut tools = Mash::tools().list_all();
         tools.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(Catalogue {
@@ -80,7 +80,7 @@ impl Console {
 
     /// Calls one tool exactly as a connected agent would. Tools not marked
     /// read-only are refused here, whatever the caller sends.
-    pub(crate) async fn call(
+    pub async fn call(
         &self,
         name: &str,
         arguments: serde_json::Map<String, serde_json::Value>,

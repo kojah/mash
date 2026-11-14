@@ -39,7 +39,7 @@ fn rename(document: &mut Value, from: &str, to: &str) {
 /// Among the schemas the generator called `base`, `base2`, `base3`…, names
 /// each one that has the property `marker` after its `name`. When that leaves
 /// a single schema, it takes the plain `base` name.
-pub(crate) fn settle(document: &mut Value, base: &str, named: &[(&str, &str)]) {
+pub fn settle(document: &mut Value, base: &str, named: &[(&str, &str)]) {
     let candidates = |document: &Value| -> Vec<String> {
         document["components"]["schemas"]
             .as_object()
@@ -68,7 +68,7 @@ pub(crate) fn settle(document: &mut Value, base: &str, named: &[(&str, &str)]) {
 
 /// Orders the schemas by name, so the document does not depend on the order
 /// its routes were described in.
-pub(crate) fn sorted(mut document: Value) -> Value {
+pub fn sorted(mut document: Value) -> Value {
     if let Some(schemas) = document["components"]["schemas"].as_object_mut() {
         schemas.sort_keys();
     }

@@ -346,11 +346,11 @@ pub struct ViewResponse {
     /// The viewed message's chat and how many of its messages lie outside
     /// the returned window. Local views only.
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub(crate) chat: Option<crate::storage::ChatWindow>,
+    pub chat: Option<crate::storage::ChatWindow>,
     /// How to read on when messages before or after the window were omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) notice: Option<String>,
-    pub(crate) messages: Vec<crate::storage::Message>,
+    pub messages: Vec<crate::storage::Message>,
 }
 
 impl ViewResponse {

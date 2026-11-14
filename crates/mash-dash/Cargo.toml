@@ -1,0 +1,52 @@
+[package]
+name = "mash-dash"
+version = "0.1.0"
+edition = "2024"
+description = "The local web dashboard served by `mash dash`"
+license = "MIT"
+publish = false
+build = "build.rs"
+
+[dependencies]
+mash-app = { path = "../../app" }
+mash-fleet = { path = "../mash-fleet" }
+mash-model = { path = "../mash-model" }
+blake3 = "1.8.5"
+chrono = { version = "0.4.44", default-features = false, features = ["std"] }
+regex = "1.12"
+rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+toml = "1.1"
+aide = { version = "=0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-ws"] }
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22.1"
+futures-util = "0.3"
+getrandom = "0.4"
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["gzip", "json", "rustls-tls", "stream"] }
+schemars = "1.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["raw_value"] }
+sha2 = "0.11"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "fs", "net", "io-util", "process"] }
+tokio-util = { version = "0.7", features = ["io-util", "rt"] }
+tower-http = { version = "0.6", features = ["compression-gzip"] }
+tracing = "0.1"
+
+[dev-dependencies]
+mash-app = { path = "../../app", features = ["test-support"] }
+tempfile = "3.27.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+# Items here are public only so the other workspace crates can use them. These
+# lints document a published API; they did not apply to the same items while
+# they were crate-private in `mash`, and still do not.
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+return_self_not_must_use = { level = "allow", priority = 1 }

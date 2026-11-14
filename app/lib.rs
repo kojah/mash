@@ -2,7 +2,7 @@
 #![recursion_limit = "256"]
 
 // Silver canonical history and the vocabulary used by native adapters.
-mod openapi;
+pub mod openapi;
 pub use mash_model::{message_context, provider, role, tools};
 mod silver;
 mod silver_query;
@@ -17,11 +17,10 @@ pub mod semantic;
 pub mod views;
 
 // Application composition and infrastructure supporting both layers.
-use mash_model::{Action, AppError, ErrorBody, ErrorKind};
+use mash_model::{Action, AppError, ErrorKind};
 pub use mash_model::{attachments, database_error, platform, progress, redaction, scratch};
 pub mod config;
 pub mod core;
-pub mod dash;
 mod export;
 pub mod mcp;
 /// Build-time generation of the bundled history skill from the live MCP contract.
@@ -33,6 +32,7 @@ pub mod observability;
 #[cfg(test)]
 mod progress_tests;
 pub mod records;
+pub mod remote;
 pub mod runtime;
 pub mod shared;
 pub mod storage;
@@ -43,6 +43,9 @@ pub mod watch;
 use std::io::{self, Write};
 
 use serde::Serialize;
+
+/// The commit this build was made from.
+pub const BUILD_REVISION: &str = env!("MASH_BUILD_REVISION");
 
 pub async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,

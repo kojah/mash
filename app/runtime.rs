@@ -280,7 +280,7 @@ fn settled(path: &Path, settle: std::time::Duration, limit: std::time::Duration)
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum State {
+pub enum State {
     Current,
     Superseded,
     DifferentBuild,
@@ -288,24 +288,24 @@ pub(crate) enum State {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Process {
-    pub(crate) pid: u32,
-    pub(crate) kind: Kind,
-    pub(crate) build_revision: String,
-    pub(crate) schema_version: Option<i64>,
+pub struct Process {
+    pub pid: u32,
+    pub kind: Kind,
+    pub build_revision: String,
+    pub schema_version: Option<i64>,
     executable: PathBuf,
-    pub(crate) state: State,
+    pub state: State,
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Inventory {
+pub struct Inventory {
     observer_revision: &'static str,
-    pub(crate) processes: Vec<Process>,
-    pub(crate) complete: bool,
+    pub processes: Vec<Process>,
+    pub complete: bool,
     scope: &'static str,
 }
 
-pub(crate) fn inspect(paths: &Paths) -> Inventory {
+pub fn inspect(paths: &Paths) -> Inventory {
     match directory(paths) {
         Ok(directory) => inspect_directory(&directory),
         Err(_) => Inventory {

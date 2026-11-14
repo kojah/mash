@@ -294,9 +294,10 @@ incremental compilation off and adds a compiler cache wrapper, which makes a
 raw `cargo build-clif` after a one-line edit recompile the whole crate, about
 90 seconds instead of 25). After the formatting check it runs Clippy and the
 tests at the same time, as two `agent-test` jobs, and reports both; do not wrap
-it in `agent-test` yourself. It builds library unit tests only; add `PACKAGE=mash-silver` (or another
+it in `agent-test` yourself. It builds library unit tests only; add `PACKAGE=mash-dash` (or another
 workspace crate) when the change and its tests are inside one crate under
-`crates/`, so only that crate is built. Add `TARGETS=all`,
+`crates/`, so only that crate is built: a dashboard edit then takes about 13
+seconds. Add `TARGETS=all`,
 or name a binary in the filter such as `binary(cli_contract)`, when the change
 touches the CLI contract or another integration target; do so for public CLI/MCP
 boundary changes. Use `make dev-build` for a debug `mash` to try by hand; it
@@ -364,7 +365,7 @@ in that loop, and doctests at release milestones. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
-The workspace is `mash` (the executables, CLI and CLI contract tests, in `cli/`), `mash-app` (the application library, in `app/`) and the crates under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`); see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
+The workspace is `mash` (the executables, CLI and CLI contract tests, in `cli/`), `mash-app` (the application library, in `app/`) and the crates under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-dash`); see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [docs/crate-boundaries.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
 when changing query behavior.

@@ -63,7 +63,7 @@ where
     )
 }
 
-pub(crate) fn request_id() -> u64 {
+pub fn request_id() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
 }

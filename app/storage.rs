@@ -21,7 +21,7 @@ mod enrichment;
 pub(crate) mod export;
 pub(crate) mod gold_input;
 mod indexing;
-pub(crate) mod packed;
+pub mod packed;
 pub(crate) mod publication;
 pub(crate) mod records;
 pub(crate) mod search_input;
@@ -40,7 +40,7 @@ use schema::SCHEMA_VERSION;
 #[path = "storage/generated/queries.rs"]
 pub(crate) mod generated;
 
-pub(crate) struct Storage {
+pub struct Storage {
     attachments_config: crate::attachments::Configuration,
     /// This writer's attachment-cache verification, recorded when it commits.
     attachment_verification: Option<attachments::PendingVerification>,
@@ -99,27 +99,27 @@ pub(crate) struct SearchHit {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Message {
+pub struct Message {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) attachments: Vec<crate::attachments::Metadata>,
     pub(crate) id: String,
-    pub(crate) ordinal: i64,
-    pub(crate) role: crate::role::Role,
-    pub(crate) content: String,
-    pub(crate) created_at: Option<i64>,
+    pub ordinal: i64,
+    pub role: crate::role::Role,
+    pub content: String,
+    pub created_at: Option<i64>,
     /// A native entry's structured tool calls and results.
     #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
-    pub(crate) tools: crate::tools::Activity,
+    pub tools: crate::tools::Activity,
 }
 
 /// Where a view's messages sit in their chat, so a short window is not
 /// mistaken for the whole conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct ChatWindow {
+pub struct ChatWindow {
     /// The chat the viewed message belongs to.
     pub(crate) chat_id: String,
     /// Every message the chat retains, including other branches.
-    pub(crate) message_count: u64,
+    pub message_count: u64,
     /// Messages earlier than the first returned message.
     pub(crate) omitted_before: u64,
     /// Messages later than the last returned message.
@@ -157,7 +157,7 @@ impl Storage {
         self
     }
 
-    pub(crate) fn open(path: &Path) -> Result<Self, AppError> {
+    pub fn open(path: &Path) -> Result<Self, AppError> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(AppError::io)?;
         }
@@ -173,7 +173,7 @@ impl Storage {
         })
     }
 
-    pub(crate) fn open_writer(path: &Path) -> Result<Self, AppError> {
+    pub fn open_writer(path: &Path) -> Result<Self, AppError> {
         let mut storage = Self::open(path)?;
         storage
             .connection
@@ -190,7 +190,7 @@ impl Storage {
     }
 
     #[tracing::instrument(name = "commit_writer", skip_all)]
-    pub(crate) fn commit_writer(&mut self) -> Result<(), AppError> {
+    pub fn commit_writer(&mut self) -> Result<(), AppError> {
         if self.writer_active {
             let verification = self.verification_to_record();
             self.connection

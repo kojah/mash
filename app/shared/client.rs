@@ -387,7 +387,7 @@ pub(crate) async fn list_chats(
 }
 /// Opens the stream of `change` events for this node's group. The caller
 /// reads it and reconnects; nothing here retries.
-pub(crate) async fn events(config: &SharedConfig) -> Result<reqwest::Response, AppError> {
+pub async fn events(config: &SharedConfig) -> Result<reqwest::Response, AppError> {
     let response = request(config, reqwest::Method::GET, Endpoint::Events)?
         .send()
         .await

@@ -13,7 +13,7 @@ use crate::AppError;
 use crate::provider::{Provider, ProviderRoots};
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct View {
+pub struct View {
     path: PathBuf,
     /// Names the file's contents. A change states the contents it was made
     /// against, so an edit made elsewhere in between is not overwritten.
@@ -37,7 +37,7 @@ struct Agent {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Change {
+pub struct Change {
     revision: String,
     agents: BTreeMap<Provider, bool>,
     since_days: Option<u32>,
@@ -59,7 +59,7 @@ fn revision(text: &str) -> String {
     blake3::hash(text.as_bytes()).to_hex().to_string()
 }
 
-pub(crate) fn view(path: &Path) -> Result<View, AppError> {
+pub fn view(path: &Path) -> Result<View, AppError> {
     describe(path, &read(path)?, &super::init::detect()?)
 }
 
@@ -93,7 +93,7 @@ fn describe(path: &Path, text: &str, detected: &ProviderRoots) -> Result<View, A
 
 /// Rewrite the file with `change`, keeping the previous file beside it, and
 /// return the settings as they now stand.
-pub(crate) fn apply(path: &Path, change: &Change) -> Result<View, AppError> {
+pub fn apply(path: &Path, change: &Change) -> Result<View, AppError> {
     let detected = super::init::detect()?;
     let text = read(path)?;
     let updated = revise(&text, change, &detected)?;

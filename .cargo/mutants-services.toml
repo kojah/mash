@@ -1,8 +1,8 @@
 # Auth and schema compatibility boundaries; HTTP regressions exercise both.
-examine_globs = ["app/dash/services.rs", "app/dash/services/model.rs"]
+examine_globs = ["crates/mash-dash/src/services.rs", "crates/mash-dash/src/services/model.rs"]
 examine_re = ["Services::authorized", "compatibility"]
-test_package = ["mash-app"]
+test_package = ["mash-dash"]
 test_tool = "nextest"
 cap_lints = true
-additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash-app.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
-additional_cargo_test_args = ["-E", "test(dash::services)", "--no-tests", "fail", "--test-threads", "2"]
+additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash-dash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
+additional_cargo_test_args = ["-E", "test(services::)", "--no-tests", "fail", "--test-threads", "2"]

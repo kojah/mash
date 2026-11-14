@@ -288,7 +288,7 @@ fn fleet_projection_shares_watcher_identity_and_limits_peer_credentials() {
             path.to_owned()
         }
     };
-    let example = include_str!("../../../deployment/fleet.example.toml");
+    let example = include_str!("../../../../deployment/fleet.example.toml");
     let example = if cfg!(windows) {
         example.replace("\"/", "\"C:/")
     } else {

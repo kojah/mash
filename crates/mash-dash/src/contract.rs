@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn committed_contract_matches_the_routes() {
         let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dashboard/openapi.json");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dashboard/openapi.json");
         let mut current =
             serde_json::to_string_pretty(&super::document(&super::super::api().1)).unwrap();
         current.push('\n');

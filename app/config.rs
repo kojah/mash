@@ -13,11 +13,11 @@ pub mod init;
 mod loading;
 mod qdrant;
 mod reranking;
-pub(crate) mod settings;
+pub mod settings;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use assistant::Assistant;
+pub use assistant::Assistant;
 pub(crate) use document::validate_identifier;
 pub(crate) use embeddings::Embeddings;
 pub use loading::{default_path, load};
@@ -32,7 +32,7 @@ pub struct ResolvedConfig {
     pub(crate) embeddings: Embeddings,
     pub(crate) reranking: Reranking,
     /// The model behind the dashboard's assistant, when one is configured.
-    pub(crate) assistant: Option<Assistant>,
+    pub assistant: Option<Assistant>,
     pub qdrant: QdrantConfig,
     pub(crate) attachments: crate::attachments::Configuration,
     pub(crate) redaction: crate::redaction::Settings,
@@ -72,7 +72,7 @@ pub struct SharedConfig {
 impl SharedConfig {
     /// This node's API token: the variable `token_env` names, or the copy a
     /// join saved for it under Mash's own directory.
-    pub(crate) fn token(&self) -> Option<String> {
+    pub fn token(&self) -> Option<String> {
         secret(&self.token_env)
     }
 }

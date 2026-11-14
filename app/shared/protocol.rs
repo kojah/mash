@@ -8,7 +8,7 @@ pub(crate) use crate::views::retrieval::{Candidates, Document, Search, valid_vec
 /// One node's committed publication, as `/v1/events` tells listening
 /// dashboards about it. It names chats and never carries their text.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct NodeChange {
+pub struct NodeChange {
     /// The node whose history changed.
     pub node: String,
     /// That node's silver revision after the change.

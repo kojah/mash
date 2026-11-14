@@ -28,7 +28,7 @@ and refusing to report success without per-machine evidence. External
 subprocess effects after loss of ownership are deliberately permitted.
 
 `ServiceControl` models dashboard supervisor actions in
-`app/dash/services/operations.rs`. `Acquire` is the OS-held per-service lock;
+`crates/mash-dash/src/services/operations.rs`. `Acquire` is the OS-held per-service lock;
 `Receipt` is the completed create-new request write and file sync (plus directory
 sync on Unix); `Send` is the one manager invocation; `Finish` is the result
 receipt. A process crash releases the lock but retains receipts. Repeated IDs

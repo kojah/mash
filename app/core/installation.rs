@@ -446,14 +446,14 @@ impl Environment {
 /// One machine's agent integrations for a dashboard, step by step. A peer
 /// dashboard sends this to the one asking, so local paths are left out.
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Setup {
+pub struct Setup {
     /// The build of the Mash binary that inspected the machine.
-    pub(crate) build: String,
-    pub(crate) agents: Vec<AgentSetup>,
+    pub build: String,
+    pub agents: Vec<AgentSetup>,
 }
 
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct AgentSetup {
+pub struct AgentSetup {
     pub(crate) agent: Agent,
     /// The machine has this agent's data or CLI, so an integration is expected.
     pub(crate) expected: bool,
@@ -471,7 +471,7 @@ pub(crate) struct Step {
 }
 
 /// Inspect this machine's agent integrations without launching anything.
-pub(crate) fn setup(paths: &super::Paths) -> Setup {
+pub fn setup(paths: &super::Paths) -> Setup {
     let report = collect(
         Environment::discover().as_ref(),
         &[],

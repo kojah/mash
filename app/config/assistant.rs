@@ -7,14 +7,14 @@ use serde::{Deserialize, Serialize};
 /// own API, a gateway such as `OpenRouter`, or a model server on this machine.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Assistant {
+pub struct Assistant {
     /// The API's base, such as `https://openrouter.ai/api/v1`; requests go to
     /// `chat/completions` beneath it.
     pub(crate) base_url: String,
     /// The environment variable that holds the API key.
     pub(crate) token_env: String,
     /// The model's name as that service knows it.
-    pub(crate) model: String,
+    pub model: String,
 }
 
 impl Assistant {
@@ -31,12 +31,12 @@ impl Assistant {
     /// The API key: the variable `token_env` names, or the copy saved for it
     /// under Mash's own directory, which a supervised dashboard can read
     /// without a change to its service.
-    pub(crate) fn token(&self) -> Option<String> {
+    pub fn token(&self) -> Option<String> {
         super::secret(&self.token_env)
     }
 
     /// Where chat requests are sent.
-    pub(crate) fn endpoint(&self) -> String {
+    pub fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
     }
 }

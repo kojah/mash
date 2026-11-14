@@ -7,9 +7,10 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 
 use mash_app::{
-    BROKEN_PIPE, blocking, chat_catalog, config, core, dash, mcp, observability, runtime,
+    BROKEN_PIPE, blocking, chat_catalog, config, core, mcp, observability, remote, runtime,
     search_filter, search_results, semantic, shared, storage, views, watch, write_json,
 };
+use mash_dash as dash;
 use mash_model::{AppError, platform, provider, redaction, role};
 use serde::Serialize;
 

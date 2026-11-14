@@ -21,7 +21,7 @@ const REST_FACTOR: u32 = 4;
 
 /// Observe the leader lock without creating files or registering a watcher.
 /// A held lock is evidence of leadership, not successful indexing or freshness.
-pub(crate) fn active(database: &Path) -> std::io::Result<bool> {
+pub fn active(database: &Path) -> std::io::Result<bool> {
     let mut path = std::fs::canonicalize(database)?.into_os_string();
     path.push(".watch-lock");
     let file = match std::fs::File::open(path) {

@@ -703,9 +703,9 @@ fn dash(runtime: &tokio::runtime::Runtime, paths: Paths, command: Command) -> Re
                     remove,
                 }),
             ..
-        } => runtime.block_on(crate::dash::remote(
+        } => runtime.block_on(crate::remote::run(
             paths,
-            crate::dash::RemoteOptions {
+            crate::remote::Options {
                 port,
                 shared_only,
                 public,
@@ -737,8 +737,8 @@ fn dash(runtime: &tokio::runtime::Runtime, paths: Paths, command: Command) -> Re
     }
 }
 
-fn remote_action(code: bool, qr: bool, remove: bool) -> crate::dash::RemoteAction {
-    use crate::dash::RemoteAction;
+fn remote_action(code: bool, qr: bool, remove: bool) -> crate::remote::Action {
+    use crate::remote::Action as RemoteAction;
     if remove {
         RemoteAction::Remove
     } else if code {
