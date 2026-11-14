@@ -500,7 +500,47 @@ impl Mash {
         }
         router
     }
+
+    /// The tools one kind of server offers.
+    fn offering(offered: Offered) -> rmcp::handler::server::router::tool::ToolRouter<Self> {
+        let mut router = Self::tools();
+        if offered == Offered::Lean {
+            router.map.retain(|name, _| LEAN.contains(&name.as_ref()));
+        }
+        router
+    }
+
+    /// The tools this process serves. A process serves one MCP connection,
+    /// so what it offers is settled once, when it starts.
+    fn served() -> rmcp::handler::server::router::tool::ToolRouter<Self> {
+        Self::offering(OFFERED.get().copied().unwrap_or_default())
+    }
 }
+
+/// Which tools a server offers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Offered {
+    /// Every tool.
+    #[default]
+    All,
+    /// Only finding and reading history and memories: for a model with little
+    /// context to spare, or an agent that should not write or maintain.
+    Lean,
+}
+
+/// The lean set. Each of these only reads.
+const LEAN: [&str; 8] = [
+    "search",
+    "list_chats",
+    "view",
+    "list_records",
+    "recall_records",
+    "get_record",
+    "status",
+    "help",
+];
+
+static OFFERED: std::sync::OnceLock<Offered> = std::sync::OnceLock::new();
 
 #[tool_router]
 impl Mash {
@@ -813,7 +853,7 @@ impl Mash {
 
 // The SDK macro emits an immediate async tools/list handler.
 #[allow(clippy::unused_async_trait_impl)]
-#[rmcp::tool_handler(router = Self::tools())]
+#[rmcp::tool_handler(router = Self::served())]
 impl rmcp::ServerHandler for Mash {
     fn get_info(&self) -> rmcp::model::ServerConfig {
         let mut info = rmcp::model::ServerConfig::default();
@@ -826,7 +866,9 @@ impl rmcp::ServerHandler for Mash {
     }
 }
 
-pub async fn run(paths: Paths) -> Result<(), crate::AppError> {
+pub async fn run(paths: Paths, offered: Offered) -> Result<(), crate::AppError> {
+    // Set before the server exists; nothing has read it yet.
+    let _ = OFFERED.set(offered);
     let registered_paths = paths.clone();
     let lease = crate::blocking(move || {
         crate::runtime::Lease::register(&registered_paths, crate::runtime::Kind::Mcp)

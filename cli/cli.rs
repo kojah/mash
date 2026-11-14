@@ -280,7 +280,13 @@ enum Command {
         command: QdrantCommand,
     },
     /// Serve search tools over the stdio MCP protocol.
-    Mcp,
+    Mcp {
+        /// Offer only the eight tools that find and read history and memories,
+        /// for a model with little context to spare. Nothing that writes,
+        /// indexes or maintains is offered.
+        #[arg(long)]
+        lean: bool,
+    },
     /// Serve the dashboard (history is read-only; service management is opt-in).
     #[command(args_conflicts_with_subcommands = true)]
     Dash {
@@ -685,7 +691,7 @@ impl Cli {
             Command::Qdrant {
                 command: QdrantCommand::Uninstall { delete_storage },
             } => Operation::QdrantUninstall { delete_storage },
-            Command::Mcp | Command::Dash { .. } => {
+            Command::Mcp { .. } | Command::Dash { .. } => {
                 return Err(AppError::usage(
                     "server commands must run as process commands",
                 ));
@@ -805,7 +811,7 @@ where
     };
     let long_lived = matches!(
         cli.command,
-        Command::Mcp | Command::Dash { .. } | Command::Index { watch: true, .. }
+        Command::Mcp { .. } | Command::Dash { .. } | Command::Index { watch: true, .. }
     );
     if long_lived {
         crate::platform::release_installed_executable();
@@ -820,7 +826,9 @@ where
     let warm_up = {
         use crate::semantic::remote_reranker::{Occasion, warm_up_task};
         let occasion = match &cli.command {
-            Command::Mcp | Command::Dash { command: None, .. } => Some(Occasion::LongRunning),
+            Command::Mcp { .. } | Command::Dash { command: None, .. } => {
+                Some(Occasion::LongRunning)
+            }
             Command::Index { watch: false, .. } => Some(Occasion::CatchUp),
             _ => None,
         };
@@ -836,13 +844,18 @@ where
         };
         dash(&runtime, paths, cli.command)?;
         Ok(Response::McpStopped)
-    } else if let Command::Mcp = cli.command {
+    } else if let Command::Mcp { lean } = cli.command {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        runtime.block_on(crate::mcp::run(paths))?;
+        let offered = if lean {
+            crate::mcp::Offered::Lean
+        } else {
+            crate::mcp::Offered::All
+        };
+        runtime.block_on(crate::mcp::run(paths, offered))?;
         Ok(Response::McpStopped)
     } else {
         runtime.block_on(async {

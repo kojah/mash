@@ -334,6 +334,43 @@ async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
     crate::views::local::test_support::cleanup(&local, &qdrant_url).await;
 }
 
+#[test]
+fn the_lean_set_offers_only_tools_that_find_and_read() {
+    let all = Mash::offering(Offered::All).list_all();
+    let lean = Mash::offering(Offered::Lean).list_all();
+    let mut names: Vec<&str> = lean.iter().map(|tool| tool.name.as_ref()).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        [
+            "get_record",
+            "help",
+            "list_chats",
+            "list_records",
+            "recall_records",
+            "search",
+            "status",
+            "view"
+        ]
+    );
+    assert!(lean.iter().all(|tool| {
+        tool.annotations
+            .as_ref()
+            .and_then(|annotations| annotations.read_only_hint)
+            == Some(true)
+    }));
+    // The same definitions as the full set, less than half of it in all.
+    let size = |tools: &[rmcp::model::Tool]| serde_json::to_string(tools).unwrap().len();
+    assert!(lean.iter().all(|tool| all.contains(tool)));
+    assert!(
+        size(&lean) * 2 < size(&all),
+        "{} of {}",
+        size(&lean),
+        size(&all)
+    );
+    assert_eq!(all.len(), 21);
+}
+
 fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     let search = tools.iter().find(|tool| tool.name == "search").unwrap();
     // Advanced arguments are accepted but not shown to a model, and nothing

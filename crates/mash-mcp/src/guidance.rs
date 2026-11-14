@@ -430,13 +430,15 @@ pub(super) async fn help(request: Help) -> CallToolResult {
         return super::tool_result(Err(crate::AppError::usage(error)));
     }
     let data = (|| -> Result<Value, serde_json::Error> {
-        let tools = Mash::tools().list_all();
+        // Help speaks of the tools this server offers, not of all Mash has.
+        let tools = Mash::served().list_all();
         let selected = request
             .tool
             .as_ref()
             .and_then(|name| tools.iter().find(|tool| tool.name == *name));
         let examples = examples()?
             .into_iter()
+            .filter(|example| tools.iter().any(|tool| tool.name == example.tool))
             .filter(|example| {
                 request.tool.as_ref().map_or(
                     if matches!(request.topic, Some(Topic::Records)) {

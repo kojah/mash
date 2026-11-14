@@ -24,6 +24,13 @@ Replace the paths with your installed executable and Mash configuration.
 The exact configuration format depends on your client. For shared history,
 also make your configured token environment variable available to the client.
 
+For a small model, or an agent that should only read, add `"--lean"` after
+`"mcp"`. Mash then offers eight tools instead of 21, the ones that find and
+read chats and memories (`search`, `list_chats`, `view`, `list_records`,
+`recall_records`, `get_record`, `status` and `help`), which takes less than
+half the room in the model's context. Nothing that saves memories, indexes or
+maintains Mash is offered.
+
 Restart the client, then ask it to use Mash to find an earlier conversation.
 It should call Mash's `search` tool and answer from your history. Restart the
 client again after each Mash upgrade so that it starts the new executable.

@@ -30,7 +30,7 @@ Every command prints JSON; `--help` and `--version` print plain text. To read co
 | `mash query --request JSON` | Runs one read-only query over your indexed chats and messages, for counts and listings that search does not answer. | `--request '{"target":"messages","filter":{"provider":"codex"},"limit":20}'` is the typed form. `--sql 'SELECT ...'` runs read-only SQL on this machine, with `--limit N`. `--shared` sends a typed request to the shared index. |
 | `mash export DIRECTORY` | Writes a [portable backup](upgrades.md) of your indexed history and retained attachments to a new directory. Keep it private. | |
 | `mash import DIRECTORY --into NEW_DATABASE` | Restores a backup into a new database. | `--keep-identity` is for [upgrades](upgrades.md) only. |
-| `mash mcp` | Serves Mash's tools to an agent over stdio. Agents start it themselves; see [connect another MCP client](mcp.md). | |
+| `mash mcp` | Serves Mash's tools to an agent over stdio. Agents start it themselves; see [connect another MCP client](mcp.md). | `--lean` offers only the eight tools that find and read, for a small model. |
 | `mash qdrant uninstall` | Stops and removes the search service that `mash qdrant install` set up. | `--delete-storage` also deletes its data, which `mash index` rebuilds. |
 
 Every command also accepts `--config PATH`, `--db PATH` and `--models-dir PATH`
