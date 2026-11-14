@@ -11,6 +11,9 @@ opens on the overview: your latest chats and memories. Leave the terminal
 running; Ctrl-C stops the dashboard. If that port is busy, use
 `mash dash --listen 127.0.0.1:8791` and open port 8791 instead.
 
+With the [plugin](plugin.md) installed, `/mash:dashboard` in Claude Code, or
+asking your agent to open the Mash dashboard, does both steps for you.
+
 The dashboard has no login. Read [Keep access private](#keep-access-private)
 before changing its listening address.
 

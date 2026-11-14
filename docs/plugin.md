@@ -1,7 +1,7 @@
 # The Mash plugin for Claude Code and Codex
 
 The plugin is what makes an agent use Mash without being told to. It adds
-two skills, a slash command, and hooks that bring earlier work into a session
+three skills, their slash commands, and hooks that bring earlier work into a session
 and keep the index current. `mash init` installs it for each agent it
 connects; this page says what you get and how to control it.
 
@@ -14,6 +14,7 @@ for them by name.
 | Skill | In Claude Code | In Codex | What it does |
 | --- | --- | --- | --- |
 | `remember` | `/mash:remember what to keep` | pick the `remember` skill, or say "remember this" | Saves a decision, preference or fact to [memory](records.md), with your words as the evidence. With nothing after it, saves the latest decision in the conversation. |
+| `dashboard` | `/mash:dashboard` | pick the `dashboard` skill, or say "open the Mash dashboard" | Starts the [dashboard](dashboard.md) if it is not running and opens it in your browser. Ask for "this chat" to land on the current conversation. |
 | `mash-history` | `/mash:mash-history`, or just ask | pick the `mash-history` skill, or just ask | Searches your past chats and answers with the messages behind the result. The agent also uses it unprompted when you refer to earlier work. |
 
 You do not need the commands for everyday use. Ask in plain words:
@@ -21,6 +22,7 @@ You do not need the commands for everyday use. Ask in plain words:
 - "What did we decide about the database migration?"
 - "Find the chat where we set up deployment."
 - "Remember that we deploy from `main` only."
+- "Open the Mash dashboard."
 
 After saving, the agent confirms the statement it saved. It refuses to save
 credentials and tokens.
