@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Policy {
+pub struct Policy {
     pub enabled: bool,
     /// Fixed setup cutoff for explicit backfill; absent uses the 3-day default.
     pub backfill_since: Option<i64>,
@@ -21,7 +21,7 @@ impl Default for Policy {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     pub session_id: Option<String>,
     /// Explicit setup/maintenance only. Ordinary conversations never scan history.
     pub backfill: bool,
@@ -30,14 +30,14 @@ pub(crate) struct Request {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct Task {
+pub struct Task {
     pub chat_id: String,
     pub scope: super::Scope,
     pub source_fingerprint: String,
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Response {
+pub struct Response {
     pub enabled: bool,
     pub backfill_since: Option<i64>,
     pub current: Option<Task>,

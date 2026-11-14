@@ -53,19 +53,19 @@ impl Supervisor {
 
 /// Where the dashboard is served and what it shows.
 #[derive(Clone, Copy)]
-pub(crate) struct Options {
-    pub(crate) port: u16,
+pub struct Options {
+    pub port: u16,
     /// Show only the shared index: this machine has no history of its own.
-    pub(crate) shared_only: bool,
+    pub shared_only: bool,
     /// Reachable from the public internet through Tailscale Funnel, not only
     /// from the user's own tailnet.
-    pub(crate) public: bool,
+    pub public: bool,
 }
 
 /// The ports Tailscale Funnel can publish.
 const FUNNEL_PORTS: [u16; 3] = [443, 8443, 10000];
 
-pub(crate) enum Action {
+pub enum Action {
     /// Set up or repair the service and print how to open it.
     Setup,
     /// A fresh one-time code from the running dashboard.
@@ -150,7 +150,7 @@ impl Layout {
     }
 }
 
-pub(crate) async fn run(paths: Paths, options: Options, action: Action) -> Result<(), AppError> {
+pub async fn run(paths: Paths, options: Options, action: Action) -> Result<(), AppError> {
     let Options { port, public, .. } = options;
     let Some(supervisor) = Supervisor::current() else {
         return Err(AppError::usage(
@@ -577,7 +577,7 @@ fn read_token(path: &Path) -> Result<String, AppError> {
         .ok_or_else(|| AppError::usage("no dashboard token yet; run `mash dash remote` first"))
 }
 
-pub(crate) fn write_private(path: &Path, text: &str, mode: u32) -> Result<(), AppError> {
+pub fn write_private(path: &Path, text: &str, mode: u32) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(AppError::io)?;
     }

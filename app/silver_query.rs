@@ -27,7 +27,7 @@ const ROW_OVERHEAD_BYTES: usize = 8;
 /// query can accept without parsing arbitrary SQL.
 #[derive(Clone, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     pub target: Target,
     #[serde(default)]
     pub filter: Filter,
@@ -47,7 +47,7 @@ fn default_request_limit() -> usize {
 
 #[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Target {
+pub enum Target {
     Messages,
     Chats,
     Turns,
@@ -55,7 +55,7 @@ pub(crate) enum Target {
 
 #[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum GroupBy {
+pub enum GroupBy {
     Provider,
     Role,
     Chat,
@@ -63,7 +63,7 @@ pub(crate) enum GroupBy {
 
 #[derive(Clone, Copy, Debug, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Order {
+pub enum Order {
     CreatedAt,
     UpdatedAt,
     Id,
@@ -71,7 +71,7 @@ pub(crate) enum Order {
 
 #[derive(Clone, Debug, Default, schemars::JsonSchema, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields, default)]
-pub(crate) struct Filter {
+pub struct Filter {
     pub provider: Option<crate::provider::Provider>,
     pub chat: Option<String>,
     pub role: Option<crate::role::Role>,

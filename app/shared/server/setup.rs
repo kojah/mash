@@ -115,7 +115,7 @@ async fn status(url: &str) -> Option<reqwest::StatusCode> {
 /// Stop the server and take its address down. The configuration, the added
 /// nodes and the history under `~/.mash/server` are kept, so `--setup` brings
 /// the same server back.
-pub(crate) async fn remove(port: u16) -> Result<(), AppError> {
+pub async fn remove(port: u16) -> Result<(), AppError> {
     let Some(supervisor) = Supervisor::current() else {
         return Err(AppError::usage(
             "`mash-server --setup` manages a user service and is available on Linux and macOS",
@@ -148,7 +148,7 @@ pub(crate) async fn remove(port: u16) -> Result<(), AppError> {
 }
 
 /// Set up or repair the server, and add `node` (`GROUP/NODE`) if it is new.
-pub(crate) async fn run(node: &str, port: u16) -> Result<(), AppError> {
+pub async fn run(node: &str, port: u16) -> Result<(), AppError> {
     let Some(supervisor) = Supervisor::current() else {
         return Err(AppError::usage(
             "`mash-server --setup` manages a user service and is available on Linux and macOS; on other systems follow https://getmash.io/shared-index/",

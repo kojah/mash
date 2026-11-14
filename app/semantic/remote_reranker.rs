@@ -130,7 +130,7 @@ pub(crate) async fn warm_up(configuration: &Reranking) -> Result<(), AppError> {
 
 /// What makes a search likely enough to warm the worker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Occasion {
+pub enum Occasion {
     /// MCP or dashboard start: warm unless `MASH_RERANK_WARMUP=off`.
     LongRunning,
     /// An agent session's catch-up `mash index`: warm only when the plugin
@@ -141,7 +141,7 @@ pub(crate) enum Occasion {
 
 /// A bounded background warm-up for a process started on this occasion, if
 /// remote reranking is configured and not opted out. It never fails startup.
-pub(crate) fn warm_up_task(
+pub fn warm_up_task(
     occasion: Occasion,
     config_path: Option<std::path::PathBuf>,
 ) -> Option<impl std::future::Future<Output = ()> + Send + 'static> {

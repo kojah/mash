@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 )]
 #[serde(rename_all = "kebab-case")]
 #[schemars(rename = "SetupAgent")]
-pub(crate) enum Agent {
+pub enum Agent {
     Codex,
     ClaudeCode,
 }
@@ -184,7 +184,7 @@ impl Client {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Report {
+pub struct Report {
     pub(super) summary: Summary,
     clients: Vec<Client>,
     scope: &'static str,
@@ -589,7 +589,7 @@ pub(super) fn summary(recorded: &[Agent]) -> Summary {
     collect(Environment::discover().as_ref(), &[], recorded).summary
 }
 
-pub(crate) fn help_notice(paths: &super::Paths) -> Option<&'static str> {
+pub fn help_notice(paths: &super::Paths) -> Option<&'static str> {
     if resources::index_finding(
         &paths
             .db

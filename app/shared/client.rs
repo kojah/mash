@@ -29,7 +29,7 @@ impl Admission {
 // consume those slots, and queued readers do not buffer response bodies.
 static ADMISSION: Admission = Admission::new(8, 1);
 
-pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
+pub async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
     get(config, Endpoint::Freshness).await
 }
 

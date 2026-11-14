@@ -271,7 +271,10 @@ fn removed_commands_are_rejected() {
 #[test]
 fn cargo_and_ci_make_semantic_support_unconditional() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let manifest = std::fs::read_to_string(root.join("Cargo.toml")).expect("Cargo manifest");
+    // The application library's manifest holds the model dependencies.
+    let manifest =
+        std::fs::read_to_string(root.join("app/Cargo.toml")).expect("application manifest");
+    let top = std::fs::read_to_string(root.join("Cargo.toml")).expect("Cargo manifest");
     let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("CI workflow");
     let release = std::fs::read_to_string(root.join(".github/workflows/release.yml"))
         .expect("release workflow");
@@ -291,7 +294,7 @@ fn cargo_and_ci_make_semantic_support_unconditional() {
             .and_then(toml::Value::as_bool),
         Some(true)
     );
-    assert!(!manifest.contains("semantic = ["));
+    assert!(!manifest.contains("semantic = [") && !top.contains("semantic = ["));
     assert!(ci.contains("cargo nextest run --profile ci"));
     assert!(!ci.contains("--no-default-features"));
     assert!(release.contains("cargo +stable build --release --locked"));
@@ -305,9 +308,11 @@ fn maintained_repository_is_independent_and_minimal() {
     for removed in ["src", "tests", "benches", "fuzz", "scripts"] {
         assert!(!root.join(removed).exists(), "stale surface: {removed}");
     }
-    let manifest = std::fs::read_to_string(root.join("Cargo.toml")).expect("Cargo manifest");
-    for removed in ["franken", "asupersync", "toon", "msgpack"] {
-        assert!(!manifest.to_ascii_lowercase().contains(removed));
+    for manifest in ["Cargo.toml", "app/Cargo.toml"] {
+        let manifest = std::fs::read_to_string(root.join(manifest)).expect("Cargo manifest");
+        for removed in ["franken", "asupersync", "toon", "msgpack"] {
+            assert!(!manifest.to_ascii_lowercase().contains(removed));
+        }
     }
 }
 

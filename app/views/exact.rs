@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
     schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Intent {
+pub enum Intent {
     /// By meaning, for a question or a topic; uses the query models.
     // Also what a shared-API request that omits its intent means; the
     // configured default for searches is `views.query.intent`.

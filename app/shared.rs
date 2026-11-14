@@ -14,7 +14,7 @@ pub(crate) mod attachments;
 mod client;
 mod coverage;
 mod exact;
-pub(crate) mod join;
+pub mod join;
 mod lexical_manifest;
 mod output;
 pub(crate) mod protocol;
@@ -24,18 +24,18 @@ use crate::views::qdrant as qdrant_index;
 use crate::views::qdrant::Settings as GroupView;
 mod retrieval;
 mod reuse;
-pub(crate) mod server;
+pub mod server;
 use crate::silver::revision as silver_revision;
 pub(crate) mod silver_store;
 mod sync;
 mod validation;
 mod views_manifest;
 
+pub use client::freshness;
 #[cfg(test)]
 pub(crate) use client::query_with_token;
 pub(crate) use client::{
-    catalog, chat_page, events, fingerprints, freshness, get_record, list_chats, list_records,
-    query, view,
+    catalog, chat_page, events, fingerprints, get_record, list_chats, list_records, query, view,
 };
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};
@@ -118,7 +118,7 @@ pub(crate) struct BaselineCoverage {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Freshness {
+pub struct Freshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     activity: Option<activity::Report>,
     /// Most recent progressive baseline for the node, if one was started.

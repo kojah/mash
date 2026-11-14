@@ -204,7 +204,7 @@ enum PointKind {
 /// collection schemas and search readiness are reported separately.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Reachability {
+pub enum Reachability {
     /// A supported Qdrant answered at the configured HTTP URL.
     Reachable,
     /// Nothing answered: the service is stopped, missing or on another port.
@@ -216,12 +216,12 @@ pub(crate) enum Reachability {
 
 /// The configured local Qdrant service, as one bounded request observed it.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct ServiceStatus {
+pub struct ServiceStatus {
     pub(crate) url: String,
-    pub(crate) state: Reachability,
+    pub state: Reachability,
     /// Why it is not reachable, and how to start it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) message: Option<String>,
+    pub message: Option<String>,
     /// The Qdrant `mash qdrant install` set up on this machine, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) installed: Option<crate::core::qdrant::Managed>,
@@ -229,7 +229,7 @@ pub(crate) struct ServiceStatus {
 
 /// Ask the configured Qdrant for its version, waiting at most a few seconds.
 /// Never creates or inspects collections.
-pub(crate) async fn reachability(config: &crate::config::QdrantConfig) -> ServiceStatus {
+pub async fn reachability(config: &crate::config::QdrantConfig) -> ServiceStatus {
     let (state, message) = match check(config).await {
         Ok(()) => (Reachability::Reachable, None),
         Err(error) if error.error.kind == crate::ErrorKind::QdrantUnavailable => {

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     pub scope: Scope,
     pub query: Option<String>,
     /// Exact project-relative path; never a basename or a host path.
@@ -20,7 +20,7 @@ pub(crate) struct Request {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Status {
+pub enum Status {
     Current,
     Candidate,
     StaleEvidence,
@@ -28,7 +28,7 @@ pub(crate) enum Status {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Item {
+pub struct Item {
     pub id: String,
     pub owner: String,
     pub scope: Scope,
@@ -42,7 +42,7 @@ pub(crate) struct Item {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Response {
+pub struct Response {
     pub records: Vec<Item>,
     pub scanned: usize,
     /// More records may exist outside the bounded candidate scan.

@@ -1,8 +1,8 @@
 # Admission guard only; protocol and public process tests cover lifecycle wiring.
 examine_globs = ["app/runtime.rs"]
 examine_re = ["Lease::ensure_current"]
-test_package = ["mash"]
+test_package = ["mash-app"]
 test_tool = "nextest"
 cap_lints = true
-additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
+additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash-app.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
 additional_cargo_test_args = ["-E", "test(runtime::tests) | test(mcp::tests::runtime)", "--no-tests", "fail", "--test-threads", "2"]

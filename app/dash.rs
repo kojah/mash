@@ -20,7 +20,7 @@ mod live;
 pub(crate) mod remote;
 mod services;
 
-pub(crate) use remote::{Action as RemoteAction, Options as RemoteOptions, run as remote};
+pub use remote::{Action as RemoteAction, Options as RemoteOptions, run as remote};
 
 mod assets {
     include!(concat!(env!("OUT_DIR"), "/dash_assets.rs"));
@@ -43,17 +43,17 @@ struct Dash {
 }
 
 /// How other devices reach this dashboard.
-pub(crate) struct Reach {
-    pub(crate) listen: SocketAddr,
+pub struct Reach {
+    pub listen: SocketAddr,
     /// Names a reverse proxy or private network gives the dashboard.
-    pub(crate) hosts: Vec<String>,
+    pub hosts: Vec<String>,
     /// Environment variable holding the token every visitor signs in with.
-    pub(crate) access_token_env: Option<String>,
+    pub access_token_env: Option<String>,
     /// Serve only the shared index.
-    pub(crate) shared_only: bool,
+    pub shared_only: bool,
 }
 
-pub(crate) async fn run(
+pub async fn run(
     paths: Paths,
     reach: Reach,
     services_config: Option<std::path::PathBuf>,

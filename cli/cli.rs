@@ -990,6 +990,9 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
 }
 
 #[cfg(test)]
+mod skill_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

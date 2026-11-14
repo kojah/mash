@@ -9,7 +9,7 @@ const PREFIX: &str = "mash-join.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Join {
+pub struct Join {
     /// Format version; a newer server's string is refused, not guessed at.
     v: u8,
     pub(crate) api_url: String,
@@ -36,7 +36,7 @@ impl Join {
     }
 
     /// Parse and validate a pasted string. Errors never echo it: it is a secret.
-    pub(crate) fn decode(text: &str) -> Result<Self, AppError> {
+    pub fn decode(text: &str) -> Result<Self, AppError> {
         let invalid = || {
             AppError::usage(
                 "that is not a Mash join string; copy the whole `mash-join.…` value the server printed",

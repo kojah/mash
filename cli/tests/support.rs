@@ -31,17 +31,17 @@ pub(super) fn error_kind(output: &std::process::Output) -> Value {
 pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) {
     let connection = open_silver(path);
     connection
-        .execute_batch(include_str!("../storage/silver.sql"))
+        .execute_batch(include_str!("../../app/storage/silver.sql"))
         .unwrap();
     connection
-        .execute_batch(include_str!("../storage/silver_indexes.sql"))
+        .execute_batch(include_str!("../../app/storage/silver_indexes.sql"))
         .unwrap();
     for schema in [
-        include_str!("../storage/records.sql"),
-        include_str!("../storage/record_provenance.sql"),
-        include_str!("../storage/record_extractions.sql"),
-        include_str!("../storage/record_kinds.sql"),
-        include_str!("../storage/publication_messages.sql"),
+        include_str!("../../app/storage/records.sql"),
+        include_str!("../../app/storage/record_provenance.sql"),
+        include_str!("../../app/storage/record_extractions.sql"),
+        include_str!("../../app/storage/record_kinds.sql"),
+        include_str!("../../app/storage/publication_messages.sql"),
     ] {
         connection.execute_batch(schema).unwrap();
     }

@@ -71,9 +71,10 @@ The workspace is the application crate `mash` (`app/`) and the crates under
 | `mash-fleet` | Fleet CLI and readiness probe | nothing of ours |
 | `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
 | `mash-silver` | The provider-independent chat model and the native history adapters: discovery, parsing, reconciliation inputs. Never opens the index | `mash-model` |
-| `mash` | Everything else, and both executables | all of the above |
+| `mash-app` (`app/`) | The application library: storage, views, search, sync, the shared server, MCP and the dashboard | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver` |
+| `mash` (`cli/`) | Both executables: argument parsing and output, and the CLI contract tests | `mash-app`, `mash-model` |
 
-`mash` is being divided from the bottom up so that an edit recompiles only its
+The application library is being divided from the bottom up so that an edit recompiles only its
 own crate and the ones above it; the measurements under
 [The edit loop](#the-edit-loop) say why. The crates under `crates/` are
 internal: an item is `pub` there so another workspace crate can use it, not as
@@ -81,16 +82,18 @@ a supported API, which is why they allow the Clippy lints that ask for
 published-API documentation. A lower crate never refers to a higher one. When
 a function needs a type from above, it belongs with that type: masking a
 search result is `ChatMetadata::redact`, next to `ChatMetadata`, not in
-`mash-model`'s `redaction`. Inside `mash`, `crate::role`, `crate::AppError`
+`mash-model`'s `redaction`. Inside `mash-app`, `crate::role`, `crate::AppError`
 and the like still resolve, through imports in `app/lib.rs`, and
 `crate::silver` re-exports `mash-silver` beside the indexing pipeline.
 
 A test belongs to the highest crate it touches. Adapter tests that index
-through storage therefore stay in `mash` under `app/silver/`, in modules that
+through storage therefore stay in `mash-app` under `app/silver/`, in modules that
 mirror the adapter (`silver::copilot::tests`), and reach it through its public
 items; tests of an adapter's internals stay in `mash-silver`. Fixtures another
 crate's tests need sit behind `mash-silver`'s `test-support` feature, which
-`mash` enables as a development dependency. For an isolated query edit cycle,
+`mash-app` enables as a development dependency. The CLI lives in `mash`, above
+the library, so that crates such as the dashboard can later sit between them;
+an item the executables need from `mash-app` is `pub` there, and nothing else is. For an isolated query edit cycle,
 use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [crate boundaries](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
 the integrated checks required when changing search behavior.
@@ -161,7 +164,7 @@ What the time is made of:
 - The machine-wide `~/.cargo/config.toml` on Xenia sets `incremental = false`
   and a compiler cache wrapper. The Make targets override both; a raw Cargo
   command does not, and then every edit recompiles the crate from nothing.
-- A commit changes the revision stamped by `build.rs`, so the first build after
+- A commit changes the revision stamped by `app/build.rs`, so the first build after
   any commit recompiles `mash` even when no source changed.
 
 For a raw Cargo command, keep one target directory and enable incremental

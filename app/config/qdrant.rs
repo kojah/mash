@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct QdrantConfig {
+pub struct QdrantConfig {
     pub(crate) url: String,
     pub(crate) grpc_url: String,
     pub(crate) api_key_env: Option<String>,

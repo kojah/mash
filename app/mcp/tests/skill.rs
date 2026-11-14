@@ -1,6 +1,5 @@
 //! Validate shipped examples without executing tools, loading models or opening storage.
 use super::super::*;
-use clap::Parser;
 use pulldown_cmark::{CodeBlockKind, Event, Parser as Markdown, Tag, TagEnd};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -80,10 +79,10 @@ fn block(info: &str, text: &str) -> Result<(), String> {
     } else if info == "bash cli" {
         for line in text.lines().filter(|line| !line.trim().is_empty()) {
             let words = shlex::split(line).ok_or("invalid shell quoting")?;
+            // The executable's own test parses these with the real CLI.
             if words.first().map(String::as_str) != Some("mash") {
                 return Err("CLI examples must invoke mash".into());
             }
-            crate::cli::Cli::try_parse_from(words).map_err(|error| error.to_string())?;
         }
         Ok(())
     } else {
@@ -147,7 +146,7 @@ fn history_skill_live_examples_match_core_validators() {
 }
 
 #[test]
-fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
+fn history_skill_rejects_parameter_enum_and_range_drift() {
     // The thin skill delegates parameters to live help, whose tool name is validated.
     let broken = HISTORY.replace("\"tool\":\"search\"", "\"tool\":\"invented\"");
     assert!(validate(&broken).unwrap_err().contains("unknown tool"));
@@ -156,7 +155,6 @@ fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
     assert!(mcp("search", r#"{"query":"test","intent":"invented"}"#).is_err());
     assert!(mcp("list_chats", r#"{"limit":101}"#).is_err());
     assert!(mcp("removed_tool", "{}").is_err());
-    assert!(block("bash cli", "mash view MESSAGE_ID --invented-option").is_err());
     assert!(block("json", "{}").is_err());
     assert!(mcp("list_threads", "{}").is_err());
     assert!(mcp("list_chats", "{}").is_ok());
@@ -192,7 +190,5 @@ fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
         .is_err()
     );
     assert!(mcp("help", r#"{"tool":"list_threads"}"#).is_err());
-    assert!(block("bash cli", "mash list-threads").is_err());
-    assert!(block("bash cli", "mash search test --unit chat-messages").is_err());
-    assert!(block("bash cli", "mash search test --unit messages --chat id").is_ok());
+    assert!(block("bash cli", "not-mash search test").is_err());
 }

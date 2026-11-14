@@ -5,17 +5,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema, clap::Args)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Scope {
+pub struct Scope {
     #[arg(long, requires = "coverage")]
-    pub(crate) provider: Vec<Provider>,
+    pub provider: Vec<Provider>,
     #[arg(long, requires = "coverage")]
-    pub(crate) node: Vec<String>,
+    pub node: Vec<String>,
     /// Inclusive message timestamp in Unix seconds.
     #[arg(long, requires = "coverage")]
-    pub(crate) after: Option<i64>,
+    pub after: Option<i64>,
     /// Exclusive message timestamp in Unix seconds.
     #[arg(long, requires = "coverage")]
-    pub(crate) before: Option<i64>,
+    pub before: Option<i64>,
 }
 
 impl Scope {
@@ -28,7 +28,7 @@ impl Scope {
             ..Default::default()
         }
     }
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         self.selection().resolve("local")?;
         if self.after.zip(self.before).is_some_and(|(a, b)| a >= b) {
             return Err(AppError::usage(

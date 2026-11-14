@@ -63,7 +63,7 @@ if [[ $mode == focused ]]; then
 fi
 validation_key() {
     {
-        git ls-files --cached --others --exclude-standard -z -- app crates queries plugins deployment tools .cargo .config .github Cargo.toml Cargo.lock Makefile rust-toolchain.toml build.rs |
+        git ls-files --cached --others --exclude-standard -z -- app cli crates queries plugins deployment tools .cargo .config .github Cargo.toml Cargo.lock Makefile rust-toolchain.toml build.rs |
             sort -zu | while IFS= read -r -d '' path; do
                 if [[ -f "$path" ]]; then sha256sum -- "$path" || return
                 else printf 'deleted %s\n' "$path"
@@ -104,7 +104,7 @@ if [[ $mode == validate ]]; then
 fi
 # Commit identity can change while source stays identical. Cargo's build script
 # embeds the current revision; gate reuse never means reusing a differently stamped binary.
-# The release embeds the dashboard front end (see build.rs), so build it first.
+# The release embeds the dashboard front end (see app/build.rs), so build it first.
 run bash -c 'cd dashboard && pnpm install --frozen-lockfile && pnpm run build'
 run cargo build --release --locked --bin mash --bin mash-server --bin mash-fleet
 [[ $(validation_key) == "$key" ]] || { echo 'Source changed during build; do not install this artifact.' >&2; exit 1; }

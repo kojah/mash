@@ -12,11 +12,11 @@ use crate::provider::{Provider, ProviderRoots};
 
 pub(super) const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 
-pub(crate) fn load(explicit_path: Option<&Path>) -> Result<ResolvedConfig, AppError> {
+pub fn load(explicit_path: Option<&Path>) -> Result<ResolvedConfig, AppError> {
     load_from_paths(default_path(), explicit_path.map(Path::to_path_buf))
 }
 
-pub(crate) fn default_path() -> Result<PathBuf, AppError> {
+pub fn default_path() -> Result<PathBuf, AppError> {
     let path = crate::platform::mash_home()
         .ok_or_else(|| AppError::configuration("platform configuration directory is unavailable"))?
         .join("config.toml");

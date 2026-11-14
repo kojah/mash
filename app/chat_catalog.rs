@@ -33,7 +33,7 @@ pub(crate) enum Direction {
 
 #[derive(Debug, Clone, Deserialize, Serialize, clap::Args, rmcp::schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     #[arg(long)]
     pub(crate) provider: Vec<Provider>,
     #[arg(long)]

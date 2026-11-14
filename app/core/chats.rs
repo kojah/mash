@@ -15,7 +15,7 @@ use std::time::Duration;
 mod tests;
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Response {
+pub struct Response {
     pub(crate) chats: Vec<Row>,
     pub(crate) next_offset: Option<usize>,
     pub(crate) shared: bool,
@@ -69,7 +69,7 @@ pub(crate) struct Diagnostics {
 
 /// A bounded catalogue, retaining machine identity even for copied histories.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct DashboardCatalog {
+pub struct DashboardCatalog {
     pub(crate) chats: Vec<Chat>,
     pub(crate) local_node: String,
     pub(crate) truncated: bool,

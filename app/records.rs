@@ -3,7 +3,7 @@ use rmcp::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::AppError;
-pub(crate) mod capture;
+pub mod capture;
 pub(crate) mod extraction;
 pub(crate) mod live;
 pub(crate) mod matches;
@@ -12,7 +12,7 @@ pub(crate) mod transfer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Scope {
+pub enum Scope {
     Personal,
     Repository { identity: String },
     LocalProject { path: String },
@@ -21,7 +21,7 @@ pub(crate) enum Scope {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Review {
+pub enum Review {
     #[default]
     Candidate,
     Established,
@@ -29,7 +29,7 @@ pub(crate) enum Review {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Kind {
+pub enum Kind {
     Decision,
     Preference,
     Fact,
@@ -37,7 +37,7 @@ pub(crate) enum Kind {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Lifecycle {
+pub enum Lifecycle {
     Proposed,
     Accepted,
     Active,
@@ -49,7 +49,7 @@ pub(crate) enum Lifecycle {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum DecisionState {
+pub enum DecisionState {
     Proposed,
     Accepted,
     Superseded,
@@ -59,7 +59,7 @@ pub(crate) enum DecisionState {
 /// to structure code, by citing the message where it made and explained it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum DecidedBy {
+pub enum DecidedBy {
     #[default]
     User,
     Agent,
@@ -77,14 +77,14 @@ impl DecidedBy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum PreferenceState {
+pub enum PreferenceState {
     Active,
     Superseded,
     Withdrawn,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum FactState {
+pub enum FactState {
     Current,
     Superseded,
     Retracted,
@@ -92,7 +92,7 @@ pub(crate) enum FactState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Details {
+pub enum Details {
     Decision {
         state: DecisionState,
         /// Omit for the person's decision; `agent` for a choice the agent made.
@@ -182,7 +182,7 @@ impl Details {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Body {
+pub struct Body {
     pub statement: String,
     #[serde(default)]
     pub rationale: String,
@@ -237,7 +237,7 @@ impl Body {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum EvidenceUse {
+pub enum EvidenceUse {
     #[default]
     Context,
     /// Caller asserts this is the person's endorsement, not an injected report.
@@ -269,7 +269,7 @@ impl rusqlite::types::FromSql for EvidenceUse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Citation {
+pub struct Citation {
     /// A retained message ID. Leave empty when citing by `session_id`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub message_id: String,
@@ -285,14 +285,14 @@ pub(crate) struct Citation {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Expected {
+pub struct Expected {
     pub id: String,
     pub revision: i64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum DuplicatePolicy {
+pub enum DuplicatePolicy {
     #[default]
     Report,
     Reuse,
@@ -306,7 +306,7 @@ impl DuplicatePolicy {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Change {
+pub enum Change {
     Link {
         expected: Expected,
         target: Expected,
@@ -340,13 +340,13 @@ pub(crate) enum Change {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Mutation {
+pub struct Mutation {
     pub operation_id: String,
     pub change: Change,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Receipt {
+pub struct Receipt {
     pub record_id: String,
     pub revision: i64,
     pub related: Option<Expected>,
@@ -356,7 +356,7 @@ pub(crate) struct Receipt {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(rename = "RecordEvidence")]
-pub(crate) struct Evidence {
+pub struct Evidence {
     pub chat_id: String,
     pub message_id: String,
     pub fingerprint: String,
@@ -369,13 +369,13 @@ pub(crate) struct Evidence {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Confirmation {
+pub struct Confirmation {
     pub message_id: String,
     pub confirmed_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct RecordRevision {
+pub struct RecordRevision {
     pub revision: i64,
     pub body: Body,
     pub recorded_at: i64,
@@ -386,7 +386,7 @@ pub(crate) struct RecordRevision {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Record {
+pub struct Record {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
     pub id: String,
@@ -472,14 +472,14 @@ impl Body {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Link {
+pub struct Link {
     pub source_id: String,
     pub target_id: String,
     pub relation: Relation,
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Relation {
+pub enum Relation {
     Supersedes,
     Supports,
     Contradicts,
@@ -488,14 +488,14 @@ pub(crate) enum Relation {
 /// Explicit interpretation by the caller; never inferred from similar wording.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum AssertionRelation {
+pub enum AssertionRelation {
     Supports,
     Contradicts,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct List {
+pub struct List {
     #[serde(default)]
     pub shared: bool,
     pub node_id: Option<String>,
@@ -517,7 +517,7 @@ pub(crate) struct List {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Page {
+pub struct Page {
     pub records: Vec<Record>,
     pub next_offset: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -526,14 +526,14 @@ pub(crate) struct Page {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Cursor {
+pub struct Cursor {
     pub node_id: String,
     pub offset: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Get {
+pub struct Get {
     pub id: String,
     #[serde(default)]
     pub history: bool,

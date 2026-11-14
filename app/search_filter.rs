@@ -19,7 +19,7 @@ use crate::AppError;
     schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Sort {
+pub enum Sort {
     /// Most relevant first, with newer messages favoured among comparable ones.
     #[default]
     Relevance,
@@ -29,42 +29,42 @@ pub(crate) enum Sort {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Selection {
+pub struct Selection {
     /// flexible (default) enables prefix and typo matching; strict preserves literals.
-    pub(crate) match_mode: crate::views::matching::Mode,
+    pub match_mode: crate::views::matching::Mode,
     /// relevance (default) or recent: newest first within each page of relevant results.
-    pub(crate) sort: Sort,
+    pub sort: Sort,
     /// Provider alternatives; omitted or empty selects all providers.
-    pub(crate) provider: Vec<Provider>,
+    pub provider: Vec<Provider>,
     /// Only messages from the last this many days.
-    pub(crate) days: Option<u32>,
+    pub days: Option<u32>,
     /// Machines to search; omitted or empty selects all.
-    pub(crate) node: Vec<String>,
+    pub node: Vec<String>,
     /// Who wrote the message, such as user or assistant; omitted or empty selects all.
-    pub(crate) role: Vec<crate::role::Role>,
+    pub role: Vec<crate::role::Role>,
     /// Canonical chat IDs from search or `list_chats`; omitted or empty selects all chats.
     #[serde(rename = "chat")]
-    pub(crate) chat: Vec<String>,
+    pub chat: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
-    pub(crate) project: Vec<String>,
+    pub project: Vec<String>,
     /// Exact Git origin URL; repeat for alternatives.
-    pub(crate) repository: Vec<String>,
+    pub repository: Vec<String>,
     /// Inclusive Unix timestamp in seconds.
-    pub(crate) after: Option<i64>,
+    pub after: Option<i64>,
     /// Exclusive Unix timestamp in seconds.
-    pub(crate) before: Option<i64>,
+    pub before: Option<i64>,
     /// Boolean expression using all/any/not and metadata predicates. Accepted
     /// but not listed in the tool's schema: it repeats the plain selectors,
     /// and a schema that refers to itself is refused by some model services.
     #[schemars(skip)]
-    pub(crate) filter: Option<Filter>,
+    pub filter: Option<Filter>,
 }
 
 #[derive(Clone)]
 pub(crate) struct Scope {
     pub(crate) match_mode: crate::views::matching::Mode,
     pub(crate) filter: Filter,
-    pub(crate) node: String,
+    pub node: String,
 }
 
 /// Predicate names only; diagnostics never echo filter values or the query.
@@ -156,7 +156,7 @@ impl Selection {
 /// Values within one field are alternatives. Compose fields with all, any, and not.
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Filter {
+pub enum Filter {
     All(Vec<Self>),
     Any(Vec<Self>),
     Not(Box<Self>),
@@ -334,7 +334,7 @@ fn join_sql(
         )
     }
 }
-pub(crate) fn timestamp(value: &str) -> Result<i64, AppError> {
+pub fn timestamp(value: &str) -> Result<i64, AppError> {
     let time = chrono::DateTime::parse_from_rfc3339(value)
         .map(|t| t.timestamp())
         .or_else(|_| {

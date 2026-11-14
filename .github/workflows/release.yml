@@ -71,7 +71,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: stable
-      # `mash dash` serves pages embedded at compile time (see build.rs), so
+      # `mash dash` serves pages embedded at compile time (see app/build.rs), so
       # they are built first and the compile fails without them.
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:

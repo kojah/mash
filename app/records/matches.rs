@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     pub scope: Scope,
     pub body: Body,
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Match {
+pub struct Match {
     pub id: String,
     pub revision: i64,
     pub statement: String,
@@ -23,7 +23,7 @@ pub(crate) struct Match {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Response {
+pub struct Response {
     pub suggestions: Vec<Match>,
     pub scan_limited: bool,
     pub truncated: bool,

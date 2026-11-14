@@ -7,27 +7,27 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Paths {
-    pub(crate) config: Option<PathBuf>,
-    pub(crate) db: Option<PathBuf>,
-    pub(crate) models_dir: Option<PathBuf>,
+pub struct Paths {
+    pub config: Option<PathBuf>,
+    pub db: Option<PathBuf>,
+    pub models_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Request {
-    pub(crate) paths: Paths,
-    pub(crate) operation: Operation,
+pub struct Request {
+    pub paths: Paths,
+    pub operation: Operation,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum IndexMode {
+pub enum IndexMode {
     #[default]
     ProviderFiles,
     LocalViews,
 }
 
 impl IndexMode {
-    pub(crate) const fn from_rebuild_flag(local_views: bool) -> Self {
+    pub const fn from_rebuild_flag(local_views: bool) -> Self {
         if local_views {
             Self::LocalViews
         } else {
@@ -38,7 +38,7 @@ impl IndexMode {
 
 /// Which admitted sources an index pass reads.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum Reading {
+pub enum Reading {
     /// Those that changed since they were last read.
     #[default]
     Changed,
@@ -48,22 +48,22 @@ pub(crate) enum Reading {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct IndexRequest {
-    pub(crate) mode: IndexMode,
-    pub(crate) full: bool,
-    pub(crate) provider: Vec<Provider>,
-    pub(crate) since_days: Option<u32>,
-    pub(crate) all_history: bool,
-    pub(crate) reading: Reading,
+pub struct IndexRequest {
+    pub mode: IndexMode,
+    pub full: bool,
+    pub provider: Vec<Provider>,
+    pub since_days: Option<u32>,
+    pub all_history: bool,
+    pub reading: Reading,
     /// Watch passes queue publication instead of awaiting it, so a slow
     /// network publisher never occupies the local indexing task.
-    pub(crate) defer_publication: bool,
+    pub defer_publication: bool,
     /// Publish as a progressive baseline instead of a replacing snapshot.
-    pub(crate) backfill: Option<String>,
+    pub backfill: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Operation {
+pub enum Operation {
     RecordMutation(crate::records::Mutation),
     Records(crate::records::List),
     Record(crate::records::Get),
@@ -175,7 +175,7 @@ pub(crate) enum Operation {
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-pub(crate) enum Response {
+pub enum Response {
     RecordMutation(crate::records::Receipt),
     Records(crate::records::Page),
     Record(crate::records::Record),
@@ -204,7 +204,7 @@ pub(crate) enum Response {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct IndexResponse {
+pub struct IndexResponse {
     pub(super) views: Option<crate::views::manifest::Manifest>,
     pub(super) rebuild_local_views: bool,
     pub(super) silver: crate::silver::certificate::Certificate,
@@ -251,7 +251,7 @@ pub(crate) struct IndexResponse {
 
 /// What a `--backfill` publication produced.
 #[derive(Debug, Clone, serde::Serialize)]
-pub(crate) struct BackfillSummary {
+pub struct BackfillSummary {
     pub(crate) id: String,
     pub(crate) revision: i64,
 }
@@ -259,7 +259,7 @@ pub(crate) struct BackfillSummary {
 impl Response {
     /// An installation report where an expected agent needs attention, or an
     /// `init` that left a stale agent registration in place: exit status 1.
-    pub(crate) fn agents_need_attention(&self) -> bool {
+    pub fn agents_need_attention(&self) -> bool {
         match self {
             Self::Installation(report) => report.agents_need_attention(),
             Self::Init(result) => result.left_stale_registration(),
@@ -269,14 +269,14 @@ impl Response {
 
     /// The error a partly completed operation ended with: `init` keeps its
     /// setup report when its first index fails, and still exits with this.
-    pub(crate) fn failure(&self) -> Option<&crate::AppError> {
+    pub fn failure(&self) -> Option<&crate::AppError> {
         match self {
             Self::Init(result) => result.index_error.as_ref(),
             _ => None,
         }
     }
 
-    pub(crate) fn needs_retry(&self) -> bool {
+    pub fn needs_retry(&self) -> bool {
         match self {
             Self::Index(result) => result.needs_retry(),
             Self::Init(result) => result
@@ -305,7 +305,7 @@ impl IndexResponse {
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum SearchMode {
+pub enum SearchMode {
     Lexical,
     LocalLexical,
     MergedLexical,
@@ -316,7 +316,7 @@ pub(crate) enum SearchMode {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct SearchResponse {
+pub struct SearchResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) freshness_warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -341,7 +341,7 @@ pub(crate) struct SearchResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct ViewResponse {
+pub struct ViewResponse {
     pub(crate) id: String,
     /// The viewed message's chat and how many of its messages lie outside
     /// the returned window. Local views only.
@@ -402,7 +402,7 @@ impl ViewResponse {
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct StatusResponse {
+pub struct StatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) local_views_error: Option<String>,
     pub(super) installation: super::installation::Summary,
@@ -452,7 +452,7 @@ pub(super) enum ModelAvailability {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ForgetResponse {
+pub struct ForgetResponse {
     pub(super) id: String,
     pub(super) forgotten: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -462,7 +462,7 @@ pub(crate) struct ForgetResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ModelsInstallResponse {
+pub struct ModelsInstallResponse {
     pub(super) installed: bool,
     pub(super) model_directory: PathBuf,
     #[serde(flatten)]

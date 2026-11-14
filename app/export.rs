@@ -52,7 +52,7 @@ enum Format {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Exported {
+pub struct Exported {
     pub(crate) directory: PathBuf,
     pub(crate) format_version: u32,
     pub(crate) silver: Certificate,
@@ -60,7 +60,7 @@ pub(crate) struct Exported {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct Imported {
+pub struct Imported {
     pub(crate) database: PathBuf,
     pub(crate) silver: Certificate,
     pub(crate) counts: HistoryCounts,

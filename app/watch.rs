@@ -139,7 +139,7 @@ fn freshness_probe_observes_lock_ownership_not_file_existence() {
 /// Whether this process indexes for its database or waits for the leader to exit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Role {
+pub enum Role {
     Leader,
     Standby,
 }
@@ -318,7 +318,7 @@ impl Dirty {
 
 // The native watcher only signals work. All indexing stays in the existing async
 // pipeline, with at most one pass active and a bounded notification queue.
-pub(crate) async fn run<F, Fut>(
+pub async fn run<F, Fut>(
     request: Request,
     debounce_ms: u64,
     shutdown: watch::Receiver<bool>,

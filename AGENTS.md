@@ -364,7 +364,7 @@ in that loop, and doctests at release milestones. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
-The workspace defaults include `mash` and every crate under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`); see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
+The workspace is `mash` (the executables, CLI and CLI contract tests, in `cli/`), `mash-app` (the application library, in `app/`) and the crates under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`); see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [docs/crate-boundaries.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
 when changing query behavior.

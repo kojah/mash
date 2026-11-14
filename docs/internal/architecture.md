@@ -7,7 +7,7 @@ The core owns indexing, search, chat listing, view, status, forgetting, silver e
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
 The watcher also uses typed core requests.
 
-The shared HTTP service starts through `mash-server` and `app/server_cli.rs`.
+The shared HTTP service starts through `mash-server` and `cli/server_cli.rs`.
 The `mash` executable owns local commands, stdio MCP and `mash dash`; it has no
 `serve` subcommand. Both executables use the same library and release version,
 including the shared storage and search implementation. This separates process
@@ -78,7 +78,7 @@ modules are grouped by responsibility:
 - `app/views/materialize.rs`: native silver-to-Qdrant text preparation,
   inference and bounded document writes. Callers own silver snapshots, mutation
   coordination and final certification.
-- `app/tests/`: CLI contract tests grouped by behavior, with common setup in
+- `cli/tests/`: CLI contract tests grouped by behavior, with common setup in
   `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.
 
 Keep assertions in individual tests. Share setup for repeated fixtures, and

@@ -54,7 +54,7 @@ pub(crate) enum UninstallOutcome {
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct InstallResponse {
+pub struct InstallResponse {
     pub(crate) outcome: InstallOutcome,
     /// The Qdrant version now answering on the configured ports.
     pub(crate) version: String,
@@ -69,7 +69,7 @@ pub(crate) struct InstallResponse {
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct UninstallResponse {
+pub struct UninstallResponse {
     pub(crate) outcome: UninstallOutcome,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) service: Option<String>,

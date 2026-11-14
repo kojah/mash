@@ -6,7 +6,7 @@ mod embeddings;
 pub(crate) mod evaluation;
 mod models;
 pub(crate) mod remote;
-pub(crate) mod remote_reranker;
+pub mod remote_reranker;
 mod retrieval;
 #[cfg(test)]
 pub(crate) mod test_embeddings;

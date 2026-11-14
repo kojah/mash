@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Kind {
+pub enum Kind {
     Mcp,
     IndexWatch,
 }
@@ -124,7 +124,7 @@ struct Record {
     identity: Identity,
 }
 
-pub(crate) struct Lease {
+pub struct Lease {
     // Dropped first: the record goes before its lock is released.
     _record: RecordFile,
     // An OS-held lock proves liveness without guessing from a reusable PID.
@@ -155,7 +155,7 @@ impl Lease {
         .unwrap()
     }
 
-    pub(crate) fn register(paths: &Paths, kind: Kind) -> Result<Self, AppError> {
+    pub fn register(paths: &Paths, kind: Kind) -> Result<Self, AppError> {
         let (executable, identity) = executable()?;
         Self::create(&directory(paths)?, executable, identity, kind)
     }
@@ -201,7 +201,7 @@ impl Lease {
         })
     }
 
-    pub(crate) fn ensure_current(&self) -> Result<(), AppError> {
+    pub fn ensure_current(&self) -> Result<(), AppError> {
         if identity(&self.record.executable)? == self.record.identity {
             Ok(())
         } else {
@@ -210,7 +210,7 @@ impl Lease {
     }
 
     /// The invocation path whose replacement supersedes this runtime.
-    pub(crate) fn executable(&self) -> &Path {
+    pub fn executable(&self) -> &Path {
         &self.record.executable
     }
 }
@@ -230,7 +230,7 @@ const SETTLE_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
 /// has already stopped and released its lease; the new image registers as a
 /// fresh runtime. Returns only when that is impossible.
 #[cfg(unix)]
-pub(crate) fn restart(executable: &Path, arguments: &[std::ffi::OsString]) -> AppError {
+pub fn restart(executable: &Path, arguments: &[std::ffi::OsString]) -> AppError {
     use std::os::unix::process::CommandExt;
     if !settled(executable, SETTLE, SETTLE_LIMIT) {
         return cannot_restart(executable, "it did not settle");

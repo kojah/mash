@@ -13,37 +13,34 @@ use crate::AppError;
 pub(super) mod backfill;
 
 /// The plugin marketplace that `init` adds to agents unless told otherwise.
-pub(crate) const MARKETPLACE: &str = "kojah/mash";
+pub const MARKETPLACE: &str = "kojah/mash";
 const AGENT_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone)]
-pub(crate) struct InitRequest {
+pub struct InitRequest {
     /// Replace an existing configuration (kept as `config.toml.previous`).
-    pub(crate) force: bool,
-    pub(crate) agents: bool,
-    pub(crate) index: bool,
-    pub(crate) marketplace: String,
+    pub force: bool,
+    pub agents: bool,
+    pub index: bool,
+    pub marketplace: String,
     /// Explicit wizard selections; absent for unattended setup.
-    pub(crate) plan: Option<InitPlan>,
-    pub(crate) selected_agents: Option<Vec<super::installation::Agent>>,
-    pub(crate) backfill_memory: Option<super::installation::Agent>,
+    pub plan: Option<InitPlan>,
+    pub selected_agents: Option<Vec<super::installation::Agent>>,
+    pub backfill_memory: Option<super::installation::Agent>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct InitPlan {
-    pub(crate) choices: crate::config::init::Choices,
+pub struct InitPlan {
+    pub choices: crate::config::init::Choices,
     /// Compare before writing so a config edited while prompting is not replaced.
-    pub(crate) previous: Option<String>,
+    pub previous: Option<String>,
 }
 
 /// The plan that connects this machine to a shared index from a join string:
 /// the histories already configured or found here, publishing to the server
 /// the string names. The node's token is saved under Mash's own directory,
 /// readable only by the user, so no shell profile needs editing.
-pub(crate) fn join_plan(
-    paths: &Paths,
-    join: &crate::shared::join::Join,
-) -> Result<InitPlan, AppError> {
+pub fn join_plan(paths: &Paths, join: &crate::shared::join::Join) -> Result<InitPlan, AppError> {
     let current = crate::config::load(paths.config.as_deref())?;
     let previous = if current.loaded {
         Some(std::fs::read_to_string(&current.path).map_err(AppError::io)?)
@@ -81,7 +78,7 @@ pub(crate) fn join_plan(
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct InitResponse {
+pub struct InitResponse {
     config: ConfigOutcome,
     agents: Vec<AgentOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -620,7 +617,7 @@ async fn run(program: &Path, arguments: &[impl AsRef<std::ffi::OsStr>]) -> Resul
     }
 }
 
-pub(crate) fn which(program: &str) -> Option<PathBuf> {
+pub fn which(program: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     crate::platform::find_program(program, &path, &std::env::current_dir().ok()?)
 }

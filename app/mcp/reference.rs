@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn tool_reference_is_current() {
         let page = super::generate_tool_reference().unwrap();
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/tools.md");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/tools.md");
         if std::env::var_os("MASH_WRITE_TOOL_REFERENCE").is_some() {
             std::fs::write(path, &page).unwrap();
         }

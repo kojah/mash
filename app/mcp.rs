@@ -799,7 +799,7 @@ impl rmcp::ServerHandler for Mash {
     }
 }
 
-pub(crate) async fn run(paths: Paths) -> Result<(), crate::AppError> {
+pub async fn run(paths: Paths) -> Result<(), crate::AppError> {
     let registered_paths = paths.clone();
     let lease = crate::blocking(move || {
         crate::runtime::Lease::register(&registered_paths, crate::runtime::Kind::Mcp)

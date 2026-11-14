@@ -5,28 +5,28 @@ use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
 mod chats;
-pub(crate) mod coverage;
+pub mod coverage;
 mod indexing;
 mod inspection;
-pub(crate) mod installation;
+pub mod installation;
 mod maintenance;
 mod models;
 pub(crate) mod output;
 pub(crate) mod qdrant;
 mod search;
-pub(crate) mod setup;
+pub mod setup;
 
 pub(crate) use chats::DashboardCatalog;
 #[cfg(test)]
 pub(crate) use chats::Response as ChatList;
 pub(crate) use indexing::watch_targets;
-pub(crate) use models::{
+pub use models::{
     BackfillSummary, IndexMode, IndexRequest, Operation, Paths, Reading, Request, Response,
     SearchMode, SearchResponse, StatusResponse, ViewResponse,
 };
-pub(crate) use setup::{InitRequest, MARKETPLACE, join_plan};
+pub use setup::{InitRequest, MARKETPLACE, join_plan};
 
-pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
+pub async fn execute(request: Request) -> Result<Response, AppError> {
     execute_admitted(request, None).await
 }
 
@@ -627,7 +627,7 @@ pub(crate) fn default_database_path() -> PathBuf {
     )
 }
 
-pub(crate) fn default_models_path() -> PathBuf {
+pub fn default_models_path() -> PathBuf {
     crate::platform::mash_home().map_or_else(
         || PathBuf::from("models"),
         |directory| directory.join("models"),

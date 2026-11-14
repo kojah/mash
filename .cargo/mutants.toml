@@ -2,9 +2,9 @@
 # Qdrant freshness belongs to the disposable-backend certification audit.
 examine_globs = ["crates/mash-silver/src/revision.rs", "crates/mash-silver/src/enrichment.rs", "app/views/qdrant.rs", "app/storage/gold_input.rs", "app/storage/gold_input/*.rs", "app/storage/search_input.rs", "app/storage/records.rs"]
 examine_re = ["crates/mash-silver/src/revision.rs", "Timestamps::is_current_for", "document_hit", "app/storage/gold_input", "app/storage/search_input.rs", '(replace |in )(current|source_current|requires_endorsement)( ->|$)']
-test_package = ["mash", "mash-silver"]
+test_package = ["mash-app", "mash-silver"]
 test_tool = "nextest"
 # Mutated bodies can leave arguments unused; tests must judge those mutations.
 cap_lints = true
-additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-silver.codegen-backend="cranelift"']
+additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash-app.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-silver.codegen-backend="cranelift"']
 additional_cargo_test_args = ["-E", "test(revision::tests) | test(enrichment::timestamp_tests) | test(codex_paginated) | test(views::qdrant::document_tests) | test(storage::gold_input) | test(storage::search_input::tests) | test(native_records)", "--no-tests", "fail", "--test-threads", "2"]

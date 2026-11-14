@@ -9,7 +9,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 pub(crate) mod http;
 pub(crate) mod retrieval;
 
-pub(crate) fn initialize() {
+pub fn initialize() {
     let trace = std::env::var_os("MASH_TRACE").as_deref() == Some(std::ffi::OsStr::new("1"));
     #[cfg(feature = "console")]
     if std::env::var_os("MASH_CONSOLE").as_deref() == Some(std::ffi::OsStr::new("1")) {

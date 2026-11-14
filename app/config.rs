@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 mod assistant;
 mod document;
 mod embeddings;
-pub(crate) mod init;
+pub mod init;
 mod loading;
 mod qdrant;
 mod reranking;
@@ -20,30 +20,30 @@ mod tests;
 pub(crate) use assistant::Assistant;
 pub(crate) use document::validate_identifier;
 pub(crate) use embeddings::Embeddings;
-pub(crate) use loading::{default_path, load};
-pub(crate) use qdrant::QdrantConfig;
+pub use loading::{default_path, load};
+pub use qdrant::QdrantConfig;
 pub(crate) use reranking::Reranking;
 
 const DEFAULT_SINCE_DAYS: u32 = 90;
 const MAX_SINCE_DAYS: u32 = 36_500;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResolvedConfig {
+pub struct ResolvedConfig {
     pub(crate) embeddings: Embeddings,
     pub(crate) reranking: Reranking,
     /// The model behind the dashboard's assistant, when one is configured.
     pub(crate) assistant: Option<Assistant>,
-    pub(crate) qdrant: QdrantConfig,
+    pub qdrant: QdrantConfig,
     pub(crate) attachments: crate::attachments::Configuration,
     pub(crate) redaction: crate::redaction::Settings,
-    pub(crate) records: crate::records::capture::Policy,
-    pub(crate) path: PathBuf,
-    pub(crate) loaded: bool,
-    pub(crate) shared: Option<SharedConfig>,
+    pub records: crate::records::capture::Policy,
+    pub path: PathBuf,
+    pub loaded: bool,
+    pub shared: Option<SharedConfig>,
     pub(crate) views: crate::views::config::Configuration,
-    pub(crate) providers: ProviderRoots,
-    pub(crate) since_days: Option<u32>,
-    pub(crate) destination: IndexDestination,
+    pub providers: ProviderRoots,
+    pub since_days: Option<u32>,
+    pub destination: IndexDestination,
     /// Agents that `mash init` registered Mash with (`[agents] connected`).
     /// `status --installation` expects them even if a registration is removed;
     /// empty when the configuration predates the field.
@@ -52,21 +52,21 @@ pub(crate) struct ResolvedConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum IndexDestination {
+pub enum IndexDestination {
     Local,
     Both,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SharedConfig {
-    pub(crate) group_id: String,
-    pub(crate) node_id: String,
-    pub(crate) api_url: String,
-    pub(crate) token_env: String,
+pub struct SharedConfig {
+    pub group_id: String,
+    pub node_id: String,
+    pub api_url: String,
+    pub token_env: String,
     /// Whether uploads mask credentials; set from `[redaction]`, not this table.
     #[serde(skip)]
-    pub(crate) publication_redaction: crate::redaction::Policy,
+    pub publication_redaction: crate::redaction::Policy,
 }
 
 impl SharedConfig {

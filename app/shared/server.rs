@@ -14,7 +14,7 @@ mod attachments;
 mod configuration;
 mod contexts;
 mod events;
-pub(crate) mod setup;
+pub mod setup;
 pub(crate) mod store;
 mod sync;
 
@@ -472,10 +472,10 @@ async fn chat_page(
     Ok(Json(messages))
 }
 /// Explicit operator changes applied before serving.
-pub(crate) struct Activation {
-    pub(crate) views: bool,
-    pub(crate) query: bool,
-    pub(crate) memory: bool,
+pub struct Activation {
+    pub views: bool,
+    pub query: bool,
+    pub memory: bool,
 }
 
 /// Delete everything one configured node published, then exit without
@@ -484,7 +484,7 @@ pub(crate) struct Activation {
 ///
 /// The service must be stopped first: this takes the same exclusive hold on
 /// the history directory that a running server has.
-pub(crate) async fn retire(path: &Path, node: &str) -> Result<(), AppError> {
+pub async fn retire(path: &Path, node: &str) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
     let identity = identities
@@ -515,7 +515,7 @@ pub(crate) async fn retire(path: &Path, node: &str) -> Result<(), AppError> {
 /// server keeps only a hash of the new token, in a file beside its
 /// configuration; a running server accepts the node after a restart.
 /// `node` is `GROUP/NODE`, and `api_url` is the address that machine will use.
-pub(crate) async fn add_node(path: &Path, node: &str, api_url: &str) -> Result<(), AppError> {
+pub async fn add_node(path: &Path, node: &str, api_url: &str) -> Result<(), AppError> {
     let join = mint(path, node, api_url).await?;
     crate::write_json(
         &mut std::io::stdout(),
@@ -567,7 +567,7 @@ async fn mint(path: &Path, node: &str, api_url: &str) -> Result<String, AppError
 }
 
 /// `models` is used to replay views from silver before serving.
-pub(crate) async fn run(
+pub async fn run(
     path: &Path,
     activation: Activation,
     models: &Path,
@@ -680,7 +680,7 @@ mod contract {
     #[test]
     fn committed_server_contract_matches_the_routes() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("docs/internal/shared-server-openapi.json");
+            .join("../docs/internal/shared-server-openapi.json");
         let mut current = serde_json::to_string_pretty(&super::document()).unwrap();
         current.push('\n');
         if std::env::var_os("MASH_WRITE_CONTRACT").is_some() {

@@ -11,14 +11,14 @@ use crate::AppError;
 use crate::provider::{Provider, ProviderRoots};
 
 #[derive(Debug, Clone)]
-pub(crate) struct Choices {
-    pub(crate) providers: ProviderRoots,
-    pub(crate) since_days: Option<u32>,
-    pub(crate) shared: Option<super::SharedConfig>,
-    pub(crate) records: crate::records::capture::Policy,
+pub struct Choices {
+    pub providers: ProviderRoots,
+    pub since_days: Option<u32>,
+    pub shared: Option<super::SharedConfig>,
+    pub records: crate::records::capture::Policy,
 }
 
-pub(crate) fn configure(text: &str, choices: &Choices) -> Result<String, AppError> {
+pub fn configure(text: &str, choices: &Choices) -> Result<String, AppError> {
     if choices.providers.is_empty() || choices.providers.values().any(Vec::is_empty) {
         return Err(AppError::configuration(
             "select at least one history location",
@@ -28,7 +28,7 @@ pub(crate) fn configure(text: &str, choices: &Choices) -> Result<String, AppErro
 }
 
 /// Default history locations that exist on this machine, per provider.
-pub(crate) fn detect() -> Result<ProviderRoots, AppError> {
+pub fn detect() -> Result<ProviderRoots, AppError> {
     let directories = BaseDirs::new()
         .ok_or_else(|| AppError::configuration("platform home directory is unavailable"))?;
     let home = directories.home_dir();
@@ -134,7 +134,7 @@ fn detect_in(home: &Path, environment: impl Fn(&str) -> Option<PathBuf>) -> Prov
 
 /// A configuration for `providers`; without installed models, lexical-only
 /// views make exact-mention search work immediately.
-pub(crate) fn render(providers: &ProviderRoots, semantic: bool) -> Result<String, AppError> {
+pub fn render(providers: &ProviderRoots, semantic: bool) -> Result<String, AppError> {
     let quote = |path: &Path| {
         path.to_str()
             .map(|text| toml::Value::String(text.to_owned()).to_string())

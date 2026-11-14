@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::path::Path;
 
 mod support;
-#[path = "../test_support.rs"]
+#[path = "../../app/test_support.rs"]
 mod test_support;
 use support::*;
 

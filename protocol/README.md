@@ -375,7 +375,7 @@ interleaving to this model: the stopped phase is final for the old runtime.
 Source mapping: [runtime.rs](../app/runtime.rs) `Lease::ensure_current`,
 [mcp.rs](../app/mcp.rs) `Mash::perform_response` (and `Mash::record_within`,
 which checks after both the gate and local writer admission), and
-[cli.rs](../app/cli.rs) `run_parsed` (with `runtime::restart` from
+[cli.rs](../cli/cli.rs) `run_parsed` (with `runtime::restart` from
 [lib.rs](../app/lib.rs) `execute` after it returns). Registry liveness uses held OS locks;
 filesystem metadata identity, lock correctness, successful registration and
 eventual operation completion are assumptions, not modeled proofs. Older binaries

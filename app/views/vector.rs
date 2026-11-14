@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(tag = "algorithm", rename_all = "lowercase", deny_unknown_fields)]
-pub(crate) enum Search {
+pub enum Search {
     Exact {},
     Hnsw {
         #[serde(default = "default_ef")]
@@ -40,12 +40,12 @@ impl Search {
 }
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
-pub(crate) enum Algorithm {
+pub enum Algorithm {
     Exact,
     Hnsw,
 }
 impl Algorithm {
-    pub(crate) fn request(self, ef: Option<usize>) -> Result<Search, AppError> {
+    pub fn request(self, ef: Option<usize>) -> Result<Search, AppError> {
         let policy = match (self, ef) {
             (Self::Exact, None) => Search::Exact {},
             (Self::Exact, Some(_)) => {

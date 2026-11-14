@@ -248,7 +248,7 @@ pub(crate) struct Query {
     schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Ranking {
+pub enum Ranking {
     #[default]
     ContextualRerank,
     Fusion,
@@ -298,23 +298,23 @@ impl Fusion {
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct FusionOverrides {
+pub struct FusionOverrides {
     /// Rank constant, from 1 through 1000.
     #[schemars(range(min = 1, max = 1000))]
-    pub(crate) rank_constant: Option<u16>,
+    pub rank_constant: Option<u16>,
     /// Lexical candidate weight, from 1 through 100.
     #[schemars(range(min = 1, max = 100))]
-    pub(crate) lexical_weight: Option<u16>,
+    pub lexical_weight: Option<u16>,
     /// Semantic candidate weight, from 1 through 100.
     #[schemars(range(min = 1, max = 100))]
-    pub(crate) semantic_weight: Option<u16>,
+    pub semantic_weight: Option<u16>,
     /// Recency's weight as a percentage of relevance, from 0 (off) through 100.
     #[schemars(range(min = 0, max = 100))]
-    pub(crate) recency_weight: Option<u16>,
+    pub recency_weight: Option<u16>,
 }
 
 impl FusionOverrides {
-    pub(crate) fn is_empty(self) -> bool {
+    pub fn is_empty(self) -> bool {
         self == Self::default()
     }
 

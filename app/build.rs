@@ -49,7 +49,7 @@ fn embed_dashboard() {
     // script, and a target directory shared between checkouts reuses that
     // binary: the build would then embed another checkout's front end.
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    let dist = std::path::Path::new(&manifest).join("dashboard/dist");
+    let dist = std::path::Path::new(&manifest).join("../dashboard/dist");
     println!("cargo:rerun-if-changed={}", dist.display());
     // A release must ship the dashboard, so its build sets this and fails here
     // instead of quietly producing a binary without it.

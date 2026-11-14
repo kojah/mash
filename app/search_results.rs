@@ -20,7 +20,7 @@ pub(crate) mod lookup;
     rmcp::schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum SearchUnit {
+pub enum SearchUnit {
     #[default]
     Chats,
     Messages,

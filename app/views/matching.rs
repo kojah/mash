@@ -20,7 +20,7 @@ const MAX_CHECKS: usize = 64;
     schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Mode {
+pub enum Mode {
     Strict,
     Prefix,
     Typo,

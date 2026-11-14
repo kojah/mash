@@ -1,8 +1,8 @@
 # Real-backend audit of coverage, freshness and local database identity.
 examine_globs = ["app/shared/server/store/sync.rs", "app/views/qdrant/views.rs", "app/views/qdrant/evidence.rs", "app/views/local.rs"]
 examine_re = ["in Store::certify", "replace Store::certify", "NodeViews::current", "NodeViews::compatible", "NodeViews::searchable", "Local::current", "Store::reusable_vectors", "Projections::merge_matching", "Projections::retain_matching", "Projections::complete"]
-test_package = ["mash"]
+test_package = ["mash-app"]
 test_tool = "nextest"
 cap_lints = true
-additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
+additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash-app.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']
 additional_cargo_test_args = ["--run-ignored", "all", "-E", "test(session_evidence) | test(session_merge) | test(qdrant_certification_) | test(qdrant_stale_certification_does_not_claim_the_newer_head) | test(qdrant_backfill_lanes_assign_ordered_revisions) | test(local_qdrant) | test(qdrant_status_rejects) | test(qdrant_materializer) | test(qdrant_native_cleanup)", "--no-tests", "fail", "--test-threads", "1"]
