@@ -63,7 +63,7 @@ the adapter's marker for that exact session ID.
     six chats across `/home/user/work/{ops,billing,site}`, dated 1 to 12 days
     before `start`. One Claude Code chat contains a fake API key.
   - `~/Downloads/install.sh` is the repository's installer. A stand-in `curl`
-    serves `https://github.com/kojah/mash/releases/...` from
+    serves `https://github.com/mashium/mash/releases/...` from
     `~/.release-mirror` and reports every other host as unresolvable.
   - Stand-in `claude` and `codex` CLIs: `mcp get|add|list|remove` edit the
     real user settings (`~/.claude.json` `mcpServers`, `~/.codex/config.toml`

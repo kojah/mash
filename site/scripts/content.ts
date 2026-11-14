@@ -27,7 +27,7 @@ for (const source of [...names.map((name) => `docs/${name}`), "README.md"]) {
   const route = routes.get(source);
   if (!route) throw new Error(`Missing route for ${source}`);
   const filename = route.slice(1, -1);
-  const frontmatter = `---\ntitle: ${JSON.stringify(title)}\neditUrl: ${JSON.stringify(`https://github.com/kojah/mash/edit/main/${source}`)}\n---\n`;
+  const frontmatter = `---\ntitle: ${JSON.stringify(title)}\neditUrl: ${JSON.stringify(`https://github.com/mashium/mash/edit/main/${source}`)}\n---\n`;
   await writeFile(
     new URL(`${filename}.md`, output),
     frontmatter + renderMarkdown(body, source, routes),

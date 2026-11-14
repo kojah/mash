@@ -6,7 +6,7 @@ Problems that expose that history are taken seriously.
 ## Report a vulnerability
 
 Report it privately through
-[GitHub's vulnerability reporting](https://github.com/kojah/mash/security/advisories/new).
+[GitHub's vulnerability reporting](https://github.com/mashium/mash/security/advisories/new).
 Do not open a public issue for a security problem.
 
 Include the Mash version (`mash --version`), your platform, and the steps that

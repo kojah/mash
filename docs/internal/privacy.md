@@ -62,4 +62,4 @@ Text attachments are masked when they are retained, so they stay masked regardle
 settings. Existing deployments
 and stored shared history require an upgrade and explicit re-indexing; rebuilding
 alone does not delete previous publications. See the
-[redaction evaluation and limits](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redaction-evaluation.md).
+[redaction evaluation and limits](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redaction-evaluation.md).

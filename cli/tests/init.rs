@@ -107,7 +107,7 @@ fn init_configures_registers_and_indexes_detected_history() {
         "{calls}"
     );
     assert!(
-        calls.contains("claude plugin marketplace add kojah/mash"),
+        calls.contains("claude plugin marketplace add mashium/mash"),
         "{calls}"
     );
     assert!(calls.contains("claude plugin install mash@mash"), "{calls}");

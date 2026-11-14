@@ -6,9 +6,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/kojah/mash/actions/workflows/ci.yml"><img src="https://github.com/kojah/mash/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/kojah/mash/actions/workflows/windows.yml"><img src="https://github.com/kojah/mash/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows"></a>
-  <a href="https://getmash.io"><img src="https://github.com/kojah/mash/actions/workflows/docs.yml/badge.svg?branch=main" alt="Documentation"></a>
+  <a href="https://github.com/mashium/mash/actions/workflows/ci.yml"><img src="https://github.com/mashium/mash/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/mashium/mash/actions/workflows/windows.yml"><img src="https://github.com/mashium/mash/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows"></a>
+  <a href="https://getmash.io"><img src="https://github.com/mashium/mash/actions/workflows/docs.yml/badge.svg?branch=main" alt="Documentation"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licence"></a>
 </p>
 
@@ -47,13 +47,13 @@ semantic models are optional.
 macOS (Apple silicon) or Linux (x86-64 or ARM64), including WSL:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/mashium/mash/main/install.sh | sh
 ```
 
 Windows x64, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/mashium/mash/main/install.ps1 | iex
 ```
 
 Both download a prebuilt release, verify its checksum and install to your
@@ -70,9 +70,9 @@ Prefer a package manager?
 | --- | --- |
 | Homebrew | `brew install kojah/tap/mash` |
 | apt, Debian and Ubuntu | [add the Mash repository](docs/installation.md#package-manager-alternatives), then `sudo apt install mash` |
-| Scoop | `scoop bucket add kojah https://github.com/kojah/mash`, then `scoop install kojah/mash` |
-| mise | `mise use -g github:kojah/mash` |
-| cargo-binstall | `cargo binstall --git https://github.com/kojah/mash mash` |
+| Scoop | `scoop bucket add mashium https://github.com/mashium/mash`, then `scoop install mashium/mash` |
+| mise | `mise use -g github:mashium/mash` |
+| cargo-binstall | `cargo binstall --git https://github.com/mashium/mash mash` |
 
 Already have a coding agent open? Paste this and let it do steps 1 to 3,
 asking you before each download:
@@ -190,7 +190,7 @@ Where each agent's history has been indexed and searched so far:
 
 The Linux and Windows test suites run on every push; macOS has no automated
 tests yet. If an agent's chats are missing or look wrong on your system,
-[open an issue](https://github.com/kojah/mash/issues).
+[open an issue](https://github.com/mashium/mash/issues).
 
 ## Build from source
 
@@ -198,7 +198,7 @@ For platforms without a prebuilt release, or to run an unreleased revision.
 You need a stable Rust toolchain; the first build takes several minutes:
 
 ```bash
-cargo +stable install --locked --git https://github.com/kojah/mash mash
+cargo +stable install --locked --git https://github.com/mashium/mash mash
 ```
 
 This build leaves out the web dashboard’s pages.

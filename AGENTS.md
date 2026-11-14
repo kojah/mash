@@ -368,7 +368,7 @@ async-code compiler crash.
 
 The workspace is `mash` (the executables, CLI and CLI contract tests, in `cli/`), `mash-app` (the application library, in `app/`) and the crates under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search`, `mash-sync`, `mash-mcp`, `mash-server`, `mash-dash`). Each crate's files are under its own directory; `app/` holds only `mash-app`. Storage and Qdrant tests that need the indexing pipeline or the layers above live in `app/storage_tests/`; see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
-See [docs/crate-boundaries.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
+See [docs/crate-boundaries.md](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
 when changing query behavior.
 
 For repeated unit-test edits, use the persistent target/temp directories above
@@ -409,7 +409,7 @@ only when the configured artifacts, source interpretation or publication target
 need repair; do not skip required provider/privacy/schema migrations. A query-model
 availability failure needs explicit model setup, rather than repeated indexing.
 Keep background synchronization or explicit ingestion separate from redeployment.
-See [docs/redeployment.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redeployment.md) for readiness checks, measured costs and pending delta work.
+See [docs/redeployment.md](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redeployment.md) for readiness checks, measured costs and pending delta work.
 
 Run deployment and refresh directly with `bash tools/fleet.sh`, explicit targets
 and the private Ansible inventory. The `mash-fleet` crate provides the fleet CLI

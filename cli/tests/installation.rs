@@ -397,7 +397,7 @@ fn installation_with_only_the_plugin_missing_names_the_plugin_command_not_init()
     );
     assert!(
         next.contains(
-            "When online, run `codex plugin marketplace add kojah/mash && codex plugin add mash@mash`"
+            "When online, run `codex plugin marketplace add mashium/mash && codex plugin add mash@mash`"
         ),
         "{next}"
     );

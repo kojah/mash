@@ -15,8 +15,8 @@ function Install-Mash {
         throw 'MASH_VERSION must be a release tag such as v0.8.0.'
     }
 
-    $base = 'https://github.com/kojah/mash/releases/latest/download'
-    if ($Version) { $base = "https://github.com/kojah/mash/releases/download/$Version" }
+    $base = 'https://github.com/mashium/mash/releases/latest/download'
+    if ($Version) { $base = "https://github.com/mashium/mash/releases/download/$Version" }
     $archive = 'mash-x86_64-pc-windows-msvc.zip'
     $scratch = Join-Path ([IO.Path]::GetTempPath()) ('mash-install-' + [Guid]::NewGuid().ToString('N'))
     $incoming = $null

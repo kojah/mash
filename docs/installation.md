@@ -22,7 +22,7 @@ method.
 #### macOS or Linux
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/mashium/mash/main/install.sh | sh
 ```
 
 WSL uses this command too.
@@ -30,7 +30,7 @@ WSL uses this command too.
 #### Windows x64
 
 ```powershell
-irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/mashium/mash/main/install.ps1 | iex
 ```
 
 Both scripts verify the release checksum and install to your user's
@@ -57,20 +57,20 @@ sudo apt update && sudo apt install mash
 **Scoop, Windows**
 
 ```powershell
-scoop bucket add kojah https://github.com/kojah/mash
-scoop install kojah/mash
+scoop bucket add mashium https://github.com/mashium/mash
+scoop install mashium/mash
 ```
 
 **mise**
 
 ```sh
-mise use -g github:kojah/mash
+mise use -g github:mashium/mash
 ```
 
 **cargo-binstall**
 
 ```sh
-cargo binstall --git https://github.com/kojah/mash mash
+cargo binstall --git https://github.com/mashium/mash mash
 ```
 
 ### Build from source
@@ -79,7 +79,7 @@ For platforms without a prebuilt release, or to run an unreleased revision,
 build with a stable Rust toolchain. The first build takes several minutes:
 
 ```bash
-cargo +stable install --locked --git https://github.com/kojah/mash mash
+cargo +stable install --locked --git https://github.com/mashium/mash mash
 mash --version
 ```
 
@@ -95,7 +95,7 @@ This installs the CLI and MCP server without the web dashboard's pages:
 from a checkout:
 
 ```bash
-git clone https://github.com/kojah/mash
+git clone https://github.com/mashium/mash
 cd mash/dashboard
 pnpm install --frozen-lockfile
 pnpm build

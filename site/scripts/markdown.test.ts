@@ -14,7 +14,7 @@ describe("repository Markdown on the website", () => {
     );
     expect(result).toContain("](/search/#filters)");
     expect(result).toContain("](/quick-start/#quick-start)");
-    expect(result).toContain("](https://github.com/kojah/mash/blob/main/app/main.rs)");
+    expect(result).toContain("](https://github.com/mashium/mash/blob/main/app/main.rs)");
   });
   it("resolves reference-style links and leaves literal code examples alone", () => {
     const result = renderMarkdown(

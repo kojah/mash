@@ -48,9 +48,11 @@ impl Agent {
     pub const fn install_plugin(self) -> &'static str {
         match self {
             Self::ClaudeCode => {
-                "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
+                "claude plugin marketplace add mashium/mash && claude plugin install mash@mash"
             }
-            Self::Codex => "codex plugin marketplace add kojah/mash && codex plugin add mash@mash",
+            Self::Codex => {
+                "codex plugin marketplace add mashium/mash && codex plugin add mash@mash"
+            }
         }
     }
 

@@ -103,7 +103,7 @@ with the feature on. The CLI lives in `mash`, above
 the library, so that crates such as the dashboard can later sit between them;
 an item the executables need from `mash-app` is `pub` there, and nothing else is. For an isolated query edit cycle,
 use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
-See [crate boundaries](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
+See [crate boundaries](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
 the integrated checks required when changing search behavior.
 
 #### The edit loop
@@ -207,9 +207,9 @@ The empty `RUSTC_WRAPPER` bypasses a locally configured compiler wrapper; the
 installed wrapper failed on this incremental build. `--lib` selects unit tests
 and does not run CLI integration contracts. Keep the full suite, real-model and
 shared-backend checks as completion gates. See the
-[measured workflow](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
+[measured workflow](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
 
-CI also runs the [labeled hybrid relevance matrix](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-shared-relevance.md)
+CI also runs the [labeled hybrid relevance matrix](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-shared-relevance.md)
 with explicitly installed models against local and shared Qdrant. The
 report retains historical measurements of the removed backends.
 The shared tests require their disposable backend endpoint and
@@ -261,7 +261,7 @@ prevent its final LLVM profile flush, so the contract's runtime checks do not
 guarantee that all child-process execution appears in the coverage report.
 Snapshot restoration stops all fixture writers and restores both group
 collections onto a fresh database after deleting the original database and
-volume. See the [backup scope](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md#quiescent-backup-and-restore).
+volume. See the [backup scope](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md#quiescent-backup-and-restore).
 
 Then run:
 
@@ -307,7 +307,7 @@ were removed with SQLite gold.
 CPU indexing reserves two workers for long embedding batches and allows short
 batches to use all eight workers. It preserves the dynamically quantized model's
 batch membership and vector generation. See the
-[indexing memory measurements](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-index-memory.md) for the
+[indexing memory measurements](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-index-memory.md) for the
 memory/throughput tradeoff and the manual worker-budget diagnostic. This is an
 inference workspace limit, not a total indexing memory limit.
 

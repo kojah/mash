@@ -86,7 +86,7 @@ text without newly reconstructed metadata. Follow the
 
 The HTTP service stores shared silver in SQLite and shared views in
 [Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env` and `qdrant_grpc_url_env`; there is no backend
-selector. See [shared storage](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/shared-storage.md)
+selector. See [shared storage](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/shared-storage.md)
 for the publication sequence, recovery and cutover from Qdrant-only servers.
 
 Each node has a different randomly generated token (at least 32 printable ASCII
@@ -150,7 +150,7 @@ serving. Replay uses local embedding model assets from `--models-dir`, in the
 same 384-dimensional space as publishers and search clients. Replay is the only shared views rebuild; nodes never re-embed
 shared history.
 Benchmark actual search latency, update cost, memory use, and retrieval
-quality for a group. See [the measured comparison](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-shared-index.md).
+quality for a group. See [the measured comparison](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-shared-index.md).
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
@@ -210,7 +210,7 @@ in each returned excerpt/message, so `PR 180` cannot be replaced by `PR 183`
 or an incidental numeric value of 180. PR and issue references remain distinct;
 a complete reference URL also constrains its host and repository.
 Use the metadata filters for Boolean scopes.
-See [the search quality audit](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/search-audit-2026-09-30.md) for measured failures
+See [the search quality audit](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/search-audit-2026-09-30.md) for measured failures
 and remaining relevance limitations.
 
 Chat retrieval considers up to 200 lexical and 200 semantic candidates per
@@ -401,7 +401,7 @@ TOML and start with `--activate-views --replay-views`, which re-embeds every nod
 shared silver on the API host. Old API settings fail closed, and dense search
 requires compatible manifests across the group. This preserves canonical history
 but interrupts dense search during replacement. See
-[the activation contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md#durable-shared-group-configuration)
+[the activation contract](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md#durable-shared-group-configuration)
 for publication races and remaining lifecycle gates.
 Embedding dimension changes retain the same group and canonical history. Mash
 prepares an additional named dense field in the existing collection, then the

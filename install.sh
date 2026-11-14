@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install the latest Mash release binary:
-#   curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/mashium/mash/main/install.sh | sh
 # Set MASH_VERSION (for example v0.8.0) to pin a release and MASH_INSTALL_DIR to
 # choose the directory (default ~/.local/bin). Verifies the release checksum.
 set -eu
@@ -13,7 +13,7 @@ case "${1:-}" in
   *) echo "mash: install.sh takes no arguments; set MASH_VERSION or MASH_INSTALL_DIR instead" >&2; exit 2 ;;
 esac
 
-repository=kojah/mash
+repository=mashium/mash
 directory=${MASH_INSTALL_DIR:-$HOME/.local/bin}
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) target=x86_64-unknown-linux-gnu ;;

@@ -68,8 +68,8 @@ the detail on saving and recall.
 files it edited. To do it yourself:
 
 ```sh
-claude plugin marketplace add kojah/mash && claude plugin install mash@mash
-codex plugin marketplace add kojah/mash && codex plugin add mash@mash
+claude plugin marketplace add mashium/mash && claude plugin install mash@mash
+codex plugin marketplace add mashium/mash && codex plugin add mash@mash
 ```
 
 Restart the agent afterwards. The plugin and the `mash` program are released

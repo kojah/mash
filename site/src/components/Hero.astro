@@ -14,7 +14,7 @@ const cargo = {
   id: "cargo",
   label: "Cargo",
   prompt: "$",
-  command: "cargo +stable install --locked --git https://github.com/kojah/mash mash",
+  command: "cargo +stable install --locked --git https://github.com/mashium/mash mash",
 };
 const brew = {
   id: "brew",
@@ -33,7 +33,7 @@ const script = {
   id: "script",
   label: "Script",
   prompt: "$",
-  command: "curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh",
+  command: "curl -fsSL https://raw.githubusercontent.com/mashium/mash/main/install.sh | sh",
 };
 const systems = [
   { id: "macos", label: "macOS", icon: "apple", methods: [script, brew, cargo] },
@@ -47,13 +47,14 @@ const systems = [
         id: "script",
         label: "PowerShell",
         prompt: ">",
-        command: "irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex",
+        command: "irm https://raw.githubusercontent.com/mashium/mash/main/install.ps1 | iex",
       },
       {
         id: "scoop",
         label: "Scoop",
         prompt: ">",
-        command: "scoop bucket add kojah https://github.com/kojah/mash; scoop install kojah/mash",
+        command:
+          "scoop bucket add mashium https://github.com/mashium/mash; scoop install mashium/mash",
       },
       cargo,
     ],

@@ -54,7 +54,7 @@ mod tests {
             "123",
             "voyage-code-4",
             "naïve vector search",
-            "https://github.com/kojah/mash/pull/180",
+            "https://github.com/mashium/mash/pull/180",
             "rust tokio-postgres redis-rs axum",
             "authentication authorization configuration",
             "configuration documentation migration",

@@ -263,7 +263,7 @@ while [ $# -gt 0 ]; do
   case "$1" in -o) out="$2"; shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac
 done
 case "$url" in
-  https://github.com/kojah/mash/releases/*) file="$HOME/.release-mirror/${url##*/}" ;;
+  https://github.com/mashium/mash/releases/*) file="$HOME/.release-mirror/${url##*/}" ;;
   *) echo "curl: (6) Could not resolve host: ${url#*://}" >&2; exit 6 ;;
 esac
 [ -f "$file" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }

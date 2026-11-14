@@ -31,7 +31,7 @@ after its readable summary. CLI output stays extended JSON.
 retained attachments offline, with a typed JSON manifest and checksums.
 `import_silver({"directory":"/path/to/new-export","database":"/path/to/new.sqlite3"})`
 imports to a fresh path and leaves views explicitly unready. It does not redirect
-the running MCP session or overwrite existing history. See [silver exports](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-exports.md)
+the running MCP session or overwrite existing history. See [silver exports](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-exports.md)
 for format, CLI commands, import/rebuild steps and data scope.
 
 Attachment discovery uses a message ID from `view` or search:

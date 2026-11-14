@@ -331,7 +331,7 @@ fn installation_claude_directory_marketplace_is_inspected_in_place() {
     assert_ne!(
         known(
             "directory",
-            serde_json::json!({"source":"github","repo":"kojah/mash"})
+            serde_json::json!({"source":"github","repo":"mashium/mash"})
         ),
         0
     );
@@ -529,7 +529,7 @@ fn installation_mcp_without_the_plugin_is_mcp_only_with_the_plugin_commands() {
     );
     assert!(
         action.contains(
-            "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
+            "claude plugin marketplace add mashium/mash && claude plugin install mash@mash"
         ),
         "{action}"
     );

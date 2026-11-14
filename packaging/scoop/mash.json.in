@@ -1,11 +1,11 @@
 {
     "version": "@VERSION@",
     "description": "Search your coding agents' past conversations from a CLI and MCP server",
-    "homepage": "https://github.com/kojah/mash",
+    "homepage": "https://github.com/mashium/mash",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/kojah/mash/releases/download/v@VERSION@/mash-x86_64-pc-windows-msvc.zip",
+            "url": "https://github.com/mashium/mash/releases/download/v@VERSION@/mash-x86_64-pc-windows-msvc.zip",
             "hash": "@SHA256:mash-x86_64-pc-windows-msvc.zip@"
         }
     },
@@ -15,7 +15,7 @@
     "autoupdate": {
         "architecture": {
             "64bit": {
-                "url": "https://github.com/kojah/mash/releases/download/v$version/mash-x86_64-pc-windows-msvc.zip"
+                "url": "https://github.com/mashium/mash/releases/download/v$version/mash-x86_64-pc-windows-msvc.zip"
             }
         },
         "hash": {

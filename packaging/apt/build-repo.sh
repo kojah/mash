@@ -33,7 +33,7 @@ Package: mash
 Version: $version
 Architecture: $arch
 Maintainer: kojah <mash-release@users.noreply.github.com>
-Homepage: https://github.com/kojah/mash
+Homepage: https://github.com/mashium/mash
 Section: utils
 Priority: optional
 Description: Search your coding agents' past conversations

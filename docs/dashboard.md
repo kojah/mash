@@ -21,7 +21,7 @@ A `cargo install --git` installation does not bundle the web interface. Build
 it once using [Node.js 24+](https://nodejs.org/en/download), pnpm, and Rust:
 
 ```sh
-git clone https://github.com/kojah/mash.git
+git clone https://github.com/mashium/mash.git
 cd mash
 npm install --global pnpm@11.28.5
 pnpm --dir dashboard install --frozen-lockfile

@@ -12,7 +12,7 @@ export function renderMarkdown(body: string, source: string, routes: ReadonlyMap
   visit(tree, (node) => {
     if (node.type !== "link" && node.type !== "image" && node.type !== "definition") return;
     if (/^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(node.url)) return;
-    const target = new URL(node.url, `https://github.com/kojah/mash/blob/main/${source}`);
+    const target = new URL(node.url, `https://github.com/mashium/mash/blob/main/${source}`);
     const file = path.posix.normalize(
       path.posix.join(path.posix.dirname(source), node.url.split(/[?#]/)[0] ?? ""),
     );

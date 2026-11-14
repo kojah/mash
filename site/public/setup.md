@@ -37,7 +37,7 @@ Skip this step if `mash --version` already prints a version.
 Check whether a release is published:
 
 ```sh
-curl -fsSL -o /dev/null -w '%{http_code}\n' https://github.com/kojah/mash/releases/latest/download/SHA256SUMS
+curl -fsSL -o /dev/null -w '%{http_code}\n' https://github.com/mashium/mash/releases/latest/download/SHA256SUMS
 ```
 
 If it prints `200`, install the prebuilt release.
@@ -45,13 +45,13 @@ If it prints `200`, install the prebuilt release.
 macOS (Apple silicon) or Linux (x86-64 or ARM64), including WSL:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kojah/mash/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/mashium/mash/main/install.sh | sh
 ```
 
 Windows x64, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/kojah/mash/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/mashium/mash/main/install.ps1 | iex
 ```
 
 Both install to the user's `.local/bin` directory and verify the release
@@ -63,7 +63,7 @@ source. This needs a stable Rust toolchain and takes several minutes; if
 `cargo` is missing, ask the person before installing Rust.
 
 ```sh
-cargo +stable install --locked --git https://github.com/kojah/mash mash
+cargo +stable install --locked --git https://github.com/mashium/mash mash
 ```
 
 Confirm:

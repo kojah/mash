@@ -13,7 +13,7 @@ use crate::AppError;
 pub(super) mod backfill;
 
 /// The plugin marketplace that `init` adds to agents unless told otherwise.
-pub const MARKETPLACE: &str = "kojah/mash";
+pub const MARKETPLACE: &str = "mashium/mash";
 const AGENT_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone)]

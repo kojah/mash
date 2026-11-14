@@ -162,7 +162,7 @@ a source fingerprint in place of its path, plus the provider, line, column and
 category. Neither includes record content or raw decoder error messages. Final-result diagnostics
 remain available when intermediate progress notifications are dropped.
 For a recovery checklist that preserves source records and existing index data,
-see [recovering incomplete indexing](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/index-recovery.md).
+see [recovering incomplete indexing](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/index-recovery.md).
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with
@@ -303,7 +303,7 @@ Scratch files use `TMPDIR` and are removed when their owner finishes or fails.
 Sensitive scratch SQLite stores use owner-only directories and files on Unix.
 Checksums detect corrupt staging before publication. Metadata still grows with
 message count, and some native adapters buffer their input before normalization.
-See the [large-history staging measurement](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-normalized-message-staging.md)
+See the [large-history staging measurement](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-normalized-message-staging.md)
 for the measured memory and disk-I/O tradeoff.
 
 Claude native ancestry spills to private scratch SQLite above a 2 MiB inline
@@ -318,11 +318,11 @@ a third private store with a 2 MiB inline accounting budget. Missing UUID slots,
 duplicate first positions and forward ancestry references remain exact.
 Reconciliation lineage, spool offsets, model workspaces and other adapters still
 have separate memory costs.
-The [ancestry staging measurement](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-02-claude-ancestry-staging.md)
+The [ancestry staging measurement](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-02-claude-ancestry-staging.md)
 records the whole-index memory reduction and indexing-time tradeoff.
-The [replay staging diagnostic](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-claude-replay-staging.md)
+The [replay staging diagnostic](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-claude-replay-staging.md)
 separately compares large compaction metadata with its previous in-memory rules.
-The [dialogue identity diagnostic](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-claude-dialogue-identities.md)
+The [dialogue identity diagnostic](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-claude-dialogue-identities.md)
 records its separate memory reduction and additional scratch-I/O cost.
 
 ## Provider history and identity
@@ -424,11 +424,11 @@ truncating histories. Canceling a streamed request wakes blocked body I/O; it
 does not preempt CPU parsing. Owned typed results and upstream frame buffers still
 consume memory. Large-history paging and owned-data budgets
 remain tracked in `mash-c0d.21.4`.
-See the [response decoding checks](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-decoding.md)
+See the [response decoding checks](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-decoding.md)
 for concurrency and relevance verification.
-The [response admission checks](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-admission.md)
+The [response admission checks](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-admission.md)
 cover queue expiry, cancellation, separate capacity and remaining memory limits.
-The [streaming control](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-streaming.md)
+The [streaming control](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-streaming.md)
 documents the large-state memory/parsing tradeoff and body cancellation checks.
 
 ## Additional provider formats
@@ -523,9 +523,9 @@ orphaned bubbles, simulated/agent-sent prompts and operational rows do not enter
 search prose. Older or unknown root versions fail explicitly. Each JSON record
 is limited to 8 MiB and 65,536 nodes; each chat has a 64 MiB read budget
 and 32 MiB retained-history budget. IDE and Agent identities remain distinct.
-Its [native storage contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ide-ingestion-contract.md) records the
+Its [native storage contract](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ide-ingestion-contract.md) records the
 fixture provenance and remaining captured-session validation gates.
-The [Cursor ingestion contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ingestion-contract.md)
+The [Cursor ingestion contract](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
 
 Antigravity is opt-in through `[providers.antigravity]`; `init` detects
@@ -554,7 +554,7 @@ step formats, SQL/protobuf disagreements, malformed timestamps and oversized
 input fail explicitly and preserve the previous index revision. Native workspace
 and Git-root URIs, or the app's workspace URI list, supply project/repository
 filters when unambiguous; app conversations outside a project have none. The
-[Antigravity contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/antigravity-ingestion-contract.md) records native
+[Antigravity contract](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/antigravity-ingestion-contract.md) records native
 writer/fork evidence and remaining real UI, successful rewind, CLI/Hub and
 cross-version validation gates. These limits do not establish aggregate RSS.
 
@@ -586,6 +586,6 @@ Codex JSONL histories include raw response records and completed `UserMessage` /
 `AgentMessage` turn items. Nearby raw/completed counterparts are paired once;
 unmatched dialogue and separate repeated requests are retained. Started items,
 streaming deltas and legacy event mirrors are omitted. See the
-[native Codex contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/codex-ingestion-contract.md) for migration fixtures
+[native Codex contract](https://github.com/mashium/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/codex-ingestion-contract.md) for migration fixtures
 and reconciliation limits. Search does not migrate or ingest. Refresh compatible indexes explicitly with
 `mash index`; see [upgrades](../upgrades.md) for cross-release changes.

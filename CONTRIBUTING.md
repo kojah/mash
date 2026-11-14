@@ -4,7 +4,7 @@ Bug reports, fixes and documentation improvements are welcome.
 
 ## Report a problem
 
-Open an [issue](https://github.com/kojah/mash/issues/new/choose) with the Mash
+Open an [issue](https://github.com/mashium/mash/issues/new/choose) with the Mash
 version (`mash --version`), your platform, the command you ran and what
 happened. `mash status` output helps for setup and indexing problems.
 
@@ -26,7 +26,7 @@ You need the Rust nightly toolchain that `rust-toolchain.toml` selects,
 [cargo-nextest](https://nexte.st), and Node.js 24 with pnpm for the dashboard.
 
 ```sh
-git clone https://github.com/kojah/mash.git
+git clone https://github.com/mashium/mash.git
 cd mash
 cargo build
 cargo fmt --check
