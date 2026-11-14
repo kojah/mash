@@ -297,7 +297,7 @@ tests at the same time, as two `agent-test` jobs, and reports both; do not wrap
 it in `agent-test` yourself. It builds and runs the unit tests of one crate: `mash-app` by default, or the
 one `PACKAGE` names (`PACKAGE=mash-dash`, `mash-silver`, `mash-model`, `mash`,
 or `all`). Name the crate the change and its tests are in: a dashboard edit
-with `PACKAGE=mash-dash` takes about 13 seconds, and a filter that matches no
+with `PACKAGE=mash-dash` takes about 9 seconds and no crate more than about 21, and a filter that matches no
 test in the chosen crate fails. Add `TARGETS=all`,
 or name a binary in the filter such as `binary(cli_contract)`, when the change
 touches the CLI contract or another integration target; do so for public CLI/MCP

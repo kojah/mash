@@ -123,42 +123,27 @@ The test build compiles one crate and the ones below it: `mash-app` unless
 `PACKAGE` names another, or `all`. A filter that matches no test in that crate
 fails, so a wrong `PACKAGE` is not silent. Asking for integration targets
 builds every crate unless `PACKAGE` names one. Clippy always checks the whole
-workspace. `PACKAGE=all` costs about twice as much after a library edit (63 s
-against 32 s), because the crates above the library then need it compiled a
-second time, without its tests. After `mash-silver` was split out, a
-one-line edit there rebuilt and ran its tests in about 2 s (20 s for the loop,
-nearly all of it Clippy over the workspace). With the dashboard in
-`mash-dash`, the edit the first table measures
-(`make iterate FOCUS='test(assistant)' PACKAGE=mash-dash`) takes 12.5–14 s
-instead of about 80 s: nothing below the dashboard is rebuilt. An edit in
-`mash-app` still rebuilds that crate and everything above it, about 35–50 s.
+workspace.
 
-`make iterate` builds only unit-test binaries unless `TARGETS=all` is given or
-the filter names a binary (`binary(cli_contract)`). A dashboard-only
-change needs none of these: `pnpm dev` in `dashboard/` serves the front end
-against a running `mash dash`.
+With the crate split complete, the same one-line edit and `make iterate` with
+the crate named (warm caches, November 2026) take:
 
-Measured on Xenia in November 2026 for a one-line edit in
-`app/dash/assistant.rs` (now `crates/mash-dash/src/assistant.rs`), warm caches, four Cargo jobs under `agent-test`, no
-other builds running (logs in `mash-artifacts/build-speed/`):
+| Edit in | Loop | Of which test build |
+| --- | --- | --- |
+| `mash-dash` | 9 s | 4 s |
+| `mash-mcp` | 11 s | 4 s |
+| `mash-server` | 12 s | 6 s |
+| `mash-app` | 21 s | 11 s |
+| `mash-sync` | 11 s | 8 s |
+| `mash-search` | 15 s | 8 s |
+| `mash-storage` | 16 s | 3 s |
+| `mash-silver` | 21 s | 5 s |
+| `mash-model` | 15 s | 1 s |
 
-| Step | Time |
-| --- | --- |
-| `cargo clippy --all-targets` | 20–26 s |
-| Test build, all targets (previous `make iterate`) | 55–57 s, 6.0 GiB peak |
-| Test build, library tests only (current `make iterate`) | 35–42 s, 3.2–4.0 GiB peak |
-| Debug `mash`, incremental (`make dev-build`) | 24–28 s |
-| Debug `mash`, raw `cargo build-clif` under the machine-wide Cargo settings | 88 s |
-| Whole `make iterate`, all targets, Clippy then tests (original) | about 80 s |
-| Whole `make iterate`, library tests, Clippy then tests | 68–71 s |
-| Whole `make iterate`, library tests, Clippy beside tests (current) | 56–58 s with Clippy waiting for a slot; the test build alone is 36–41 s |
-
-`make iterate` checks formatting first, then runs Clippy and the test build at
-the same time and prints Clippy's output after the tests, so one loop reports
-both lint and test failures. Clippy has its own target directory
-(`clippy/` under the development target) because Cargo locks a target
-directory for a whole build. Each runs as its own `agent-test` job, so a loop
-takes two of the four shared slots; in one job they would pass its memory limit.
+Before the split every one of these was the single-crate loop in the first
+table. In the lower crates the test build is now a few seconds and the rest is
+Clippy rechecking every crate above the edit. `PACKAGE=all` builds every
+crate's unit tests and costs about a minute.
 
 What the time is made of:
 
