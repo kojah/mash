@@ -187,6 +187,10 @@ HTML, including tool output. **Export to PDF** opens a printable copy; choose
 For a stable copy, wait for indexing to finish first. Downloaded transcripts
 may contain sensitive information.
 
+Each chat has its own address, `http://127.0.0.1:8790/#/chat/<chat id>`.
+With the [plugin](plugin.md), `/mash:export` finds the chat you mean and
+opens it there.
+
 ## Export many chats at once
 
 Open **chats**, then **export**. Narrow the list with the agent, machine,
