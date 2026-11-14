@@ -3782,10 +3782,12 @@ body:has(#mashy-fab) #main {
    the circle hides under it. */
 @media (max-width: 700px), (max-height: 500px) {
   #mashy {
-    inset: 0;
+    /* The visible part of the screen, which a keyboard makes shorter; the
+       component keeps these two up to date. */
+    inset: var(--seen-top, 0px) 0 auto;
     width: auto;
     max-width: none;
-    height: auto;
+    height: var(--seen-height, 100dvh);
     max-height: none;
     border: 0;
     border-radius: 0;
@@ -3812,7 +3814,7 @@ body:has(#mashy-fab) #main {
     background: var(--raised);
   }
   #mashy.fresh {
-    height: auto;
+    height: var(--seen-height, 100dvh);
     max-height: none;
   }
   #mashy > header button {

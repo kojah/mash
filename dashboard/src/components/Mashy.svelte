@@ -97,6 +97,26 @@ async function close(): Promise<void> {
 // was left is remembered for this browser; a double click puts it back.
 const PLACE = "mashy.place";
 let panel = $state<HTMLElement>();
+// A phone's keyboard shrinks what is visible without resizing the page, and
+// the browser scrolls a fixed sheet's top out of sight to show the field.
+// The sheet follows the visible part of the screen instead, so its top bar
+// stays at the top and the question box sits on the keyboard.
+$effect(() => {
+  const sheet = panel;
+  const seen = window.visualViewport;
+  if (!sheet || !seen) return;
+  const follow = (): void => {
+    sheet.style.setProperty("--seen-top", `${seen.offsetTop}px`);
+    sheet.style.setProperty("--seen-height", `${seen.height}px`);
+  };
+  follow();
+  seen.addEventListener("resize", follow);
+  seen.addEventListener("scroll", follow);
+  return () => {
+    seen.removeEventListener("resize", follow);
+    seen.removeEventListener("scroll", follow);
+  };
+});
 let moved = $state(placed());
 let grip: { x: number; y: number; left: number; top: number } | undefined;
 function placed(): { x: number; y: number } {
