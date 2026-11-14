@@ -517,24 +517,30 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Save up to 64 candidate records from one reviewed local chat in a single transaction, with its review checkpoint. Pass source_fingerprint from get_extraction_checkpoint; a changed chat rejects the whole batch. Every citation must be in that chat. An empty batch records a review with no conclusions. Saves candidates only: nothing is established, superseded or confirmed. Reuse operation_id to retry; on_duplicate=reuse must be explicit in each draft."
+        description = "Save up to 64 candidate records from one reviewed local chat in a single transaction, with its review checkpoint. Pass source_fingerprint from get_extraction_checkpoint; a changed chat rejects the whole batch. Every citation must be in that chat. An empty batch records a review with no conclusions. Each candidate carries its fields at its own top level: kind, state, statement, recorded_by, evidence. Saves candidates only: nothing is established, superseded or confirmed. Reuse operation_id to retry; on_duplicate=reuse must be explicit in each draft."
     )]
     async fn extract_records(
         &self,
-        Parameters(input): Parameters<crate::records::extraction::Request>,
+        Parameters(input): Parameters<record::Extract>,
     ) -> CallToolResult {
-        self.perform(Operation::ExtractRecords(input)).await
+        match input.request() {
+            Ok(request) => self.perform(Operation::ExtractRecords(request)).await,
+            Err(error) => tool_result(Err(error)),
+        }
     }
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Before creating a record, find existing local ones like it in the same exact scope and kind: up to eight exact or word-overlap suggestions from 256 recent candidates (scan_limited and truncated say when more exist). Similar wording is not agreement: read the evidence before revising or superseding. Never writes."
+        description = "Before creating a record, find existing local ones like it in the same exact scope and kind: pass its scope and its fields (kind, state, statement, recorded_by) at the top level for up to eight exact or word-overlap suggestions from 256 recent candidates (scan_limited and truncated say when more exist). Similar wording is not agreement: read the evidence before revising or superseding. Never writes."
     )]
     async fn find_record_matches(
         &self,
-        Parameters(input): Parameters<crate::records::matches::Request>,
+        Parameters(input): Parameters<record::Find>,
     ) -> CallToolResult {
-        self.perform(Operation::RecordMatches(input)).await
+        match input.request() {
+            Ok(request) => self.perform(Operation::RecordMatches(request)).await,
+            Err(error) => tool_result(Err(error)),
+        }
     }
 
     #[tool(

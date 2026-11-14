@@ -233,15 +233,27 @@ history.
 </details>
 
 <details class="mash-tool read" id="tool-find_record_matches">
-<summary><span class="badge">READ</span><code>find_record_matches</code><span class="about">Before creating a record, find existing local ones like it in the same exact scope and kind: up to eight exact or word-overlap suggestions from 256 recent candidates (scan_limited and truncated say when more exist).</span></summary>
+<summary><span class="badge">READ</span><code>find_record_matches</code><span class="about">Before creating a record, find existing local ones like it in the same exact scope and kind: pass its scope and its fields (kind, state, statement, recorded_by) at the top level for up to eight exact or word-overlap suggestions from 256 recent candidates (scan_limited and truncated say when more exist).</span></summary>
 <ul>
 <li>Similar wording is not agreement: read the evidence before revising or superseding.</li>
 <li>Never writes.</li>
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>body</code><small>object</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about">repository needs identity. local_project needs path. chat needs id.</span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about">Where the record would apply; matches are in this exact scope.</span></div>
+<div class="param"><span class="name"><code>alternatives</code><small>list of text</small></span><span class="about">For a decision: the options that were not chosen.</span></div>
+<div class="param"><span class="name"><code>conditions</code><small>list of text</small></span><span class="about">For a preference: when it applies.</span></div>
+<div class="param"><span class="name"><code>consequences</code><small>list of text</small></span><span class="about">For a decision: what follows from it.</span></div>
+<div class="param"><span class="name"><code>decided_by</code><small>one of <code>user</code>, <code>agent</code></small></span><span class="about">For a decision: omit for the person's decision; agent for a choice the agent made.</span></div>
+<div class="param"><span class="name"><code>effective_at</code><small>whole number</small></span><span class="about">When the choice or claim applied, in Unix milliseconds, when known.</span></div>
+<div class="param"><span class="name"><code>kind</code><small>one of <code>decision</code>, <code>preference</code>, <code>fact</code></small></span><span class="about">decision, preference or fact.</span></div>
+<div class="param"><span class="name"><code>rationale</code><small>text</small></span><span class="about">Why, when known.</span></div>
+<div class="param"><span class="name"><code>recorded_by</code><small>text</small></span><span class="about">Who is recording, such as the agent's name. Attribution supplied by the caller, not authenticated human identity.</span></div>
+<div class="param"><span class="name"><code>reported_by</code><small>text</small></span><span class="about">For a fact: who reported it.</span></div>
+<div class="param"><span class="name"><code>review</code><small>one of <code>candidate</code>, <code>established</code></small></span><span class="about">candidate (default) or established.</span></div>
+<div class="param"><span class="name"><code>state</code><small>one of <code>proposed</code>, <code>accepted</code>, <code>active</code>, <code>current</code>, <code>superseded</code>, <code>withdrawn</code>, <code>retracted</code></small></span><span class="about">decision: proposed, accepted, superseded, withdrawn. preference: active, superseded, withdrawn. fact: current, superseded, retracted.</span></div>
+<div class="param"><span class="name"><code>statement</code><small>text</small></span><span class="about">The decision, preference or fact itself, in a sentence or two.</span></div>
+<div class="param"><span class="name"><code>valid_until</code><small>whole number</small></span><span class="about">For a fact: when it stops holding, in Unix milliseconds.</span></div>
 </div>
 </details>
 
@@ -267,16 +279,17 @@ history.
 <li>Pass source_fingerprint from get_extraction_checkpoint; a changed chat rejects the whole batch.</li>
 <li>Every citation must be in that chat.</li>
 <li>An empty batch records a review with no conclusions.</li>
+<li>Each candidate carries its fields at its own top level: kind, state, statement, recorded_by, evidence.</li>
 <li>Saves candidates only: nothing is established, superseded or confirmed.</li>
 <li>Reuse operation_id to retry; on_duplicate=reuse must be explicit in each draft.</li>
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>chat_id</code><small>text</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>records</code><small>list of object</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about">repository needs identity. local_project needs path. chat needs id.</span></div>
-<div class="param"><span class="name"><code>source_fingerprint</code><small>text</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>chat_id</code><small>text</small><b>required</b></span><span class="about">The reviewed chat; every citation must be in it.</span></div>
+<div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about">A stable ID for this batch, so a retry is safe.</span></div>
+<div class="param"><span class="name"><code>records</code><small>list of object</small><b>required</b></span><span class="about">The candidates, each with a record's fields at its own top level. Empty records a review with no conclusions.</span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about">Where the records apply.</span></div>
+<div class="param"><span class="name"><code>source_fingerprint</code><small>text</small><b>required</b></span><span class="about">From <code>get_extraction_checkpoint</code>; a changed chat rejects the batch.</span></div>
 </div>
 </details>
 

@@ -28,7 +28,7 @@ async fn native_records_sdk_extraction_checkpoint_and_writer_admission() {
     assert_ne!(state.is_error, Some(true), "{state:?}");
     let state = state.structured_content.unwrap();
     assert_eq!(state["up_to_date"], false);
-    let request = json!({"operation_id":"sdk-extraction","scope":inspect["scope"],"chat_id":inspect["chat_id"],"source_fingerprint":state["source_fingerprint"],"records":[{"body":{"statement":"Use Qdrant","review":"candidate","recorded_by":"test agent","details":{"kind":"decision","state":"proposed"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}]});
+    let request = json!({"operation_id":"sdk-extraction","scope":inspect["scope"],"chat_id":inspect["chat_id"],"source_fingerprint":state["source_fingerprint"],"records":[{"statement":"Use Qdrant","review":"candidate","recorded_by":"test agent","kind":"decision","state":"proposed","evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}]});
     let guard = crate::storage::admission::acquire(&database).unwrap();
     let capture = call(
         "get_record_capture",
@@ -87,13 +87,12 @@ async fn native_records_sdk_duplicate_suggestions_and_explicit_reuse() {
             CallToolRequestParams::new(name).with_arguments(args.as_object().unwrap().clone()),
         )
     };
-    let body = json!({"statement":"Use Qdrant","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}});
     let scope = json!({"kind":"chat","id":"decision-thread"});
     let mut request = json!({"operation_id":"first","action":"create","scope":scope,"statement":"Use Qdrant","review":"established","recorded_by":"test agent","kind":"decision","state":"accepted","evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]});
     let created = call("record", request.clone()).await.unwrap();
     assert_ne!(created.is_error, Some(true), "{created:?}");
     let receipt = created.structured_content.unwrap();
-    let matches = call("find_record_matches", json!({"scope":scope,"body":body}))
+    let matches = call("find_record_matches", json!({"scope":scope,"statement":"Use Qdrant","review":"established","recorded_by":"test agent","kind":"decision","state":"accepted"}))
         .await
         .unwrap();
     assert_ne!(matches.is_error, Some(true), "{matches:?}");
