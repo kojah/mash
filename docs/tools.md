@@ -31,7 +31,7 @@ history.
 <div class="param"><span class="name"><code>days</code><small>whole number</small></span><span class="about">Only messages from the last this many days.</span></div>
 <div class="param"><span class="name"><code>detail</code><small>one of <code>compact</code>, <code>extended</code></small></span><span class="about">compact (default) returns bounded excerpts; extended includes full hits and scores. <small>Default <code>compact</code>.</small></span></div>
 <div class="param"><span class="name"><code>diagnostics</code><small>true or false</small></span><span class="about">Include resolved retrieval policy, source outcomes and core timing.</span></div>
-<div class="param"><span class="name"><code>intent</code><small>one of <code>related-discussion</code>, <code>exact-mention</code></small></span><span class="about">exact-mention (by words) or related-discussion (by meaning); omitted uses the configured default, exact-mention unless changed. related-discussion: By meaning, for a question or a topic; uses the query models. exact-mention: By words: every query word in any order, or a "quoted" phrase; no models.</span></div>
+<div class="param"><span class="name"><code>intent</code><small>one of <code>related-discussion</code>, <code>exact-mention</code></small></span><span class="about">exact-mention (by words) or related-discussion (by meaning); omitted uses the configured default, exact-mention unless changed.</span></div>
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about">Results per page, from 1 to 200; omitted uses the configured default (20).</span></div>
 <div class="param"><span class="name"><code>local</code><small>true or false</small></span><span class="about">Search only this machine's index.</span></div>
 <div class="param"><span class="name"><code>match_mode</code><small>one of <code>strict</code>, <code>prefix</code>, <code>typo</code>, <code>flexible</code></small></span><span class="about">flexible (default) enables prefix and typo matching; strict preserves literals. <small>Default <code>flexible</code>.</small></span></div>
@@ -42,7 +42,7 @@ history.
 <div class="param"><span class="name"><code>repository</code><small>list of text</small></span><span class="about">Exact Git origin URL; repeat for alternatives.</span></div>
 <div class="param"><span class="name"><code>role</code><small>list of text</small></span><span class="about">Who wrote the message, such as user or assistant; omitted or empty selects all.</span></div>
 <div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Also search the shared index.</span></div>
-<div class="param"><span class="name"><code>sort</code><small>one of <code>relevance</code>, <code>recent</code></small></span><span class="about">relevance (default) or recent: newest first within each page of relevant results. relevance: Most relevant first, with newer messages favoured among comparable ones. recent: Newest first within the returned page; a chat sorts by its latest matching message. <small>Default <code>relevance</code>.</small></span></div>
+<div class="param"><span class="name"><code>sort</code><small>one of <code>relevance</code>, <code>recent</code></small></span><span class="about">relevance (default) or recent: newest first within each page of relevant results. <small>Default <code>relevance</code>.</small></span></div>
 <div class="param"><span class="name"><code>unit</code><small>one of <code>chats</code>, <code>messages</code></small></span><span class="about">chats (default) or messages.</span></div>
 </div>
 </details>
@@ -143,12 +143,13 @@ history.
 <li>Pass operation_id so a retry is safe, and the expected revision when editing.</li>
 <li>Link marks two established, current records in one scope as supports or contradicts.</li>
 <li>Forget removes every revision.</li>
+<li>Shape of a create: {operation_id, change: {action: "create", scope: {kind, ...}, body: {statement, recorded_by, review, details: {kind, state}}, evidence: [{quote, message_id or session_id}]}}.</li>
 <li>Call help with topic=records for the rules.</li>
 </ul>
 <p class="none">Changes or removes stored data.</p>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>change</code><small>object (<code>Change</code>)</small><b>required</b></span><span class="about">What to do; <code>action</code> decides which of the other fields apply.</span></div>
+<div class="param"><span class="name"><code>change</code><small>object</small><b>required</b></span><span class="about">What to do; <code>action</code> decides which of the other fields apply.</span></div>
 <div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about">A stable ID for this change, here at the top level beside <code>change</code>, so a retry is safe.</span></div>
 </div>
 </details>

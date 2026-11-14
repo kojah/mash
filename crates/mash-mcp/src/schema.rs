@@ -8,42 +8,35 @@
 //! against the full typed models when a tool is called.
 use serde_json::{Map, Value};
 
-/// A definition this short is clearer written where it is used.
-const SMALL: usize = 90;
-
-/// `schema` with the validator-only parts removed and small or single-use
-/// definitions written in place.
+/// `schema` with the validator-only parts removed, alternatives told apart
+/// by a constant made one object, and every definition written where it is
+/// used. A model follows a schema it can read top to bottom better than one
+/// that sends it elsewhere for each part, and after flattening, writing them
+/// out is no longer than sharing them.
 pub(super) fn plain(schema: &Map<String, Value>) -> Map<String, Value> {
-    let Value::Object(mut schema) = strip(Value::Object(schema.clone())) else {
+    let stripped = strip(Value::Object(schema.clone()));
+    let Value::Object(mut schema) = flatten(stripped.clone()) else {
         return schema.clone();
     };
-    let stripped = schema.clone();
-    // Inlining one definition can leave another used once.
+    // Each round writes out the definitions that refer to no other, which
+    // leaves those that named them referring to none.
     for _ in 0..8 {
-        let definitions = match schema.get("$defs") {
-            Some(Value::Object(definitions)) => definitions.clone(),
+        let leaves: Map<String, Value> = match schema.get("$defs") {
+            Some(Value::Object(definitions)) => definitions
+                .iter()
+                .filter(|(_, definition)| !definition.to_string().contains("\"#/$defs/"))
+                .map(|(name, definition)| (name.clone(), definition.clone()))
+                .collect(),
             _ => break,
         };
-        let text = Value::Object(schema.clone()).to_string();
-        let inlined: Map<String, Value> = definitions
-            .iter()
-            .filter(|(name, definition)| {
-                let own = definition.to_string();
-                let uses = text.matches(&reference(name)).count();
-                // Only one that refers to no other: those it names are written
-                // into it first, a round earlier, and a ring is never reached.
-                !own.contains("\"#/$defs/") && (uses == 1 || own.len() < SMALL)
-            })
-            .map(|(name, definition)| (name.clone(), definition.clone()))
-            .collect();
-        if inlined.is_empty() {
+        if leaves.is_empty() {
             break;
         }
-        let Value::Object(mut next) = inline(Value::Object(schema), &inlined) else {
+        let Value::Object(mut next) = inline(Value::Object(schema), &leaves) else {
             unreachable!("inlining keeps an object an object")
         };
         if let Some(Value::Object(definitions)) = next.get_mut("$defs") {
-            definitions.retain(|name, _| !inlined.contains_key(name));
+            definitions.retain(|name, _| !leaves.contains_key(name));
         }
         schema = next;
     }
@@ -54,13 +47,18 @@ pub(super) fn plain(schema: &Map<String, Value>) -> Map<String, Value> {
             schema.remove("$defs");
         }
     }
-    // Definitions that name each other in a ring cannot be written in place.
-    if dangling(&schema) {
-        return stripped;
+    // Written out, alternatives that were only references can be told apart.
+    if let Value::Object(flat) = flatten(Value::Object(schema.clone())) {
+        schema = flat;
     }
-    let Value::Object(schema) = flatten(Value::Object(schema)) else {
-        return stripped;
-    };
+    // Definitions that name themselves or each other stay shared; if any
+    // reference lost its target, publish the schema as it was.
+    if dangling(&schema) {
+        return match stripped {
+            Value::Object(stripped) => stripped,
+            _ => schema,
+        };
+    }
     schema
 }
 
@@ -501,10 +499,14 @@ mod tests {
             "$defs": {"Body": body, "Details": {"type": "object", "description": "y".repeat(120)}}
         }));
         assert_eq!(
-            schema["$defs"]["Body"]["properties"]["details"]["type"],
+            schema["properties"]["first"]["properties"]["details"]["type"],
             "object"
         );
-        assert!(schema["$defs"].get("Details").is_none());
+        assert_eq!(
+            schema["properties"]["first"],
+            schema["properties"]["second"]
+        );
+        assert!(schema.get("$defs").is_none());
     }
 
     #[test]
@@ -521,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn a_large_definition_used_twice_stays_shared_and_one_that_names_itself_is_left_alone() {
+    fn every_definition_is_written_in_place_except_one_that_names_itself() {
         let body = json!({"type": "object", "description": "x".repeat(120), "properties": {"statement": {"type": "string"}}});
         let schema = reduced(&json!({
             "type": "object",
@@ -536,15 +538,13 @@ mod tests {
                 "Unused": {"type": "string"}
             }
         }));
-        assert_eq!(
-            schema["properties"]["first"],
-            json!({"$ref": "#/$defs/Body"})
-        );
+        assert_eq!(schema["properties"]["first"], body);
+        assert_eq!(schema["properties"]["second"], body);
         assert_eq!(
             schema["properties"]["tree"],
             json!({"$ref": "#/$defs/Tree"})
         );
-        assert!(schema["$defs"].get("Body").is_some() && schema["$defs"].get("Tree").is_some());
-        assert!(schema["$defs"].get("Unused").is_none());
+        assert!(schema["$defs"].get("Tree").is_some());
+        assert!(schema["$defs"].get("Body").is_none() && schema["$defs"].get("Unused").is_none());
     }
 }

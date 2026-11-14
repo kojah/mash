@@ -35,8 +35,10 @@ pub enum Direction {
 #[serde(default, deny_unknown_fields)]
 pub struct Request {
     #[arg(long)]
+    #[serde(deserialize_with = "crate::search_filter::one_or_many")]
     pub provider: Vec<Provider>,
     #[arg(long)]
+    #[serde(deserialize_with = "crate::search_filter::one_or_many")]
     pub node: Vec<String>,
     /// Literal substring, ASCII case insensitive; no wildcard syntax. Omit when unused;
     /// supplied text must be nonempty, at most 4096 bytes, without control characters.
