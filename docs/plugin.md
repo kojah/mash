@@ -1,7 +1,7 @@
 # The Mash plugin for Claude Code and Codex
 
 The plugin is what makes an agent use Mash without being told to. It adds
-eleven skills, their slash commands, and hooks that bring earlier work into a session
+twelve skills, their slash commands, and hooks that bring earlier work into a session
 and keep the index current. `mash init` installs it for each agent it
 connects; this page says what you get and how to control it.
 
@@ -16,7 +16,8 @@ for them by name.
 | `remember` | `/mash:remember what to keep` | pick the `remember` skill, or say "remember this" | Saves a decision, preference or fact to [memory](records.md), with your words as the evidence. With nothing after it, saves the latest decision in the conversation. |
 | `resume` | `/mash:resume` | pick the `resume` skill, or ask "where did we leave off?" | Reads this project's most recent chats, from every agent and machine, and tells you what was in progress, what was left open and what was decided. |
 | `handoff` | `/mash:handoff` | pick the `handoff` skill, or say "hand this off" | Writes a brief of the session into the conversation: goal, what is done, what is half done, decisions and the next step. `resume` finds it from any agent or machine once the chat is indexed. |
-| `recall` | `/mash:recall a topic` | pick the `recall` skill, or ask "what does Mash remember about…?" | Shows the [memory](records.md) records for a topic or this project, with where each came from. Ask it to review memory to see unconfirmed and conflicting ones. |
+| `recall` | `/mash:recall a topic` | pick the `recall` skill, or ask "what does Mash remember about…?" | Shows the [memory](records.md) records for a topic or this project, with where each came from. It tells you when records need review. |
+| `review` | `/mash:review` | pick the `review` skill, or say "review Mash memory" | Goes through the memory records that need a decision from you, a few at a time: ones an agent saved without your confirmation, stale ones and conflicting pairs. You keep, fix, withdraw, remove or skip each. |
 | `forget` | `/mash:forget what to remove` | pick the `forget` skill, or ask explicitly to forget or delete something Mash stored | Finds one memory record or indexed chat, shows exactly what would go, and removes it only after you say yes. Offers to correct a wrong record instead of deleting it. |
 | `standup` | `/mash:standup`, or `/mash:standup this week` | pick the `standup` skill, or ask "what did I work on yesterday?" | Summarises your work over a period, grouped by project, across agents and machines. With nothing after it, covers the previous working day. |
 | `why` | `/mash:why a file or decision` | pick the `why` skill, or ask "why is this done this way?" | Explains why a file, setting or design choice is the way it is: from saved decisions first, then from the conversations where it was discussed, with quotes. |
