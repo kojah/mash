@@ -59,6 +59,17 @@ const systems = [
     ],
   },
 ];
+// Each install method's mark, by its id, or by system and id where one
+// system's differs. apt and Scoop have no mark in the
+// icon set, so they share the download arrow.
+const methodIcons = {
+  script: "seti:shell",
+  "windows:script": "seti:powershell",
+  brew: "homebrew",
+  apt: "download",
+  scoop: "download",
+  cargo: "seti:rust",
+} as const;
 // Without scripting the page shows the macOS and Linux script.
 const first = script;
 ---
@@ -100,6 +111,13 @@ const first = script;
             }
           </div>
           <div class="choice" role="group" aria-label="Install method" data-pick="method"></div>
+          {
+            Object.entries(methodIcons).map(([id, name]) => (
+              <template data-method-icon={id}>
+                <Icon name={name} size="0.9375rem" />
+              </template>
+            ))
+          }
         </div>
         <div class="command picked">
           <span class="prompt" aria-hidden="true">{first.prompt}</span>

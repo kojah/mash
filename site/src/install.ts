@@ -105,7 +105,13 @@ export function mountInstall(picker: HTMLElement): void {
         const button = document.createElement("button");
         button.type = "button";
         button.value = candidate.id;
-        button.textContent = candidate.label;
+        const marked = (key: string) =>
+          picker.querySelector<HTMLTemplateElement>(
+            `template[data-method-icon="${CSS.escape(key)}"]`,
+          );
+        const icon = marked(`${system.id}:${candidate.id}`) ?? marked(candidate.id);
+        if (icon) button.append(icon.content.cloneNode(true));
+        button.append(candidate.label);
         button.setAttribute("aria-pressed", String(candidate.id === method.id));
         return button;
       }),

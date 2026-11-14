@@ -109,11 +109,6 @@ h4 {
   justify-content: center;
   gap: 0.5rem;
 }
-@media (min-width: 50rem) {
-  .hero .actions {
-    justify-content: flex-start;
-  }
-}
 .hero .sl-link-button {
   justify-content: center;
   font-weight: 600;
