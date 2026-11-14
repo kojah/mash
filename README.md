@@ -176,12 +176,15 @@ Where each agent's history has been indexed and searched so far:
 | GitHub Copilot | Light use | Light use | Recorded history only |
 | OpenCode | Recorded history only | Light use | Simulated in CI |
 | Antigravity | Recorded history only | Light use | Recorded history only |
-| Cursor | Recorded history only | Not yet tested | Recorded history only |
+| Cursor | Recorded history only | Partial | Recorded history only |
 
 - **Daily use:** hundreds of real chats from an installed agent on that system.
 - **Light use:** fewer than twenty real chats from an installed agent on that system.
 - **Simulated in CI:** every push indexes a history written the way the agent
   writes it on that system, while it is being written.
+- **Partial:** chats from Cursor's command-line agent read correctly from a real
+  installation. Chats made in the Cursor editor are not read yet when they were
+  saved by an older Cursor version.
 - **Recorded history only:** the reader is tested on every push against history
   in the agent's format, but no installed copy has been indexed on that system.
 
