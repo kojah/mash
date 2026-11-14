@@ -2,7 +2,7 @@
 # Disposable process/lifecycle fixtures; never invokes the real systemctl.
 set -euo pipefail
 repository=$(cd "$(dirname "$0")/.." && pwd)
-fixture_schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
+fixture_schema=$(sed -nE 's/^pub(\([a-z]+\))? const SCHEMA_VERSION: i64 = ([0-9]+);$/\2/p' "$repository/app/storage/schema.rs")
 [[ $fixture_schema =~ ^[1-9][0-9]*$ ]]
 export TEST_SYSTEMD_SCHEMA=$fixture_schema
 fixture_baseline=$(sed -nE 's/^const BASELINE: i64 = ([0-9]+);$/\1/p' "$repository/app/storage/schema.rs")
