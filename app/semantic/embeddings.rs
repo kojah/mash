@@ -45,16 +45,7 @@ pub(crate) struct EmbeddingSummary {
     pub(crate) remote_milliseconds: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct EmbeddingProgress {
-    pub(crate) stored_vectors: u64,
-    pub(crate) total_vectors: u64,
-    pub(crate) model_inferences: u64,
-    pub(crate) reused_vectors: u64,
-    pub(crate) elapsed_milliseconds: u64,
-    pub(crate) stored_vectors_per_second: f64,
-    pub(crate) eta_seconds: Option<u64>,
-}
+pub(crate) use crate::progress::EmbeddingProgress;
 
 impl EmbeddingPool {
     /// Offline label experiment: retain document batches, isolate label inputs.

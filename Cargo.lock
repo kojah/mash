@@ -1818,6 +1818,7 @@ dependencies = [
  "mash-fleet",
  "mash-model",
  "mash-query",
+ "mash-silver",
  "notify",
  "ort",
  "predicates",
@@ -1878,12 +1879,14 @@ dependencies = [
  "blake3",
  "clap",
  "directories",
+ "indicatif",
  "regex",
  "rusqlite",
  "schemars",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "url",
 ]
 
@@ -1893,6 +1896,27 @@ version = "0.1.0"
 dependencies = [
  "url",
  "whatlang",
+]
+
+[[package]]
+name = "mash-silver"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "blake3",
+ "chrono",
+ "hex",
+ "mash-model",
+ "prost",
+ "rusqlite",
+ "same-file",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tracing",
+ "walkdir",
 ]
 
 [[package]]

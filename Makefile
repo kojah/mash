@@ -9,7 +9,10 @@ DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local
 # `make iterate` builds library unit tests only; TARGETS=all adds the CLI
 # contract test, both executables and the example. It runs Clippy and the test
 # build at the same time, each as its own $(DEV_RUN) job.
+# PACKAGE=mash-silver builds and runs only that crate's tests; Clippy still
+# covers the workspace.
 TARGETS ?= lib
+PACKAGE ?=
 export FOCUS
 
 .PHONY: mutation-tools mutation-check mutation-certification
@@ -40,7 +43,7 @@ protocol-check:
 .PHONY: iterate validate-dev
 iterate:
 	@test -n "$${FOCUS}" || (echo 'Set FOCUS to a nextest filter for the changed behavior'; exit 2)
-	env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= MASH_ITERATE_LAUNCHER="$(DEV_RUN)" bash tools/build-dev-linux.sh --focused "$${FOCUS}" $(if $(filter all,$(TARGETS)),--all-targets,)
+	env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= MASH_ITERATE_LAUNCHER="$(DEV_RUN)" MASH_ITERATE_PACKAGE="$(PACKAGE)" bash tools/build-dev-linux.sh --focused "$${FOCUS}" $(if $(filter all,$(TARGETS)),--all-targets,)
 
 # A debug `mash` for trying a change by hand, with the same warm incremental
 # cache settings as `make iterate`. Prints the binary's path.

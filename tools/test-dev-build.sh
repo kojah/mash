@@ -65,6 +65,11 @@ rm -f "$TEST_BUILD_CLIPPY_FAIL"
 touch "$TEST_BUILD_FAIL"
 if run_build --focused 'test(contract)' >/dev/null 2>&1; then echo 'Failed focused tests were accepted.' >&2; exit 1; fi
 rm -f "$TEST_BUILD_FAIL"
+# One crate's tests can be built alone.
+: > "$TEST_BUILD_CALLS"
+timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
+    DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' PACKAGE=mash-silver >/dev/null
+grep -Fxq 'test-clif --locked -p mash-silver --lib -E test(contract) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
 # Integration targets are built on request, or when the filter names a binary.
 : > "$TEST_BUILD_CALLS"
 timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \

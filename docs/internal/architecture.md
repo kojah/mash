@@ -48,10 +48,15 @@ to storage, and backend initialization completes before the listener opens.
 CLI and MCP translate inputs into typed application-core requests. Implementation
 modules are grouped by responsibility:
 
-- `app/silver/`: canonical models, typed provider records, history discovery,
-  normalization and source reconciliation; `app/silver.rs` coordinates ingestion
-  and checkpoints. Provider-owned history files are bronze inputs.
-  `app/silver/dialogue.rs` interprets visible dialogue independently of retrieval;
+- `crates/mash-model/`: the vocabulary every layer shares (roles, providers,
+  tool activity, attachments, credential masking, progress events, the typed
+  error).
+- `crates/mash-silver/`: canonical models, typed provider records, history
+  discovery, normalization and source reconciliation. It never opens the
+  index; `app/silver.rs` coordinates ingestion and checkpoints, and the adapter
+  tests that index through storage stay beside it under `app/silver/`.
+  Provider-owned history files are bronze inputs.
+  `crates/mash-silver/src/dialogue.rs` interprets visible dialogue independently of retrieval;
   canonical messages retain full context alongside an optional `dialogue_text`.
 - `app/silver/local.rs` and `app/views/local.rs`: local stage boundaries for
   durable canonical ingestion and rebuildable retrieval state. The application

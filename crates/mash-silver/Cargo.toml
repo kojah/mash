@@ -1,0 +1,43 @@
+[package]
+name = "mash-silver"
+version = "0.1.0"
+edition = "2024"
+description = "Mash's provider-independent chat model and the native agent-history adapters"
+license = "MIT"
+publish = false
+
+[features]
+# Fixtures and hooks the tests of other workspace crates need.
+test-support = []
+
+[dependencies]
+mash-model = { path = "../mash-model" }
+base64 = "0.22.1"
+blake3 = "1.8.5"
+hex = "0.4"
+same-file = "1.0.6"
+schemars = "1.2"
+tempfile = "3.27.0"
+chrono = { version = "0.4.44", default-features = false, features = ["std"] }
+prost = "0.14.4"
+rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+sha2 = "0.11"
+walkdir = "2.5.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["raw_value"] }
+tracing = "0.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+# Items here are public only so the other workspace crates can use them. These
+# lints document a published API; they did not apply to the same items while
+# they were crate-private in `mash`, and still do not.
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+return_self_not_must_use = { level = "allow", priority = 1 }

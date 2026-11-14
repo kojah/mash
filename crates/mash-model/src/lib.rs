@@ -6,13 +6,16 @@
 
 pub mod attachments;
 pub mod database_error;
+pub mod diagnostics;
 mod error;
 pub mod message_context;
 pub mod platform;
+pub mod progress;
 pub mod provider;
 pub mod redaction;
 pub mod role;
 pub mod scratch;
+pub mod test_support;
 pub mod tools;
 
 pub use error::{Action, AppError, ErrorBody, ErrorKind};

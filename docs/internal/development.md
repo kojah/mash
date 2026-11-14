@@ -70,6 +70,7 @@ The workspace is the application crate `mash` (`app/`) and the crates under
 | `mash-query` | Pure query validation and literal matching | nothing of ours |
 | `mash-fleet` | Fleet CLI and readiness probe | nothing of ours |
 | `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
+| `mash-silver` | The provider-independent chat model and the native history adapters: discovery, parsing, reconciliation inputs. Never opens the index | `mash-model` |
 | `mash` | Everything else, and both executables | all of the above |
 
 `mash` is being divided from the bottom up so that an edit recompiles only its
@@ -81,7 +82,15 @@ published-API documentation. A lower crate never refers to a higher one. When
 a function needs a type from above, it belongs with that type: masking a
 search result is `ChatMetadata::redact`, next to `ChatMetadata`, not in
 `mash-model`'s `redaction`. Inside `mash`, `crate::role`, `crate::AppError`
-and the like still resolve, through imports in `app/lib.rs`. For an isolated query edit cycle,
+and the like still resolve, through imports in `app/lib.rs`, and
+`crate::silver` re-exports `mash-silver` beside the indexing pipeline.
+
+A test belongs to the highest crate it touches. Adapter tests that index
+through storage therefore stay in `mash` under `app/silver/`, in modules that
+mirror the adapter (`silver::copilot::tests`), and reach it through its public
+items; tests of an adapter's internals stay in `mash-silver`. Fixtures another
+crate's tests need sit behind `mash-silver`'s `test-support` feature, which
+`mash` enables as a development dependency. For an isolated query edit cycle,
 use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [crate boundaries](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
 the integrated checks required when changing search behavior.
@@ -94,8 +103,15 @@ rebuilds short:
 ```bash
 make iterate FOCUS='test(changed_behavior)'              # fmt, Clippy, library unit tests
 make iterate FOCUS='test(changed_behavior)' TARGETS=all  # also the CLI contract test and executables
+make iterate FOCUS='test(dialogue)' PACKAGE=mash-silver  # only that crate's tests
 make dev-build                                           # a debug `mash` to try by hand
 ```
+
+With `PACKAGE` the test build compiles only that crate and the ones below it;
+Clippy still checks the whole workspace. After `mash-silver` was split out, a
+one-line edit there rebuilt and ran its tests in about 2 s (20 s for the loop,
+nearly all of it Clippy over the workspace), and the same edit in `mash` took
+about 38 s for the loop.
 
 `make iterate` builds only the library unit-test binaries unless `TARGETS=all`
 is given or the filter names a binary (`binary(cli_contract)`). A dashboard-only

@@ -1,4 +1,7 @@
 //! Silver: canonical provider-independent history, native interpretation and reconciliation.
+//!
+//! The chat model and the native adapters live in `mash-silver`; this module
+//! adds what needs the index: the indexing pipeline, local reads and archives.
 use crate::provider::Provider;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -6,181 +9,97 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
-mod admission;
-mod antigravity;
+use mash_silver::discovery::{
+    Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
+};
+pub(crate) use mash_silver::*;
+
 pub(crate) mod archive;
 #[cfg(test)]
 mod benchmarks;
-pub(crate) mod certificate;
-pub(crate) mod claude;
-mod codex_store;
-mod copilot;
-mod cursor;
-pub(crate) mod diagnostics;
-pub(crate) mod dialogue;
-mod discovery;
-pub(crate) mod enrichment;
-mod identities;
-mod json;
 pub(crate) mod local;
-pub(crate) mod messages;
-mod native;
-mod opencode;
-mod parsers;
-mod prefix;
-mod records;
-mod source;
-mod sqlite_source;
 #[cfg(test)]
 mod tests;
-pub(crate) mod turns;
 
+// Adapter tests that index through storage live here, each under a module
+// that mirrors its adapter so `super::*` still names the code under test.
+#[cfg(test)]
+pub(crate) mod antigravity {
+    use crate::{provider::Provider, role::Role};
+    pub(crate) use mash_silver::antigravity::*;
+    use mash_silver::{Chat, SourceIdentity};
+    use std::path::Path;
+    pub(crate) mod tests;
+}
 #[cfg(test)]
 pub(crate) use antigravity::tests::write as write_antigravity_fixture;
-
 #[cfg(test)]
-use discovery::source_stamp;
-use discovery::{
-    Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
-};
-pub(crate) use discovery::{SessionContent, SourceStamp, source_stamp_for};
+mod codex_store {
+    use crate::provider::Provider;
+    pub(crate) use mash_silver::codex_store::*;
+    use mash_silver::{HistorySource, sqlite_source};
+    use rusqlite::Connection;
+    use std::{
+        collections::BTreeSet,
+        path::{Path, PathBuf},
+    };
+    mod tests;
+}
 #[cfg(test)]
-pub(crate) use discovery::{discovered_sources, parse_test_source};
-pub(crate) use discovery::{validate_output_path, watch_roots};
-pub(crate) use source::{HistorySource, SourceIdentity};
+mod copilot {
+    use crate::{message_context::MessageContext, provider::Provider, role::Role};
+    use mash_silver::SourceIdentity;
+    pub(crate) use mash_silver::copilot::*;
+    use std::{fs::File, path::Path};
+    mod tests;
+    pub(crate) mod chat {
+        use crate::{AppError, provider::Provider, role::Role};
+        pub(crate) use mash_silver::copilot::chat::*;
+        use mash_silver::{Chat, HistorySource};
+        use std::path::Path;
+        mod tests;
+    }
+}
+#[cfg(test)]
+pub(crate) mod cursor {
+    use crate::provider::Provider;
+    pub(crate) use mash_silver::cursor::*;
+    use mash_silver::{Chat, NormalizedMessage};
+    use std::path::Path;
+    mod tests;
+    pub(crate) mod ide {
+        use crate::provider::Provider;
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        use mash_silver::Chat;
+        use mash_silver::cursor::ide::models::Root;
+        use mash_silver::cursor::ide::store::Store;
+        pub(crate) use mash_silver::cursor::ide::*;
+        use prost::Message;
+        use std::path::Path;
+        pub(crate) mod tests;
+    }
+}
+#[cfg(test)]
+mod opencode {
+    use crate::provider::Provider;
+    pub(crate) use mash_silver::opencode::*;
+    use mash_silver::sqlite_source;
+    use rusqlite::Connection;
+    use std::path::Path;
+    mod tests;
+}
+#[cfg(test)]
+mod records {
+    mod codex {
+        mod tests;
+    }
+}
 
 use crate::AppError;
 use crate::storage::Storage;
 
-const MAX_TOOL_OUTPUT_CHARS: usize = 128 * 1024;
-const MAX_RECORD_BYTES: usize = 8 * 1024 * 1024;
 const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
-
-#[derive(Clone, Copy)]
-enum Parser {
-    Native(Provider),
-    #[cfg(test)]
-    Custom(fn(&HistorySource) -> Result<ParsedFile, AppError>),
-}
-
-impl Parser {
-    fn parse(self, source: &HistorySource) -> Result<ParsedFile, AppError> {
-        let provider = match self {
-            Self::Native(provider) => provider,
-            #[cfg(test)]
-            Self::Custom(parse) => return parse(source),
-        };
-        match provider {
-            Provider::ClaudeCode => parsers::parse_claude(&source.identity.path),
-            Provider::Codex if source.identity.session.is_some() => {
-                codex_store::parse(&source.identity)
-            }
-            Provider::Codex => parsers::parse_codex(&source.identity.path),
-            Provider::Opencode => opencode::parse(&source.identity),
-            Provider::Copilot => copilot::parse_source(source),
-            Provider::Cursor => cursor::parse(&source.identity),
-            Provider::Antigravity => antigravity::parse(&source.identity),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct IndexOptions {
-    pub(crate) providers: crate::provider::ProviderRoots,
-    pub(crate) roots_are_authoritative: bool,
-    pub(crate) since_days: Option<u32>,
-}
-
-#[derive(Default)]
-pub(crate) struct IndexSummary {
-    pub(crate) scanned_files: u64,
-    pub(crate) malformed_records: u64,
-    /// Sources whose snapshot was rejected, keeping their previous contribution.
-    pub(crate) rejected_sources: u64,
-    pub(crate) record_diagnostics: diagnostics::Diagnostics,
-    pub(crate) changed_messages: u64,
-    pub(crate) removed_messages: u64,
-    pub(crate) unchanged_sources: u64,
-    pub(crate) checkpoint_skipped_sources: u64,
-    pub(crate) tombstoned_sources: u64,
-    pub(crate) purged_chats: u64,
-    pub(crate) committed_batches: u64,
-    pub(crate) discovered_bytes: u64,
-    pub(crate) processed_bytes: u64,
-    pub(crate) processed_files: u64,
-}
-
-pub(crate) struct Chat {
-    pub(crate) id: String,
-    pub(crate) provider: Provider,
-    pub(crate) source: SourceIdentity,
-    pub(crate) claude_lineage: Option<claude::Lineage>,
-    /// Adapter-selected title provenance before native/fallback choices flatten.
-    pub(crate) title_origin: Option<enrichment::Origin>,
-    /// Adapter-selected timestamp provenance before fallback choices flatten.
-    pub(crate) timestamp_origins: Option<enrichment::Timestamps>,
-    pub(crate) project: Option<String>,
-    pub(crate) repository: Option<String>,
-    pub(crate) title: Option<String>,
-    pub(crate) created_at: Option<i64>,
-    pub(crate) updated_at: Option<i64>,
-    pub(crate) messages: messages::Messages,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct NormalizedMessage {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) attachments: Vec<crate::attachments::Source>,
-    pub(crate) id: String,
-    pub(crate) ordinal: i64,
-    pub(crate) context: crate::message_context::MessageContext,
-    pub(crate) role: crate::role::Role,
-    pub(crate) content: String,
-    /// Silver's interpreted visible dialogue. `None` uses canonical text;
-    /// an empty override is context-only. Native hidden turns, tool blocks and
-    /// injected context are interpreted here, independently of retrieval policy.
-    pub(crate) dialogue_text: Option<String>,
-    pub(crate) created_at: Option<i64>,
-    /// Structured tool calls and results; their text stays in `content`.
-    #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
-    pub(crate) tools: crate::tools::Activity,
-}
-
-impl NormalizedMessage {
-    /// Masks `<private>` spans, copying the message only when it holds one.
-    pub(crate) fn mask_private(message: &mut std::borrow::Cow<'_, Self>) {
-        use crate::redaction::{private, private_text};
-        let tagged = |text: &str| text.to_ascii_lowercase().contains("<private>");
-        let tools = message.tools.encode().ok().flatten();
-        if !(tagged(&message.content)
-            || message.dialogue_text.as_deref().is_some_and(tagged)
-            || tools.as_deref().is_some_and(tagged))
-        {
-            return;
-        }
-        let message = message.to_mut();
-        private_text(&mut message.content);
-        if let Some(text) = &mut message.dialogue_text {
-            private_text(text);
-        }
-        message
-            .tools
-            .map_strings(|value| private(value).into_owned());
-    }
-
-    #[cfg(test)]
-    pub(crate) fn dialogue(&self) -> &str {
-        self.dialogue_text.as_deref().unwrap_or(&self.content)
-    }
-}
-
-pub(crate) struct ParsedFile {
-    pub(crate) chat: Option<Chat>,
-    pub(crate) malformed_records: u64,
-    pub(crate) first_record_issue: Option<diagnostics::RecordIssue>,
-}
 
 #[derive(Clone, Copy)]
 struct ProviderScan<'a> {
@@ -586,77 +505,6 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
     ))
 }
 
-/// Parse one provider source as it is now, without writing silver.
-/// `None` means the snapshot ended in an incomplete record.
-pub(crate) fn read_transcript(
-    provider: Provider,
-    source: &HistorySource,
-) -> Result<Option<Chat>, AppError> {
-    let mut stamp = source.stamp()?;
-    Ok(parse_source_with_retries(source, &mut stamp, Parser::Native(provider))?.chat)
-}
-
-/// A Codex session's source from the thread store at `store`, as indexing
-/// selects it, so message identities match what indexing will retain.
-pub(crate) fn codex_session_source(
-    store: &Path,
-    session: &str,
-) -> Result<Option<HistorySource>, AppError> {
-    codex_store::session_source(store, session)
-}
-
-/// How many times one source is read before it is reported as still changing.
-const SOURCE_ATTEMPTS: u64 = 8;
-
-#[tracing::instrument(name = "parse_source", skip_all, fields(attempts = tracing::field::Empty))]
-fn parse_source_with_retries(
-    source: &HistorySource,
-    stamp: &mut SourceStamp,
-    parse: Parser,
-) -> Result<ParsedFile, AppError> {
-    // Discovery can precede a source's turn in the bounded parser queue by
-    // minutes. Capture a fresh stamp for each attempt and verify the consumed
-    // snapshot. Never retry malformed input or other parser errors. An agent
-    // that is mid-conversation commits every few tens of milliseconds, so each
-    // attempt can lose that race; eight make losing them all rare.
-    for attempt in 0..SOURCE_ATTEMPTS {
-        tracing::Span::current().record("attempts", attempt + 1);
-        if attempt > 0 {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        *stamp = match source.stamp() {
-            Ok(stamp) => stamp,
-            Err(error) if error.error.kind == crate::ErrorKind::SourceChanged => continue,
-            Err(error) => return Err(error),
-        };
-        match parse_stable_source(source, stamp, parse) {
-            Err(error) if error.error.kind == crate::ErrorKind::SourceChanged => {}
-            result => return result,
-        }
-    }
-    Err(AppError::source_changed())
-}
-
-fn parse_stable_source(
-    source: &HistorySource,
-    stamp: &mut SourceStamp,
-    parse: Parser,
-) -> Result<ParsedFile, AppError> {
-    stamp.verify(&source.identity)?;
-    let parsed = if let Parser::Native(provider @ (Provider::ClaudeCode | Provider::Codex)) = parse
-        && source.identity.session.is_none()
-        && source.dependencies.is_empty()
-    {
-        let (file, proof) = prefix::capture(&source.identity.path, stamp)?;
-        stamp.prefix = Some(proof);
-        parsers::parse_captured(&source.identity.path, provider, file)
-    } else {
-        parse.parse(source)
-    };
-    stamp.verify(&source.identity)?;
-    parsed
-}
-
 #[tracing::instrument(name = "apply_source", skip_all, fields(provider = provider.as_str()))]
 fn apply_parsed_source(
     storage: &mut Storage,
@@ -804,5 +652,3 @@ fn apply_chat(
     summary.tombstoned_sources += u64::from(change.tombstoned);
     Ok(())
 }
-
-pub(crate) mod revision;

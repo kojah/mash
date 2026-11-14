@@ -40,6 +40,9 @@ if [[ $mode == focused ]]; then
     # time and one loop reports both. Cargo locks a target directory for a
     # whole build, so Clippy gets its own. With a launcher each is its own
     # job: together in one they would exceed a single job's memory limit.
+    # One crate's tests need only that crate and the ones below it.
+    package=()
+    [[ -z ${MASH_ITERATE_PACKAGE:-} ]] || package=(-p "$MASH_ITERATE_PACKAGE")
     launch=()
     [[ -z ${MASH_ITERATE_LAUNCHER:-} ]] || launch=("$MASH_ITERATE_LAUNCHER" env "TMPDIR=$TMPDIR")
     clippy_log=$(mktemp "$TMPDIR/mash-iterate-clippy.XXXXXXXX")
@@ -47,7 +50,7 @@ if [[ $mode == focused ]]; then
         run "${launch[@]}" cargo clippy --all-targets -- -D warnings >"$clippy_log" 2>&1 &
     clippy_job=$!
     tests=0
-    run "${launch[@]}" cargo test-clif --locked "${scope[@]}" -E "$focus" --no-tests fail --test-threads 4 || tests=$?
+    run "${launch[@]}" cargo test-clif --locked "${package[@]}" "${scope[@]}" -E "$focus" --no-tests fail --test-threads 4 || tests=$?
     clippy=0
     wait "$clippy_job" || clippy=$?
     echo "--- cargo clippy (exit $clippy) ---"

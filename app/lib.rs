@@ -18,7 +18,7 @@ mod views;
 
 // Application composition and infrastructure supporting both layers.
 use mash_model::{Action, AppError, ErrorBody, ErrorKind};
-use mash_model::{attachments, database_error, platform, redaction, scratch};
+use mash_model::{attachments, database_error, platform, progress, redaction, scratch};
 mod cli;
 mod config;
 mod core;
@@ -31,7 +31,8 @@ pub use mcp::guidance::{generate_history_skill, validate_history_release};
 #[doc(hidden)]
 pub use storage::packed::register as register_silver_codec;
 mod observability;
-mod progress;
+#[cfg(test)]
+mod progress_tests;
 mod records;
 mod runtime;
 mod server_cli;

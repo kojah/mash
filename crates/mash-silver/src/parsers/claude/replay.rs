@@ -1,0 +1,107 @@
+//! Compaction can append a reduced representation of already archived history.
+use super::Ancestry;
+use super::parents::Parents;
+use crate::AppError;
+use crate::json::{Kind, ParentLink, Record, SystemSubtype};
+
+#[derive(Default)]
+pub struct Replay {
+    anchor: Option<String>,
+    last_duplicate: Option<String>,
+    // Ambiguous marks a duplicate without saved changes; Known stores the first
+    // original parent to restore only after a proven native replay boundary.
+    // Both membership and changes share bounded inline/private disk storage.
+    duplicates: Parents,
+}
+
+impl Replay {
+    #[cfg(test)]
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            duplicates: Parents::with_limit(limit),
+            ..Self::default()
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.anchor = None;
+        self.last_duplicate = None;
+        self.duplicates.clear();
+    }
+
+    pub fn observe(&mut self, record: &Record, parents: &mut Parents) -> Result<(), AppError> {
+        let boundary = record.kind == Kind::System
+            && record.subtype == Some(SystemSubtype::CompactBoundary)
+            && record.parent == ParentLink::Root;
+        let parent = record.parent.clone();
+        let Some(uuid) = record.uuid.as_ref() else {
+            if matches!(record.kind, Kind::User | Kind::Assistant) {
+                self.clear();
+            }
+            return Ok(());
+        };
+        if let Some(known) = parents.get(uuid)? {
+            // A new duplicate block cannot borrow changes retained across a
+            // stop-hook summary from the preceding block.
+            if self.last_duplicate.is_none() {
+                self.duplicates.clear();
+            }
+            let saved = self.duplicates.get(uuid)?;
+            if let Ancestry::Known(previous) = known
+                && previous != parent
+            {
+                if !matches!(saved, Some(Ancestry::Known(_))) {
+                    self.duplicates.insert(uuid, Ancestry::Known(previous))?;
+                }
+                parents.insert(uuid, Ancestry::Ambiguous)?;
+            } else if saved.is_none() {
+                self.duplicates.insert(uuid, Ancestry::Ambiguous)?;
+            }
+            self.last_duplicate = Some(uuid.clone());
+            return Ok(());
+        }
+        // Preserve original archived ancestry only when the native boundary
+        // proves this whole duplicate block is a compaction replay. Its logical
+        // parent and preserved tail must both identify the preceding new event,
+        // outside the replay. Payload equality is still checked by reconcile.
+        let proven = if boundary && let Some(anchor) = self.anchor.as_ref() {
+            record.logical_parent.as_ref() == Some(anchor)
+                && self.duplicates.get(anchor)?.is_none()
+                && record
+                    .compact_metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.preserved_segment.as_ref())
+                    .is_some_and(|segment| segment.tail == *anchor)
+        } else {
+            false
+        };
+        if proven {
+            self.duplicates.visit(|key, original| {
+                if let Ancestry::Known(_) = original {
+                    parents.insert(key, original)?;
+                }
+                Ok(())
+            })?;
+        }
+        // Native compaction can write a new stop-hook summary between the
+        // reduced replay and its boundary. Retain pending changes only when
+        // that summary directly follows and links to the last replayed UUID.
+        // Another new event or duplicate block still discards that evidence.
+        let linked_hook = record.kind == Kind::System
+            && record.subtype == Some(SystemSubtype::StopHookSummary)
+            && self.last_duplicate.as_ref().is_some_and(
+                |last| matches!(&record.parent, ParentLink::Parent(parent) if parent == last),
+            );
+        if linked_hook {
+            self.last_duplicate = None;
+        } else {
+            self.clear();
+        }
+        self.anchor = Some(uuid.clone());
+        parents.insert(uuid, Ancestry::Known(parent))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;
