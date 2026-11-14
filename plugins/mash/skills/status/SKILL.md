@@ -28,15 +28,18 @@ applies:
 
 - **Search:** ready or not; whether meaning-based search is available or
   only word search.
-- **Index:** how many chats, and how current. Mash refreshes the index in
-  the background at most every ten minutes and does not follow the current
-  conversation, so the last few minutes are normally missing.
+- **Index:** how many chats, and how current.
 - **Agents:** for each connected agent, fully connected, tools only, or not
   connected.
 - **Other machines:** when each last synced, and any that have not
   published.
 - **Next step:** the single action that fixes the first problem, taken from
   the `next_action` and `recommended_action` fields.
+
+When the person asked why a recent chat is missing: Mash refreshes the index
+in the background at most every ten minutes and does not follow the current
+conversation, so the last few minutes are normally absent. Say that before
+treating it as a fault.
 
 ## Fixing things
 

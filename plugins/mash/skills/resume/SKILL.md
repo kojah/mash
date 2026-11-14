@@ -14,10 +14,12 @@ this reads them. Hosts may prefix the tool names.
 
 1. Call `help` with `tool: "search"` for the current arguments; live help is
    authoritative.
-2. Find the most recent chats for this project: `search` restricted to this
-   project and sorted by recency, including the shared index when one is
-   configured. With words after the command, use them as the query;
-   otherwise take the latest chats. Leave out the current session.
+2. Find the most recent chats for this project. With words after the
+   command, `search` for them restricted to this project. Otherwise
+   `list_chats`, newest first, and keep the rows whose project or
+   repository is this one; search needs a query, so it cannot list the
+   latest chats by itself. Include the shared index when one is configured,
+   and leave out the current session.
 3. Look for a handoff first: `search` this project for the exact words
    "Mash handoff". The newest one is a brief the person left on purpose, so
    lead with it, and check the chats after it for anything newer.

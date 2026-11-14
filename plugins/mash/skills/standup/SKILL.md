@@ -1,6 +1,6 @@
 ---
 name: standup
-description: Summarise what the person worked on over a period, grouped by project, from their agent chats. Use when the person runs /mash:standup, or asks what they did yesterday, today, this week or between two dates, or for a standup or status update.
+description: Summarise what the person worked on over a period, grouped by project, from their agent chats. Use when the person runs /mash:standup, or asks what they worked on yesterday, today, this week or between two dates, or for a standup summary.
 ---
 
 # What was worked on
@@ -25,7 +25,8 @@ Monday) and say which day you used. Work in the person's local time.
    period to show where the time went.
 3. For each chat that mattered, read enough with `view` to say what was
    done: the requests and the final replies. Skip chats with a message or
-   two and nothing accomplished.
+   two and nothing accomplished. Read at most about ten chats, busiest
+   first, and say how many others were active but not read.
 4. Leave out the current session unless the period includes today.
 
 If nothing was active in the period, say so; do not reach back further

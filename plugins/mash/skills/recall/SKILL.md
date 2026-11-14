@@ -13,8 +13,9 @@ shows them on request, by topic. Hosts may prefix the tool names.
 
 1. Call `help` with `tool: "recall_records"` for the current arguments; live
    help is authoritative.
-2. Use the scope from the Mash note at the start of this session (the
-   repository inside a repository) and include personal records.
+2. Use the scope from the Mash note at the start of this session and
+   include personal records. Without that note, use the repository this
+   session is in, or the project folder outside a repository.
    - With a topic after the command: `recall_records` with it as `query`.
    - With nothing after it: the records for this project, most relevant
      first.

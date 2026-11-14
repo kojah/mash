@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Write a brief of this session so another agent, machine or later session can continue it. Use when the person runs /mash:handoff, or asks to hand off, wrap up for later, or leave notes for the next session or another agent.
+description: Write a brief of this session so another agent, machine or later session can continue it. Use when the person runs /mash:handoff, or asks to hand this session off or to leave notes for the next session or another agent.
 ---
 
 # Hand this session on
@@ -35,10 +35,10 @@ this text is stored and may be shared across the person's machines.
 
 ## Keep the decisions
 
-A brief is not memory. For each decision or preference the person stated in
-their own words here, offer to save it with `/mash:remember`, which checks
-for an existing record and cites their words. Do not save your own
-conclusions as their decisions.
+A brief is not memory. If the person stated decisions or preferences in
+their own words here, end with one line naming them and offering to save
+them with `/mash:remember`. Ask once, not per decision, and do not save
+your own conclusions as their decisions.
 
 ## Make it findable
 

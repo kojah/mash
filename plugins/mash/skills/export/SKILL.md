@@ -5,9 +5,8 @@ description: Save a chat from Mash as a file to read or share. Use when the pers
 
 # Export a chat
 
-The person wants one conversation as a file. Mash's dashboard renders
-Markdown, HTML and PDF; from here you can write Markdown yourself or open
-the dashboard at the right place. Hosts may prefix the tool names.
+The person wants one conversation as a file. Mash's dashboard does this
+properly; open it on the right chat. Hosts may prefix the tool names.
 
 ## Which chat
 
@@ -15,33 +14,36 @@ With nothing after the command, this session's chat (its id is in the Mash
 note at the start of this session). Otherwise find the one they mean with
 `list_chats` or `search`; if several match, list them and ask.
 
-## Choose the route
+## The dashboard does the exporting
 
-- **Markdown, and the chat is of ordinary length:** write it yourself, as
-  below.
-- **HTML or PDF, an exact copy with all tool output, or a very long chat:**
-  use the dashboard. Follow the `dashboard` skill to open
-  `http://127.0.0.1:8790/#/chat/<chat id>` and tell the person to use the
-  transcript's **Export** menu: Markdown, HTML, or Export to PDF.
-- **Many chats at once:** the dashboard's bulk export, from the Export
-  entry in its menu, which saves a `.zip` with a folder per project.
+Mash renders a chat as Markdown, HTML or PDF in its dashboard, exactly and
+with tool output. So the normal route is:
 
-Say which route you took and why.
+1. Follow the `dashboard` skill to open
+   `http://127.0.0.1:8790/#/chat/<chat id>`.
+2. Tell the person to use the transcript's **Export** menu: Markdown, HTML,
+   or Export to PDF. The browser saves the file.
 
-## Writing Markdown yourself
+For many chats at once, point to the dashboard's bulk export, which saves a
+`.zip` with a folder per project.
+
+## Writing a Markdown file here instead
+
+Only when the person asks for the file to be written from this session, or
+the dashboard cannot be opened. Say first that this is your transcription
+of the chat, so it is slower than the dashboard and may differ from it in
+small ways; for a long chat, recommend the dashboard.
 
 1. Call `help` with `tool: "view"` for the current arguments; live help is
    authoritative.
-2. Read the whole chat with `view`, following its continuation until the
-   end. Do not summarise or skip messages; if you cannot read all of it,
-   stop and use the dashboard route.
+2. Read the whole chat with `view`, following its continuation to the end.
+   Do not summarise or skip messages. If you cannot read all of it, stop
+   and say so.
 3. Write one file: a title, then the agent, machine, project and dates,
    then each message in order under a heading that names who spoke and
-   when. Keep the text as it was. Include tool calls and their output only
-   if asked, since they can be very long.
-4. Save it where the person said. Otherwise use a `mash-exports` folder in
-   the current directory, named from the chat's date and title, and never
-   overwrite an existing file without asking.
+   when. Include tool calls and their output only if asked.
+4. Save it where the person says. If they name no place, ask; do not pick
+   a folder inside a repository, and never overwrite a file without asking.
 
 Report the path and the message count, and say if anything was left out.
 

@@ -1,6 +1,6 @@
 ---
 name: why
-description: Explain why something in this project is the way it is, from the conversations where it was decided. Use when the person runs /mash:why, or asks why a file, function, setting or design choice exists or was done a certain way and the code and its history do not say.
+description: Explain why something in this project is the way it is, from the conversations where it was decided. Use when the person runs /mash:why, or when they ask why something was built or decided a certain way and the code, comments and Git history have already failed to answer it. Not for ordinary questions about what code does.
 ---
 
 # Why is it this way
