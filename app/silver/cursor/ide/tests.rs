@@ -186,6 +186,30 @@ fn logical_composers_are_discovered_independently_and_schema_detection_is_explic
     assert!(super::super::discover(&path).is_err());
 }
 
+/// Found on macOS with Cursor 3.30.8: 19 of 27 workspace databases had no
+/// chat table, and discovery refused the whole provider.
+#[test]
+fn workspace_state_without_a_chat_table_holds_no_chats_and_is_not_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    fixture(&path(dir.path()));
+    let settings_only = dir
+        .path()
+        .join("workspaceStorage/settings-only/state.vscdb");
+    std::fs::create_dir_all(settings_only.parent().unwrap()).unwrap();
+    Connection::open(&settings_only)
+        .unwrap()
+        .execute_batch("CREATE TABLE ItemTable(key TEXT UNIQUE ON CONFLICT REPLACE,value BLOB);")
+        .unwrap();
+    assert!(super::super::discover(&settings_only).unwrap().is_empty());
+    let sources = discovered_sources(Provider::Cursor, &[dir.path().into()]);
+    assert_eq!(sources.len(), 1);
+    let db = dir.path().join("index.sqlite3");
+    let mut storage = Storage::open_writer(&db).unwrap();
+    index(&mut storage, &options(dir.path())).unwrap();
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.counts().unwrap().chats, 1);
+}
+
 #[test]
 fn synthetic_operational_and_unknown_bubbles_remain_context_only() {
     let dir = tempfile::tempdir().unwrap();

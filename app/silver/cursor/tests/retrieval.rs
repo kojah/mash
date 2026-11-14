@@ -17,6 +17,7 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
                 let connection = super::super::ide::tests::fixture(&path);
                 (path, connection)
             }
+            Format::WorkspaceState => unreachable!("holds no chats to retrieve"),
         };
         assert!(path.exists());
         let config = dir.path().join("config.toml");

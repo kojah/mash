@@ -16,8 +16,10 @@ fn invalid(message: &str) -> AppError {
 }
 
 pub fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
-    if format(path)? == Format::Ide {
-        return ide::discover(path);
+    match format(path)? {
+        Format::Ide => return ide::discover(path),
+        Format::WorkspaceState => return Ok(Vec::new()),
+        Format::Agent => {}
     }
     let store = Store::open(path)?;
     let metadata = store.metadata()?;
@@ -114,16 +116,20 @@ impl Messages {
 }
 
 pub fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
-    if format(&source.path)? == Format::Ide {
-        return ide::parse(source);
+    match format(&source.path)? {
+        Format::Ide => ide::parse(source),
+        Format::Agent => parse_agent(source),
+        Format::WorkspaceState => Err(invalid("workspace state holds no chat history")),
     }
-    parse_agent(source)
 }
 
 #[derive(PartialEq, Eq)]
 pub enum Format {
     Agent,
     Ide,
+    /// An editor workspace's ordinary state database. Cursor keeps one per
+    /// opened folder, and most hold settings only, with no chat table.
+    WorkspaceState,
 }
 
 fn format(path: &Path) -> Result<Format, AppError> {
@@ -142,6 +148,9 @@ fn format(path: &Path) -> Result<Format, AppError> {
     ) {
         (true, false) => Ok(Format::Agent),
         (false, true) => Ok(Format::Ide),
+        (false, false) if names.len() == 1 && names.contains("ItemTable") => {
+            Ok(Format::WorkspaceState)
+        }
         _ => Err(AppError::configuration(
             "unsupported or ambiguous Cursor storage schema",
         )),
