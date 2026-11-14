@@ -10,9 +10,12 @@ properly; open it on the right chat. Hosts may prefix the tool names.
 
 ## Which chat
 
-With nothing after the command, this session's chat (its id is in the Mash
-note at the start of this session). Otherwise find the one they mean with
-`list_chats` or `search`; if several match, list them and ask.
+Find the chat they mean with `list_chats` or `search`; if several match,
+list them and ask. With nothing after the command they mean this session:
+use the session id from the Mash note at the start of this session if it
+has one, otherwise find this chat by its latest messages. The current
+session's last few minutes are usually not indexed yet, so offer to run
+the `index` tool first and say that the export ends where the index does.
 
 ## The dashboard does the exporting
 
@@ -24,8 +27,12 @@ with tool output. So the normal route is:
 2. Tell the person to use the transcript's **Export** menu: Markdown, HTML,
    or Export to PDF. The browser saves the file.
 
-For many chats at once, point to the dashboard's bulk export, which saves a
-`.zip` with a folder per project.
+In a remote or SSH session the dashboard address works only on that
+machine: say so, and either point to `mash dash remote` or offer to write
+the Markdown file here instead.
+
+For many chats at once, point to the dashboard's bulk export: open
+**chats**, then **export**. It saves a `.zip` with a folder per project.
 
 ## Writing a Markdown file here instead
 
@@ -36,9 +43,10 @@ small ways; for a long chat, recommend the dashboard.
 
 1. Call `help` with `tool: "view"` for the current arguments; live help is
    authoritative.
-2. Read the whole chat with `view`, following its continuation to the end.
-   Do not summarise or skip messages. If you cannot read all of it, stop
-   and say so.
+2. Read the whole chat with `view`. It reads around one message at a
+   time, so start from the chat's first message and keep viewing from the
+   last message returned until you reach the end. Do not summarise or skip
+   messages. If you cannot read all of it, stop and say so.
 3. Write one file: a title, then the agent, machine, project and dates,
    then each message in order under a heading that names who spoke and
    when. Include tool calls and their output only if asked.

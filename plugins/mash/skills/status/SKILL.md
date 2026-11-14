@@ -12,8 +12,9 @@ may prefix the tool names.
 ## Check
 
 1. Call the `status` tool, with `shared: true` when a shared index is
-   configured. It covers the index, the search service, the models and each
-   machine's last sync.
+   configured. It reports the index, the search service and each machine's
+   last sync. Readiness does not prove that every chat is indexed or that
+   the query models are installed; report what the fields say.
 2. Run `mash status --installation` in a terminal for the agent
    connections: the tool alone does not report whether each agent has the
    Mash tools and the plugin.
@@ -37,9 +38,9 @@ applies:
   the `next_action` and `recommended_action` fields.
 
 When the person asked why a recent chat is missing: Mash refreshes the index
-in the background at most every ten minutes and does not follow the current
-conversation, so the last few minutes are normally absent. Say that before
-treating it as a fault.
+in the background at most every ten minutes, not continuously, so the last
+few minutes of a conversation are normally absent until the next refresh
+or an explicit `index`. Say that before treating it as a fault.
 
 ## Fixing things
 

@@ -7,19 +7,21 @@ description: Summarise where recent work on this project left off, across agents
 
 The person wants a short briefing on the latest work in this project, from
 every agent and machine Mash knows, so they can continue without rereading
-chats. The note Mash adds at the start of a session only points at chats;
-this reads them. Hosts may prefix the tool names.
+chats. The note Mash adds at the start of a session lists this project's
+records and recent chats without reading them; this reads them. Hosts may prefix the tool names.
 
 ## Gather
 
 1. Call `help` with `tool: "search"` for the current arguments; live help is
    authoritative.
 2. Find the most recent chats for this project. With words after the
-   command, `search` for them restricted to this project. Otherwise
-   `list_chats`, newest first, and keep the rows whose project or
-   repository is this one; search needs a query, so it cannot list the
-   latest chats by itself. Include the shared index when one is configured,
-   and leave out the current session.
+   command, `search` for them restricted to this project. Otherwise start
+   from the recent chats in the Mash note at the start of this session,
+   which carry `view=` references; without that note, use `list_chats`,
+   newest first, and keep the chats that belong to this project. Search
+   needs a query, so it cannot list the latest chats by itself. Include
+   the shared index when one is configured, and leave out the current
+   session.
 3. Look for a handoff first: `search` this project for the exact words
    "Mash handoff". The newest one is a brief the person left on purpose, so
    lead with it, and check the chats after it for anything newer.

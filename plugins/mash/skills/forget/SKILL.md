@@ -17,9 +17,9 @@ instruction.
 
 1. Call `help` with `tool: "record"` and `tool: "forget"` for the current
    arguments; live help is authoritative.
-2. For a memory record, use `find_record_matches` or `list_records` with the
-   person's words and the scope from the Mash note at the start of this
-   session. For a chat, use `list_chats` or `search`.
+2. For a memory record, use `list_records` with the person's words as
+   `query`, in this project's scope and then personal scope. For a chat,
+   use `list_chats` or `search`.
 3. If several match, list them briefly and ask which one. Handle one target
    at a time; never remove by pattern or in bulk.
 
@@ -41,7 +41,8 @@ Before removing anything, show exactly what will go:
 
 - a record: its statement, kind and scope
 - a chat: its title, agent and date, and every memory record that cites it
-  (`list_records` with `chat`), because forgetting a chat removes those too
+  (`list_records` with `chat` and `include_inactive`, so candidates and
+  retired records are counted), because forgetting a chat removes those too
 
 Say that removal is permanent, that it removes every revision of a record,
 that copies of a chat on the person's other machines are not affected, and

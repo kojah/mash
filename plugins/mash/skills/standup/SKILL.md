@@ -21,7 +21,9 @@ Monday) and say which day you used. Work in the person's local time.
    help is authoritative.
 2. List the chats active in the period with `list_chats` and its time
    bounds, including the shared index when one is configured so other
-   machines count. `query_silver` can count messages by chat over the
+   machines count. The bounds are Unix seconds: convert the start and end
+   of the period from the person's local time, and note that returned
+   times may be in milliseconds. `query_silver` can count messages by chat over the
    period to show where the time went.
 3. For each chat that mattered, read enough with `view` to say what was
    done: the requests and the final replies. Skip chats with a message or
@@ -29,12 +31,15 @@ Monday) and say which day you used. Work in the person's local time.
    first, and say how many others were active but not read.
 4. Leave out the current session unless the period includes today.
 
-If nothing was active in the period, say so; do not reach back further
-without saying.
+The time bounds match on a chat's activity, so a chat that carried on after
+the period can be missed; when the period is recent, also check chats
+active since it ended. If nothing was active in the period, say so; do not
+reach back further without saying.
 
 ## Report
 
-Group by project, busiest first. Under each, two to four lines:
+Group by project, busiest first; take each chat's project from its row or,
+where the row does not say, from the chat itself. Under each, two to four lines:
 
 - what was finished, in terms of the result
 - what is still in progress or blocked
