@@ -70,10 +70,10 @@ test("Mashy answers about the open chat, links its sources and reports failures"
   await expect(mashy.locator("img[src='x']")).toHaveCount(0);
   expect(asked[0]?.open_chat?.id).toBe("ports");
   expect(asked[0]?.messages).toEqual([{ role: "user", content: "Summarise this chat" }]);
-  // The chat it names is offered as a source and opens in the dashboard.
-  const source = mashy.locator(".mashy-src a");
-  await expect(source).toHaveText("Port decision");
-  await expect(source).toHaveAttribute("href", /^#\/chat\/ports\?/);
+  // The chat it names is a chip that opens it in the dashboard.
+  const chip = mashy.locator("a.mashy-chip");
+  await expect(chip).toHaveText("Port decision");
+  await expect(chip).toHaveAttribute("href", /^#\/chat\/ports\?/);
 
   // A follow-up carries the conversation so far.
   reply = answer([

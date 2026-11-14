@@ -116,9 +116,12 @@
 * {
   box-sizing: border-box;
 }
+/* The page's own boxes are as tall as what is on it. A body one screen tall
+   with the rest overflowing leaves it to the browser to paint below the first
+   screenful, and phones do not all paint it the same shade. */
 html,
 body {
-  height: 100%;
+  min-height: 100%;
 }
 body {
   background: var(--bg);
@@ -177,7 +180,7 @@ summary::-webkit-details-marker {
 }
 #app {
   display: flex;
-  min-height: 100%;
+  min-height: 100dvh;
 }
 #rail {
   flex: none;
@@ -1826,12 +1829,6 @@ h1:focus {
 .newpill .btn {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
-.jump {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 4px 0 8px;
-}
 .pager.end {
   position: static;
   border-bottom: 0;
@@ -3459,7 +3456,8 @@ summary.rw::-webkit-details-marker {
 /* Mashy, the assistant: a circle in the corner that opens a chat. */
 #mashy-fab {
   position: fixed;
-  z-index: 34;
+  /* Under the navigation drawer and its scrim. */
+  z-index: 28;
   right: max(18px, env(safe-area-inset-right, 0px));
   bottom: max(18px, env(safe-area-inset-bottom, 0px));
   display: grid;
@@ -3527,11 +3525,6 @@ summary.rw::-webkit-details-marker {
   font-size: 14.5px;
   font-weight: 600;
 }
-#mashy > header small {
-  display: block;
-  color: var(--faint);
-  font-size: 12px;
-}
 #mashy > header button {
   display: grid;
   place-items: center;
@@ -3591,43 +3584,52 @@ summary.rw::-webkit-details-marker {
   min-width: 0;
   font-size: 14px;
 }
-.mashy-a p {
-  margin: 0;
-}
 .mashy-a a {
   color: var(--clay2);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.mashy-src {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.mashy-src a {
-  display: flex;
+/* A chat or memory named in an answer: a chip, not an underlined link. */
+#mashy .mashy-a a.mashy-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 6px 10px;
-  border: 1px solid var(--hair);
-  border-radius: 8px;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 9px 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
   background: var(--bg);
-  color: var(--body);
+  color: var(--fg);
   font-size: 13px;
-}
-.mashy-src a:hover {
-  border-color: var(--clay2);
-}
-.mashy-src a span {
-  min-width: 0;
+  line-height: 1.45;
+  text-decoration: none;
+  vertical-align: -4px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.mashy-src a svg {
-  flex: none;
-  color: var(--dim);
+#mashy .mashy-a a.mashy-chip:hover {
+  border-color: var(--clay2);
+}
+#mashy .mashy-a a.mashy-chip .mark {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+#mashy .mashy-a a.mashy-chip.mem {
+  padding-left: 9px;
+  color: var(--clay2);
+}
+/* An answer is short prose in a narrow column: blocks keep apart, and code
+   stands out from the chat's own surface. */
+.mashy-a .prose > :last-child {
+  margin-bottom: 0;
+}
+.mashy-a .prose :is(table, blockquote, pre, ul, ol) {
+  margin: 0 0 0.75rem;
+}
+.mashy-a .prose pre {
+  background: var(--bg);
 }
 .mashy-wait {
   color: var(--faint);
@@ -3687,6 +3689,14 @@ summary.rw::-webkit-details-marker {
   justify-content: center;
   gap: 6px;
 }
+/* Under an answer they are what to ask next, and start where the text does. */
+.mashy-log .mashy-sugg.next {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.mashy-sugg.next button {
+  text-align: left;
+}
 .mashy-sugg button {
   min-height: 30px;
   padding: 0 11px;
@@ -3701,6 +3711,7 @@ summary.rw::-webkit-details-marker {
 }
 #mashy > form {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
   padding: 10px 12px 12px;
   border-top: 1px solid var(--hair);
@@ -3709,6 +3720,7 @@ summary.rw::-webkit-details-marker {
   flex: 1;
   min-width: 0;
   height: 40px;
+  max-height: 132px;
   padding: 9px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3733,8 +3745,13 @@ summary.rw::-webkit-details-marker {
   color: var(--faint);
   cursor: default;
 }
-/* On a phone the chat is a sheet over the page, and the circle hides under it. */
-@media (max-width: 700px) {
+/* A list's last controls scroll clear of the circle. */
+body:has(#mashy-fab) #main {
+  padding-bottom: 96px;
+}
+/* On a phone, upright or on its side, the chat is a sheet over the page, and
+   the circle hides under it. */
+@media (max-width: 700px), (max-height: 500px) {
   #mashy {
     inset: 0;
     width: auto;
@@ -3753,10 +3770,12 @@ summary.rw::-webkit-details-marker {
     height: auto;
     max-height: none;
   }
-  /* The page behind stays where it is while the sheet is over it. */
-  html:has(#mashy),
-  html:has(#mashy) body {
-    overflow: hidden;
+  #mashy > header button {
+    width: 40px;
+    height: 40px;
+  }
+  .mashy-note .btn {
+    min-height: 40px;
   }
   .mashy-sugg {
     flex-direction: column;

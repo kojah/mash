@@ -78,7 +78,12 @@ export async function ask(
   const response = await send("/api/assistant", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, ...(openChat ? { open_chat: openChat } : {}) }),
+    body: JSON.stringify({
+      messages,
+      ...(openChat ? { open_chat: openChat } : {}),
+      // So "yesterday" and every time in an answer are on this reader's clock.
+      utc_offset: -new Date().getTimezoneOffset(),
+    }),
     cache: "no-store",
     signal,
   });
@@ -132,6 +137,27 @@ function target(kind: string, rest: string): string {
  */
 export function linkify(text: string): string {
   return text.replace(LINK, (_, kind: string, rest: string) => `](${target(kind, rest)})`);
+}
+
+export interface Answer {
+  /** What Mashy said. */
+  readonly body: string;
+  /** Questions it suggests asking next. */
+  readonly next: readonly string[];
+}
+
+/**
+ * Mashy ends an answer with the questions it suggests next, one per line
+ * after a `§`. This separates them from the answer, also while it is still
+ * arriving.
+ */
+export function answer(text: string): Answer {
+  const [body = "", ...lines] = text.split(/^[ \t]*§/m);
+  const next = lines
+    .map((line) => (line.split("\n", 1)[0] ?? "").trim())
+    .filter((line) => line.length > 0 && line.length <= 120)
+    .slice(0, 3);
+  return { body: body.trimEnd(), next };
 }
 
 export interface Source {

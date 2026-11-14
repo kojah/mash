@@ -1,4 +1,7 @@
-use super::{Call, CallDelta, Function, FunctionDelta, MAX_LOOKUPS, chunk, clip, gather};
+use super::{
+    Call, CallDelta, Function, FunctionDelta, Links, MAX_LOOKUPS, Reader, chunk, clip, ends,
+    gather, mend,
+};
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
@@ -175,7 +178,7 @@ async fn a_question_is_answered_from_lookups_the_model_asks_for_and_nothing_else
                     wants(&[
                         ("read_chat", r#"{"chat_id":"busy"}"#),
                         ("forget", r#"{"chat_id":"busy"}"#),
-                        ("recent_chats", "not json"),
+                        ("chats", "not json"),
                     ])
                 ),
             )
@@ -214,7 +217,8 @@ async fn a_question_is_answered_from_lookups_the_model_asks_for_and_nothing_else
         offered,
         [
             "search",
-            "recent_chats",
+            "chats",
+            "activity",
             "read_chat",
             "read_message",
             "memories"
@@ -235,7 +239,7 @@ async fn a_question_is_answered_from_lookups_the_model_asks_for_and_nothing_else
         .collect();
     // The chat is read as dialogue, without tool output.
     assert!(
-        results[0].contains("assistant: It uses port 8080."),
+        results[0].contains("[1] agent: It uses port 8080."),
         "{}",
         results[0]
     );
@@ -267,7 +271,7 @@ async fn lookups_run_out_and_the_model_is_told_to_answer_with_what_it_has() {
         if told_to_answer(body) {
             (200, says(&["Here is what I found."]))
         } else {
-            (200, wants(&[("recent_chats", "{}"), ("memories", "{}")]))
+            (200, wants(&[("chats", "{}"), ("memories", "{}")]))
         }
     });
     let fixture = fixture(Some(script), None).await;
@@ -276,7 +280,8 @@ async fn lookups_run_out_and_the_model_is_told_to_answer_with_what_it_has() {
         events[events.len() - 2..],
         [
             json!({"type": "text", "delta": "Here is what I found."}),
-            json!({"type": "done", "partial": true}),
+            // Every lookup it asked for was run, so nothing is missing.
+            json!({"type": "done", "partial": false}),
         ]
     );
     let asked = fixture.asked.lock().unwrap();
@@ -293,7 +298,7 @@ async fn lookups_run_out_and_the_model_is_told_to_answer_with_what_it_has() {
 
 #[tokio::test]
 async fn a_model_that_never_answers_is_stopped_and_the_reader_is_told() {
-    let script: Script = Arc::new(|_| (200, wants(&[("recent_chats", "{\"days\": 7}")])));
+    let script: Script = Arc::new(|_| (200, wants(&[("chats", "{\"from\": \"2026-11-01\"}")])));
     let fixture = fixture(Some(script), None).await;
     let events = fixture.ask(question("anything")).await;
     assert_eq!(
@@ -490,4 +495,47 @@ fn only_data_lines_of_the_stream_are_read() {
 fn long_text_is_cut_on_a_character_boundary() {
     assert_eq!(clip("héllo", 10), "héllo");
     assert_eq!(clip("héllo", 2), "hé…");
+}
+
+#[test]
+fn a_long_text_keeps_its_start_and_its_end() {
+    let long = format!("{}{}", "a".repeat(50), "the question");
+    assert_eq!(ends(&long, 5, 12), "aaaaa […] the question");
+    assert_eq!(ends("short", 5, 12), "short");
+}
+
+#[test]
+fn links_reach_the_browser_whole_with_real_memory_ids_and_no_local_machine() {
+    let mut reader = Reader::new(60, "xenia".to_owned());
+    reader.memories.push("record/owner/abc".to_owned());
+    assert_eq!(
+        mend(
+            "[a](memory:m1) [b](memory:m9) [c](chat:one?node=xenia) [d](chat:two?node=mac)",
+            &reader
+        ),
+        "[a](memory:record/owner/abc) [b](memory:m9) [c](chat:one) [d](chat:two?node=mac)"
+    );
+    // An address split across chunks is held until it is complete.
+    let mut links = Links::default();
+    let mut sent = Vec::new();
+    for delta in ["See [the port", "](mem", "ory:m1", ") and more", "."] {
+        sent.push(links.pass(delta, &reader));
+    }
+    sent.push(links.rest(&reader));
+    assert_eq!(sent[0], "See [the port");
+    assert_eq!(sent[1], "");
+    assert_eq!(sent[2], "");
+    assert_eq!(
+        sent.concat(),
+        "See [the port](memory:record/owner/abc) and more."
+    );
+}
+
+#[test]
+fn the_instructions_state_the_readers_own_clock() {
+    let reader = Reader::new(60, "local".to_owned());
+    assert!(reader.now().ends_with("(UTC+01:00)"), "{}", reader.now());
+    let text = super::instructions(&reader, None, true);
+    assert!(text.contains("(UTC+01:00) for the reader"));
+    assert!(text.contains("only its most recent part"));
 }

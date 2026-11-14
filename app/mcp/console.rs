@@ -33,13 +33,14 @@ pub(crate) struct Answer {
 }
 
 impl Answer {
-    /// The answer as one piece of text: the structured reply when there is
-    /// one, otherwise the text beside it.
-    pub(crate) fn read(&self) -> String {
-        match &self.reply {
-            Some(reply) => reply.to_string(),
-            None => self.text.clone(),
-        }
+    /// Whether the tool failed or turned its arguments down.
+    pub(crate) fn failed(&self) -> bool {
+        self.failed
+    }
+
+    /// The structured reply, when the tool gave one.
+    pub(crate) fn reply(&self) -> Option<&serde_json::Value> {
+        self.reply.as_ref()
     }
 }
 

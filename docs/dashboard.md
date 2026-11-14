@@ -149,9 +149,15 @@ words:
 - "What did we decide about the restart test?"
 - On a chat's page: "Summarise this chat."
 
-Mashy searches your chats and memories, answers briefly, and lists the chats
-and memories it drew on; choose one to open it in the dashboard behind. If it
-finds nothing, it says so. Use the stop button to cut an answer short.
+Mashy searches your chats and memories and answers briefly. A chat or memory
+it mentions is a chip: choose it to open that chat or memory in the dashboard
+behind. Under an answer it suggests questions that follow from it. If it finds
+nothing, it says so. Use the stop button to cut an answer short.
+
+Dates and times are on your browser's clock, so "yesterday" is your yesterday.
+Questions about a period ("what did I do last week", "how many chats in
+October") are answered from the chats that had messages then. A long chat is
+read in parts: Mashy says which part an answer covers.
 
 Mashy is a chat, not an agent. It can read your history and nothing else: it
 cannot index, forget, save memories, run commands or change settings. The

@@ -1,9 +1,9 @@
 // The conversation with Mashy. It belongs to this tab: it survives moving
 // between pages, is never saved, and is not part of the indexed history.
-import { type AssistantEvent, ask, type OpenChat, type Turn } from "./assistant";
+import { type AssistantEvent, answer, ask, type OpenChat, type Turn } from "./assistant";
 
 export interface Note {
-  readonly kind: "partial" | "error";
+  readonly kind: "partial" | "error" | "stopped";
   readonly title: string;
   readonly text: string;
   /** Whether asking again could help. */
@@ -42,14 +42,21 @@ class Conversation {
   async ask(question: string, openChat: OpenChat | undefined): Promise<void> {
     const text = question.trim();
     if (!text || this.busy) return;
-    this.turns = [...this.turns, { role: "user", content: text }];
+    // A question that never got an answer is replaced by the new one.
+    const kept = this.turns.at(-1)?.role === "user" ? this.turns.slice(0, -1) : this.turns;
+    this.turns = [...kept, { role: "user", content: text }];
     this.context = openChat;
     await this.answerLast();
   }
 
   /** Asks the last question again after a failure. */
   async retry(): Promise<void> {
-    if (this.busy || this.turns.at(-1)?.role !== "user") return;
+    if (this.busy) return;
+    // What arrived of the answer before it failed or was stopped is dropped:
+    // the question is asked again as it was.
+    if (this.note?.retry && this.turns.at(-1)?.role === "assistant")
+      this.turns = this.turns.slice(0, -1);
+    if (this.turns.at(-1)?.role !== "user") return;
     await this.answerLast();
   }
 
@@ -61,8 +68,11 @@ class Conversation {
     this.controller = controller;
     let finished = false;
     const heard = (event: AssistantEvent): void => {
-      if (event.type === "searching") this.phase = "searching";
-      else if (event.type === "text") {
+      if (event.type === "searching") {
+        // Words that came before a lookup were the model's notes to itself.
+        this.phase = "searching";
+        this.answer = "";
+      } else if (event.type === "text") {
         this.phase = "answering";
         this.answer += event.delta;
       } else if (event.type === "done") {
@@ -85,7 +95,11 @@ class Conversation {
       }
     };
     try {
-      await ask(this.turns, this.context, controller.signal, heard);
+      // Mashy's suggested next questions are for the reader, not for Mashy.
+      const said = this.turns.map((turn) =>
+        turn.role === "assistant" ? { ...turn, content: answer(turn.content).body } : turn,
+      );
+      await ask(said, this.context, controller.signal, heard);
       if (!finished && !this.note)
         this.note = {
           kind: "error",
@@ -94,11 +108,17 @@ class Conversation {
           retry: true,
         };
     } catch (error) {
-      if (!controller.signal.aborted)
+      if (controller.signal.aborted)
+        this.note = { kind: "stopped", title: "Stopped", text: "", retry: true };
+      else
         this.note = {
           kind: "error",
           title: "Mashy couldn’t answer",
-          text: error instanceof Error ? error.message : "The request failed.",
+          // A browser's own words for a lost connection say nothing useful.
+          text:
+            error instanceof TypeError || !(error instanceof Error)
+              ? "The connection to this dashboard was lost."
+              : error.message,
           retry: true,
         };
     } finally {

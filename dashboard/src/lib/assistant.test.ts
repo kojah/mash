@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { type AssistantEvent, ask, linkify, parseEvent, sources } from "./assistant";
+import { type AssistantEvent, answer, ask, linkify, parseEvent, sources } from "./assistant";
 import { install } from "./transport";
 
 afterEach(() => install((path, init) => fetch(path, init)));
@@ -67,6 +67,7 @@ describe("ask", () => {
     expect(sent).toEqual({
       messages: [{ role: "user", content: "which port?" }],
       open_chat: { id: "abc", title: "Ports" },
+      utc_offset: -new Date().getTimezoneOffset(),
     });
     expect(heard).toEqual([
       { type: "searching" },
@@ -86,6 +87,26 @@ describe("ask", () => {
     await expect(
       ask([{ role: "user", content: "hi" }], undefined, new AbortController().signal, () => {}),
     ).rejects.toThrow("no assistant is configured");
+  });
+});
+
+describe("an answer", () => {
+  it("is separated from the questions suggested after it", () => {
+    expect(
+      answer("It uses port 8080.\n\n§ Which chat set the port?\n§ Was it changed later?\n"),
+    ).toEqual({
+      body: "It uses port 8080.",
+      next: ["Which chat set the port?", "Was it changed later?"],
+    });
+    expect(answer("Nothing found.")).toEqual({ body: "Nothing found.", next: [] });
+  });
+  it("hides a suggestion that is still arriving", () => {
+    expect(answer("Done.\n\n§").body).toBe("Done.");
+    expect(answer("Done.\n§ Wha").body).toBe("Done.");
+  });
+  it("keeps at most three, and none that run on", () => {
+    const many = answer(`A.\n§ one?\n§ two?\n§ three?\n§ four?\n§ ${"x".repeat(200)}`);
+    expect(many.next).toEqual(["one?", "two?", "three?"]);
   });
 });
 

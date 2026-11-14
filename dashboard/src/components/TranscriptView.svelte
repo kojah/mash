@@ -5,7 +5,8 @@ import ChevronLeft from "@lucide/svelte/icons/chevron-left";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import ChevronsDown from "@lucide/svelte/icons/chevrons-down";
-import ChevronsUp from "@lucide/svelte/icons/chevrons-up";
+import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
+import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
 import Copy from "@lucide/svelte/icons/copy";
 import Download from "@lucide/svelte/icons/download";
 import FileCode from "@lucide/svelte/icons/file-code";
@@ -595,12 +596,6 @@ const prompts = $derived(
     {/if}
     {#if exporting}<p class="meta"><button class="a" type="button" onclick={() => exportController?.abort()}>Cancel export</button></p>{/if}
     {#if anchor}<p class="meta">Showing the messages around a search match.</p>{/if}
-    {#if anchor || (total !== undefined && total > PAGE_SIZE)}
-      <nav class="jump" aria-label="Jump within this chat">
-        <button class="btn" type="button" disabled={!anchor && offset === 0} onclick={() => page(0)}><ChevronsUp size={15} aria-hidden="true" />First message</button>
-        {#if lastOffset !== undefined}<button class="btn" type="button" onclick={latest}><ChevronsDown size={15} aria-hidden="true" />Latest message</button>{/if}
-      </nav>
-    {/if}
     <QueryError title="Couldn’t load the chat list" query={catalogue} retryLabel="Retry catalogue" />
     {#each catalogue.data?.warnings ?? [] as warning (warning)}<p role="status" class="meta">{warning}</p>{/each}
     {#if live.isPending}
@@ -663,14 +658,15 @@ const prompts = $derived(
           </div>
         {/if}
       {/each}
-      {#if !anchor}
-        <nav aria-label="Message pages" class="pager end">
-          <button class="btn" type="button" disabled={offset === 0} onclick={() => page(0)} aria-label="First message" title="First message"><ChevronsUp size={15} aria-hidden="true" /></button>
+      <!-- Around a search match there are no pages to step through, only the two ends to jump to. -->
+      <nav aria-label="Message pages" class="pager end">
+        <button class="btn" type="button" disabled={!anchor && offset === 0} onclick={() => page(0)} aria-label="First message" title="First message"><ChevronsLeft size={15} aria-hidden="true" /></button>
+        {#if !anchor}
           <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}><ChevronLeft size={15} aria-hidden="true" />Previous messages</button>
           <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)}>Next messages<ChevronRight size={15} aria-hidden="true" /></button>
-          {#if lastOffset !== undefined}<button class="btn" type="button" disabled={offset === lastOffset} onclick={latest} aria-label="Latest message" title="Latest message"><ChevronsDown size={15} aria-hidden="true" /></button>{/if}
-        </nav>
-      {/if}
+        {/if}
+        {#if lastOffset !== undefined}<button class="btn" type="button" disabled={!anchor && offset === lastOffset} onclick={latest} aria-label="Latest message" title="Latest message"><ChevronsRight size={15} aria-hidden="true" /></button>{/if}
+      </nav>
     {/if}
   </article>
 </div>

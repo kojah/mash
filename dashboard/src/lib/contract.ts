@@ -467,6 +467,12 @@ export interface components {
         Ask: {
             messages: components["schemas"]["Turn"][];
             open_chat?: components["schemas"]["OpenChat"] | null;
+            /**
+             * Format: int32
+             * @description Minutes the reader's clock is ahead of UTC, so "yesterday" is theirs.
+             * @default null
+             */
+            utc_offset: number | null;
         };
         AttachmentConfiguration: {
             /**
