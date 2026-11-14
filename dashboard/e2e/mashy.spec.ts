@@ -99,3 +99,41 @@ test("Mashy answers about the open chat, links its sources and reports failures"
   await page.getByRole("button", { name: "Open Mashy" }).click();
   await expect(mashy.getByText("Because 8080 was free.")).toBeVisible();
 });
+
+test("on a phone the Back button closes Mashy and returns to it from a linked chat", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.route("**/api/assistant**", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ json: { enabled: true, model: "test/model" } })
+      : route.fulfill({
+          contentType: "text/event-stream",
+          body: answer([
+            { type: "text", delta: "See [Port decision](chat:ports)." },
+            { type: "done", partial: false },
+          ]),
+        }),
+  );
+  await page.goto("/#/");
+  const mashy = page.getByRole("region", { name: "Mashy" });
+  await page.getByRole("button", { name: "Open Mashy" }).click();
+  await expect(mashy).toBeVisible();
+  await page.goBack();
+  await expect(mashy).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/$/);
+
+  await page.getByRole("button", { name: "Open Mashy" }).click();
+  await mashy.getByRole("textbox").fill("which port?");
+  await mashy.getByRole("textbox").press("Enter");
+  await mashy.locator("a.mashy-chip").click();
+  // The sheet steps aside for the chat, and Back brings the answer back.
+  await expect(mashy).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/chat\/ports/);
+  await page.goBack();
+  await expect(mashy.getByText("See")).toBeVisible();
+  // Closing it with its own button leaves the page where it was.
+  await mashy.getByRole("button", { name: "Close Mashy" }).click();
+  await expect(mashy).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/$/);
+});

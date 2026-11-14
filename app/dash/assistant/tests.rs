@@ -510,7 +510,7 @@ fn links_reach_the_browser_whole_with_real_memory_ids_and_no_local_machine() {
     reader.memories.push("record/owner/abc".to_owned());
     assert_eq!(
         mend(
-            "[a](memory:m1) [b](memory:m9) [c](chat:one?node=xenia) [d](chat:two?node=mac)",
+            "[a](memory:m1) (m1) [b](memory:m9) [c](chat:one?node=xenia) [d](chat:two?node=mac)",
             &reader
         ),
         "[a](memory:record/owner/abc) [b](memory:m9) [c](chat:one) [d](chat:two?node=mac)"

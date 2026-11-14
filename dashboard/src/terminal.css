@@ -3762,9 +3762,16 @@ body:has(#mashy-fab) #main {
     border-radius: 0;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    /* A browser's own bars can sit outside this box and show the page
-       behind; the same colour all round it leaves nothing to show. */
-    box-shadow: 0 0 0 100vmax var(--raised);
+    /* A phone's browser paints its own bars and the space round the page
+       in the page's colour. The sheet is that colour too, so nothing of a
+       different shade shows at its edges. */
+    background: var(--bg);
+    box-shadow: none;
+  }
+  #mashy textarea,
+  #mashy .mashy-note,
+  #mashy .mashy-a a.mashy-chip {
+    background: var(--raised);
   }
   #mashy.fresh {
     height: auto;

@@ -403,7 +403,7 @@ fn instructions(reader: &Reader, open: Option<&OpenChat>, trimmed: bool) -> Stri
          - If you found nothing, say so in a sentence, with what you searched for. Do not guess where the answer might be, and do not fill the space with other things you found.\n\
          - Your earlier answers in this conversation came from lookups you can no longer see. Treat them as checked; do not take them back unless a new lookup contradicts them.\n\
          - Mention a chat only as a link written exactly as [short name](chat:CHAT_ID), with the chat_id copied whole from a lookup. The short name is the chat's title, cut to a few words when it is long or is a pasted message. Never use a bare word such as \"chat\" or \"here\" as the name. Add ?node=MACHINE after the ID only when the lookup says the chat is on another machine.\n\
-         - Mention a memory as [a few words of it](memory:m3), using its short id. Use no other links, and never a web address as a link.\n\
+         - Mention a memory as [a few words of it](memory:m3), using its short id. The short id goes only inside the link: never write m3 or (m3) in the text. Use no other links, and never a web address as a link.\n\
          - After an answer drawn from the history, add up to three short questions the reader might ask next, each on its own line starting with \"§ \", worded as the reader would type them and answerable from what you saw. They must follow from this answer; never offer the same ones twice. Add none after a refusal or when you found nothing.\n\
          \n\
          What you cannot do:\n\
@@ -533,6 +533,11 @@ async fn lookup(state: &Dash, reader: &mut Reader, call: &Function) -> String {
     result
 }
 
+/// A memory's short id written out in the text, where it means nothing to
+/// the reader.
+static SHORT_ID: LazyLock<Option<regex::Regex>> =
+    LazyLock::new(|| regex::Regex::new(r" ?\(m\d{1,3}\)").ok());
+
 static LINK: LazyLock<Option<regex::Regex>> =
     LazyLock::new(|| regex::Regex::new(r"\]\((chat|memory):([^)\s]+)\)").ok());
 
@@ -540,10 +545,11 @@ static LINK: LazyLock<Option<regex::Regex>> =
 /// by its short id gets its real one, and a chat on this machine loses a
 /// machine name that would send the browser looking elsewhere.
 fn mend(text: &str, reader: &Reader) -> String {
-    let Some(link) = LINK.as_ref() else {
+    let (Some(link), Some(short_id)) = (LINK.as_ref(), SHORT_ID.as_ref()) else {
         return text.to_owned();
     };
-    link.replace_all(text, |found: &regex::Captures| {
+    let text = short_id.replace_all(text, "");
+    link.replace_all(&text, |found: &regex::Captures| {
         let target = &found[2];
         if &found[1] == "memory" {
             let id = reader.memory(target).unwrap_or(target);

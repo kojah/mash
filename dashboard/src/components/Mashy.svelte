@@ -67,16 +67,31 @@ function resize(): void {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight + 2, 132)}px`;
 }
-async function open(): Promise<void> {
+const SHEET = "(max-width: 700px), (max-height: 500px)";
+// On a phone the chat covers the page, so the Back button belongs to it:
+// Back closes the sheet, and Back from a chat it linked to returns to it.
+function sheetEntry(): boolean {
+  return (history.state as { mashy?: boolean } | null)?.mashy === true;
+}
+async function show(): Promise<void> {
   mashy.toggle(true);
   following = true;
   await tick();
   input?.focus();
 }
-async function close(): Promise<void> {
+async function hide(): Promise<void> {
   mashy.toggle(false);
   await tick();
   circle?.focus();
+}
+async function open(): Promise<void> {
+  if (window.matchMedia(SHEET).matches && !sheetEntry()) history.pushState({ mashy: true }, "");
+  await show();
+}
+async function close(): Promise<void> {
+  // Leaving the sheet's own history entry closes it, in `popstate` below.
+  if (sheetEntry()) history.back();
+  else await hide();
 }
 async function submit(text: string): Promise<void> {
   if (!text.trim() || mashy.busy) return;
@@ -125,11 +140,16 @@ function chips(node: HTMLElement): { destroy(): void } {
 // covers it, so it steps aside.
 function followed(event: MouseEvent): void {
   if (!(event.target instanceof Element) || !event.target.closest("a[href^='#/']")) return;
-  if (window.matchMedia("(max-width: 700px), (max-height: 500px)").matches) mashy.toggle(false);
+  // The sheet's history entry stays behind the page the link opens.
+  if (window.matchMedia(SHEET).matches) mashy.toggle(false);
 }
 </script>
 
 <svelte:window
+  onpopstate={() => {
+    if (sheetEntry() && window.matchMedia(SHEET).matches) void show();
+    else if (mashy.open && window.matchMedia(SHEET).matches) void hide();
+  }}
   onkeydown={(event) => {
     // Escape closes Mashy when nothing else took it, such as an open find bar.
     if (event.key !== "Escape" || !mashy.open || event.defaultPrevented) return;
