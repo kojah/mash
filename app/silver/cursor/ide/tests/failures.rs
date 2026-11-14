@@ -89,7 +89,11 @@ fn incomplete_or_invalid_records_preserve_previous_index_and_checkpoint() {
     root.full_conversation_headers_only.pop();
     root.version = 19;
     write(&connection, root_key(), &root);
-    assert!(parsed_error(&path).contains("root version"));
+    // A root saved by another Cursor release rejects its own chat rather
+    // than failing the pass.
+    let other = super::super::super::discover(&path).unwrap().remove(0);
+    let rejected = super::super::super::parse(&other.identity).unwrap();
+    assert!(rejected.chat.is_none() && rejected.first_record_issue.is_some());
     root.version = 18;
     root.composer_id = "wrong".into();
     write(&connection, root_key(), &root);

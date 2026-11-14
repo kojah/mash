@@ -210,6 +210,44 @@ fn workspace_state_without_a_chat_table_holds_no_chats_and_is_not_an_error() {
     assert_eq!(storage.counts().unwrap().chats, 1);
 }
 
+/// Found on macOS with Cursor 3.30.8: 80 of 91 composers were saved by older
+/// releases (versions 6, 9, 10 and 11) and 7 rows had no value. One of them
+/// stopped the whole provider, so no Cursor chat was indexed.
+#[test]
+fn older_composer_versions_reject_themselves_and_deleted_composers_are_not_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = path(dir.path());
+    let connection = fixture(&path);
+    connection
+        .execute(
+            "INSERT INTO cursorDiskKV VALUES('composerData:older',?1)",
+            [r#"{"_v":9,"composerId":"older","conversation":[],"createdAt":1}"#],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO cursorDiskKV VALUES('composerData:deleted',NULL)",
+            [],
+        )
+        .unwrap();
+    let sources = discovered_sources(Provider::Cursor, &[dir.path().into()]);
+    assert_eq!(sources.len(), 2);
+    let older = sources
+        .iter()
+        .find(|s| s.identity.session.as_deref() == Some("ide:older"))
+        .unwrap();
+    let rejected = super::super::parse(&older.identity).unwrap();
+    assert!(rejected.chat.is_none());
+    assert!(rejected.first_record_issue.is_some());
+    let db = dir.path().join("index.sqlite3");
+    let mut storage = Storage::open_writer(&db).unwrap();
+    let summary = index(&mut storage, &options(dir.path())).unwrap();
+    storage.commit_writer().unwrap();
+    assert_eq!(summary.rejected_sources, 1);
+    assert_eq!(storage.counts().unwrap().chats, 1);
+    assert_eq!(storage.counts().unwrap().messages, 6);
+}
+
 #[test]
 fn synthetic_operational_and_unknown_bubbles_remain_context_only() {
     let dir = tempfile::tempdir().unwrap();

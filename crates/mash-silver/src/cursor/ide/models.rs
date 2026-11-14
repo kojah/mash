@@ -1,6 +1,14 @@
 //! Native desktop v18 root and visible bubble schemas. Model input is not prose.
 use serde::{Deserialize, Serialize};
 
+/// The layout version a composer root was saved with, read before the root
+/// itself: older versions do not have this reader's fields.
+#[derive(Deserialize)]
+pub struct Saved {
+    #[serde(rename = "_v")]
+    pub version: u32,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Root {

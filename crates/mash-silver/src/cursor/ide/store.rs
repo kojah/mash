@@ -48,7 +48,7 @@ impl Store {
 
     pub fn sessions(&self) -> Result<Vec<String>, AppError> {
         let mut statement = self.connection.prepare(
-            "SELECT CASE WHEN length(CAST(key AS BLOB))<=1024 THEN key END FROM cursorDiskKV WHERE key>='composerData:' AND key<'composerData;' ORDER BY key LIMIT 65537",
+            "SELECT CASE WHEN length(CAST(key AS BLOB))<=1024 THEN key END FROM cursorDiskKV WHERE key>='composerData:' AND key<'composerData;' AND value IS NOT NULL ORDER BY key LIMIT 65537",
         ).map_err(AppError::database)?;
         let keys = statement
             .query_map([], |r| r.get::<_, String>(0))

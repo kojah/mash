@@ -1,5 +1,6 @@
 //! Native IDE v18 composer roots own the ordered visible bubble history.
 use super::{Chat, HistorySource, ParsedFile, SourceIdentity, proto};
+use crate::diagnostics::RecordIssue;
 use crate::{AppError, provider::Provider, records, role::Role};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use prost::Message;
@@ -106,11 +107,24 @@ pub fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| invalid("invalid logical source identity"))?;
     let mut store = Store::open(&source.path)?;
-    let root: Root = store.json(&format!("composerData:{id}"))?;
-    if root.version != 18 || root.composer_id != id {
-        return Err(invalid(
-            "unsupported root version or mismatched composer identity",
-        ));
+    let key = format!("composerData:{id}");
+    // Chats saved by older Cursor releases keep their own root layouts. Each
+    // rejects itself, so the chats this reader understands are still indexed
+    // and the pass reports what it could not read.
+    let saved: models::Saved = store.json(&key)?;
+    if saved.version != 18 {
+        tracing::warn!(target: "mash", provider = Provider::Cursor.as_str(),
+            source_fingerprint = %blake3::hash(source.path.as_os_str().as_encoded_bytes()).to_hex(),
+            version = saved.version, "native composer version not supported");
+        return Ok(ParsedFile {
+            chat: None,
+            malformed_records: 0,
+            first_record_issue: Some(RecordIssue::unsupported(Provider::Cursor, &source.path)),
+        });
+    }
+    let root: Root = store.json(&key)?;
+    if root.composer_id != id {
+        return Err(invalid("mismatched composer identity"));
     }
     if root
         .subagent_info
