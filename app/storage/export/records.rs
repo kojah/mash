@@ -22,7 +22,7 @@ fn tools(row: &Row<'_>) -> Result<crate::tools::Activity, AppError> {
     clippy::too_many_lines,
     reason = "exhaustive typed canonical table mapping at the archive boundary"
 )]
-pub(crate) fn visit(
+pub fn visit(
     storage: &Storage,
     emit: &mut impl FnMut(Record) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
@@ -214,7 +214,7 @@ fn retained_attachments(row: &Row<'_>) -> Result<Vec<crate::attachments::Metadat
     clippy::too_many_lines,
     reason = "exhaustive typed record mapping for the portable silver format"
 )]
-pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> {
+pub fn insert(storage: &Storage, record: Record) -> Result<(), AppError> {
     record.validate()?;
     let connection = &storage.connection;
     macro_rules! execute {

@@ -6,11 +6,7 @@ use crate::search_results::ChatMetadata;
 
 impl Storage {
     #[tracing::instrument(name = "local_chat_catalog", skip_all)]
-    pub(crate) fn chat_candidates(
-        &self,
-        request: &Request,
-        node: &str,
-    ) -> Result<Vec<Chat>, AppError> {
+    pub fn chat_candidates(&self, request: &Request, node: &str) -> Result<Vec<Chat>, AppError> {
         request.validate()?;
         if !request.admits_node(node, node) {
             return Ok(Vec::new());

@@ -63,7 +63,7 @@ pub(super) fn duplicate(
 }
 
 impl Storage {
-    pub(crate) fn record_matches(
+    pub fn record_matches(
         &self,
         request: &Request,
         policy: crate::redaction::Policy,

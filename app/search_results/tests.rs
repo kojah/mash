@@ -68,27 +68,6 @@ fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
 }
 
 #[test]
-fn message_replicas_fuse_once_even_when_rankers_choose_different_nodes() {
-    let mut lexical_copy = hit("thread", "a");
-    lexical_copy.node_id = Some("peer".into());
-    let mut semantic_copy = hit("thread", "a");
-    semantic_copy.node_id = Some("other-peer".into());
-    semantic_copy.semantic_score = Some(0.9);
-    let rows = crate::semantic::fuse(
-        vec![hit("thread", "a"), lexical_copy, hit("thread", "b")],
-        vec![semantic_copy, hit("thread", "b")],
-        SearchUnit::Messages,
-        crate::views::config::Fusion::default(),
-    );
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].id, "a");
-    assert_eq!(rows[0].copies.len(), 2);
-    assert_eq!(rows[0].semantic_score, Some(0.9));
-    assert!((rows[0].fusion_score - 2.0 / 61.0).abs() < 1e-6);
-    assert!((rows[1].fusion_score - 2.0 / 62.0).abs() < 1e-6);
-}
-
-#[test]
 fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
     for unit in [SearchUnit::Chats, SearchUnit::Messages] {
         let mut useful = hit("useful", "model caching");

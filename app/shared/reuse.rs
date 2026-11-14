@@ -84,7 +84,7 @@ impl Fingerprint {
         {
             return Err(AppError::shared("invalid ordered thread dependencies"));
         }
-        serde_json::to_writer(Digest(&mut self.digest), &message.silver_ref())
+        serde_json::to_writer(Digest(&mut self.digest), &MessageRef::from(message))
             .map_err(|_| AppError::internal("fingerprint shared message"))?;
         self.digest.update(b"\n");
         self.ordinal = Some(message.ordinal);
@@ -113,20 +113,20 @@ pub(in crate::shared) struct MessageRef<'a> {
     tools: &'a crate::tools::Activity,
 }
 
-impl MessageRecord {
+impl<'a> From<&'a MessageRecord> for MessageRef<'a> {
     /// Canonical fields only; vectors and model identity are never silver.
-    pub(in crate::shared) fn silver_ref(&self) -> MessageRef<'_> {
-        MessageRef {
-            attachments: &self.attachments,
-            id: &self.id,
-            chat_id: &self.chat_id,
-            ordinal: self.ordinal,
-            context: &self.context,
-            role: &self.role,
-            content: &self.content,
-            projection: &self.projection,
-            created_at: self.created_at,
-            tools: &self.tools,
+    fn from(record: &'a MessageRecord) -> Self {
+        Self {
+            attachments: &record.attachments,
+            id: &record.id,
+            chat_id: &record.chat_id,
+            ordinal: record.ordinal,
+            context: &record.context,
+            role: &record.role,
+            content: &record.content,
+            projection: &record.projection,
+            created_at: record.created_at,
+            tools: &record.tools,
         }
     }
 }

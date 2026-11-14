@@ -18,7 +18,7 @@ const LEVEL: i32 = 3;
 /// Larger than any stored message; bounds a corrupt frame's allocation.
 const MAX_TEXT_BYTES: usize = 256 << 20;
 
-pub(crate) fn pack(text: &str) -> Value {
+pub fn pack(text: &str) -> Value {
     if text.len() < THRESHOLD || text.len() > MAX_TEXT_BYTES {
         return Value::Text(text.to_owned());
     }
@@ -28,7 +28,7 @@ pub(crate) fn pack(text: &str) -> Value {
     }
 }
 
-pub(crate) fn unpack(frame: &[u8]) -> Result<String, &'static str> {
+pub fn unpack(frame: &[u8]) -> Result<String, &'static str> {
     let bytes =
         zstd::bulk::decompress(frame, MAX_TEXT_BYTES).map_err(|_| "corrupt packed silver text")?;
     String::from_utf8(bytes).map_err(|_| "packed silver text is not UTF-8")

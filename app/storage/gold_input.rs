@@ -12,25 +12,25 @@ use std::{
 
 mod scratch;
 
-pub(crate) struct Chat {
-    pub(crate) record: ChatRecord,
-    pub(crate) fingerprint: String,
+pub struct Chat {
+    pub record: ChatRecord,
+    pub fingerprint: String,
     offset: u64,
     messages: usize,
     bytes: u64,
 }
 
-pub(crate) struct Input {
-    pub(crate) instance: String,
-    pub(crate) certificate: crate::silver::certificate::Certificate,
-    pub(crate) counts: Counts,
-    pub(crate) chats: BTreeMap<String, Chat>,
+pub struct Input {
+    pub instance: String,
+    pub certificate: crate::silver::certificate::Certificate,
+    pub counts: Counts,
+    pub chats: BTreeMap<String, Chat>,
     messages: tempfile::NamedTempFile,
 }
 
 impl Input {
-    pub(crate) fn capture(path: &Path) -> Result<Self, AppError> {
-        use crate::shared::protocol::{Batch, BatchKind};
+    pub fn capture(path: &Path) -> Result<Self, AppError> {
+        use crate::shared::batches::{Batch, BatchKind};
         let storage = Storage::open_silver(path)?;
         let mut messages = tempfile::NamedTempFile::new().map_err(AppError::io)?;
         let mut writer = std::io::BufWriter::new(messages.as_file_mut());
@@ -111,7 +111,7 @@ impl Input {
         })
     }
 
-    pub(crate) fn read_chat(&self, id: &str) -> Result<Vec<SearchMessage>, AppError> {
+    pub fn read_chat(&self, id: &str) -> Result<Vec<SearchMessage>, AppError> {
         let chat = self
             .chats
             .get(id)
@@ -138,7 +138,7 @@ impl Input {
 }
 
 impl Storage {
-    pub(crate) fn local_gold_state(
+    pub fn local_gold_state(
         &self,
         path: &Path,
     ) -> Result<(String, crate::silver::certificate::Certificate), AppError> {
@@ -153,7 +153,7 @@ impl Storage {
 
     /// Copies at another path and imports must not inherit gold certification.
     /// Resolve symlinks so aliases of the same database retain one namespace.
-    pub(crate) fn local_gold_identity(&self, path: &Path) -> Result<String, AppError> {
+    pub fn local_gold_identity(&self, path: &Path) -> Result<String, AppError> {
         let instance: String = self
             .connection
             .query_row(

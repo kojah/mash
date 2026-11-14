@@ -5,14 +5,14 @@
 pub mod openapi;
 pub use mash_model::{message_context, provider, role, tools};
 pub mod silver;
-pub mod silver_query;
+pub use mash_storage::silver_query;
 
 // View materialization, retrieval models, policies and query-oriented views.
-pub mod chat_catalog;
-pub mod search_filter;
-mod search_query;
+pub use mash_storage::chat_catalog;
+pub use mash_storage::search_filter;
+use mash_storage::search_query;
 mod search_ranking;
-pub mod search_results;
+pub use mash_storage::search_results;
 pub mod semantic;
 pub mod views;
 
@@ -21,20 +21,22 @@ use mash_model::{Action, AppError, ErrorKind};
 pub use mash_model::{attachments, database_error, platform, progress, redaction, scratch};
 pub mod config;
 pub mod core;
-mod export;
+use mash_storage::export;
 /// Registers the silver text codec on a raw connection, as tests need to read silver directly.
 #[doc(hidden)]
 pub use storage::packed::register as register_silver_codec;
 pub mod observability;
 #[cfg(test)]
 mod progress_tests;
-pub mod records;
+#[cfg(test)]
+mod storage_tests;
+pub use mash_storage::records;
 pub mod remote;
 pub mod runtime;
 pub mod shared;
-pub mod storage;
 #[cfg(test)]
 use mash_model::test_support;
+pub use mash_storage::storage;
 pub mod watch;
 
 use std::io::{self, Write};

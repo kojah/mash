@@ -31,11 +31,7 @@ fn task(row: &Row<'_>) -> rusqlite::Result<Task> {
 }
 
 impl Storage {
-    pub(crate) fn record_capture(
-        &self,
-        policy: &Policy,
-        request: &Request,
-    ) -> Result<Response, AppError> {
+    pub fn record_capture(&self, policy: &Policy, request: &Request) -> Result<Response, AppError> {
         if request.offset > 100_000 {
             return Err(AppError::usage("capture offset must be at most 100000"));
         }

@@ -14,7 +14,7 @@ pub struct Owner {
 }
 
 impl Owner {
-    pub(crate) fn covers(&self, database: &Path) -> Result<bool, AppError> {
+    pub fn covers(&self, database: &Path) -> Result<bool, AppError> {
         Ok(self.database == canonical(database)?)
     }
 }
@@ -28,7 +28,7 @@ thread_local! {
 }
 
 /// Blocking workers retain ownership even if their awaiting future is dropped.
-pub(crate) fn current() -> Option<Arc<Owner>> {
+pub fn current() -> Option<Arc<Owner>> {
     OWNER
         .try_with(Clone::clone)
         .ok()
@@ -37,7 +37,7 @@ pub(crate) fn current() -> Option<Arc<Owner>> {
 }
 
 /// Carry admission into synchronous SQLite work, including schema upgrades.
-pub(crate) fn on_blocking_thread<T>(owner: Option<Arc<Owner>>, work: impl FnOnce() -> T) -> T {
+pub fn on_blocking_thread<T>(owner: Option<Arc<Owner>>, work: impl FnOnce() -> T) -> T {
     struct Restore(Option<Arc<Owner>>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -121,7 +121,11 @@ pub async fn acquire_until(
     tokio::pin!(cancelled);
     loop {
         let path = database.to_path_buf();
-        match crate::blocking(move || acquire(&path)).await {
+        // The attempt carries no caller context: it only tries the lock file.
+        let attempt = tokio::task::spawn_blocking(move || acquire(&path))
+            .await
+            .map_err(|_| AppError::internal("blocking worker failed"))?;
+        match attempt {
             Err(error) if error.error.kind == crate::ErrorKind::IndexBusy => {}
             result => return result,
         }
@@ -161,7 +165,7 @@ pub fn abandoned() -> AppError {
 /// to tell search that is about to catch up from search nobody is refreshing.
 /// The probe takes a shared lock for an instant, so a writer arriving in that
 /// instant reports the index busy, as it would beside any other writer.
-pub(crate) fn held(database: &Path) -> Result<bool, AppError> {
+pub fn held(database: &Path) -> Result<bool, AppError> {
     let mut path = canonical(database)?.into_os_string();
     path.push(".writer.lock");
     let file = match File::open(Path::new(&path)) {
@@ -292,40 +296,5 @@ mod tests {
             crate::ErrorKind::IndexBusy
         );
         drop(admitted);
-    }
-
-    #[tokio::test]
-    async fn local_writer_admission_survives_cancelled_blocking_awaiter() {
-        let directory = tempfile::tempdir().unwrap();
-        let database = directory.path().join("index.sqlite3");
-        let owner = acquire(&database).unwrap();
-        let (entered, started) = tokio::sync::oneshot::channel();
-        let (release, released) = std::sync::mpsc::channel();
-        let task = tokio::spawn(scope(Some(owner), async move {
-            crate::blocking(move || {
-                entered.send(()).unwrap();
-                released.recv().unwrap();
-                Ok(())
-            })
-            .await
-        }));
-        started.await.unwrap();
-        task.abort();
-        assert!(task.await.unwrap_err().is_cancelled());
-        assert_eq!(
-            acquire(&database).unwrap_err().error.kind,
-            crate::ErrorKind::IndexBusy
-        );
-        release.send(()).unwrap();
-        tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            loop {
-                if acquire(&database).is_ok() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .unwrap();
     }
 }

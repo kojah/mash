@@ -2,7 +2,7 @@
 use crate::{AppError, views::documents::SearchMessage};
 use rusqlite::Connection;
 
-pub(crate) fn visit(
+pub fn visit(
     connection: &Connection,
     chat: Option<&str>,
     mut accept: impl FnMut(SearchMessage) -> Result<(), AppError>,
@@ -41,10 +41,7 @@ pub(crate) fn visit(
     Ok(())
 }
 
-pub(crate) fn chat_messages(
-    connection: &Connection,
-    chat: &str,
-) -> Result<Vec<SearchMessage>, AppError> {
+pub fn chat_messages(connection: &Connection, chat: &str) -> Result<Vec<SearchMessage>, AppError> {
     let mut messages = Vec::new();
     visit(connection, Some(chat), |message| {
         messages.push(message);

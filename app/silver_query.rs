@@ -213,7 +213,7 @@ fn request_sql(request: &Request) -> Result<(String, Vec<rusqlite::types::Value>
 
 /// Run a typed request with the same read-only connection and output bounds as
 /// `run`.
-pub(crate) fn run_request(
+pub fn run_request(
     database: &Path,
     request: &Request,
     timeout: Duration,
@@ -288,17 +288,12 @@ fn hex(bytes: &[u8]) -> String {
 
 /// Run one read-only statement. Returns its columns, up to `limit` rows, and
 /// whether more rows were available.
-pub(crate) fn run(
-    database: &Path,
-    sql: &str,
-    limit: usize,
-    timeout: Duration,
-) -> Result<Value, AppError> {
+pub fn run(database: &Path, sql: &str, limit: usize, timeout: Duration) -> Result<Value, AppError> {
     run_bounded(database, sql, limit, timeout, MAX_OUTPUT_BYTES)
 }
 
 /// `run` with an explicit decoded-payload budget, so the bound is testable.
-pub(crate) fn run_bounded(
+pub fn run_bounded(
     database: &Path,
     sql: &str,
     limit: usize,
@@ -366,7 +361,7 @@ fn prepare_read_only(connection: &Connection, timeout: Duration) -> Result<(), A
 
 /// Run a typed request on an already-open connection, applying the same
 /// read-only setup as `run_request`.
-pub(crate) fn run_request_on(
+pub fn run_request_on(
     connection: &Connection,
     request: &Request,
     timeout: Duration,

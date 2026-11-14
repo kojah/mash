@@ -2,7 +2,7 @@
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
-pub(crate) const VOCABULARY_LIMIT: usize = 100_000;
+pub const VOCABULARY_LIMIT: usize = 100_000;
 const ALTERNATIVES: usize = 8;
 /// Candidates a scoped plan checks per query word, best-ranked first.
 const MAX_CHECKS: usize = 64;
@@ -29,10 +29,10 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub(crate) fn prefix(self) -> bool {
+    pub fn prefix(self) -> bool {
         matches!(self, Self::Prefix | Self::Flexible)
     }
-    pub(crate) fn typo(self) -> bool {
+    pub fn typo(self) -> bool {
         matches!(self, Self::Typo | Self::Flexible)
     }
 }
@@ -40,22 +40,22 @@ impl Mode {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "MatchEvidence")]
-pub(crate) struct Evidence {
-    pub(crate) kind: Kind,
-    pub(crate) matched: String,
+pub struct Evidence {
+    pub kind: Kind,
+    pub matched: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[schemars(rename = "MatchKind")]
-pub(crate) enum Kind {
+pub enum Kind {
     Exact,
     Prefix,
     Typo,
     PrefixAndTypo,
 }
 
-pub(crate) fn tokens(text: &str) -> Vec<String> {
+pub fn tokens(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphanumeric())
         .filter(|s| !s.is_empty())
         .map(str::to_lowercase)
@@ -70,7 +70,7 @@ fn digits(text: &str) -> impl Iterator<Item = u8> + '_ {
 ///
 /// Literal search asks this of every word of every scanned message, so the
 /// cheap length and prefix tests come first and nothing here allocates.
-pub(crate) fn relation(query: &str, term: &str, mode: Mode) -> Option<Kind> {
+pub fn relation(query: &str, term: &str, mode: Mode) -> Option<Kind> {
     if query.eq_ignore_ascii_case(term) {
         return Some(Kind::Exact);
     }
@@ -133,13 +133,13 @@ fn distance(left: &[u8], right: &[u8], budget: usize) -> bool {
     previous[right.len()] <= budget
 }
 
-pub(crate) struct Plan {
-    pub(crate) groups: Vec<Vec<String>>,
+pub struct Plan {
+    pub groups: Vec<Vec<String>>,
 }
 
 impl Plan {
     /// Report an actual expanded indexed term, never an inferred correction.
-    pub(crate) fn evidence(&self, content: &str, mode: Mode) -> Option<Evidence> {
+    pub fn evidence(&self, content: &str, mode: Mode) -> Option<Evidence> {
         let terms = tokens(content);
         if self.groups.iter().all(|group| terms.contains(&group[0])) {
             return None;
@@ -159,17 +159,13 @@ impl Plan {
         }
         None
     }
-    pub(crate) fn new(
-        query: &str,
-        mode: Mode,
-        vocabulary: &[String],
-    ) -> Result<Self, crate::AppError> {
+    pub fn new(query: &str, mode: Mode, vocabulary: &[String]) -> Result<Self, crate::AppError> {
         Self::scoped(query, mode, vocabulary, |_| Ok(true))
     }
 
     /// Like `new`, keeping only alternatives that `occurs` reports in scope.
     /// Candidates are checked in rank order until each word has its quota.
-    pub(crate) fn scoped(
+    pub fn scoped(
         query: &str,
         mode: Mode,
         vocabulary: &[String],
@@ -214,7 +210,7 @@ impl Plan {
     }
 
     /// Every accepted word once, so a repeated word is not scored twice.
-    pub(crate) fn query_text(&self) -> String {
+    pub fn query_text(&self) -> String {
         let mut seen = std::collections::BTreeSet::new();
         self.groups
             .iter()
@@ -227,7 +223,7 @@ impl Plan {
 }
 
 /// Evidence never names text the destination's policy masks.
-pub(crate) fn annotate(
+pub fn annotate(
     hit: &mut crate::storage::SearchHit,
     literal: &super::exact::Literal,
     redaction: crate::redaction::Policy,

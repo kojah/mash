@@ -25,11 +25,11 @@ struct FileDigest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryCounts {
-    pub(crate) chats: u64,
-    pub(crate) messages: u64,
-    pub(crate) attachment_files: u64,
-    pub(crate) attachment_bytes: u64,
+pub struct HistoryCounts {
+    pub chats: u64,
+    pub messages: u64,
+    pub attachment_files: u64,
+    pub attachment_bytes: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -53,29 +53,29 @@ enum Format {
 
 #[derive(Debug, Serialize)]
 pub struct Exported {
-    pub(crate) directory: PathBuf,
-    pub(crate) format_version: u32,
-    pub(crate) silver: Certificate,
-    pub(crate) counts: HistoryCounts,
+    pub directory: PathBuf,
+    pub format_version: u32,
+    pub silver: Certificate,
+    pub counts: HistoryCounts,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Imported {
-    pub(crate) database: PathBuf,
-    pub(crate) silver: Certificate,
-    pub(crate) counts: HistoryCounts,
-    pub(crate) search_ready: bool,
-    pub(crate) recommended_action: NextStep,
+    pub database: PathBuf,
+    pub silver: Certificate,
+    pub counts: HistoryCounts,
+    pub search_ready: bool,
+    pub recommended_action: NextStep,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum NextStep {
+pub enum NextStep {
     RebuildLocalViews,
     RepairSilver,
 }
 
-pub(crate) fn write(
+pub fn write(
     database: &Path,
     directory: &Path,
     source_node: Option<String>,
@@ -116,11 +116,7 @@ pub(crate) fn write(
     })
 }
 
-pub(crate) fn load(
-    directory: &Path,
-    database: &Path,
-    keep_identity: bool,
-) -> Result<Imported, AppError> {
+pub fn load(directory: &Path, database: &Path, keep_identity: bool) -> Result<Imported, AppError> {
     let manifest: Manifest =
         serde_json::from_slice(&read_limited(&directory.join(MANIFEST), 64 * 1024)?)
             .map_err(|_| AppError::usage("invalid or incomplete export manifest"))?;

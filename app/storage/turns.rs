@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 /// Resolve a message's derived turn while checking its canonical chat identity.
 /// A point can briefly outlive a deleted silver message, in which case it has
 /// no turn reference. Turns themselves are never stored in Qdrant.
-pub(crate) fn message_turn(
+pub fn message_turn(
     connection: &Connection,
     provider: crate::provider::Provider,
     chat_id: &str,
@@ -51,9 +51,9 @@ pub(crate) fn message_turn(
 }
 
 impl super::Storage {
-    pub(crate) fn hydrate_turns(
+    pub fn hydrate_turns(
         &self,
-        candidates: &mut crate::views::retrieval::Candidates,
+        candidates: &mut crate::views::candidates::Candidates,
     ) -> Result<(), AppError> {
         for hit in candidates
             .lexical
@@ -68,7 +68,7 @@ impl super::Storage {
 
 /// Bring a chat's derived turns and message references up to date.
 /// Deleting stale turns cannot delete canonical messages.
-pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppError> {
+pub fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppError> {
     let rows = sql::TurnSources::builder()
         .chat_id(chat_id)
         .build()
@@ -163,7 +163,7 @@ pub(crate) fn derive(connection: &Connection, chat_id: &str) -> Result<(), AppEr
 }
 
 /// Derive every chat's turns, after an import has restored their messages.
-pub(crate) fn derive_all(connection: &Connection) -> Result<(), AppError> {
+pub fn derive_all(connection: &Connection) -> Result<(), AppError> {
     for chat in sql::ChatIds
         .query_many(connection)
         .map_err(AppError::database)?

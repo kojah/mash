@@ -2,11 +2,11 @@
 use super::Storage;
 use crate::{
     AppError,
-    core::coverage::Retained,
     provider::Provider,
     silver::certificate::{Completeness, INTERPRETATION_VERSION},
 };
 use rusqlite::OptionalExtension;
+use serde::Serialize;
 
 fn count(row: &rusqlite::Row<'_>, column: &str) -> rusqlite::Result<u64> {
     let value: i64 = row.get(column)?;
@@ -19,10 +19,7 @@ fn count(row: &rusqlite::Row<'_>, column: &str) -> rusqlite::Result<u64> {
 }
 
 impl Storage {
-    pub(crate) fn coverage_scan(
-        &self,
-        provider: Provider,
-    ) -> Result<(Completeness, u64), AppError> {
+    pub fn coverage_scan(&self, provider: Provider) -> Result<(Completeness, u64), AppError> {
         let scan = self
             .connection
             .query_row(
@@ -55,7 +52,7 @@ impl Storage {
         };
         Ok((state, rejected))
     }
-    pub(crate) fn coverage_retained(
+    pub fn coverage_retained(
         &self,
         scope: &crate::search_filter::Scope,
     ) -> Result<Retained, AppError> {
@@ -63,6 +60,15 @@ impl Storage {
             Ok(Retained { chats: count(row, "chats")?, messages: count(row, "messages")?, earliest_message_at: row.get("earliest")?, latest_message_at: row.get("latest")? })
         }).map_err(AppError::database)
     }
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct Retained {
+    pub chats: u64,
+    pub messages: u64,
+    /// Observed message bounds in Unix milliseconds, not a completeness interval.
+    pub earliest_message_at: Option<i64>,
+    pub latest_message_at: Option<i64>,
 }
 
 #[cfg(test)]

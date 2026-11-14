@@ -11,7 +11,7 @@ pub(super) const LIST_RECORD_BYTES: usize = 28 * 1024 * 1024;
 const REVISION_BYTES: usize = 15 * 1024 * 1024;
 const LINK_LIMIT: usize = 128;
 
-pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
+pub fn read(connection: &Connection, id: &str, history: bool) -> Result<Record, AppError> {
     read_page(
         connection,
         &records::Get {
@@ -22,10 +22,7 @@ pub(crate) fn read(connection: &Connection, id: &str, history: bool) -> Result<R
     )
 }
 
-pub(crate) fn read_page(
-    connection: &Connection,
-    request: &records::Get,
-) -> Result<Record, AppError> {
+pub fn read_page(connection: &Connection, request: &records::Get) -> Result<Record, AppError> {
     bounded(&request.id, 512, "record ID")?;
     let limit = request.limit.unwrap_or(8);
     if !(1..=20).contains(&limit)

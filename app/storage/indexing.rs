@@ -15,20 +15,20 @@ struct MessageState {
 }
 
 impl Storage {
-    pub(crate) fn begin_provider_scan(&self) -> Result<(), AppError> {
+    pub fn begin_provider_scan(&self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
             .execute_batch("SAVEPOINT mash_provider_scan")
             .map_err(AppError::database)
     }
 
-    pub(crate) fn finish_provider_scan(&self) -> Result<(), AppError> {
+    pub fn finish_provider_scan(&self) -> Result<(), AppError> {
         self.connection
             .execute_batch("RELEASE mash_provider_scan")
             .map_err(AppError::database)
     }
 
-    pub(crate) fn rollback_provider_scan(&self) -> Result<(), AppError> {
+    pub fn rollback_provider_scan(&self) -> Result<(), AppError> {
         self.connection
             .execute_batch(
                 "ROLLBACK TO mash_provider_scan;
@@ -146,7 +146,7 @@ impl Storage {
             .map_err(|_| AppError::internal("invalid displaced message count"))
     }
 
-    pub(crate) fn source_checkpoint_matches(
+    pub fn source_checkpoint_matches(
         &self,
         provider: Provider,
         source: &crate::silver::SourceIdentity,
@@ -180,7 +180,7 @@ impl Storage {
     /// Mark every checkpoint of these providers as read by an older release,
     /// so the next pass reads their sources again. A chat whose content and
     /// metadata come out the same is left as it is.
-    pub(crate) fn reread_sources(
+    pub fn reread_sources(
         &mut self,
         providers: impl IntoIterator<Item = Provider>,
     ) -> Result<(), AppError> {
@@ -196,7 +196,7 @@ impl Storage {
         Ok(())
     }
 
-    pub(crate) fn record_source_checkpoint(
+    pub fn record_source_checkpoint(
         &mut self,
         provider: Provider,
         source: &crate::silver::SourceIdentity,
@@ -299,7 +299,7 @@ impl Storage {
         Ok(removed)
     }
 
-    pub(crate) fn purge_missing_sources(
+    pub fn purge_missing_sources(
         &mut self,
         provider: Provider,
         observed_keys: &BTreeSet<String>,
@@ -387,7 +387,7 @@ impl Storage {
         Ok(removed)
     }
 
-    pub(crate) fn remove_source(
+    pub fn remove_source(
         &mut self,
         provider: Provider,
         source: &crate::silver::SourceIdentity,
@@ -426,7 +426,7 @@ impl Storage {
         Ok(())
     }
 
-    pub(crate) fn forget(&mut self, id: &str) -> Result<bool, AppError> {
+    pub fn forget(&mut self, id: &str) -> Result<bool, AppError> {
         let transaction = self
             .connection
             .unchecked_transaction()

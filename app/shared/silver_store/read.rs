@@ -202,7 +202,7 @@ pub(crate) fn export(connection: &Connection, output: &mut impl Write) -> Result
     let mut members = section(output, "messages", false)?;
     while let Some(row) = rows.next().map_err(database)? {
         let record = message_record!(sql::NodeMessagesRow::from_row(row).map_err(database)?)?;
-        let value = serde_json::to_string(&record.silver_ref())
+        let value = serde_json::to_string(&crate::shared::reuse::MessageRef::from(&record))
             .map_err(|_| AppError::internal("encode retained message"))?;
         members.push(&record.id, &value)?;
     }

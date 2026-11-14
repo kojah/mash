@@ -51,7 +51,7 @@ fn source(connection: &Connection, scope: &Scope, chat: &str) -> Result<String, 
 }
 
 impl Storage {
-    pub(crate) fn extraction_checkpoint(&self, request: &Inspect) -> Result<State, AppError> {
+    pub fn extraction_checkpoint(&self, request: &Inspect) -> Result<State, AppError> {
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -73,7 +73,7 @@ impl Storage {
         })
     }
 
-    pub(crate) fn extract_records(&mut self, request: &Request) -> Result<Receipt, AppError> {
+    pub fn extract_records(&mut self, request: &Request) -> Result<Receipt, AppError> {
         bounded(&request.operation_id, 256, "extraction operation ID")?;
         let serialized = encode(request)?;
         if request.records.len() > 64 || serialized.len() > 2_000_000 {

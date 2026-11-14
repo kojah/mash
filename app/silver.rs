@@ -14,7 +14,6 @@ use mash_silver::discovery::{
 };
 pub(crate) use mash_silver::*;
 
-pub(crate) mod archive;
 #[cfg(test)]
 mod benchmarks;
 pub mod local;

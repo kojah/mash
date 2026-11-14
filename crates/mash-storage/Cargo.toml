@@ -1,0 +1,57 @@
+[package]
+name = "mash-storage"
+version.workspace = true
+edition = "2024"
+description = "Mash's silver SQLite index, memory records and the search result types every layer above shares"
+license = "MIT"
+publish = false
+
+# The sources stay under `app/`, beside the application library that used to
+# own them: deploy tooling reads `app/storage/schema.rs` by path.
+[lib]
+path = "../../app/mash_storage.rs"
+
+[features]
+# Fixtures and hooks the tests of other workspace crates need.
+test-support = ["mash-silver/test-support"]
+
+[dependencies]
+mash-query = { path = "../mash-query" }
+mash-model = { path = "../mash-model" }
+mash-silver = { path = "../mash-silver" }
+aho-corasick = "1.1.5"
+rmcp = { version = "3.4.0", default-features = false, features = ["client", "server", "macros", "transport-io", "transport-child-process"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "fs", "net", "io-util", "process"] }
+tracing = "0.1"
+tempfile = "3.27.0"
+blake3 = "1.8.5"
+chrono = { version = "0.4.44", default-features = false, features = ["std"] }
+clap = { version = "4.6.1", features = ["derive"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+rusqlite_migration = "2.6.0"
+base64 = "0.22.1"
+prost = "0.14.4"
+zstd = "0.13.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["raw_value"] }
+schemars = "1.2"
+
+[dev-dependencies]
+mash-model = { path = "../mash-model", features = ["test-support"] }
+mash-silver = { path = "../mash-silver", features = ["test-support"] }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+# Items here are public only so the other workspace crates can use them. These
+# lints document a published API; they did not apply to the same items while
+# they were crate-private in `mash`, and still do not.
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+return_self_not_must_use = { level = "allow", priority = 1 }

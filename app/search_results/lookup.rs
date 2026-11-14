@@ -6,28 +6,28 @@ mod tests;
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Lookup {
-    pub(crate) view: View,
-    pub(crate) list_attachments: Attachments,
+pub struct Lookup {
+    pub view: View,
+    pub list_attachments: Attachments,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct View {
-    pub(crate) id: String,
+pub struct View {
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) shared: Option<String>,
+    pub shared: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Attachments {
-    pub(crate) message_id: String,
+pub struct Attachments {
+    pub message_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) shared: Option<String>,
+    pub shared: Option<String>,
 }
 
-pub(crate) fn attach(
+pub fn attach(
     results: &mut super::Results,
     local_node: &str,
     shared_available: bool,

@@ -8,15 +8,15 @@ use std::{
 };
 mod records;
 
-pub(crate) struct Snapshot {
-    pub(crate) silver: crate::silver::certificate::Certificate,
-    pub(crate) counts: crate::storage::Counts,
-    pub(crate) files: BTreeMap<String, u64>,
+pub struct Snapshot {
+    pub silver: crate::silver::certificate::Certificate,
+    pub counts: crate::storage::Counts,
+    pub files: BTreeMap<String, u64>,
 }
 
 /// Archive completeness describes the exporting interpretation. Runtime readiness
 /// must still use the current interpretation after import.
-pub(crate) fn certificate_matches(
+pub fn certificate_matches(
     history: &Storage,
     expected: &crate::silver::certificate::Certificate,
 ) -> Result<bool, AppError> {
@@ -25,7 +25,7 @@ pub(crate) fn certificate_matches(
             && history.silver_certificate_for(expected.interpretation_version)? == *expected))
 }
 
-pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppError> {
+pub fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppError> {
     let history = Storage::open_silver(source)?;
     let _transaction = history
         .connection
@@ -59,11 +59,7 @@ pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppEr
 
 /// Restore a canonical archive. Imports start a new publication identity unless
 /// `keep_identity` continues the exporting node, whose database is retired.
-pub(crate) fn restore(
-    source: &Path,
-    destination: &Path,
-    keep_identity: bool,
-) -> Result<(), AppError> {
+pub fn restore(source: &Path, destination: &Path, keep_identity: bool) -> Result<(), AppError> {
     use crate::silver::archive::Record;
     const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
     let mut connection = rusqlite::Connection::open(destination).map_err(AppError::database)?;
@@ -157,7 +153,7 @@ pub(crate) fn restore(
     Ok(())
 }
 
-pub(crate) fn validate(storage: &Storage) -> Result<(), AppError> {
+pub fn validate(storage: &Storage) -> Result<(), AppError> {
     let check: String = storage
         .connection
         .query_row("PRAGMA quick_check", [], |row| row.get(0))
@@ -182,7 +178,7 @@ pub(crate) fn validate(storage: &Storage) -> Result<(), AppError> {
     Ok(())
 }
 
-pub(crate) fn attachments(storage: &Storage) -> Result<BTreeMap<String, u64>, AppError> {
+pub fn attachments(storage: &Storage) -> Result<BTreeMap<String, u64>, AppError> {
     let mut files = BTreeMap::new();
     // Claude's branch evidence can retain files absent from the visible thread.
     for (query, format) in [

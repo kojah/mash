@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::AppError;
 pub mod capture;
 pub mod extraction;
-pub(crate) mod live;
+pub mod live;
 pub mod matches;
 pub mod recall;
-pub(crate) mod transfer;
+pub mod transfer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -116,7 +116,7 @@ pub enum Details {
 }
 
 impl Details {
-    pub(crate) const fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> &'static str {
         match self {
             Self::Decision { .. } => "decision",
             Self::Preference { .. } => "preference",
@@ -124,7 +124,7 @@ impl Details {
         }
     }
 
-    pub(crate) const fn current(&self) -> bool {
+    pub const fn current(&self) -> bool {
         matches!(
             self,
             Self::Decision {
@@ -140,7 +140,7 @@ impl Details {
         )
     }
 
-    pub(crate) fn supersede(&mut self) -> Result<(), AppError> {
+    pub fn supersede(&mut self) -> Result<(), AppError> {
         if !self.current() {
             return Err(conflict("only current records can be superseded"));
         }
@@ -153,7 +153,7 @@ impl Details {
     }
 
     /// A choice the agent made itself, which the person has not endorsed.
-    pub(crate) const fn agent_decided(&self) -> bool {
+    pub const fn agent_decided(&self) -> bool {
         matches!(
             self,
             Self::Decision {
@@ -163,7 +163,7 @@ impl Details {
         )
     }
 
-    pub(crate) const fn superseded(&self) -> bool {
+    pub const fn superseded(&self) -> bool {
         matches!(
             self,
             Self::Decision {
@@ -200,13 +200,13 @@ pub struct Body {
 }
 
 impl Body {
-    pub(crate) fn applies_at(&self, timestamp: i64) -> bool {
+    pub fn applies_at(&self, timestamp: i64) -> bool {
         self.details.current()
             && self.effective_at.is_none_or(|start| start <= timestamp)
             && !matches!(&self.details, Details::Fact { valid_until: Some(end), .. } if *end < timestamp)
     }
 
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         bounded(&self.statement, 4096, "statement")?;
         bounded(&self.recorded_by, 256, "recorded_by")?;
         if self.rationale.len() > 8192 {
@@ -303,7 +303,7 @@ pub enum DuplicatePolicy {
 }
 
 impl DuplicatePolicy {
-    pub(crate) const fn is_report(&self) -> bool {
+    pub const fn is_report(&self) -> bool {
         matches!(self, Self::Report)
     }
 }
@@ -407,7 +407,7 @@ pub struct Record {
 }
 
 impl Change {
-    pub(crate) fn citations_mut(&mut self) -> Option<&mut Vec<Citation>> {
+    pub fn citations_mut(&mut self) -> Option<&mut Vec<Citation>> {
         match self {
             Self::Create { evidence, .. }
             | Self::Revise { evidence, .. }
@@ -418,7 +418,7 @@ impl Change {
     }
 
     /// Quotes cited by session, to look up in that session's live transcript.
-    pub(crate) fn session_quotes(&self) -> Vec<live::Quote> {
+    pub fn session_quotes(&self) -> Vec<live::Quote> {
         let mut change = self.clone();
         change
             .citations_mut()
@@ -452,7 +452,7 @@ impl Record {
 }
 
 impl Body {
-    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+    pub fn redact(&mut self, policy: crate::redaction::Policy) {
         let body = self;
         body.statement = policy.text(&body.statement);
         body.rationale = policy.text(&body.rationale);
@@ -552,7 +552,7 @@ pub struct Get {
     pub link_offset: usize,
 }
 
-pub(crate) fn bounded(value: &str, max: usize, field: &str) -> Result<(), AppError> {
+pub fn bounded(value: &str, max: usize, field: &str) -> Result<(), AppError> {
     if value.trim().is_empty() || value.len() > max || value.contains('\0') {
         return Err(AppError::usage(format!(
             "{field} must contain 1 to {max} bytes and no NUL"
@@ -561,14 +561,14 @@ pub(crate) fn bounded(value: &str, max: usize, field: &str) -> Result<(), AppErr
     Ok(())
 }
 
-pub(crate) fn conflict(message: &str) -> AppError {
+pub fn conflict(message: &str) -> AppError {
     AppError::new(12, crate::ErrorKind::Conflict, message, false)
 }
 
-pub(crate) fn encode(value: &impl Serialize) -> Result<String, AppError> {
+pub fn encode(value: &impl Serialize) -> Result<String, AppError> {
     serde_json::to_string(value).map_err(|_| AppError::internal("serialize native record"))
 }
 
-pub(crate) fn decode<T: serde::de::DeserializeOwned>(value: &str) -> Result<T, AppError> {
+pub fn decode<T: serde::de::DeserializeOwned>(value: &str) -> Result<T, AppError> {
     serde_json::from_str(value).map_err(|_| AppError::database_data("invalid native record data"))
 }

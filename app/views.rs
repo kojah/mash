@@ -2,12 +2,23 @@
 pub(crate) mod bulk;
 pub mod config;
 pub(crate) mod diagnostics;
-pub(crate) mod documents;
-pub mod exact;
+pub(crate) use mash_storage::views::documents;
+/// Exact-match literals and intents, with the ranking that needs fusion.
+pub mod exact {
+    pub use mash_storage::views::exact::*;
+
+    pub(crate) fn rank(
+        mut hits: Vec<crate::storage::SearchHit>,
+        unit: crate::search_results::SearchUnit,
+    ) -> Vec<crate::storage::SearchHit> {
+        order(&mut hits);
+        crate::semantic::fuse(hits, vec![], unit, super::config::Fusion::default())
+    }
+}
 pub(crate) mod lexical_manifest;
 pub mod local;
 pub(crate) mod manifest;
-pub mod matching;
+pub use mash_storage::views::matching;
 pub(crate) mod materialize;
 pub mod qdrant;
 pub(crate) mod readiness;

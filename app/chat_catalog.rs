@@ -109,7 +109,7 @@ impl Request {
         Ok(())
     }
 
-    pub(crate) fn admits_node(&self, node: &str, caller: &str) -> bool {
+    pub fn admits_node(&self, node: &str, caller: &str) -> bool {
         !(self.exclude_self && node == caller)
             && (self.node.is_empty() || self.node.iter().any(|value| value == node))
     }
@@ -146,14 +146,14 @@ impl Request {
 )]
 pub struct Chat {
     pub chat_id: String,
-    pub(crate) provider: crate::provider::Provider,
+    pub provider: crate::provider::Provider,
     pub node_id: String,
     #[serde(flatten)]
     pub metadata: ChatMetadata,
     /// The chat's first message by display position, which `view` accepts.
     /// None when the chat has no retained messages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) first_message_id: Option<String>,
+    pub first_message_id: Option<String>,
 }
 
 /// Cuts a title to the line a chat list shows, before secrets are masked.
@@ -231,14 +231,14 @@ impl PartialOrd for Key {
 }
 
 /// Retain only a bounded page window; duplicate copies choose their best sort key.
-pub(crate) struct Collector {
+pub struct Collector {
     request: Request,
     rows: BTreeMap<Key, Chat>,
     identities: HashMap<(crate::provider::Provider, String), Key>,
 }
 
 impl Collector {
-    pub(crate) fn new(request: Request) -> Result<Self, AppError> {
+    pub fn new(request: Request) -> Result<Self, AppError> {
         request.validate()?;
         Ok(Self {
             request,
@@ -247,7 +247,7 @@ impl Collector {
         })
     }
 
-    pub(crate) fn push(&mut self, thread: Chat) {
+    pub fn push(&mut self, thread: Chat) {
         if !self.request.matches(&thread) {
             return;
         }
@@ -281,7 +281,7 @@ impl Collector {
         }
     }
 
-    pub(crate) fn finish(self) -> Page {
+    pub fn finish(self) -> Page {
         let next_offset = (self.rows.len() > self.request.offset + self.request.limit
             && self.request.offset + self.request.limit <= 10_000)
             .then_some(self.request.offset + self.request.limit);

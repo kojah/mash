@@ -54,8 +54,8 @@ impl Storage {
         Ok(true)
     }
 
-    #[cfg(test)]
-    pub(crate) fn chat_enrichment(&self, id: &str) -> Result<Option<Evidence>, AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn chat_enrichment(&self, id: &str) -> Result<Option<Evidence>, AppError> {
         generated::ChatEnrichment::builder()
             .chat_id(id)
             .build()

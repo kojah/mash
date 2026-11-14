@@ -7,7 +7,7 @@ use super::schema::SCHEMA_VERSION;
 use super::{ChatWindow, Counts, Message, StatusSnapshot, Storage};
 
 /// An ID passed to `view` that names no message.
-pub(crate) enum UnmatchedId {
+pub enum UnmatchedId {
     Unknown,
     /// A chat that retains no messages.
     EmptyChat,
@@ -60,7 +60,7 @@ impl Storage {
         Self::open(path)
     }
 
-    pub(crate) fn status_snapshot(path: &Path) -> Result<StatusSnapshot, AppError> {
+    pub fn status_snapshot(path: &Path) -> Result<StatusSnapshot, AppError> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(AppError::database_at(Operation::OpenCatalog))?;
         super::packed::register(&connection).map_err(AppError::database)?;
@@ -93,12 +93,12 @@ impl Storage {
         })
     }
 
-    pub(crate) fn counts(&self) -> Result<Counts, AppError> {
+    pub fn counts(&self) -> Result<Counts, AppError> {
         self.silver_counts()
     }
 
     /// Native history counts without consulting derived embedding coverage.
-    pub(crate) fn silver_counts(&self) -> Result<Counts, AppError> {
+    pub fn silver_counts(&self) -> Result<Counts, AppError> {
         let (chats, messages, searchable): (i64, i64, i64) = self
             .connection
             .query_row(
@@ -121,13 +121,13 @@ impl Storage {
         })
     }
 
-    pub(crate) fn view(&self, id: &str, context: u32) -> Result<Vec<Message>, AppError> {
+    pub fn view(&self, id: &str, context: u32) -> Result<Vec<Message>, AppError> {
         self.view_content(id, context, super::MessageContent::Canonical)
     }
 
     /// The chat around `messages`, a view anchored at `id`; `None` when `id`
     /// matches no message or nothing was returned.
-    pub(crate) fn chat_window(
+    pub fn chat_window(
         &self,
         id: &str,
         messages: &[Message],
@@ -162,7 +162,7 @@ impl Storage {
     }
 
     /// What an ID that matches no message names instead.
-    pub(crate) fn unmatched_id(&self, id: &str) -> Result<UnmatchedId, AppError> {
+    pub fn unmatched_id(&self, id: &str) -> Result<UnmatchedId, AppError> {
         let row = sql::ChatFirstMessage::builder()
             .id(id)
             .build()
@@ -177,7 +177,7 @@ impl Storage {
     }
 
     /// One chat's messages by display position, `offset..offset + limit`.
-    pub(crate) fn chat_messages(
+    pub fn chat_messages(
         &self,
         chat_id: &str,
         offset: i64,
@@ -205,7 +205,7 @@ impl Storage {
             .collect()
     }
 
-    pub(crate) fn view_content(
+    pub fn view_content(
         &self,
         id: &str,
         context: u32,

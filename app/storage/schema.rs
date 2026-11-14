@@ -10,9 +10,9 @@ pub const MIN_SCHEMA_VERSION: i64 = BASELINE;
 pub const SCHEMA_VERSION: i64 = 67;
 
 /// The one silver schema, shared by local nodes and the shared server.
-pub(crate) const SILVER: &str = include_str!("silver.sql");
+pub const SILVER: &str = include_str!("silver.sql");
 /// Silver indexes and triggers; they require every silver column to exist.
-pub(crate) const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
+pub const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
 const RECORDS: &str = include_str!("records.sql");
 const RECORD_PROVENANCE: &str = include_str!("record_provenance.sql");
 const RECORD_EXTRACTIONS: &str = include_str!("record_extractions.sql");
@@ -25,7 +25,7 @@ const WRITER_PRAGMAS: &str =
     "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;";
 
 /// Create or validate a silver database without any local views.
-pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppError> {
+pub fn initialize_silver(connection: &mut Connection) -> Result<(), AppError> {
     super::packed::register(connection).map_err(AppError::database)?;
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -113,7 +113,7 @@ pub(crate) fn initialize_silver(connection: &mut Connection) -> Result<(), AppEr
 /// The typed error for any silver schema this release does not write. A newer
 /// schema usually means this process predates an upgrade that already moved
 /// the index forward, such as an MCP server started before it.
-pub(crate) fn unsupported(version: i64) -> AppError {
+pub fn unsupported(version: i64) -> AppError {
     if version > SCHEMA_VERSION {
         return AppError::schema(format!(
             "local index schema {version} is newer than this mash's schema {SCHEMA_VERSION}; a newer mash release wrote it. Reconnect Mash MCP or restart `mash index --watch` if mash was already upgraded; otherwise upgrade mash"

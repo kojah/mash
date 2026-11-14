@@ -13,7 +13,7 @@ use crate::{
 use std::path::{Path, PathBuf};
 
 /// A quote to find in one session's transcript.
-pub(crate) struct Quote {
+pub struct Quote {
     pub session_id: String,
     pub text: String,
     /// Endorsements must be the person's own words.
@@ -22,7 +22,7 @@ pub(crate) struct Quote {
 
 /// The latest transcript message containing a requested quote.
 #[derive(Debug, Clone)]
-pub(crate) struct Message {
+pub struct Message {
     pub session_id: String,
     pub quote: String,
     pub chat_id: String,
@@ -37,7 +37,7 @@ pub(crate) struct Message {
 ///
 /// A session with no transcript here, or a quote its transcript lacks, yields
 /// nothing: the caller still checks retained history before rejecting.
-pub(crate) fn read(roots: &ProviderRoots, quotes: &[Quote]) -> Result<Vec<Message>, AppError> {
+pub fn read(roots: &ProviderRoots, quotes: &[Quote]) -> Result<Vec<Message>, AppError> {
     let mut sessions: Vec<&str> = quotes
         .iter()
         .map(|quote| quote.session_id.as_str())

@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 
 #[derive(Clone)]
-pub(crate) struct Facts {
+pub struct Facts {
     title: Option<String>,
     created_at: Option<i64>,
     updated_at: Option<i64>,
@@ -16,7 +16,7 @@ pub(crate) struct Facts {
 
 /// Read a chat's facts while checking its canonical provider. A document can
 /// briefly outlive a deleted chat, in which case it has none.
-pub(crate) fn read(
+pub fn read(
     connection: &Connection,
     provider: crate::provider::Provider,
     chat_id: &str,
@@ -59,7 +59,7 @@ pub(crate) fn read(
 }
 
 impl Facts {
-    pub(crate) fn apply(self, hit: &mut SearchHit) {
+    pub fn apply(self, hit: &mut SearchHit) {
         hit.metadata.title = self.title;
         hit.metadata.created_at = self.created_at;
         hit.metadata.updated_at = self.updated_at;
@@ -68,9 +68,9 @@ impl Facts {
 }
 
 impl super::Storage {
-    pub(crate) fn hydrate_chats(
+    pub fn hydrate_chats(
         &self,
-        candidates: &mut crate::views::retrieval::Candidates,
+        candidates: &mut crate::views::candidates::Candidates,
     ) -> Result<(), AppError> {
         let mut chats = HashMap::new();
         for hit in candidates

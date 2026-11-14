@@ -55,7 +55,7 @@ pub enum Row {
 }
 
 impl Row {
-    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+    pub fn redact(&mut self, policy: crate::redaction::Policy) {
         match self {
             Self::Revision { body, .. } => body.redact(policy),
             Self::Evidence { source, .. } => source.quote = policy.text(&source.quote),
@@ -81,7 +81,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Decision => "decision",
             Self::Preference => "preference",

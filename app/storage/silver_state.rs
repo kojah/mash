@@ -92,7 +92,7 @@ impl Storage {
         Ok(())
     }
 
-    pub(crate) fn reject_silver_source(
+    pub fn reject_silver_source(
         &mut self,
         provider: Provider,
         source: &SourceIdentity,

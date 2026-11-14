@@ -1851,6 +1851,7 @@ dependencies = [
  "mash-model",
  "mash-query",
  "mash-silver",
+ "mash-storage",
  "notify",
  "ort",
  "predicates",
@@ -2037,6 +2038,32 @@ dependencies = [
  "tempfile",
  "tracing",
  "walkdir",
+]
+
+[[package]]
+name = "mash-storage"
+version = "0.7.0"
+dependencies = [
+ "aho-corasick",
+ "base64 0.22.1",
+ "blake3",
+ "chrono",
+ "clap",
+ "mash-model",
+ "mash-query",
+ "mash-silver",
+ "proptest",
+ "prost",
+ "rmcp",
+ "rusqlite",
+ "rusqlite_migration",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "zstd",
 ]
 
 [[package]]

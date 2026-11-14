@@ -5,7 +5,7 @@ use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub(crate) mod lookup;
+pub mod lookup;
 
 #[derive(
     Debug,
@@ -27,20 +27,20 @@ pub enum SearchUnit {
 }
 
 impl SearchUnit {
-    pub(crate) const fn candidate_limit(self) -> usize {
+    pub const fn candidate_limit(self) -> usize {
         match self {
             Self::Chats => 200,
             Self::Messages => 50,
         }
     }
-    pub(crate) const fn rerank_limit(self) -> usize {
+    pub const fn rerank_limit(self) -> usize {
         match self {
             Self::Chats => 30,
             Self::Messages => 10,
         }
     }
     /// The final ranked list is cut to this many results; pages slice it.
-    pub(crate) const fn result_window(self) -> usize {
+    pub const fn result_window(self) -> usize {
         self.candidate_limit()
     }
     const fn name(self) -> &'static str {
@@ -54,16 +54,16 @@ impl SearchUnit {
 /// One page, `[offset, offset + limit)`, of a search's final ranked list.
 /// Ranking never depends on the page, so pages partition one ordering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Page {
-    pub(crate) offset: usize,
-    pub(crate) limit: usize,
+pub struct Page {
+    pub offset: usize,
+    pub limit: usize,
 }
 
 impl Page {
     /// Requests share the `views.query.limit` configuration bound.
-    pub(crate) const MAX_LIMIT: usize = 200;
+    pub const MAX_LIMIT: usize = 200;
 
-    pub(crate) fn new(limit: usize, offset: usize, unit: SearchUnit) -> Result<Self, AppError> {
+    pub fn new(limit: usize, offset: usize, unit: SearchUnit) -> Result<Self, AppError> {
         let window = unit.result_window();
         if !(1..=Self::MAX_LIMIT).contains(&limit) || offset >= window {
             return Err(AppError::usage(format!(
@@ -78,7 +78,7 @@ impl Page {
 
     /// The first page of `limit` results, for callers outside request validation.
     #[cfg(test)]
-    pub(crate) const fn first(limit: usize) -> Self {
+    pub const fn first(limit: usize) -> Self {
         Self { offset: 0, limit }
     }
 
@@ -92,9 +92,9 @@ impl Page {
 }
 
 /// A page of results and the offset of the following page, if any.
-pub(crate) struct Collected {
-    pub(crate) results: Results,
-    pub(crate) next_offset: Option<usize>,
+pub struct Collected {
+    pub results: Results,
+    pub next_offset: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
@@ -140,7 +140,7 @@ pub enum Results {
 impl Results {
     /// Reorder newest first; undated results keep their relevance order last.
     /// Search applies this to one page, after paging the relevance order.
-    pub(crate) fn newest_first(&mut self) {
+    pub fn newest_first(&mut self) {
         use std::cmp::Reverse;
         match self {
             Self::Messages(hits) => hits.sort_by_key(|hit| Reverse(hit.created_at)),
@@ -153,12 +153,12 @@ impl Results {
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ChatHit {
-    pub(crate) chat_id: String,
-    pub(crate) provider: crate::provider::Provider,
-    pub(crate) node_id: Option<String>,
+    pub chat_id: String,
+    pub provider: crate::provider::Provider,
+    pub node_id: Option<String>,
     #[serde(flatten)]
-    pub(crate) metadata: ChatMetadata,
-    pub(crate) score: f32,
+    pub metadata: ChatMetadata,
+    pub score: f32,
     /// Up to three distinct matching excerpts, ordered by relevance.
     pub matches: Vec<ChatMatch>,
 }
@@ -166,20 +166,20 @@ pub struct ChatHit {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ChatMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lookup: Option<lookup::Lookup>,
+    pub lookup: Option<lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
+    pub lexical_match: Option<crate::views::matching::Evidence>,
     pub message_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) turn_id: Option<String>,
-    pub(crate) node_id: Option<String>,
-    pub(crate) role: crate::role::Role,
-    pub(crate) created_at: Option<i64>,
+    pub turn_id: Option<String>,
+    pub node_id: Option<String>,
+    pub role: crate::role::Role,
+    pub created_at: Option<i64>,
     pub snippet: String,
     /// Primary message's search projection; excludes display ellipses.
     pub projection_span: ProjectionSpan,
-    pub(crate) rerank_score: Option<f32>,
-    pub(crate) fusion_score: f32,
+    pub rerank_score: Option<f32>,
+    pub fusion_score: f32,
     /// Other indexed copies of this evidence, usable as view anchors.
     pub copies: Vec<MessageReference>,
 }
@@ -193,30 +193,30 @@ pub struct ProjectionSpan {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct MessageReference {
-    pub(crate) message_id: String,
+    pub message_id: String,
     pub node_id: Option<String>,
 }
 
-pub(crate) type EvidenceKey = (
+pub type EvidenceKey = (
     crate::provider::Provider,
     String,
     crate::role::Role,
     blake3::Hash,
 );
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub(crate) enum HitKey {
+pub enum HitKey {
     Message(EvidenceKey, String),
     Evidence(EvidenceKey),
 }
 
-pub(crate) fn hit_key(hit: &SearchHit, unit: SearchUnit) -> HitKey {
+pub fn hit_key(hit: &SearchHit, unit: SearchUnit) -> HitKey {
     match unit {
         SearchUnit::Messages => HitKey::Message(evidence_key(hit), hit.id.clone()),
         SearchUnit::Chats => HitKey::Evidence(evidence_key(hit)),
     }
 }
 
-pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
+pub fn evidence_key(hit: &SearchHit) -> EvidenceKey {
     let text = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
     (
         hit.provider,
@@ -227,7 +227,7 @@ pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
 }
 
 /// Apply current exclusions even to snapshots published by older nodes.
-pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
+pub fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
     hits.into_iter()
         .filter_map(|mut hit| {
             let clean = crate::silver::dialogue::visible(&hit.role, &hit.content);
@@ -247,7 +247,7 @@ pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
         .collect()
 }
 
-pub(crate) fn merge_copies(existing: &mut SearchHit, other: SearchHit) {
+pub fn merge_copies(existing: &mut SearchHit, other: SearchHit) {
     let original = MessageReference {
         message_id: existing.id.clone(),
         node_id: existing.node_id.clone(),
@@ -281,7 +281,7 @@ type ForkKey = (
     i64,
 );
 
-pub(crate) fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
+pub fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
     let hits = eligible(hits);
     let mut positions = HashMap::new();
     let mut forks = HashMap::new();
@@ -316,7 +316,7 @@ pub(crate) fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchH
 
 /// Round-robin the best candidates from each chat before bounded reranking.
 /// Identical content (including copies on other nodes) earns no additional evidence.
-pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
+pub fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
     let hits = deduplicate(hits, unit);
     if matches!(unit, SearchUnit::Messages) {
         return hits;
@@ -353,7 +353,7 @@ fn qualifies_as_evidence(hit: &SearchHit) -> bool {
 }
 
 /// `redaction` is the output policy: results leave through CLI or MCP.
-pub(crate) fn collect(
+pub fn collect(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
     page: Page,
@@ -363,7 +363,7 @@ pub(crate) fn collect(
     collect_inner(hits, unit, page, query, None, redaction)
 }
 
-pub(crate) fn collect_exact(
+pub fn collect_exact(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
     page: Page,
@@ -504,7 +504,7 @@ fn collect_inner(
 /// Keep the query evidence visible to the 512-token reranker on long messages.
 /// Short messages are passed through unchanged; the bounded window also limits
 /// inference cost. Canonical message contents and view anchors remain intact.
-pub(crate) fn rerank_document<'a>(content: &'a str, query: &str) -> std::borrow::Cow<'a, str> {
+pub fn rerank_document<'a>(content: &'a str, query: &str) -> std::borrow::Cow<'a, str> {
     if content.chars().take(2401).count() <= 2400 {
         std::borrow::Cow::Borrowed(content)
     } else {
@@ -514,7 +514,7 @@ pub(crate) fn rerank_document<'a>(content: &'a str, query: &str) -> std::borrow:
 
 /// Neighbours inform follow-up intent but never become the displayed anchor.
 /// Only searchable projections enter inference, with a fixed character budget.
-pub(crate) fn contextual_document(
+pub fn contextual_document(
     hit: &SearchHit,
     query: &str,
     messages: &[crate::storage::Message],
@@ -550,11 +550,11 @@ pub(crate) fn contextual_document(
 }
 
 /// A masked window, for model inputs.
-pub(crate) fn evidence_window(content: &str, query: &str, length: usize) -> String {
+pub fn evidence_window(content: &str, query: &str, length: usize) -> String {
     evidence_window_with(content, query, length, crate::redaction::Policy::ON)
 }
 
-pub(crate) fn evidence_window_with(
+pub fn evidence_window_with(
     content: &str,
     query: &str,
     length: usize,

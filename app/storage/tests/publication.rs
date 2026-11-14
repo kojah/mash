@@ -1,5 +1,5 @@
 use super::*;
-use crate::shared::protocol::BatchKind;
+use crate::shared::batches::BatchKind;
 
 #[test]
 fn journal_pruning_waits_for_baseline_completion_and_contiguous_coverage() {

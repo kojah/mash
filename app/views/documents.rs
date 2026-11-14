@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 
 /// Actual model input after source-specific context/title preparation. Identity
 /// selects a cached point; the fingerprint determines whether its vector fits.
-pub(crate) struct EmbeddingInput<'a> {
-    pub(crate) provider: crate::provider::Provider,
-    pub(crate) anchor: &'a str,
-    pub(crate) text: &'a str,
+pub struct EmbeddingInput<'a> {
+    pub provider: crate::provider::Provider,
+    pub anchor: &'a str,
+    pub text: &'a str,
 }
 
 impl EmbeddingInput<'_> {
-    pub(crate) fn fingerprint(&self, generation: &str, dimensions: usize) -> String {
+    pub fn fingerprint(&self, generation: &str, dimensions: usize) -> String {
         let mut hash = blake3::Hasher::new();
         hash.update(b"mash-embedding-input\0");
         for value in [generation.as_bytes(), self.text.as_bytes()] {
@@ -64,7 +64,7 @@ pub struct MessageRecord {
 /// stay in silver and in the publication protocol, never in replay scratch data.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SearchMessage {
+pub struct SearchMessage {
     pub id: String,
     pub chat_id: String,
     pub ordinal: i64,

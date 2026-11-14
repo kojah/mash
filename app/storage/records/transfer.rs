@@ -38,7 +38,7 @@ pub fn visit_shared(
     })
 }
 
-pub(crate) fn fingerprint(connection: &Connection) -> Result<String, AppError> {
+pub fn fingerprint(connection: &Connection) -> Result<String, AppError> {
     let mut hash = blake3::Hasher::new();
     visit_selected(connection, Selection::Canonical, |row| {
         let bytes = serde_json::to_vec(&row)
@@ -50,7 +50,7 @@ pub(crate) fn fingerprint(connection: &Connection) -> Result<String, AppError> {
     Ok(hash.finalize().to_hex().to_string())
 }
 
-pub(crate) fn visit(
+pub fn visit(
     connection: &Connection,
     emit: impl FnMut(Row) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
@@ -211,7 +211,7 @@ fn visit_selected(
     Ok(())
 }
 
-pub(crate) struct Import {
+pub struct Import {
     source_owner: Option<String>,
     target_owner: String,
     keep_identity: bool,
@@ -220,7 +220,7 @@ pub(crate) struct Import {
 }
 
 impl Import {
-    pub(crate) fn new(connection: &Connection, keep_identity: bool) -> Result<Self, AppError> {
+    pub fn new(connection: &Connection, keep_identity: bool) -> Result<Self, AppError> {
         Ok(Self {
             source_owner: None,
             target_owner: super::owner(connection)?,
@@ -230,7 +230,7 @@ impl Import {
         })
     }
 
-    pub(crate) fn shared(connection: &Connection, snapshot: bool) -> Result<Self, AppError> {
+    pub fn shared(connection: &Connection, snapshot: bool) -> Result<Self, AppError> {
         let mut importer = Self::new(connection, true)?;
         connection.execute_batch("DROP TABLE IF EXISTS temp.recall_prior_headers;
             CREATE TEMP TABLE recall_prior_headers AS SELECT id,owner,kind,scope,revision,forgotten FROM records;").map_err(AppError::database)?;
@@ -255,7 +255,7 @@ impl Import {
         clippy::too_many_lines,
         reason = "exhaustive typed canonical import mapping"
     )]
-    pub(crate) fn insert(&mut self, connection: &Connection, row: Row) -> Result<(), AppError> {
+    pub fn insert(&mut self, connection: &Connection, row: Row) -> Result<(), AppError> {
         if let Row::Owner { id } = row {
             bounded(&id, 256, "record owner")?;
             if self.source_owner.is_some() {
@@ -561,7 +561,7 @@ impl Import {
         Ok(())
     }
 
-    pub(crate) fn finish(connection: &Connection) -> Result<(), AppError> {
+    pub fn finish(connection: &Connection) -> Result<(), AppError> {
         let opposite: bool = connection
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM record_links a JOIN record_links b

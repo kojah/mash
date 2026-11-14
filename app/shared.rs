@@ -28,7 +28,7 @@ pub mod server;
 use crate::silver::revision as silver_revision;
 pub mod silver_store;
 pub mod sync;
-pub mod validation;
+pub use mash_storage::shared::validation;
 mod views_manifest;
 
 pub use client::events;

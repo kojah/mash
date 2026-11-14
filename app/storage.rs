@@ -11,26 +11,26 @@ use crate::AppError;
 // View views and materialized retrieval data.
 pub mod admission;
 mod catalog;
-pub(crate) mod chat_facts;
-mod coverage;
+pub mod chat_facts;
+pub mod coverage;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.
-mod attachments;
+pub mod attachments;
 mod claude_sources;
 mod enrichment;
-pub(crate) mod export;
-pub(crate) mod gold_input;
+pub mod export;
+pub mod gold_input;
 mod indexing;
 pub mod packed;
-pub(crate) mod publication;
+pub mod publication;
 pub mod records;
-pub(crate) mod search_input;
+pub mod search_input;
 mod silver_state;
-pub(crate) mod turns;
+pub mod turns;
 
 // Connection/schema and generated query infrastructure for both layers.
 mod queries;
-pub(crate) use queries::UnmatchedId;
+pub use queries::UnmatchedId;
 pub mod schema;
 
 #[cfg(test)]
@@ -38,15 +38,15 @@ use schema::SCHEMA_VERSION;
 // sqlc-gen-rust emits an unused row parameter for :exec result models.
 #[allow(dead_code, unused_variables, clippy::all, clippy::pedantic)]
 #[path = "storage/generated/queries.rs"]
-pub(crate) mod generated;
+pub mod generated;
 
 pub struct Storage {
     attachments_config: crate::attachments::Configuration,
     /// This writer's attachment-cache verification, recorded when it commits.
-    attachment_verification: Option<attachments::PendingVerification>,
+    pub attachment_verification: Option<attachments::PendingVerification>,
     /// Match evidence is computed on text masked under the output policy.
     output_redaction: crate::redaction::Policy,
-    connection: Connection,
+    pub connection: Connection,
     writer_active: bool,
 }
 
@@ -54,44 +54,44 @@ pub struct Storage {
 pub struct Counts {
     pub chats: u64,
     pub messages: u64,
-    pub(crate) searchable_messages: u64,
+    pub searchable_messages: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) searchable_user_messages: Option<u64>,
+    pub searchable_user_messages: Option<u64>,
     pub embeddings: u64,
 }
 
-pub(crate) struct StatusSnapshot {
-    pub(crate) silver: Option<crate::silver::certificate::Certificate>,
-    pub(crate) counts: Counts,
+pub struct StatusSnapshot {
+    pub silver: Option<crate::silver::certificate::Certificate>,
+    pub counts: Counts,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lookup: Option<crate::search_results::lookup::Lookup>,
+    pub lookup: Option<crate::search_results::lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
+    pub lexical_match: Option<crate::views::matching::Evidence>,
     pub id: String,
     pub chat_id: String,
     pub provider: crate::provider::Provider,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) turn_id: Option<String>,
-    pub(crate) role: crate::role::Role,
+    pub turn_id: Option<String>,
+    pub role: crate::role::Role,
     /// Message position in its chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) sequence: Option<i64>,
+    pub sequence: Option<i64>,
     pub content: String,
     #[serde(default)]
-    pub(crate) created_at: Option<i64>,
+    pub created_at: Option<i64>,
     #[serde(default)]
     pub metadata: crate::search_results::ChatMetadata,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copies: Vec<crate::search_results::MessageReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) lexical_score: Option<f64>,
+    pub lexical_score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_score: Option<f32>,
-    pub(crate) fusion_score: f32,
+    pub fusion_score: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rerank_score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,13 +117,13 @@ pub struct Message {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ChatWindow {
     /// The chat the viewed message belongs to.
-    pub(crate) chat_id: String,
+    pub chat_id: String,
     /// Every message the chat retains, including other branches.
     pub message_count: u64,
     /// Messages earlier than the first returned message.
-    pub(crate) omitted_before: u64,
+    pub omitted_before: u64,
     /// Messages later than the last returned message.
-    pub(crate) omitted_after: u64,
+    pub omitted_after: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, schemars::JsonSchema)]
@@ -137,22 +137,22 @@ pub enum MessageContent {
 impl MessageContent {
     // serde's skip_serializing_if callback takes a reference.
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn is_canonical(&self) -> bool {
+    pub fn is_canonical(&self) -> bool {
         matches!(self, Self::Canonical)
     }
 }
 
 #[derive(Default)]
 pub struct ChatChange {
-    pub(crate) unchanged: bool,
-    pub(crate) tombstoned: bool,
-    pub(crate) changed_message_ids: Vec<String>,
-    pub(crate) removed_messages: u64,
+    pub unchanged: bool,
+    pub tombstoned: bool,
+    pub changed_message_ids: Vec<String>,
+    pub removed_messages: u64,
 }
 
 impl Storage {
     /// Search results leave through CLI or MCP output under this policy.
-    pub(crate) fn with_output_redaction(mut self, policy: crate::redaction::Policy) -> Self {
+    pub fn with_output_redaction(mut self, policy: crate::redaction::Policy) -> Self {
         self.output_redaction = policy;
         self
     }
@@ -204,18 +204,18 @@ impl Storage {
         Ok(())
     }
 
-    pub(crate) fn truncate_wal(&self) -> Result<(), AppError> {
+    pub fn truncate_wal(&self) -> Result<(), AppError> {
         self.connection
             .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
             .map_err(AppError::database)
     }
 
     #[tracing::instrument(name = "checkpoint_writer", skip_all)]
-    pub(crate) fn checkpoint_writer(&mut self) -> Result<(), AppError> {
+    pub fn checkpoint_writer(&mut self) -> Result<(), AppError> {
         self.commit_and_restart_writer("PRAGMA wal_checkpoint(PASSIVE); BEGIN IMMEDIATE")
     }
 
-    pub(crate) fn commit_and_continue_writer(&mut self) -> Result<(), AppError> {
+    pub fn commit_and_continue_writer(&mut self) -> Result<(), AppError> {
         self.commit_and_restart_writer("BEGIN IMMEDIATE")
     }
 

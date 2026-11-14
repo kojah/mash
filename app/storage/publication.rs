@@ -1,19 +1,19 @@
 use crate::provider::Provider;
-use crate::shared::protocol::{Amendment, Batch, BatchKind, ChatRecord, MessageRecord, Tombstone};
+use crate::shared::batches::{Amendment, Batch, BatchKind, ChatRecord, MessageRecord, Tombstone};
 use rusqlite::{Connection, OpenFlags};
 
 use super::Storage;
 use crate::AppError;
 
-pub(crate) struct Snapshot<'a> {
-    pub(crate) source_silver: crate::silver::certificate::Certificate,
+pub struct Snapshot<'a> {
+    pub source_silver: crate::silver::certificate::Certificate,
     connection: &'a Connection,
-    pub(crate) instance: String,
-    pub(crate) revision: i64,
+    pub instance: String,
+    pub revision: i64,
 }
 
 impl Snapshot<'_> {
-    pub(crate) fn visit_records(
+    pub fn visit_records(
         &self,
         after: Option<i64>,
         policy: crate::redaction::Policy,
@@ -39,13 +39,13 @@ impl Snapshot<'_> {
         }
         Ok(())
     }
-    pub(crate) fn visit_search_messages(
+    pub fn visit_search_messages(
         &self,
         accept: impl FnMut(crate::views::documents::SearchMessage) -> Result<(), AppError>,
     ) -> Result<(), AppError> {
         super::search_input::visit(self.connection, None, accept)
     }
-    pub(crate) fn delta_base(
+    pub fn delta_base(
         &self,
         instance: Option<&str>,
         revision: i64,
@@ -64,7 +64,7 @@ impl Snapshot<'_> {
             .then_some(revision))
     }
 
-    pub(crate) fn removed_chats(&self, after: i64) -> Result<Vec<String>, AppError> {
+    pub fn removed_chats(&self, after: i64) -> Result<Vec<String>, AppError> {
         let mut statement = self.connection.prepare("SELECT j.chat_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM chats c WHERE c.id=j.chat_id) ORDER BY j.chat_id").map_err(AppError::database)?;
         statement
             .query_map([after], |row| row.get(0))
@@ -74,7 +74,7 @@ impl Snapshot<'_> {
     }
 
     #[cfg(test)]
-    pub(crate) fn visit_changed(
+    pub fn visit_changed(
         &self,
         kind: BatchKind,
         after: i64,
@@ -91,8 +91,8 @@ impl Snapshot<'_> {
         )
     }
     /// Bound each network batch without materializing the complete local history.
-    #[cfg(test)]
-    pub(crate) fn visit(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn visit(
         &self,
         kind: BatchKind,
         accept: impl FnMut(Batch) -> Result<(), AppError>,
@@ -100,8 +100,8 @@ impl Snapshot<'_> {
         self.visit_ordered(kind, false, accept)
     }
 
-    #[cfg(test)]
-    fn visit_ordered(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn visit_ordered(
         &self,
         kind: BatchKind,
         by_chat: bool,
@@ -111,7 +111,7 @@ impl Snapshot<'_> {
     }
 
     /// Complete chats: every chat, or a delta's changed chats it does not amend.
-    pub(crate) fn visit_selected(
+    pub fn visit_selected(
         &self,
         kind: BatchKind,
         by_chat: bool,
@@ -133,7 +133,7 @@ impl Snapshot<'_> {
     }
 
     /// Changed and new messages of the chats a delta amends, in chat order.
-    pub(crate) fn visit_amended_messages(
+    pub fn visit_amended_messages(
         &self,
         after: i64,
         accept: impl FnMut(Batch) -> Result<(), AppError>,
@@ -150,7 +150,7 @@ impl Snapshot<'_> {
 
     /// Chats a delta amends: the chat record, every message ID it changed or
     /// removed since `after`, and how many messages it holds now.
-    pub(crate) fn visit_amendments(
+    pub fn visit_amendments(
         &self,
         after: i64,
         mut accept: impl FnMut(Amendment) -> Result<(), AppError>,
@@ -254,7 +254,7 @@ impl Snapshot<'_> {
                 bytes = 0;
             }
         }
-        if batch.len() > 0 {
+        if !batch.is_empty() {
             accept(batch)?;
         }
         Ok(())
@@ -264,9 +264,9 @@ impl Snapshot<'_> {
 /// A delta's base revision, and whether it may amend chats instead of
 /// resending them whole.
 #[derive(Clone, Copy)]
-pub(crate) struct Delta {
-    pub(crate) after: i64,
-    pub(crate) amend: bool,
+pub struct Delta {
+    pub after: i64,
+    pub amend: bool,
 }
 
 const CHATS: &str =
@@ -284,7 +284,7 @@ fn amended_chats(after: i64) -> String {
            AND EXISTS(SELECT 1 FROM chats x WHERE x.id=c.chat_id)
            AND (SELECT count(*) FROM shared_message_changes j
                 WHERE j.chat_id=c.chat_id AND j.revision>{after})<={}",
-        crate::shared::protocol::MAX_AMENDED_MESSAGES
+        crate::shared::batches::MAX_AMENDED_MESSAGES
     )
 }
 
@@ -390,7 +390,7 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
     dead_code,
     reason = "baseline producers arrive with the client backfill sender; the gate is enforced and tested now"
 )]
-pub(crate) enum JournalCoverage {
+pub enum JournalCoverage {
     /// Ordinary incremental publication: this captured range is complete.
     Incremental { through: i64 },
     /// A baseline is still in progress; record the acknowledgement, keep rows.
@@ -416,7 +416,7 @@ impl Storage {
     /// New publication policy/destination must advance the revision even if
     /// bronze is unchanged. Persist the target now so failed uploads retry the
     /// same revision; acknowledgement remains pending until the HTTP commit.
-    pub(crate) fn prepare_publication_target(&self, target: &str) -> Result<(), AppError> {
+    pub fn prepare_publication_target(&self, target: &str) -> Result<(), AppError> {
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -429,7 +429,7 @@ impl Storage {
         transaction.commit().map_err(AppError::database)
     }
 
-    pub(crate) fn with_publication_snapshot(
+    pub fn with_publication_snapshot(
         &self,
         publish: impl FnOnce(&Snapshot<'_>) -> Result<(), AppError>,
     ) -> Result<i64, AppError> {
@@ -454,7 +454,7 @@ impl Storage {
         Ok(revision)
     }
 
-    pub(crate) fn acknowledge_publication(
+    pub fn acknowledge_publication(
         &self,
         target: &str,
         revision: i64,
@@ -477,10 +477,7 @@ impl Storage {
         transaction.commit().map_err(AppError::database)
     }
 
-    pub(crate) fn publication_is_pending(
-        path: &std::path::Path,
-        target: &str,
-    ) -> Result<bool, AppError> {
+    pub fn publication_is_pending(path: &std::path::Path, target: &str) -> Result<bool, AppError> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(AppError::database)?;
         super::packed::register(&connection).map_err(AppError::database)?;

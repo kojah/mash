@@ -2,13 +2,13 @@
 use crate::{attachments::Metadata, provider::Provider, role::Role};
 use serde::{Deserialize, Serialize};
 
-pub(crate) const VERSION: u32 = 4;
+pub const VERSION: u32 = 4;
 
 /// Archive record schema 2 uses chat terminology. Ancestry is expressed in
 /// positions within the frozen chat, independently of live message IDs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-pub(crate) enum Context {
+pub enum Context {
     #[default]
     Linear,
     Root,
@@ -18,7 +18,7 @@ pub(crate) enum Context {
 }
 
 impl Context {
-    pub(crate) const fn parent(self) -> Option<i64> {
+    pub const fn parent(self) -> Option<i64> {
         match self {
             Self::Linear => None,
             Self::Root => Some(-1),
@@ -33,7 +33,7 @@ impl Context {
         }
     }
 
-    pub(crate) fn from_parent(parent: Option<i64>) -> Result<Self, crate::AppError> {
+    pub fn from_parent(parent: Option<i64>) -> Result<Self, crate::AppError> {
         match parent {
             None => Ok(Self::Linear),
             Some(-1) => Ok(Self::Root),
@@ -50,7 +50,7 @@ mod tests;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Record {
+pub enum Record {
     Native {
         item: crate::records::transfer::Row,
     },
@@ -148,14 +148,14 @@ pub(crate) enum Record {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ScanState {
+pub enum ScanState {
     Pending,
     Complete,
     Incomplete,
 }
 
 impl Record {
-    pub(crate) fn validate(&self) -> Result<(), crate::AppError> {
+    pub fn validate(&self) -> Result<(), crate::AppError> {
         match self {
             Self::Message {
                 attachments,

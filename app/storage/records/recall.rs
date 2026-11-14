@@ -11,7 +11,7 @@ use rusqlite::params;
 const CANDIDATES: usize = 256;
 
 impl Storage {
-    pub(crate) fn recall_records(
+    pub fn recall_records(
         &self,
         request: &Request,
         policy: crate::redaction::Policy,

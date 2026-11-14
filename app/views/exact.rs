@@ -28,7 +28,7 @@ pub enum Intent {
 }
 
 /// A query wrapped in double quotes asks for that exact phrase.
-pub(crate) fn quoted(query: &str) -> bool {
+pub fn quoted(query: &str) -> bool {
     let query = query.trim();
     query.len() > 1 && query.starts_with('"') && query.ends_with('"')
 }
@@ -36,26 +36,26 @@ pub(crate) fn quoted(query: &str) -> bool {
 /// Whether exact-mention verifies `query` as one literal: a quoted phrase, or
 /// a single term, so an identifier such as `voyage-code-4` is not split into
 /// independent words. Several unquoted terms are each required in any order.
-pub(crate) fn literal(query: &str) -> bool {
+pub fn literal(query: &str) -> bool {
     quoted(query) || query.split_whitespace().count() == 1
 }
 
 impl Intent {
     /// Only meaning search embeds the query and needs dense views.
-    pub(crate) fn semantic(self) -> bool {
+    pub fn semantic(self) -> bool {
         self == Self::RelatedDiscussion
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct Literal {
+pub struct Literal {
     text: String,
     matcher: AhoCorasick,
     mode: super::matching::Mode,
 }
 
 impl Literal {
-    pub(crate) fn new(query: &str) -> Result<Self, AppError> {
+    pub fn new(query: &str) -> Result<Self, AppError> {
         let text = query.trim();
         let text = text
             .strip_prefix('"')
@@ -77,7 +77,7 @@ impl Literal {
         })
     }
 
-    pub(crate) fn with_mode(query: &str, mode: super::matching::Mode) -> Result<Self, AppError> {
+    pub fn with_mode(query: &str, mode: super::matching::Mode) -> Result<Self, AppError> {
         let mut literal = Self::new(query)?;
         if !(query.trim().starts_with('"') && query.trim().ends_with('"')) {
             literal.mode = mode;
@@ -85,10 +85,10 @@ impl Literal {
         Ok(literal)
     }
 
-    pub(crate) fn mode(&self) -> super::matching::Mode {
+    pub fn mode(&self) -> super::matching::Mode {
         self.mode
     }
-    pub(crate) fn evidence(&self, content: &str) -> Option<super::matching::Evidence> {
+    pub fn evidence(&self, content: &str) -> Option<super::matching::Evidence> {
         self.locate(content)
             .map(|(range, kind)| super::matching::Evidence {
                 kind,
@@ -96,12 +96,12 @@ impl Literal {
             })
     }
 
-    pub(crate) fn matches(&self, content: &str) -> bool {
+    pub fn matches(&self, content: &str) -> bool {
         self.find(content).is_some()
     }
 
     /// The first boundary-checked occurrence, in UTF-8 byte offsets.
-    pub(crate) fn find(&self, content: &str) -> Option<std::ops::Range<usize>> {
+    pub fn find(&self, content: &str) -> Option<std::ops::Range<usize>> {
         self.locate(content).map(|(range, _)| range)
     }
 
@@ -188,7 +188,7 @@ fn identifier(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '_' | '-' | '+')
 }
 
-pub(crate) fn order(hits: &mut [crate::storage::SearchHit]) {
+pub fn order(hits: &mut [crate::storage::SearchHit]) {
     hits.sort_by(|a, b| {
         quality(a).cmp(&quality(b)).then_with(|| {
             b.created_at
@@ -206,14 +206,6 @@ fn quality(hit: &crate::storage::SearchHit) -> u8 {
         Some(super::matching::Kind::Typo) => 2,
         Some(super::matching::Kind::PrefixAndTypo) => 3,
     }
-}
-
-pub(crate) fn rank(
-    mut hits: Vec<crate::storage::SearchHit>,
-    unit: crate::search_results::SearchUnit,
-) -> Vec<crate::storage::SearchHit> {
-    order(&mut hits);
-    crate::semantic::fuse(hits, vec![], unit, super::config::Fusion::default())
 }
 
 #[cfg(test)]

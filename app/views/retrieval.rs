@@ -1,6 +1,5 @@
 //! Retrieval requests and candidates shared by direct and HTTP callers.
 use crate::provider::Provider;
-use crate::storage::SearchHit;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
@@ -37,19 +36,7 @@ fn related_discussion(intent: &crate::views::exact::Intent) -> bool {
     *intent == crate::views::exact::Intent::RelatedDiscussion
 }
 
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct Candidates {
-    pub lexical: Vec<SearchHit>,
-    pub semantic: Vec<SearchHit>,
-    pub documents: Vec<Document>,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct Document {
-    pub node_id: String,
-    pub id: String,
-    pub projection: String,
-}
+pub use mash_storage::views::candidates::{Candidates, Document};
 
 pub(crate) fn default_generation() -> String {
     crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()

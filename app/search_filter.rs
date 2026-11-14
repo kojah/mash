@@ -87,7 +87,7 @@ pub struct Selection {
 
 #[derive(Clone)]
 pub struct Scope {
-    pub(crate) match_mode: crate::views::matching::Mode,
+    pub match_mode: crate::views::matching::Mode,
     pub filter: Filter,
     pub node: String,
 }
@@ -97,7 +97,7 @@ pub struct Scope {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Field {
+pub enum Field {
     Provider,
     Node,
     Role,
@@ -109,7 +109,7 @@ pub(crate) enum Field {
 }
 
 impl Selection {
-    pub(crate) fn fields(&self) -> Vec<Field> {
+    pub fn fields(&self) -> Vec<Field> {
         let mut fields = std::collections::BTreeSet::new();
         for (present, field) in [
             (!self.provider.is_empty(), Field::Provider),
@@ -219,7 +219,7 @@ impl Filter {
         fields.insert(field);
     }
 
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         self.validate_at(0, &mut 0)
     }
 
@@ -272,7 +272,7 @@ impl Filter {
     }
 
     /// Native message predicates over the `m` and `c` aliases.
-    pub(crate) fn sql(&self, local_node: Option<&str>) -> String {
+    pub fn sql(&self, local_node: Option<&str>) -> String {
         self.compile(&Columns::NATIVE, local_node)
     }
 

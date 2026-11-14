@@ -572,7 +572,7 @@ fn confirm(
     })
 }
 
-pub(crate) fn purge(connection: &Connection, id: &str) -> Result<(), AppError> {
+pub fn purge(connection: &Connection, id: &str) -> Result<(), AppError> {
     connection
         .execute("DELETE FROM record_revisions WHERE record_id=?1", [id])
         .map_err(AppError::database)?;
@@ -592,7 +592,7 @@ pub(crate) fn purge(connection: &Connection, id: &str) -> Result<(), AppError> {
 }
 
 /// Privacy deletion follows every historical citation, not only current text.
-pub(crate) fn forget_chat(connection: &Connection, chat: &str) -> Result<usize, AppError> {
+pub fn forget_chat(connection: &Connection, chat: &str) -> Result<usize, AppError> {
     connection
         .execute("DELETE FROM record_checkpoints WHERE chat_id=?1", [chat])
         .map_err(AppError::database)?;
@@ -643,7 +643,7 @@ fn confirmation_history(
         .map_err(AppError::database)
 }
 
-pub(crate) use reading::{read, read_page};
+pub use reading::{read, read_page};
 impl Storage {
     #[cfg(any(test, feature = "test-support"))]
     pub fn mutate_record(&mut self, request: &Mutation) -> Result<Receipt, AppError> {
@@ -652,7 +652,7 @@ impl Storage {
 
     /// Apply a record change. `transcript` holds quotes read from cited live
     /// sessions, used only where retained history lacks the quoted message.
-    pub(crate) fn mutate_record_citing(
+    pub fn mutate_record_citing(
         &mut self,
         request: &Mutation,
         transcript: &[records::live::Message],
@@ -705,11 +705,11 @@ impl Storage {
         read(&transaction, id, history)
     }
 
-    pub(crate) fn records(&self, request: &List) -> Result<Page, AppError> {
+    pub fn records(&self, request: &List) -> Result<Page, AppError> {
         list(&self.connection, request)
     }
 
-    pub(crate) fn record_page(&self, request: &records::Get) -> Result<Record, AppError> {
+    pub fn record_page(&self, request: &records::Get) -> Result<Record, AppError> {
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -718,7 +718,7 @@ impl Storage {
     }
 }
 
-pub(crate) fn list(connection: &Connection, request: &List) -> Result<Page, AppError> {
+pub fn list(connection: &Connection, request: &List) -> Result<Page, AppError> {
     let limit = request.limit.unwrap_or(20);
     if !(1..=100).contains(&limit) || request.offset > 100_000 {
         return Err(AppError::usage(

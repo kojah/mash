@@ -79,14 +79,7 @@ pub struct Member {
     pub(crate) providers: Option<Vec<Scan>>,
 }
 
-#[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct Retained {
-    pub(crate) chats: u64,
-    pub(crate) messages: u64,
-    /// Observed message bounds in Unix milliseconds, not a completeness interval.
-    pub(crate) earliest_message_at: Option<i64>,
-    pub(crate) latest_message_at: Option<i64>,
-}
+pub use crate::storage::coverage::Retained;
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct Scan {

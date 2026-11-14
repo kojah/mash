@@ -71,7 +71,8 @@ The workspace is the application crate `mash` (`app/`) and the crates under
 | `mash-fleet` | Fleet CLI and readiness probe | nothing of ours |
 | `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
 | `mash-silver` | The provider-independent chat model and the native history adapters: discovery, parsing, reconciliation inputs. Never opens the index | `mash-model` |
-| `mash-app` (`app/`) | The application library: storage, views, search, sync, the shared server, MCP and the dashboard | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver` |
+| `mash-storage` (root `app/mash_storage.rs`) | The silver SQLite index and its migrations, memory records, portable export, and the search filter, result and catalogue types the layers above share. Its files stay under `app/` (`app/storage/`, `app/records/`, ...), beside the application library's: deploy tooling reads `app/storage/schema.rs` by path. A module belongs to whichever of the two roots declares it | `mash-query`, `mash-model`, `mash-silver` |
+| `mash-app` (`app/`) | The application library: storage, views, search, sync, the shared server, MCP and the dashboard | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-storage` |
 | `mash-server` | The authenticated HTTP service for the shared index: routes, authorization, the sync protocol's endpoints and service setup. Its store stays in `mash-app` (`shared::server`) | `mash-app`, `mash-model` |
 | `mash-mcp` | The stdio MCP server, its tool contract, the dashboard's console and the generated history skill | `mash-app`, `mash-model`, `mash-silver` |
 | `mash-dash` | The local web dashboard served by `mash dash`, and the build script that embeds its front end | `mash-app`, `mash-mcp`, `mash-fleet`, `mash-model` |
