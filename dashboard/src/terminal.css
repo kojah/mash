@@ -3795,7 +3795,10 @@ body:has(#mashy-fab) #main {
        in the page's colour. The sheet is that colour too, so nothing of a
        different shade shows at its edges. */
     background: var(--bg);
-    box-shadow: none;
+    /* With the keyboard up, a phone can end the sheet above the keyboard's
+       own translucent bar and show the page in the strip behind it. The
+       sheet's colour is spread past every edge so the page never shows. */
+    box-shadow: 0 0 0 100vmax var(--bg);
     /* A sheet fills the screen; it has nowhere to be moved to. */
     translate: none !important;
   }
