@@ -53,8 +53,16 @@ timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
     DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' >/dev/null
 [[ $(sed -n '1p' "$TEST_BUILD_CALLS") == 'fmt --check' ]]
 [[ $(sed -n '2p' "$TEST_BUILD_CALLS") == clippy* ]]
-[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked -E test(contract) --no-tests fail --test-threads 4' ]]
+[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked --lib -E test(contract) --no-tests fail --test-threads 4' ]]
 [[ $(wc -l < "$TEST_BUILD_CALLS") == 3 ]]
+# Integration targets are built on request, or when the filter names a binary.
+: > "$TEST_BUILD_CALLS"
+timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
+    DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' TARGETS=all >/dev/null
+[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked -E test(contract) --no-tests fail --test-threads 4' ]]
+: > "$TEST_BUILD_CALLS"
+run_build --focused 'binary(cli_contract)' >/dev/null
+[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked -E binary(cli_contract) --no-tests fail --test-threads 4' ]]
 [[ -z $(find "$scratch/target" -name '*.ok' -print -quit) ]]
 : > "$TEST_BUILD_CALLS"
 touch "$TEST_BUILD_CLIPPY_FAIL"

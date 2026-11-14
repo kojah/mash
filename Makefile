@@ -6,6 +6,9 @@ COVERAGE_OUTPUT ?= target/llvm-cov/coverage.json
 DEV_TMPDIR ?= /home/james/scratch/achi-tmp
 DEV_TARGET_DIR ?= /home/james/scratch/achi-targets/integrated
 DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local/bin/agent-test,)
+# `make iterate` builds library unit tests only; TARGETS=all adds the CLI
+# contract test, both executables and the example.
+TARGETS ?= lib
 export FOCUS
 
 .PHONY: mutation-tools mutation-check mutation-certification
@@ -36,7 +39,14 @@ protocol-check:
 .PHONY: iterate validate-dev
 iterate:
 	@test -n "$${FOCUS}" || (echo 'Set FOCUS to a nextest filter for the changed behavior'; exit 2)
-	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= bash tools/build-dev-linux.sh --focused "$${FOCUS}"
+	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= bash tools/build-dev-linux.sh --focused "$${FOCUS}" $(if $(filter all,$(TARGETS)),--all-targets,)
+
+# A debug `mash` for trying a change by hand, with the same warm incremental
+# cache settings as `make iterate`. Prints the binary's path.
+.PHONY: dev-build
+dev-build:
+	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo build-clif --locked --bin mash $(CARGO_ARGS)
+	@echo "$(DEV_TARGET_DIR)/debug/mash"
 
 validate-dev:
 	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=0 bash tools/build-dev-linux.sh --validate-only

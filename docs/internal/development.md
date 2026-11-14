@@ -68,7 +68,60 @@ use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [crate boundaries](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
 the integrated checks required when changing search behavior.
 
-For repeated unit-test edits, keep one target directory and enable incremental
+#### The edit loop
+
+Use the Make targets while developing; they carry the settings that keep
+rebuilds short:
+
+```bash
+make iterate FOCUS='test(changed_behavior)'              # fmt, Clippy, library unit tests
+make iterate FOCUS='test(changed_behavior)' TARGETS=all  # also the CLI contract test and executables
+make dev-build                                           # a debug `mash` to try by hand
+```
+
+`make iterate` builds only the library unit-test binaries unless `TARGETS=all`
+is given or the filter names a binary (`binary(cli_contract)`). A dashboard-only
+change needs none of these: `pnpm dev` in `dashboard/` serves the front end
+against a running `mash dash`.
+
+Measured on Xenia in November 2026 for a one-line edit in
+`app/dash/assistant.rs`, warm caches, four Cargo jobs under `agent-test`, no
+other builds running (logs in `mash-artifacts/build-speed/`):
+
+| Step | Time |
+| --- | --- |
+| `cargo clippy --all-targets` | 20–26 s |
+| Test build, all targets (previous `make iterate`) | 55–57 s, 6.0 GiB peak |
+| Test build, library tests only (current `make iterate`) | 35–42 s, 3.2–4.0 GiB peak |
+| Debug `mash`, incremental (`make dev-build`) | 24–28 s |
+| Debug `mash`, raw `cargo build-clif` under the machine-wide Cargo settings | 88 s |
+| Whole `make iterate`, before → after | about 80 s → 69 s |
+
+What the time is made of:
+
+- One rustc process compiles the whole `mash` crate. For the library tests a
+  one-line edit still costs about 34 s: macro expansion 3.5 s, checks 5 s,
+  collecting and partitioning code for generation 12 s, Cranelift itself under
+  1 s, saving the incremental cache 3 s, linking 4.5 s. Almost all of it grows
+  with the size of the crate, not the size of the edit, so the remaining lever
+  is splitting the crate. The parallel compiler front end (`-Zthreads=8`) made
+  no difference.
+- The all-targets build compiled the library twice (with and without tests) and
+  linked four 540 MB executables. Its 6.0 GiB peak is exactly the soft memory
+  limit `agent-test` gives a job, at which the kernel slows the job down;
+  earlier `make iterate` logs with test builds of two to six minutes all show
+  that same peak. Staying under it matters more than the seconds in the table
+  when other sessions are building.
+- Dependencies are built with line-number debug information only
+  (`[profile.dev.package."*"]` in `Cargo.toml`), which takes the debug `mash`
+  from 540 MB to 400 MB.
+- The machine-wide `~/.cargo/config.toml` on Xenia sets `incremental = false`
+  and a compiler cache wrapper. The Make targets override both; a raw Cargo
+  command does not, and then every edit recompiles the crate from nothing.
+- A commit changes the revision stamped by `build.rs`, so the first build after
+  any commit recompiles `mash` even when no source changed.
+
+For a raw Cargo command, keep one target directory and enable incremental
 compilation explicitly:
 
 ```bash

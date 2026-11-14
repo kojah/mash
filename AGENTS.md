@@ -288,6 +288,19 @@ empty selection fails; this mode never certifies full acceptance or builds an
 optimized release. Preserve passing evidence until relevant inputs change.
 Focused checks and relevant tooling fixtures are enough to commit and push.
 
+`make iterate` is the fast path; use it instead of raw Cargo commands. It keeps
+the warm incremental cache (the machine-wide Cargo configuration on Xenia turns
+incremental compilation off and adds a compiler cache wrapper, which makes a
+raw `cargo build-clif` after a one-line edit recompile the whole crate, about
+90 seconds instead of 25). It builds library unit tests only. Add `TARGETS=all`,
+or name a binary in the filter such as `binary(cli_contract)`, when the change
+touches the CLI contract or another integration target; do so for public CLI/MCP
+boundary changes. Use `make dev-build` for a debug `mash` to try by hand; it
+prints the binary's path. A dashboard-only change needs no Rust build: run
+`pnpm dev` in `dashboard/` against a running `mash dash` (see
+`dashboard/README.md`). Measurements and the reasons are in
+`docs/internal/development.md`.
+
 Run `make validate-dev` once for a stable release batch, after focused checks
 pass. It runs the broader gates without building a release binary. The release
 runner reuses a receipt for identical source, toolchain and effective validation
@@ -340,7 +353,9 @@ restart and SIGKILL process termination using the same persisted host storage,
 not power-loss durability or failover.
 
 Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for directed
-diagnosis; prefer the focused runner for iteration. Keep formatting and Clippy
+diagnosis only, always with `CARGO_INCREMENTAL=1 RUSTC_WRAPPER=` and the
+persistent target directory; use `make iterate` and `make dev-build` for
+iteration. Keep formatting and Clippy
 in that loop, and doctests at release milestones. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.

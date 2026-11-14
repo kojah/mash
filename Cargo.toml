@@ -116,6 +116,12 @@ rmcp = { version = "3.4.0", default-features = false, features = ["client", "ser
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
 
+# Dependencies keep file and line numbers for backtraces but not full debug
+# info: it made each debug executable about a quarter larger, and a full test
+# build links several of them. Mash's own crates keep the default.
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
 [profile.release]
 codegen-units = 16
 # Keep symbol names so a stuck or crashed process can be diagnosed with

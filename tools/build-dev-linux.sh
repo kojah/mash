@@ -5,10 +5,18 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 mode=release
 focus=''
 case "${1:-}" in
-    --focused) [[ $# == 2 && -n $2 ]] || { echo 'Set one nonempty nextest filter.' >&2; exit 2; }; mode=focused; focus=$2 ;;
+    --focused)
+        [[ ($# == 2 || ($# == 3 && $3 == --all-targets)) && -n $2 ]] || { echo 'Set one nonempty nextest filter, optionally followed by --all-targets.' >&2; exit 2; }
+        mode=focused; focus=$2
+        # Unit tests need only the library test binaries. Building every target
+        # also compiles the library a second time and links both executables,
+        # the CLI contract test and the example. A filter that names a binary
+        # or target kind selects integration targets, so it builds them all.
+        scope=(--lib)
+        if [[ $# == 3 || $focus == *binary* || $focus == *kind\(* ]]; then scope=(); fi ;;
     --validate-only) [[ $# == 1 ]] || exit 2; mode=validate ;;
     '') [[ $# == 0 ]] || exit 2 ;;
-    *) echo 'usage: build-dev-linux.sh [--focused NEXTEST_FILTER | --validate-only]' >&2; exit 2 ;;
+    *) echo 'usage: build-dev-linux.sh [--focused NEXTEST_FILTER [--all-targets] | --validate-only]' >&2; exit 2 ;;
 esac
 : "${CARGO_TARGET_DIR:?Set the persistent target directory}"
 : "${TMPDIR:?Set the disk-backed test temporary directory}"
@@ -25,7 +33,10 @@ cheap_checks() {
 }
 if [[ $mode == focused ]]; then
     cheap_checks
-    run cargo test-clif --locked -E "$focus" --no-tests fail --test-threads 4
+    if (( ${#scope[@]} )); then
+        echo 'Building library unit tests only; pass TARGETS=all (or name a binary in FOCUS) for the CLI contract and other integration targets.'
+    fi
+    run cargo test-clif --locked "${scope[@]}" -E "$focus" --no-tests fail --test-threads 4
     exit 0
 fi
 validation_key() {
