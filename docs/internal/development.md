@@ -125,6 +125,28 @@ fails, so a wrong `PACKAGE` is not silent. Asking for integration targets
 builds every crate unless `PACKAGE` names one. Clippy always checks the whole
 workspace.
 
+Measured on Xenia in November 2026, while Mash was still one crate, for a one-line edit in
+`app/dash/assistant.rs` (now `crates/mash-dash/src/assistant.rs`), warm caches, four Cargo jobs under `agent-test`, no
+other builds running (logs in `mash-artifacts/build-speed/`):
+
+| Step | Time |
+| --- | --- |
+| `cargo clippy --all-targets` | 20–26 s |
+| Test build, all targets (previous `make iterate`) | 55–57 s, 6.0 GiB peak |
+| Test build, library tests only (current `make iterate`) | 35–42 s, 3.2–4.0 GiB peak |
+| Debug `mash`, incremental (`make dev-build`) | 24–28 s |
+| Debug `mash`, raw `cargo build-clif` under the machine-wide Cargo settings | 88 s |
+| Whole `make iterate`, all targets, Clippy then tests (original) | about 80 s |
+| Whole `make iterate`, library tests, Clippy then tests | 68–71 s |
+| Whole `make iterate`, library tests, Clippy beside tests (current) | 56–58 s with Clippy waiting for a slot; the test build alone is 36–41 s |
+
+`make iterate` checks formatting first, then runs Clippy and the test build at
+the same time and prints Clippy's output after the tests, so one loop reports
+both lint and test failures. Clippy has its own target directory
+(`clippy/` under the development target) because Cargo locks a target
+directory for a whole build. Each runs as its own `agent-test` job, so a loop
+takes two of the four shared slots; in one job they would pass its memory limit.
+
 With the crate split complete, the same one-line edit and `make iterate` with
 the crate named (warm caches, November 2026) take:
 
@@ -140,8 +162,8 @@ the crate named (warm caches, November 2026) take:
 | `mash-silver` | 21 s | 5 s |
 | `mash-model` | 15 s | 1 s |
 
-Before the split every one of these was the single-crate loop in the first
-table. In the lower crates the test build is now a few seconds and the rest is
+Before the split every one of these was the single-crate loop in the table
+above. In the lower crates the test build is now a few seconds and the rest is
 Clippy rechecking every crate above the edit. `PACKAGE=all` builds every
 crate's unit tests and costs about a minute.
 
