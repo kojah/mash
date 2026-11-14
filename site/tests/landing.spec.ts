@@ -61,6 +61,7 @@ test("the hero leads with the full logo, in the one that suits the theme", async
 test("the hero's install command copies to the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
+  await page.getByRole("button", { name: "Install it yourself" }).click();
   const command = page.locator(".mash-install .picked code");
   // The browser under test runs on Linux, so the picker opens on the shell script.
   await expect(command).toHaveText(/^curl .*install\.sh \| sh$/);
@@ -80,6 +81,12 @@ test("the hero's install picker follows the chosen system and method", async ({
   await page.goto("/");
   const install = page.locator(".mash-install");
   const command = install.locator(".picked code");
+  // One box at a time: the agent's prompt first, the install command on request.
+  await expect(install.locator(".command:visible")).toHaveCount(1);
+  await expect(install.locator(".command:visible code")).toHaveText(/^Read https/);
+  await install.getByRole("button", { name: "Install it yourself" }).click();
+  await expect(install.locator(".command:visible")).toHaveCount(1);
+  await expect(install.locator(".command:visible code")).toHaveText(/^curl /);
   await install.getByRole("button", { name: "Windows", exact: true }).click();
   await expect(command).toHaveText(/^irm .*install\.ps1 \| iex$/);
   await expect(install.locator(".picked .prompt")).toHaveText(">");
@@ -93,6 +100,7 @@ test("the hero's install picker follows the chosen system and method", async ({
   await install.getByRole("button", { name: "macOS", exact: true }).click();
   await expect(command).toHaveText(/^cargo \+stable install /);
   await page.reload();
+  await expect(command).toBeVisible();
   await expect(command).toHaveText(/^cargo \+stable install /);
   await expect(install.getByRole("button", { name: "Homebrew", exact: true })).toBeVisible();
   // Linux offers apt and not Homebrew.

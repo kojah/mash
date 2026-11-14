@@ -1,6 +1,7 @@
 /**
- * The landing hero's install picker: choose an operating system and an install
- * method, and the command and its prompt follow.
+ * The landing hero's install picker: choose between handing setup to a coding
+ * agent and installing by hand; for the latter, choose an operating system and
+ * an install method, and the command and its prompt follow.
  */
 
 interface Method {
@@ -53,12 +54,15 @@ export function detectSystem(platform: string): string {
   return "linux";
 }
 
-function remembered(): { system?: string; method?: string } {
+type Mode = "agent" | "manual";
+
+function remembered(): { system?: string; method?: string; mode?: Mode } {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(STORED) ?? "{}");
     if (typeof parsed !== "object" || parsed === null) return {};
-    const { system, method } = parsed as Record<string, unknown>;
+    const { system, method, mode } = parsed as Record<string, unknown>;
     return {
+      ...(mode === "agent" || mode === "manual" ? { mode } : {}),
       ...(typeof system === "string" ? { system } : {}),
       ...(typeof method === "string" ? { method } : {}),
     };
@@ -67,9 +71,9 @@ function remembered(): { system?: string; method?: string } {
   }
 }
 
-function remember(system: string, method: string): void {
+function remember(choice: { system?: string; method?: string; mode?: Mode }): void {
   try {
-    localStorage.setItem(STORED, JSON.stringify({ system, method }));
+    localStorage.setItem(STORED, JSON.stringify({ ...remembered(), ...choice }));
   } catch {
     // The choice simply is not kept.
   }
@@ -121,7 +125,15 @@ export function mountInstall(picker: HTMLElement): void {
     if (copy) copy.dataset.copy = method.command;
     picker.dataset.system = system.id;
     picker.dataset.method = method.id;
-    if (keep) remember(system.id, method.id);
+    if (keep) remember({ system: system.id, method: method.id });
+  }
+
+  function setMode(mode: Mode, keep: boolean): void {
+    picker.dataset.mode = mode;
+    for (const button of picker.querySelectorAll<HTMLButtonElement>('[data-pick="mode"] button')) {
+      button.setAttribute("aria-pressed", String(button.value === mode));
+    }
+    if (keep) remember({ mode });
   }
 
   picker.addEventListener("click", (event) => {
@@ -131,7 +143,8 @@ export function mountInstall(picker: HTMLElement): void {
         : null;
     if (!button) return;
     const row = button.closest<HTMLElement>("[data-pick]")?.dataset.pick;
-    if (row === "system") show(button.value, picker.dataset.method, true);
+    if (row === "mode") setMode(button.value === "manual" ? "manual" : "agent", true);
+    else if (row === "system") show(button.value, picker.dataset.method, true);
     else show(picker.dataset.system ?? fallback.id, button.value, true);
   });
 
@@ -140,4 +153,5 @@ export function mountInstall(picker: HTMLElement): void {
     saved.method,
     false,
   );
+  setMode(saved.mode ?? "agent", false);
 }

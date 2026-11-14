@@ -92,9 +92,31 @@ const first = script;
           )
         }
       </div>
+      {
+        actions.length > 0 && (
+          <div class="sl-flex actions">
+            {actions.map(({ attrs: { class: className, ...attrs } = {}, icon, link, text, variant }) => (
+              <LinkButton href={link} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+                {text}
+                {icon?.html && <Fragment set:html={icon.html} />}
+              </LinkButton>
+            ))}
+          </div>
+        )
+      }
       <div class="mash-install" data-systems={JSON.stringify(systems)}>
+        <div class="choice mode" role="group" aria-label="How to set up" data-pick="mode">
+          <button type="button" value="agent" aria-pressed="true">
+            <Icon name="comment" size="0.9375rem" />
+            Ask your agent
+          </button>
+          <button type="button" value="manual" aria-pressed="false">
+            <Icon name="seti:shell" size="0.9375rem" />
+            Install it yourself
+          </button>
+        </div>
         <h2>Paste into your coding agent</h2>
-        <div class="command">
+        <div class="command agent">
           <code class="wrap">{ask}</code>
           <button type="button" data-copy={ask} aria-label="Copy the prompt for your agent">Copy</button>
         </div>
@@ -125,18 +147,6 @@ const first = script;
           <button type="button" data-copy={first.command} aria-label="Copy the install command">Copy</button>
         </div>
       </div>
-      {
-        actions.length > 0 && (
-          <div class="sl-flex actions">
-            {actions.map(({ attrs: { class: className, ...attrs } = {}, icon, link, text, variant }) => (
-              <LinkButton href={link} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
-                {text}
-                {icon?.html && <Fragment set:html={icon.html} />}
-              </LinkButton>
-            ))}
-          </div>
-        )
-      }
     </div>
   </div>
 </div>
@@ -248,6 +258,18 @@ const first = script;
     background: color-mix(in srgb, var(--sl-color-black) 82%, transparent);
   }
   .choice:empty {
+    display: none;
+  }
+  /* With scripting, one toggle picks which single command box shows. Without
+     it there is no toggle, and both boxes show under their headings. */
+  .mode {
+    justify-self: center;
+  }
+  .mash-install:not([data-mode]) .mode,
+  .mash-install[data-mode] h2,
+  .mash-install[data-mode="agent"] .choices,
+  .mash-install[data-mode="agent"] .picked,
+  .mash-install[data-mode="manual"] .command.agent {
     display: none;
   }
   .choice :global(button) {
