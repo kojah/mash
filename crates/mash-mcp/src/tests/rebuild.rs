@@ -72,10 +72,9 @@ async fn lexical_views_rebuild_streams_mcp_progress_without_models_sources_or_sh
             break;
         }
         assert_eq!(message["params"]["progressToken"], "views");
-        let event: crate::progress::Event = serde_json::from_value(
-            message["params"]["_meta"]["dev.kojah.mash/index-progress"].clone(),
-        )
-        .unwrap();
+        let event: crate::progress::Event =
+            serde_json::from_value(message["params"]["_meta"]["io.getmash/index-progress"].clone())
+                .unwrap();
         rebuilt |= event.phase == crate::progress::Phase::SearchRebuild;
         complete |= event.phase == crate::progress::Phase::Complete;
     }

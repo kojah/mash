@@ -143,7 +143,7 @@ async fn qdrant_partial_indexing_streams_retry_status_before_mcp_error_and_recov
                 rmcp::model::ProgressToken(rmcp::model::NumberOrString::Number(id))
             );
             let event: crate::progress::Event = serde_json::from_value(
-                notification.meta.unwrap()["dev.kojah.mash/index-progress"].clone(),
+                notification.meta.unwrap()["io.getmash/index-progress"].clone(),
             )
             .unwrap();
             if matches!(

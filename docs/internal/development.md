@@ -387,9 +387,9 @@ Runner logs and reports stay private. Skipped targets are not installed or ready
 ## Work tracking
 
 Agent work is tracked with [Beads](https://github.com/steveyegge/beads). Issue
-history lives in a separate, private Dolt remote (`kojah/mash-beads`), not in this
+history lives in a separate, private Dolt remote (`mashium/mash-beads`), not in this
 repository. With `bd` and Dolt installed and access to that remote, run
-`bd config set sync.remote git+https://github.com/kojah/mash-beads.git` and
+`bd config set sync.remote git+https://github.com/mashium/mash-beads.git` and
 `bd bootstrap` after cloning, then `bd prime` and `bd ready`. `bd dolt commit` and
 `bd dolt push` persist tracking updates. The entire `.beads/` directory, including
 configuration, stays local and is ignored by Git.

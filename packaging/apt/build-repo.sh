@@ -32,7 +32,7 @@ for pair in amd64:x86_64-unknown-linux-gnu arm64:aarch64-unknown-linux-gnu; do
 Package: mash
 Version: $version
 Architecture: $arch
-Maintainer: kojah <mash-release@users.noreply.github.com>
+Maintainer: Mashium <mash-release@users.noreply.github.com>
 Homepage: https://github.com/mashium/mash
 Section: utils
 Priority: optional
