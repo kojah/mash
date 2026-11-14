@@ -91,9 +91,11 @@ fn assert_record_help_examples(records: &serde_json::Value) {
         assert!(examples.iter().any(|item| item["tool"] == tool));
     }
     for action in ["create", "revise", "forget"] {
-        assert!(examples.iter().any(
-            |item| item["tool"] == "record" && item["arguments"]["change"]["action"] == action
-        ));
+        assert!(
+            examples
+                .iter()
+                .any(|item| item["tool"] == "record" && item["arguments"]["action"] == action)
+        );
     }
     assert!(examples.iter().all(|item| matches!(
         item["tool"].as_str(),

@@ -89,7 +89,7 @@ async fn native_records_sdk_duplicate_suggestions_and_explicit_reuse() {
     };
     let body = json!({"statement":"Use Qdrant","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}});
     let scope = json!({"kind":"chat","id":"decision-thread"});
-    let mut request = json!({"operation_id":"first","change":{"action":"create","scope":scope,"body":body,"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}});
+    let mut request = json!({"operation_id":"first","action":"create","scope":scope,"statement":"Use Qdrant","review":"established","recorded_by":"test agent","kind":"decision","state":"accepted","evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]});
     let created = call("record", request.clone()).await.unwrap();
     assert_ne!(created.is_error, Some(true), "{created:?}");
     let receipt = created.structured_content.unwrap();
@@ -105,7 +105,7 @@ async fn native_records_sdk_duplicate_suggestions_and_explicit_reuse() {
         call("record", request.clone()).await.unwrap().is_error,
         Some(true)
     );
-    request["change"]["on_duplicate"] = json!("reuse");
+    request["on_duplicate"] = json!("reuse");
     let reused = call("record", request).await.unwrap();
     assert_ne!(reused.is_error, Some(true), "{reused:?}");
     let reused = reused.structured_content.unwrap();
@@ -150,7 +150,7 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
             CallToolRequestParams::new(name).with_arguments(args.as_object().unwrap().clone()),
         )
     };
-    let request = json!({"operation_id":"sdk-create","change":{"action":"create","scope":{"kind":"chat","id":"decision-thread"},"body":{"statement":"Use Qdrant","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}});
+    let request = json!({"operation_id":"sdk-create","action":"create","scope":{"kind":"chat","id":"decision-thread"},"statement":"Use Qdrant","review":"established","recorded_by":"test agent","kind":"decision","state":"accepted","evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]});
     // An index pass holds the writer lock: record waits for it rather than
     // failing, and saves once the pass releases within the bound.
     let guard = crate::storage::admission::acquire(&database).unwrap();
@@ -197,9 +197,9 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
     assert_eq!(packet["records"][0]["status"], "current");
     assert!(serde_json::to_vec(&packet).unwrap().len() <= 1024);
     // Open questions are no longer a kind of record: the tool refuses one.
-    let question = call("record", json!({"operation_id":"sdk-question","change":{"action":"create","scope":{"kind":"chat","id":"decision-thread"},"body":{"statement":"Which engine?","review":"established","recorded_by":"test agent","details":{"kind":"open_question","state":"open"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]}})).await;
+    let question = call("record", json!({"operation_id":"sdk-question","action":"create","scope":{"kind":"chat","id":"decision-thread"},"statement":"Which engine?","review":"established","recorded_by":"test agent","kind":"open_question","state":"open","evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"context"}]})).await;
     assert!(question.map_or(true, |result| result.is_error == Some(true)));
-    let revised = call("record", json!({"operation_id":"sdk-revise","change":{"action":"revise","expected":{"id":receipt["record_id"],"revision":1},"body":{"statement":"Use Qdrant for search","review":"established","recorded_by":"test agent","details":{"kind":"decision","state":"accepted"}},"evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]}})).await.unwrap();
+    let revised = call("record", json!({"operation_id":"sdk-revise","action":"revise","expected":{"id":receipt["record_id"],"revision":1},"statement":"Use Qdrant for search","review":"established","recorded_by":"test agent","kind":"decision","state":"accepted","evidence":[{"message_id":"message-2","quote":"Yes, let's use Qdrant.","purpose":"endorsement"}]})).await.unwrap();
     assert_ne!(revised.is_error, Some(true), "{revised:?}");
     let page = call(
         "get_record",
@@ -215,7 +215,7 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
     assert_eq!(page["revisions"][0]["revision"], 1);
     assert_eq!(page["revisions"][0]["evidence_current"], true);
     assert!(page["next_before_revision"].is_null());
-    let forgotten = call("record",json!({"operation_id":"sdk-forget","change":{"action":"forget","expected":{"id":receipt["record_id"],"revision":2}}})).await.unwrap();
+    let forgotten = call("record",json!({"operation_id":"sdk-forget","action":"forget","expected":{"id":receipt["record_id"],"revision":2}})).await.unwrap();
     assert_ne!(forgotten.is_error, Some(true), "{forgotten:?}");
     assert_eq!(
         call("get_record", json!({"id":receipt["record_id"]}))

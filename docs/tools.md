@@ -143,14 +143,33 @@ history.
 <li>Pass operation_id so a retry is safe, and the expected revision when editing.</li>
 <li>Link marks two established, current records in one scope as supports or contradicts.</li>
 <li>Forget removes every revision.</li>
-<li>Shape of a create: {operation_id, change: {action: "create", scope: {kind, ...}, body: {statement, recorded_by, review, details: {kind, state}}, evidence: [{quote, message_id or session_id}]}}.</li>
+<li>Every field sits at the top level: a create is {operation_id, action: "create", scope, kind, state, statement, recorded_by, evidence: [{quote, message_id or session_id}]}.</li>
 <li>Call help with topic=records for the rules.</li>
 </ul>
 <p class="none">Changes or removes stored data.</p>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>change</code><small>object</small><b>required</b></span><span class="about">What to do; <code>action</code> decides which of the other fields apply.</span></div>
-<div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about">A stable ID for this change, here at the top level beside <code>change</code>, so a retry is safe.</span></div>
+<div class="param"><span class="name"><code>action</code><small>one of <code>create</code>, <code>revise</code>, <code>supersede</code>, <code>confirm</code>, <code>link</code>, <code>forget</code></small><b>required</b></span><span class="about">create needs scope, kind, state, statement, <code>recorded_by</code> and evidence. revise (a correction) and supersede (the choice changed) need expected and the same record fields. confirm needs expected and new evidence. link needs expected, target and relation. forget needs expected.</span></div>
+<div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about">A stable ID for this change, so a retry is safe.</span></div>
+<div class="param"><span class="name"><code>alternatives</code><small>list of text</small></span><span class="about">For a decision: the options that were not chosen.</span></div>
+<div class="param"><span class="name"><code>conditions</code><small>list of text</small></span><span class="about">For a preference: when it applies.</span></div>
+<div class="param"><span class="name"><code>consequences</code><small>list of text</small></span><span class="about">For a decision: what follows from it.</span></div>
+<div class="param"><span class="name"><code>decided_by</code><small>one of <code>user</code>, <code>agent</code></small></span><span class="about">For a decision: omit for the person's decision; agent for a choice the agent made.</span></div>
+<div class="param"><span class="name"><code>effective_at</code><small>whole number</small></span><span class="about">When the choice or claim applied, in Unix milliseconds, when known.</span></div>
+<div class="param"><span class="name"><code>evidence</code><small>list of object</small></span><span class="about">The messages that support it: each a quote with <code>message_id</code>, or with <code>session_id</code> for your own session.</span></div>
+<div class="param"><span class="name"><code>expected</code><small>object</small></span><span class="about">The record and revision being changed, for every action but create.</span></div>
+<div class="param"><span class="name"><code>kind</code><small>one of <code>decision</code>, <code>preference</code>, <code>fact</code></small></span><span class="about">decision, preference or fact.</span></div>
+<div class="param"><span class="name"><code>on_duplicate</code><small>one of <code>report</code>, <code>reuse</code></small></span><span class="about">For create: report (default) an identical live record, or reuse it.</span></div>
+<div class="param"><span class="name"><code>rationale</code><small>text</small></span><span class="about">Why, when known.</span></div>
+<div class="param"><span class="name"><code>recorded_by</code><small>text</small></span><span class="about">Who is recording, such as the agent's name. Attribution supplied by the caller, not authenticated human identity.</span></div>
+<div class="param"><span class="name"><code>relation</code><small>one of <code>supports</code>, <code>contradicts</code></small></span><span class="about">For link. Your explicit reading; never inferred from similar wording.</span></div>
+<div class="param"><span class="name"><code>reported_by</code><small>text</small></span><span class="about">For a fact: who reported it.</span></div>
+<div class="param"><span class="name"><code>review</code><small>one of <code>candidate</code>, <code>established</code></small></span><span class="about">candidate (default) or established.</span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small></span><span class="about">Where a new record applies: {kind: personal}, {kind: repository, identity}, {kind: <code>local_project</code>, path} or {kind: chat, id}.</span></div>
+<div class="param"><span class="name"><code>state</code><small>one of <code>proposed</code>, <code>accepted</code>, <code>active</code>, <code>current</code>, <code>superseded</code>, <code>withdrawn</code>, <code>retracted</code></small></span><span class="about">decision: proposed, accepted, superseded, withdrawn. preference: active, superseded, withdrawn. fact: current, superseded, retracted.</span></div>
+<div class="param"><span class="name"><code>statement</code><small>text</small></span><span class="about">The decision, preference or fact itself, in a sentence or two.</span></div>
+<div class="param"><span class="name"><code>target</code><small>object</small></span><span class="about">For link: the other record and its revision.</span></div>
+<div class="param"><span class="name"><code>valid_until</code><small>whole number</small></span><span class="about">For a fact: when it stops holding, in Unix milliseconds.</span></div>
 </div>
 </details>
 

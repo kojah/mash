@@ -142,26 +142,23 @@ skill or say "remember this". The agent checks for an existing record, saves
 your words as the evidence, and confirms what it saved.
 
 To do it by hand, read the supporting chat first, then call the `record` MCP
-tool with an operation ID and a change:
+tool with an operation ID and an action. Every field sits at the top level:
 
 ```json
 {
   "operation_id": "choose-local-qdrant-1",
-  "change": {
-    "action": "create",
-    "scope": {"kind": "chat", "id": "RETURNED_CHAT_ID"},
-    "body": {
-      "statement": "Use Qdrant for local search.",
-      "recorded_by": "My coding agent",
-      "review": "established",
-      "details": {"kind": "decision", "state": "accepted"}
-    },
-    "evidence": [{
-      "message_id": "RETURNED_USER_MESSAGE_ID",
-      "quote": "Yes, let's use Qdrant.",
-      "purpose": "endorsement"
-    }]
-  }
+  "action": "create",
+  "scope": {"kind": "chat", "id": "RETURNED_CHAT_ID"},
+  "kind": "decision",
+  "state": "accepted",
+  "statement": "Use Qdrant for local search.",
+  "recorded_by": "My coding agent",
+  "review": "established",
+  "evidence": [{
+    "message_id": "RETURNED_USER_MESSAGE_ID",
+    "quote": "Yes, let's use Qdrant.",
+    "purpose": "endorsement"
+  }]
 }
 ```
 
@@ -255,17 +252,15 @@ cannot be recreated by retrying an old request.
 ## Relate conclusions
 
 To record that two records agree or disagree, use `record` with a new
-`operation_id` and a `link` change:
+`operation_id` and the `link` action:
 
 ```json
 {
   "operation_id": "link-qdrant-choices-1",
-  "change": {
-    "action": "link",
-    "expected": {"id": "SOURCE_ID", "revision": 1},
-    "target": {"id": "TARGET_ID", "revision": 1},
-    "relation": "contradicts"
-  }
+  "action": "link",
+  "expected": {"id": "SOURCE_ID", "revision": 1},
+  "target": {"id": "TARGET_ID", "revision": 1},
+  "relation": "contradicts"
 }
 ```
 

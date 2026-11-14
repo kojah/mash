@@ -31,6 +31,7 @@ use serde::Deserialize;
 pub mod console;
 pub mod guidance;
 // Renders docs/tools.md; only its currency test runs it.
+mod record;
 #[cfg(test)]
 mod reference;
 mod schema;
@@ -549,15 +550,19 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = true),
-        description = "Create, revise, supersede, confirm, link or forget a local record: a decision, preference or fact. Cite evidence by message_id, or your own session by session_id with an exact quote, which needs no indexing. An established decision or preference needs a citation of the user endorsing it, and that is your reading, not proof of approval; keep unclear interpretations as candidates. Revise to correct, supersede when the choice changed. Pass operation_id so a retry is safe, and the expected revision when editing. Link marks two established, current records in one scope as supports or contradicts. Forget removes every revision. Shape of a create: {operation_id, change: {action: \"create\", scope: {kind, ...}, body: {statement, recorded_by, review, details: {kind, state}}, evidence: [{quote, message_id or session_id}]}}. Call help with topic=records for the rules."
+        description = "Create, revise, supersede, confirm, link or forget a local record: a decision, preference or fact. Cite evidence by message_id, or your own session by session_id with an exact quote, which needs no indexing. An established decision or preference needs a citation of the user endorsing it, and that is your reading, not proof of approval; keep unclear interpretations as candidates. Revise to correct, supersede when the choice changed. Pass operation_id so a retry is safe, and the expected revision when editing. Link marks two established, current records in one scope as supports or contradicts. Forget removes every revision. Every field sits at the top level: a create is {operation_id, action: \"create\", scope, kind, state, statement, recorded_by, evidence: [{quote, message_id or session_id}]}. Call help with topic=records for the rules."
     )]
     async fn record(
         &self,
-        Parameters(input): Parameters<crate::records::Mutation>,
+        Parameters(input): Parameters<record::Record>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> CallToolResult {
+        let change = match input.mutation() {
+            Ok(change) => change,
+            Err(error) => return tool_result(Err(error)),
+        };
         tool_result(
-            self.record_within(input, RECORD_PATIENCE, context.ct.cancelled())
+            self.record_within(change, RECORD_PATIENCE, context.ct.cancelled())
                 .await,
         )
     }

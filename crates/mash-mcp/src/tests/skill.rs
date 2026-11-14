@@ -59,7 +59,10 @@ fn mcp(tool: &str, text: &str) -> Result<(), String> {
         "get_record" => arguments::<crate::records::Get>(text).map(|_| ()),
         "recall_records" => arguments::<crate::records::recall::Request>(text).map(|_| ()),
         "get_record_capture" => arguments::<crate::records::capture::Request>(text).map(|_| ()),
-        "record" => arguments::<crate::records::Mutation>(text).map(|_| ()),
+        "record" => arguments::<crate::record::Record>(text)?
+            .mutation()
+            .map(|_| ())
+            .map_err(|error| error.error.message),
         "status" => {
             let input = arguments::<Status>(text)?;
             input.coverage.map_or(Ok(()), |coverage| {
