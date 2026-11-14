@@ -161,9 +161,12 @@ impl Access {
     }
 }
 
+/// `Lax`, so a link opened from another app arrives signed in. Browsers send
+/// such a cookie across sites only on a top-level `GET`, and every route that
+/// changes anything is another method behind the origin check.
 fn cookie(value: &str, seconds: u64, secure: bool) -> String {
     let secure = if secure { "; Secure" } else { "" };
-    format!("{COOKIE}={value}; Path=/; Max-Age={seconds}; HttpOnly; SameSite=Strict{secure}")
+    format!("{COOKIE}={value}; Path=/; Max-Age={seconds}; HttpOnly; SameSite=Lax{secure}")
 }
 
 #[cfg(test)]
@@ -194,7 +197,7 @@ mod tests {
         assert!(access.signed_in(&headers(header::AUTHORIZATION, &format!("Bearer {TOKEN}"))));
         assert!(!access.signed_in(&headers(header::AUTHORIZATION, "Bearer wrong")));
         let set = access.sign_in(TOKEN, true).unwrap();
-        assert!(set.contains("HttpOnly") && set.contains("SameSite=Strict"));
+        assert!(set.contains("HttpOnly") && set.contains("SameSite=Lax"));
         assert!(set.ends_with("; Secure"));
         assert!(!access.sign_in(TOKEN, false).unwrap().contains("Secure"));
         let pair = set.split(';').next().unwrap();
