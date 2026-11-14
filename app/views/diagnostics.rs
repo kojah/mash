@@ -3,14 +3,13 @@ use super::{
     config::{Fusion, Ranking},
     exact::Intent,
 };
-use crate::core::SearchResponse;
 use crate::search_results::{Results, SearchUnit};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[schemars(rename = "DiagnosticsScope")]
-pub(crate) enum Scope {
+pub enum Scope {
     Local,
     Shared,
     Combined,
@@ -18,14 +17,14 @@ pub(crate) enum Scope {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Source {
+pub enum Source {
     Local,
     Shared,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Artifact {
+pub enum Artifact {
     Metadata,
     Lexical,
     Dense,
@@ -33,38 +32,38 @@ pub(crate) enum Artifact {
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct Diagnostics {
-    pub(crate) policy_version: u16,
-    pub(crate) intent: Intent,
-    pub(crate) unit: SearchUnit,
-    pub(crate) limit: usize,
+    pub policy_version: u16,
+    pub intent: Intent,
+    pub unit: SearchUnit,
+    pub limit: usize,
     #[serde(default)]
-    pub(crate) offset: usize,
+    pub offset: usize,
     /// Selection is policy, not a claim about candidate counts or inference calls.
-    pub(crate) selected_artifacts: Vec<Artifact>,
+    pub selected_artifacts: Vec<Artifact>,
     /// Requested predicate names, not values, Boolean structure or removal counts.
     #[serde(default)]
-    pub(crate) filter_fields: Vec<crate::search_filter::Field>,
-    pub(crate) requested_scope: Scope,
-    pub(crate) completed_sources: Vec<Source>,
-    pub(crate) shared_fallback: bool,
+    pub filter_fields: Vec<crate::search_filter::Field>,
+    pub requested_scope: Scope,
+    pub completed_sources: Vec<Source>,
+    pub shared_fallback: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) fusion: Option<Fusion>,
+    pub fusion: Option<Fusion>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ranking: Option<Ranking>,
     /// Requested shared override, not a claim that remote retrieval completed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared_vector_override: Option<super::vector::Search>,
-    pub(crate) returned_results: usize,
+    pub returned_results: usize,
     /// Core time includes configuration and model admission, excludes CLI startup.
-    pub(crate) elapsed_ms: u64,
+    pub elapsed_ms: u64,
     #[serde(default)]
     pub stages: Vec<crate::observability::retrieval::Measurement>,
     #[serde(default)]
-    pub(crate) shared_context_incomplete: bool,
+    pub shared_context_incomplete: bool,
 }
 
 impl Diagnostics {
-    pub(crate) fn new(
+    pub fn new(
         response: &SearchResponse,
         scope: Scope,
         page: crate::search_results::Page,
@@ -105,7 +104,7 @@ impl Diagnostics {
         }
     }
 
-    pub(crate) fn record(&mut self, stages: Vec<crate::observability::retrieval::Measurement>) {
+    pub fn record(&mut self, stages: Vec<crate::observability::retrieval::Measurement>) {
         use crate::observability::retrieval::Stage;
         let local = stages.iter().any(|s| {
             matches!(s.stage, Stage::LocalExact | Stage::LocalCandidates) && s.completed_calls > 0
@@ -126,4 +125,41 @@ impl Diagnostics {
             .any(|s| s.stage == Stage::Context && s.completed_calls < s.calls);
         self.stages = stages;
     }
+}
+
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SearchMode {
+    Lexical,
+    LocalLexical,
+    MergedLexical,
+    Hybrid,
+    LocalHybrid,
+    MergedHybrid,
+    Unavailable,
+}
+
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct SearchResponse {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub freshness_warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<Diagnostics>,
+    pub query: String,
+    #[serde(default)]
+    pub intent: Intent,
+    pub realized_mode: SearchMode,
+    pub unit: crate::search_results::SearchUnit,
+    pub results: crate::search_results::Results,
+    /// Offset of the next page of the same ranked list; null on the last page.
+    #[serde(default)]
+    pub next_offset: Option<usize>,
+    pub shared: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_context_error: Option<String>,
+    /// Why an empty result may not mean the history lacks the subject.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<String>,
 }

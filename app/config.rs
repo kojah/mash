@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+mod agent;
 mod assistant;
 mod document;
 mod embeddings;
@@ -17,25 +18,26 @@ pub mod settings;
 #[cfg(test)]
 mod tests;
 
+pub use agent::Agent;
 pub use assistant::Assistant;
 pub use document::validate_identifier;
-pub(crate) use embeddings::Embeddings;
+pub use embeddings::Embeddings;
 pub use loading::{default_path, load};
 pub use qdrant::QdrantConfig;
-pub(crate) use reranking::Reranking;
+pub use reranking::Reranking;
 
 const DEFAULT_SINCE_DAYS: u32 = 90;
 const MAX_SINCE_DAYS: u32 = 36_500;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedConfig {
-    pub(crate) embeddings: Embeddings,
-    pub(crate) reranking: Reranking,
+    pub embeddings: Embeddings,
+    pub reranking: Reranking,
     /// The model behind the dashboard's assistant, when one is configured.
     pub assistant: Option<Assistant>,
     pub qdrant: QdrantConfig,
-    pub(crate) attachments: crate::attachments::Configuration,
-    pub(crate) redaction: crate::redaction::Settings,
+    pub attachments: crate::attachments::Configuration,
+    pub redaction: crate::redaction::Settings,
     pub records: crate::records::capture::Policy,
     pub path: PathBuf,
     pub loaded: bool,
@@ -47,7 +49,7 @@ pub struct ResolvedConfig {
     /// Agents that `mash init` registered Mash with (`[agents] connected`).
     /// `status --installation` expects them even if a registration is removed;
     /// empty when the configuration predates the field.
-    pub(crate) connected_agents: Vec<crate::core::installation::Agent>,
+    pub connected_agents: Vec<crate::config::Agent>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
@@ -88,7 +90,7 @@ fn secret(name: &str) -> Option<String> {
 
 /// Where `mash init --join` keeps a node token, readable only by the user, so
 /// a joined machine needs no shell profile edit.
-pub(crate) fn saved_tokens() -> Option<std::path::PathBuf> {
+pub fn saved_tokens() -> Option<std::path::PathBuf> {
     crate::platform::mash_home().map(|home| home.join("node.env"))
 }
 
@@ -106,7 +108,7 @@ fn saved_token(path: &std::path::Path, name: &str) -> Option<String> {
 
 /// Save `name=token` in `path`, replacing an earlier value for that name and
 /// keeping the others.
-pub(crate) fn save_token(path: &std::path::Path, name: &str, token: &str) -> Result<(), AppError> {
+pub fn save_token(path: &std::path::Path, name: &str, token: &str) -> Result<(), AppError> {
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     let prefix = format!("{name}=");
     let mut text = String::new();
@@ -131,7 +133,7 @@ pub(crate) fn save_token(path: &std::path::Path, name: &str, token: &str) -> Res
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct ConfigurationStatus {
+pub struct ConfigurationStatus {
     embeddings: Embeddings,
     reranking: Reranking,
     qdrant: QdrantConfig,
@@ -158,7 +160,7 @@ struct IndexStatus {
 }
 
 impl ResolvedConfig {
-    pub(crate) fn status(&self) -> ConfigurationStatus {
+    pub fn status(&self) -> ConfigurationStatus {
         ConfigurationStatus {
             embeddings: self.embeddings.clone(),
             reranking: self.reranking.clone(),

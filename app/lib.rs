@@ -11,21 +11,43 @@ pub use mash_storage::silver_query;
 pub use mash_storage::chat_catalog;
 pub use mash_storage::search_filter;
 use mash_storage::search_query;
-mod search_ranking;
 pub use mash_storage::search_results;
-pub mod semantic;
-pub mod views;
+/// The models and embeddings, with the relevance harness that drives the core.
+pub mod semantic {
+    pub use mash_search::semantic::*;
+    #[cfg(any(test, feature = "test-support"))]
+    pub mod evaluation;
+}
+/// Local and shared views; the Qdrant tests that run against the shared
+/// server's store live here.
+pub mod views {
+    pub use mash_search::views::*;
+    #[cfg(test)]
+    pub mod qdrant {
+        use crate::AppError;
+        use crate::views::scope::Scope;
+        pub use mash_search::views::qdrant::*;
+        use serde::{Deserialize, Serialize};
+        mod tests;
+    }
+}
 
 // Application composition and infrastructure supporting both layers.
 use mash_model::{Action, AppError, ErrorKind};
 pub use mash_model::{attachments, database_error, platform, progress, redaction, scratch};
-pub mod config;
+use mash_search::search_ranking;
+pub use mash_search::{blocking, config};
 pub mod core;
 use mash_storage::export;
 /// Registers the silver text codec on a raw connection, as tests need to read silver directly.
 #[doc(hidden)]
 pub use storage::packed::register as register_silver_codec;
-pub mod observability;
+/// Tracing and retrieval measurements; the tests that index through the core live here.
+pub mod observability {
+    pub use mash_search::observability::*;
+    #[cfg(test)]
+    mod tests;
+}
 #[cfg(test)]
 mod progress_tests;
 #[cfg(test)]
@@ -45,26 +67,6 @@ use serde::Serialize;
 
 /// The commit this build was made from.
 pub const BUILD_REVISION: &str = env!("MASH_BUILD_REVISION");
-
-pub async fn blocking<T: Send + 'static>(
-    work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
-) -> Result<T, AppError> {
-    let sink = progress::current_sink();
-    let indexer_cache = semantic::indexer::current();
-    let context = observability::ThreadContext::capture();
-    let admission = storage::admission::current();
-    tokio::task::spawn_blocking(move || {
-        storage::admission::on_blocking_thread(admission, || {
-            context.run(|| {
-                semantic::indexer::on_blocking_thread(indexer_cache, || {
-                    progress::on_blocking_thread(sink, work)
-                })
-            })
-        })
-    })
-    .await
-    .map_err(|_| AppError::internal("blocking worker failed"))?
-}
 
 /// Internal code for a closed output stream; never reported as an exit status.
 pub const BROKEN_PIPE: i32 = -1;

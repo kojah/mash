@@ -28,7 +28,7 @@ pub fn initialize() {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-fn subscriber<W>(writer: W) -> impl tracing::Subscriber + Send + Sync
+pub fn subscriber<W>(writer: W) -> impl tracing::Subscriber + Send + Sync
 where
     W: for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
 {
@@ -70,14 +70,14 @@ pub fn request_id() -> u64 {
 
 /// Capture both parts of tracing state before moving work to an OS thread.
 /// A span alone does not propagate a task-local subscriber.
-pub(crate) struct ThreadContext {
+pub struct ThreadContext {
     dispatcher: tracing::Dispatch,
     parent: tracing::Span,
     retrieval: Option<retrieval::Capture>,
 }
 
 impl ThreadContext {
-    pub(crate) fn capture() -> Self {
+    pub fn capture() -> Self {
         Self {
             dispatcher: tracing::dispatcher::get_default(Clone::clone),
             parent: tracing::Span::current(),
@@ -85,15 +85,12 @@ impl ThreadContext {
         }
     }
 
-    pub(crate) fn run<T>(&self, work: impl FnOnce() -> T) -> T {
+    pub fn run<T>(&self, work: impl FnOnce() -> T) -> T {
         retrieval::on_blocking_thread(self.retrieval.clone(), || {
             tracing::dispatcher::with_default(&self.dispatcher, || self.parent.in_scope(work))
         })
     }
 }
-
-#[cfg(test)]
-mod tests;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

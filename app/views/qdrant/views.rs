@@ -17,9 +17,9 @@ use std::collections::BTreeMap;
 #[serde(deny_unknown_fields)]
 pub struct NodeViews {
     kind: PointKind,
-    pub(crate) node_id: String,
-    pub(crate) build: crate::views::config::Build,
-    pub(crate) generation: String,
+    pub node_id: String,
+    pub build: crate::views::config::Build,
+    pub generation: String,
     pub silver: Option<State>,
     /// The last completed synchronization covered every chat with complete
     /// documents. Searches keep serving it while a later synchronization runs.
@@ -34,7 +34,7 @@ pub struct NodeViews {
 }
 
 impl NodeViews {
-    pub(crate) fn empty(store: &Store, identity: &Scope) -> Self {
+    pub fn empty(store: &Store, identity: &Scope) -> Self {
         Self {
             kind: PointKind::Views,
             node_id: identity.node_id.clone(),
@@ -48,39 +48,34 @@ impl NodeViews {
     }
 
     /// Built with this group's recipe and model space.
-    pub(crate) fn compatible(&self, store: &Store, identity: &Scope) -> bool {
+    pub fn compatible(&self, store: &Store, identity: &Scope) -> bool {
         self.build == store.build && self.generation == identity.generation
     }
 
     /// Every chat of exactly this silver revision has its documents, so word
     /// search is current. A failed inference can leave some without vectors.
-    pub(crate) fn words_current(
-        &self,
-        store: &Store,
-        identity: &Scope,
-        silver: Option<&State>,
-    ) -> bool {
+    pub fn words_current(&self, store: &Store, identity: &Scope, silver: Option<&State>) -> bool {
         self.compatible(store, identity) && silver.is_some() && self.silver.as_ref() == silver
     }
 
     /// Complete for exactly this silver revision, vectors included.
-    pub(crate) fn current(&self, store: &Store, identity: &Scope, silver: Option<&State>) -> bool {
+    pub fn current(&self, store: &Store, identity: &Scope, silver: Option<&State>) -> bool {
         self.words_current(store, identity, silver) && self.projections.complete()
     }
 
     /// Dense retrieval may use this node's documents.
-    pub(crate) fn searchable(&self, store: &Store, identity: &Scope) -> bool {
+    pub fn searchable(&self, store: &Store, identity: &Scope) -> bool {
         self.compatible(store, identity) && self.certified
     }
 
-    pub(crate) fn embeddings(&self) -> u64 {
+    pub fn embeddings(&self) -> u64 {
         self.projections
             .chats()
             .map(|(_, evidence)| evidence.embeddings)
             .sum()
     }
 
-    pub(crate) fn stored_vectors(&self) -> u64 {
+    pub fn stored_vectors(&self) -> u64 {
         self.projections.embeddings()
     }
 }
@@ -105,10 +100,10 @@ struct CachedUnit {
 }
 
 /// What a message's stored document must say for a refresh to leave it alone.
-pub(crate) struct Expected<'a> {
-    pub(crate) message: &'a SearchMessage,
+pub struct Expected<'a> {
+    pub message: &'a SearchMessage,
     /// The prepared dense input, when the recipe embeds this message.
-    pub(crate) dense: Option<&'a str>,
+    pub dense: Option<&'a str>,
 }
 
 /// The part of a stored document a refresh compares. Every field is optional
@@ -147,7 +142,7 @@ impl Store {
     /// its other documents being sent again. The dense vector itself is not
     /// read; its fingerprint ties it to the same input and model, and search
     /// still checks every vector it returns.
-    pub(crate) async fn unchanged_documents(
+    pub async fn unchanged_documents(
         &self,
         scope: &Scope,
         chat: &ChatRecord,
@@ -238,7 +233,7 @@ impl Store {
     /// Read bounded reusable dense evidence. An uncertified point may supply a
     /// vector, but never metadata or certification: the caller writes fresh
     /// canonical evidence and completes the normal certification sequence.
-    pub(crate) async fn reusable_vectors(
+    pub async fn reusable_vectors(
         &self,
         scope: &Scope,
         inputs: &[crate::views::documents::EmbeddingInput<'_>],
@@ -292,7 +287,7 @@ impl Store {
         Ok(result)
     }
 
-    pub(crate) async fn node_views(&self, identity: &Scope) -> Result<Option<NodeViews>, AppError> {
+    pub async fn node_views(&self, identity: &Scope) -> Result<Option<NodeViews>, AppError> {
         let id = views_id(&identity.node_id);
         let mut points = self
             .api
@@ -310,7 +305,7 @@ impl Store {
         Ok(views)
     }
 
-    pub(crate) async fn put_node_views(
+    pub async fn put_node_views(
         &self,
         identity: &Scope,
         views: &NodeViews,
@@ -318,7 +313,7 @@ impl Store {
         self.put_node_views_with_wait(identity, views, true).await
     }
 
-    pub(crate) async fn put_node_views_unwaited(
+    pub async fn put_node_views_unwaited(
         &self,
         identity: &Scope,
         views: &NodeViews,
@@ -348,7 +343,7 @@ impl Store {
     }
 
     /// Delete a chat's documents except the listed current messages.
-    pub(crate) async fn retain_documents(
+    pub async fn retain_documents(
         &self,
         identity: &Scope,
         chat: &str,
@@ -370,7 +365,7 @@ impl Store {
     }
 
     /// Delete these messages' documents from one chat, leaving the others.
-    pub(crate) async fn remove_documents(
+    pub async fn remove_documents(
         &self,
         identity: &Scope,
         chat: &str,
@@ -393,7 +388,7 @@ impl Store {
     }
 
     /// Reconcile native deletions even when previous request metadata was lost.
-    pub(crate) async fn retain_node_chats(
+    pub async fn retain_node_chats(
         &self,
         identity: &Scope,
         current: Vec<String>,
@@ -402,7 +397,7 @@ impl Store {
             .await
     }
 
-    pub(crate) async fn retain_node_chats_unwaited(
+    pub async fn retain_node_chats_unwaited(
         &self,
         identity: &Scope,
         current: Vec<String>,
@@ -430,14 +425,11 @@ impl Store {
     }
 
     /// Delete all documents of one node, for a complete replay.
-    pub(crate) async fn delete_node_documents(&self, identity: &Scope) -> Result<(), AppError> {
+    pub async fn delete_node_documents(&self, identity: &Scope) -> Result<(), AppError> {
         self.delete_node_documents_with_wait(identity, true).await
     }
 
-    pub(crate) async fn delete_node_documents_unwaited(
-        &self,
-        identity: &Scope,
-    ) -> Result<(), AppError> {
+    pub async fn delete_node_documents_unwaited(&self, identity: &Scope) -> Result<(), AppError> {
         self.delete_node_documents_with_wait(identity, false).await
     }
 
@@ -459,7 +451,7 @@ impl Store {
     }
 
     /// Check health and exercise retrieval after awaited document writes.
-    pub(crate) async fn settle(&self, identity: &Scope) -> Result<(), AppError> {
+    pub async fn settle(&self, identity: &Scope) -> Result<(), AppError> {
         let name = collection(&identity.group_id, false);
         self.api.check_search_health(&name).await?;
         if self.build.dense_enabled() {
@@ -478,7 +470,7 @@ impl Store {
     }
 
     /// Defer HNSW construction while a bulk index is staging documents.
-    pub(crate) async fn begin_bulk(&self, identity: &Scope) -> Result<(), AppError> {
+    pub async fn begin_bulk(&self, identity: &Scope) -> Result<(), AppError> {
         if !self.build.dense_enabled() {
             return Ok(());
         }
@@ -489,7 +481,7 @@ impl Store {
 
     /// Lower the threshold after all writes, scheduling one graph build.
     /// Exact-only local views do not need a graph at all.
-    pub(crate) async fn end_bulk(&self, identity: &Scope) -> Result<(), AppError> {
+    pub async fn end_bulk(&self, identity: &Scope) -> Result<(), AppError> {
         if !self.build.dense_enabled()
             || !matches!(self.vector_index, super::VectorIndex::Hnsw { .. })
         {
@@ -502,14 +494,14 @@ impl Store {
 }
 
 /// Buffered views documents for one node; `finish` sends the remainder.
-pub(crate) struct Documents {
+pub struct Documents {
     name: String,
     batch: api::StagingBatch,
 }
 
 impl Documents {
     /// A writer that fills whole Qdrant requests across chats.
-    pub(crate) fn new(identity: &Scope) -> Self {
+    pub fn new(identity: &Scope) -> Self {
         Self {
             name: collection(&identity.group_id, false),
             batch: api::StagingBatch::default(),
@@ -517,13 +509,13 @@ impl Documents {
     }
 
     /// Let a bulk caller queue unwaited writes; the final state point is awaited.
-    pub(crate) fn with_wait(mut self, wait: bool) -> Self {
+    pub fn with_wait(mut self, wait: bool) -> Self {
         self.batch.set_wait(wait);
         self
     }
 
     /// Queue one message's document; returns 1 when it carries an embedding.
-    pub(crate) async fn push(
+    pub async fn push(
         &mut self,
         store: &Store,
         identity: &Scope,
@@ -534,7 +526,7 @@ impl Documents {
             .await
     }
 
-    pub(crate) async fn push_native(
+    pub async fn push_native(
         &mut self,
         store: &Store,
         identity: &Scope,
@@ -602,11 +594,11 @@ impl Documents {
         self.batch.push(&store.api, &self.name, point).await
     }
 
-    pub(crate) async fn finish(mut self, store: &Store) -> Result<(), AppError> {
+    pub async fn finish(mut self, store: &Store) -> Result<(), AppError> {
         self.flush(store).await
     }
 
-    pub(crate) async fn flush(&mut self, store: &Store) -> Result<(), AppError> {
+    pub async fn flush(&mut self, store: &Store) -> Result<(), AppError> {
         self.batch.flush(&store.api, &self.name).await
     }
 }

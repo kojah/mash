@@ -9,8 +9,8 @@ pub struct QdrantConfig {
     pub url: String,
     pub grpc_url: String,
     pub api_key_env: Option<String>,
-    pub(crate) memory: MemoryTier,
-    pub(crate) vector_search: VectorIndex,
+    pub memory: MemoryTier,
+    pub vector_search: VectorIndex,
 }
 
 impl Default for QdrantConfig {

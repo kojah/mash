@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "backend", rename_all = "lowercase", deny_unknown_fields)]
-pub(crate) enum Reranking {
+pub enum Reranking {
     Local {},
     Remote {
         url: String,
@@ -32,7 +32,7 @@ const fn default_timeout() -> u32 {
 const TIMEOUT_MILLISECONDS: std::ops::RangeInclusive<u32> = 100..=10_000;
 
 impl Reranking {
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         let Self::Remote {
             url,
             token_env,

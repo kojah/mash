@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "backend", rename_all = "lowercase", deny_unknown_fields)]
-pub(crate) enum Embeddings {
+pub enum Embeddings {
     Local {},
     Remote {
         url: String,
@@ -39,14 +39,14 @@ const _: () = assert!(
 
 impl Embeddings {
     /// Whether a batch of this many new texts is embedded by the local model.
-    pub(crate) const fn runs_locally(&self, inputs: usize) -> bool {
+    pub const fn runs_locally(&self, inputs: usize) -> bool {
         match self {
             Self::Local {} => true,
             Self::Remote { local_below, .. } => inputs < *local_below as usize,
         }
     }
 
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         let Self::Remote {
             url,
             token_env,

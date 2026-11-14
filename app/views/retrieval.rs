@@ -38,11 +38,11 @@ fn related_discussion(intent: &crate::views::exact::Intent) -> bool {
 
 pub use mash_storage::views::candidates::{Candidates, Document};
 
-pub(crate) fn default_generation() -> String {
+pub fn default_generation() -> String {
     crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
 }
 
-pub(crate) fn valid_vector(vector: &[f64], dimensions: usize) -> bool {
+pub fn valid_vector(vector: &[f64], dimensions: usize) -> bool {
     vector.len() == dimensions
         && vector.iter().all(|v| v.is_finite() && v.abs() <= 127.0)
         && vector
@@ -52,5 +52,5 @@ pub(crate) fn valid_vector(vector: &[f64], dimensions: usize) -> bool {
 
 // Leave transport/decoding headroom inside the five-second client deadline.
 // A cold vocabulary facet alone can take two seconds on retained node history.
-pub(crate) const EXACT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
-pub(crate) const EXACT_SEARCH_BUDGET_ERROR: &str = "exact query exceeded the shared search budget; narrow the query or metadata filters, or use match_mode=strict";
+pub const EXACT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+pub const EXACT_SEARCH_BUDGET_ERROR: &str = "exact query exceeded the shared search budget; narrow the query or metadata filters, or use match_mode=strict";

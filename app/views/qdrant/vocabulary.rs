@@ -32,7 +32,7 @@ const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_secs(300);
 
 /// The file a local index keeps its matching vocabulary in.
-pub(crate) fn file_beside(database: &Path) -> PathBuf {
+pub fn file_beside(database: &Path) -> PathBuf {
     let mut name = database.as_os_str().to_owned();
     name.push(".vocabulary.json");
     PathBuf::from(name)
@@ -282,7 +282,7 @@ fn write_file(path: &Path, entries: &[Entry]) -> Result<(), AppError> {
 
 impl Store {
     /// Use and keep the matching vocabulary in this file, beside a local index.
-    pub(crate) fn with_vocabulary_file(mut self, file: PathBuf) -> Self {
+    pub fn with_vocabulary_file(mut self, file: PathBuf) -> Self {
         self.vocabulary = Vocabulary::persisted(file);
         self
     }

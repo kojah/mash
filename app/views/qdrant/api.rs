@@ -14,7 +14,7 @@ mod schema_tests;
 mod staging;
 pub(super) use staging::StagingBatch;
 
-pub(crate) fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
+pub fn endpoint(url: &str) -> Result<reqwest::Url, AppError> {
     let mut url = reqwest::Url::parse(url)
         .map_err(|_| AppError::configuration("invalid Qdrant HTTP endpoint"))?;
     if !matches!(url.scheme(), "http" | "https")
@@ -65,7 +65,7 @@ pub(super) fn unavailable_message(url: &reqwest::Url, note: Option<&str>, then: 
 }
 
 #[derive(Clone)]
-pub(super) struct Client {
+pub struct Client {
     mutations: Option<grpc::Client>,
     http: reqwest::Client,
     url: reqwest::Url,
@@ -132,13 +132,13 @@ enum ResponseStatus {
     Ok,
 }
 #[derive(Serialize)]
-pub(super) struct Point<P> {
+pub struct Point<P> {
     pub id: String,
     pub vector: Vectors,
     pub payload: P,
 }
 #[derive(Deserialize)]
-pub(super) struct Record<P> {
+pub struct Record<P> {
     pub id: String,
     pub payload: P,
 }
@@ -151,7 +151,7 @@ pub(super) struct Scored<P> {
 /// Word search ranks from the `unit.text` payload index, so points carry
 /// only their dense vector.
 #[derive(Clone, Default)]
-pub(super) struct Vectors {
+pub struct Vectors {
     pub dense: Option<(String, Vec<f64>)>,
 }
 impl Serialize for Vectors {
@@ -165,7 +165,7 @@ impl Serialize for Vectors {
     }
 }
 #[derive(Serialize)]
-pub(super) struct Upsert<P> {
+pub struct Upsert<P> {
     pub points: Vec<Point<P>>,
 }
 #[derive(Clone, Default, Serialize)]
@@ -641,11 +641,7 @@ impl Client {
         }
         Ok(())
     }
-    pub(super) fn new(
-        url: &str,
-        key: Option<&str>,
-        max_node_bytes: usize,
-    ) -> Result<Self, AppError> {
+    pub fn new(url: &str, key: Option<&str>, max_node_bytes: usize) -> Result<Self, AppError> {
         let url = endpoint(url)?;
         let mut headers = reqwest::header::HeaderMap::new();
         if let Some(key) = key {
@@ -674,7 +670,7 @@ impl Client {
             max_response: max_node_bytes.saturating_add(16 * 1024 * 1024),
         })
     }
-    pub(super) fn with_mutations(mut self, url: &str, key: Option<&str>) -> Result<Self, AppError> {
+    pub fn with_mutations(mut self, url: &str, key: Option<&str>) -> Result<Self, AppError> {
         self.mutations = Some(grpc::Client::new(url, key)?);
         Ok(self)
     }
@@ -1013,7 +1009,7 @@ impl Client {
         Ok(())
     }
     #[tracing::instrument(name = "qdrant_native_upsert", skip_all, fields(points = input.points.len()))]
-    pub(super) async fn upsert<P: Serialize>(
+    pub async fn upsert<P: Serialize>(
         &self,
         name: &str,
         input: &Upsert<P>,
@@ -1044,7 +1040,7 @@ impl Client {
         }
         batch.flush(self, name).await
     }
-    pub(super) async fn retrieve<P: DeserializeOwned>(
+    pub async fn retrieve<P: DeserializeOwned>(
         &self,
         name: &str,
         ids: &[String],

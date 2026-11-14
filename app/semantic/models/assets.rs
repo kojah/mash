@@ -139,7 +139,7 @@ pub(super) fn validate_files(root: &Path, marker: &InstallMarker) -> Result<(), 
     Ok(())
 }
 
-pub(crate) fn snapshot(root: &Path, repository: &str) -> Result<PathBuf, AppError> {
+pub fn snapshot(root: &Path, repository: &str) -> Result<PathBuf, AppError> {
     let bytes = read_metadata(&root.join(repository).join("refs/main"), MAX_REVISION_BYTES)?;
     let revision = std::str::from_utf8(&bytes)
         .map_err(|_| AppError::model("installed model revision is invalid"))?;
@@ -154,11 +154,11 @@ pub(crate) fn snapshot(root: &Path, repository: &str) -> Result<PathBuf, AppErro
     Ok(snapshot)
 }
 
-pub(crate) fn read_model_file(path: &Path) -> Result<Vec<u8>, AppError> {
+pub fn read_model_file(path: &Path) -> Result<Vec<u8>, AppError> {
     fs::read(path).map_err(|error| AppError::model(format!("cannot read installed model: {error}")))
 }
 
-pub(crate) fn read_tokenizer_files(snapshot: &Path) -> Result<TokenizerFiles, AppError> {
+pub fn read_tokenizer_files(snapshot: &Path) -> Result<TokenizerFiles, AppError> {
     Ok(TokenizerFiles {
         tokenizer_file: read_metadata(&snapshot.join("tokenizer.json"), MAX_TOKENIZER_BYTES)?,
         config_file: read_metadata(&snapshot.join("config.json"), MAX_TOKENIZER_BYTES)?,

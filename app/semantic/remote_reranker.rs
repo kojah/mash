@@ -9,8 +9,8 @@ use std::time::Duration;
 
 // Shared with deployment/reranking/contract.py. The recipe pins the model
 // revision Mash installs, so remote and CPU logits are interchangeable.
-pub(crate) const REVISION: &str = "b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2";
-pub(crate) const RECIPE: &str = "jina-reranker-v1-turbo-en:b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2:onnx-f32:pair-512-longest-first:logit0:v1";
+pub const REVISION: &str = "b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2";
+pub const RECIPE: &str = "jina-reranker-v1-turbo-en:b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2:onnx-f32:pair-512-longest-first:logit0:v1";
 const _: () = assert!(RECIPE.len() > REVISION.len());
 const MAX_QUERY_BYTES: usize = 16 * 1024;
 const MAX_DOCUMENTS: usize = 64;
@@ -26,22 +26,22 @@ const COMPRESSION_THRESHOLD: usize = 1024;
 const COMPRESSION_LEVEL: i32 = 3;
 /// A warm-up waits out a cold start (container, CUDA and model load) so the
 /// worker is ready when a search follows; searches never wait this long.
-pub(crate) const WARM_UP_TIMEOUT: Duration = Duration::from_secs(120);
+pub const WARM_UP_TIMEOUT: Duration = Duration::from_secs(120);
 /// Idle connections outlive the gap between a warm-up and the first search,
 /// so a long-running process does not repeat its TLS handshake.
 const POOL_IDLE: Duration = Duration::from_secs(600);
 
-pub(crate) struct Client {
+pub struct Client {
     http: reqwest::Client,
     url: String,
     token: String,
     timeout: Duration,
 }
 
-pub(crate) struct Scores {
+pub struct Scores {
     /// One raw logit per document, in input order.
-    pub(crate) scores: Vec<f32>,
-    pub(crate) inference_milliseconds: u64,
+    pub scores: Vec<f32>,
+    pub inference_milliseconds: u64,
 }
 
 // One client per process keeps its connection pool across searches; MCP and
@@ -50,7 +50,7 @@ static CLIENT: Mutex<Option<Arc<Client>>> = Mutex::new(None);
 
 /// The configured remote reranker for a search with these installed assets,
 /// or why it cannot be used. `None` means local CPU reranking by configuration.
-pub(crate) fn connect(
+pub fn connect(
     configuration: &Reranking,
     asset_root: &std::path::Path,
 ) -> Option<Result<Arc<Client>, RerankerFallback>> {
@@ -111,7 +111,7 @@ fn http_client() -> Result<reqwest::Client, AppError> {
 
 /// Start the worker if it is cold, without inference. Fire and forget: the
 /// caller ignores the result, which is only for tests and tracing.
-pub(crate) async fn warm_up(configuration: &Reranking) -> Result<(), AppError> {
+pub async fn warm_up(configuration: &Reranking) -> Result<(), AppError> {
     configuration.validate()?;
     let client = shared_client(configuration)
         .map_err(|_| AppError::configuration("reranking service token is unavailable"))?;
@@ -178,7 +178,7 @@ fn warms(configuration: &crate::config::ResolvedConfig) -> bool {
 impl Client {
     /// One attempt within the configured bound; the caller reranks on CPU
     /// on any error. A timed-out request may still have incurred GPU cost.
-    pub(crate) async fn rerank(
+    pub async fn rerank(
         &self,
         query: &str,
         documents: &[&str],
@@ -383,4 +383,4 @@ impl<'a> Request<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests;
+pub mod tests;

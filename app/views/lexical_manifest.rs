@@ -5,16 +5,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "LexicalManifest")]
-pub(crate) struct Manifest {
-    pub(crate) schema_version: u32,
+pub struct Manifest {
+    pub schema_version: u32,
     /// Qdrant lexical payloads and their ranked text index, with literal verification.
-    pub(crate) representation_version: u32,
-    pub(crate) silver: Certificate,
-    pub(crate) searchable_messages: u64,
+    pub representation_version: u32,
+    pub silver: Certificate,
+    pub searchable_messages: u64,
 }
 
 impl Manifest {
-    pub(crate) fn new(silver: Certificate, searchable_messages: u64) -> Self {
+    pub fn new(silver: Certificate, searchable_messages: u64) -> Self {
         Self {
             schema_version: 1,
             representation_version: 2,

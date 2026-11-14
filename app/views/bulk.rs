@@ -26,7 +26,7 @@ enum Finish {
 
 /// The differences between local rebuilds and shared replays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct BulkPolicy {
+pub struct BulkPolicy {
     /// Restore the group threshold even when staging or certification fails.
     restore_on_error: bool,
     finish: Finish,
@@ -36,7 +36,7 @@ impl BulkPolicy {
     /// Local rebuilds keep caller-owned admission and inline certification;
     /// the session restores the threshold and settles after the final state
     /// point.
-    pub(crate) const fn local() -> Self {
+    pub const fn local() -> Self {
         Self {
             restore_on_error: false,
             finish: Finish::Session,
@@ -46,7 +46,7 @@ impl BulkPolicy {
     /// Shared replays use merged certification, which owns the threshold
     /// restore and settle. A failed whole-group replay must still lower the
     /// threshold.
-    pub(crate) const fn shared_replay() -> Self {
+    pub const fn shared_replay() -> Self {
         Self {
             restore_on_error: true,
             finish: Finish::Certification,
@@ -56,7 +56,7 @@ impl BulkPolicy {
 
 /// A begun bulk views write. Dropping it does not restore the threshold;
 /// callers use [`BulkViews::run`] for the normal lifecycle.
-pub(crate) struct BulkViews<'a> {
+pub struct BulkViews<'a> {
     store: &'a Store,
     scope: &'a Scope,
     policy: BulkPolicy,
@@ -64,7 +64,7 @@ pub(crate) struct BulkViews<'a> {
 
 impl<'a> BulkViews<'a> {
     /// Defer graph construction for the whole node write.
-    pub(crate) async fn begin(
+    pub async fn begin(
         store: &'a Store,
         scope: &'a Scope,
         policy: BulkPolicy,
@@ -79,12 +79,12 @@ impl<'a> BulkViews<'a> {
 
     /// Persist stale certification before any document mutation, including
     /// deletions.
-    pub(crate) async fn invalidate(&self, node: &NodeViews) -> Result<(), AppError> {
+    pub async fn invalidate(&self, node: &NodeViews) -> Result<(), AppError> {
         self.store.put_node_views_unwaited(self.scope, node).await
     }
 
     /// Remove documents for chats no longer present in the snapshot.
-    pub(crate) async fn retain_chats(
+    pub async fn retain_chats(
         &self,
         current: impl IntoIterator<Item = String>,
     ) -> Result<(), AppError> {
@@ -94,25 +94,25 @@ impl<'a> BulkViews<'a> {
     }
 
     /// Remove every document before a whole-node replay.
-    pub(crate) async fn delete_documents(&self) -> Result<(), AppError> {
+    pub async fn delete_documents(&self) -> Result<(), AppError> {
         self.store.delete_node_documents_unwaited(self.scope).await
     }
 
     /// Stage documents without awaiting each batch. The caller supplies the
     /// barrier through certification.
-    pub(crate) fn writer<'b>(&'b self, models: &'b Path) -> Writer<'b> {
+    pub fn writer<'b>(&'b self, models: &'b Path) -> Writer<'b> {
         Writer::new(self.store, self.scope, Some(models)).with_bulk()
     }
 
     /// Send the last staged batch and return the materialization summary.
-    pub(crate) async fn finish(&self, writer: Writer<'_>) -> Result<Build, AppError> {
+    pub async fn finish(&self, writer: Writer<'_>) -> Result<Build, AppError> {
         writer.finish().await
     }
 
     /// Run the source-specific staging and certification. On success the
     /// policy decides who restores the threshold and settles; on failure the
     /// policy decides whether the threshold must still be restored.
-    pub(crate) async fn run<T, F, Fut, P>(&self, work: F, after_restore: P) -> Result<T, AppError>
+    pub async fn run<T, F, Fut, P>(&self, work: F, after_restore: P) -> Result<T, AppError>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, AppError>>,

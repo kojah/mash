@@ -4,37 +4,9 @@
 //! tests check them without running a supervisor.
 use super::{Layout, Ports, install_error};
 use crate::AppError;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Supervisor {
-    SystemdUser,
-    LaunchAgent,
-    ScheduledTask,
-}
-
-/// What the supervisor reports about the installed service.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ServiceState {
-    /// The supervisor has no such service.
-    NotInstalled,
-    Running,
-    Starting,
-    Stopped,
-    /// The supervisor gave up after it exited with an error.
-    Failed,
-    /// The supervisor could not be asked.
-    Unknown,
-}
-
-impl ServiceState {
-    pub(crate) fn is_active(self) -> bool {
-        matches!(self, Self::Running | Self::Starting)
-    }
-}
+pub(crate) use crate::views::qdrant::service::{ServiceState, Supervisor};
 
 /// Qdrant's own configuration file (YAML, Qdrant's format). It binds only
 /// to loopback, keeps telemetry off and places data under `layout.data`.

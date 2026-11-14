@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 #[schemars(rename = "ViewsConfiguration")]
 pub struct Configuration {
-    pub(crate) build: Build,
+    pub build: Build,
     pub query: Query,
 }
 
@@ -18,23 +18,23 @@ pub struct Configuration {
 #[serde(default, deny_unknown_fields)]
 pub struct Build {
     #[serde(skip_serializing_if = "RetrievalUnit::is_default")]
-    pub(crate) retrieval_unit: RetrievalUnit,
+    pub retrieval_unit: RetrievalUnit,
     #[serde(skip_serializing_if = "DenseContent::is_default")]
-    pub(crate) dense_content: DenseContent,
+    pub dense_content: DenseContent,
     #[serde(skip_serializing_if = "TextPreparation::is_default")]
-    pub(crate) text_preparation: TextPreparation,
+    pub text_preparation: TextPreparation,
     #[serde(skip_serializing_if = "Representations::is_default")]
-    pub(crate) representations: Representations,
-    pub(crate) embedding_text: EmbeddingText,
+    pub representations: Representations,
+    pub embedding_text: EmbeddingText,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
+    pub max_embedding_chars: Option<EmbeddingTextBudget>,
 }
 
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum RetrievalUnit {
+pub enum RetrievalUnit {
     #[default]
     Message,
     ParentAndMessage,
@@ -51,7 +51,7 @@ impl RetrievalUnit {
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum DenseContent {
+pub enum DenseContent {
     #[default]
     AllVisible,
     UserMessages,
@@ -68,7 +68,7 @@ impl DenseContent {
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum TextPreparation {
+pub enum TextPreparation {
     #[default]
     Preserve,
     CollapseWhitespace,
@@ -99,7 +99,7 @@ impl TextPreparation {
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Representations {
+pub enum Representations {
     #[default]
     LexicalAndDense,
     LexicalOnly,
@@ -115,7 +115,7 @@ impl Representations {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(try_from = "u32", into = "u32")]
-pub(crate) struct EmbeddingTextBudget(u32);
+pub struct EmbeddingTextBudget(u32);
 
 impl TryFrom<u32> for EmbeddingTextBudget {
     type Error = &'static str;
@@ -138,14 +138,14 @@ impl From<EmbeddingTextBudget> for u32 {
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum EmbeddingText {
+pub enum EmbeddingText {
     #[default]
     Dialogue,
     TitleAndDialogue,
 }
 
 impl Build {
-    pub(crate) fn includes_dense(&self, role: &crate::role::Role, projection: &str) -> bool {
+    pub fn includes_dense(&self, role: &crate::role::Role, projection: &str) -> bool {
         self.dense_enabled()
             && !projection.is_empty()
             && (self.dense_content == DenseContent::AllVisible || *role == crate::role::Role::User)
@@ -153,20 +153,20 @@ impl Build {
 
     /// Whether each message's dense input depends on that message alone, so
     /// changing one message leaves every other document of its chat valid.
-    pub(crate) fn message_local(&self) -> bool {
+    pub fn message_local(&self) -> bool {
         self.retrieval_unit == RetrievalUnit::Message
             && self.embedding_text == EmbeddingText::Dialogue
     }
 
-    #[cfg(test)]
-    pub(crate) fn users_only(&self) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn users_only(&self) -> bool {
         self.dense_content == DenseContent::UserMessages
     }
-    pub(crate) fn dense_enabled(&self) -> bool {
+    pub fn dense_enabled(&self) -> bool {
         self.representations == Representations::LexicalAndDense
     }
 
-    pub(crate) fn expected_embeddings(&self, eligible_messages: u64) -> u64 {
+    pub fn expected_embeddings(&self, eligible_messages: u64) -> u64 {
         if self.dense_enabled() {
             eligible_messages
         } else {
@@ -174,7 +174,7 @@ impl Build {
         }
     }
 
-    pub(crate) fn require_intent(&self, intent: super::exact::Intent) -> Result<(), AppError> {
+    pub fn require_intent(&self, intent: super::exact::Intent) -> Result<(), AppError> {
         if intent == super::exact::Intent::RelatedDiscussion && !self.dense_enabled() {
             return Err(AppError::usage(
                 "related-discussion needs semantic search, which this configuration turns off (word search only); search with --intent exact-mention (it needs the local Qdrant service like every search), or run `mash models install`, then update your existing configuration as shown at https://getmash.io/indexing/#enable-semantic-search",
@@ -183,7 +183,7 @@ impl Build {
         Ok(())
     }
 
-    pub(crate) fn prepare(&self, dialogue: String, title: Option<&str>) -> String {
+    pub fn prepare(&self, dialogue: String, title: Option<&str>) -> String {
         let prepared = match (
             self.embedding_text,
             title.map(str::trim).filter(|t| !t.is_empty()),
@@ -205,7 +205,7 @@ impl Build {
         }
     }
 
-    pub(crate) fn prepare_unit(
+    pub fn prepare_unit(
         &self,
         mut dialogue: String,
         title: Option<&str>,
@@ -226,11 +226,11 @@ impl Build {
 #[serde(default, deny_unknown_fields)]
 pub struct Query {
     /// Include read-only local indexing freshness warnings with search results.
-    pub(crate) freshness_warnings: bool,
-    pub(crate) intent: super::exact::Intent,
-    pub(crate) unit: SearchUnit,
-    pub(crate) limit: usize,
-    pub(crate) fusion: Fusion,
+    pub freshness_warnings: bool,
+    pub intent: super::exact::Intent,
+    pub unit: SearchUnit,
+    pub limit: usize,
+    pub fusion: Fusion,
     pub ranking: Ranking,
 }
 
@@ -257,13 +257,13 @@ pub enum Ranking {
 /// Query-only candidate fusion; independent of embedding/build identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Fusion {
-    pub(crate) rank_constant: u16,
-    pub(crate) lexical_weight: u16,
-    pub(crate) semantic_weight: u16,
+pub struct Fusion {
+    pub rank_constant: u16,
+    pub lexical_weight: u16,
+    pub semantic_weight: u16,
     /// How much newer messages move up the final order, as a percentage of
     /// relevance's weight; 0 ranks by relevance alone.
-    pub(crate) recency_weight: u16,
+    pub recency_weight: u16,
 }
 
 impl Default for Fusion {
@@ -281,7 +281,7 @@ const FUSION_LIMITS: &str =
     "fusion rank_constant must be 1..1000, weights 1..100 and recency_weight 0..100";
 
 impl Fusion {
-    pub(crate) fn validate(self) -> Result<(), AppError> {
+    pub fn validate(self) -> Result<(), AppError> {
         if !(1..=1000).contains(&self.rank_constant)
             || !(1..=100).contains(&self.lexical_weight)
             || !(1..=100).contains(&self.semantic_weight)
@@ -318,7 +318,7 @@ impl FusionOverrides {
         self == Self::default()
     }
 
-    pub(crate) fn resolve(self, defaults: Fusion) -> Result<Fusion, AppError> {
+    pub fn resolve(self, defaults: Fusion) -> Result<Fusion, AppError> {
         let resolved = Fusion {
             rank_constant: self.rank_constant.unwrap_or(defaults.rank_constant),
             lexical_weight: self.lexical_weight.unwrap_or(defaults.lexical_weight),
@@ -333,17 +333,17 @@ impl FusionOverrides {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Options {
-    pub(crate) shared_vector_search: Option<super::vector::Search>,
-    pub(crate) unit: SearchUnit,
-    pub(crate) fusion: Fusion,
-    pub(crate) ranking: Ranking,
+pub struct Options {
+    pub shared_vector_search: Option<super::vector::Search>,
+    pub unit: SearchUnit,
+    pub fusion: Fusion,
+    pub ranking: Ranking,
     /// Results leave through CLI or MCP output under this policy.
-    pub(crate) output_redaction: crate::redaction::Policy,
+    pub output_redaction: crate::redaction::Policy,
 }
 
 impl Options {
-    pub(crate) fn new(unit: SearchUnit) -> Self {
+    pub fn new(unit: SearchUnit) -> Self {
         Self {
             shared_vector_search: None,
             unit,
@@ -377,7 +377,7 @@ fn freshness_warnings_default_on_and_can_be_disabled() {
 }
 
 impl Configuration {
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         if !self.build.dense_enabled()
             && self.query.intent == super::exact::Intent::RelatedDiscussion
         {
@@ -396,7 +396,7 @@ impl Configuration {
 
 impl Query {
     /// The requested page of the unit's ranked results, with configured defaults.
-    pub(crate) fn resolve(
+    pub fn resolve(
         &self,
         limit: Option<usize>,
         offset: usize,

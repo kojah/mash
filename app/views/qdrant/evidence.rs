@@ -28,15 +28,15 @@ impl Projections {
         self.0.insert(scope, evidence);
     }
 
-    pub(crate) fn remove(&mut self, scope: &str) {
+    pub fn remove(&mut self, scope: &str) {
         self.0.remove(scope);
     }
 
-    pub(crate) fn complete(&self) -> bool {
+    pub fn complete(&self) -> bool {
         self.0.values().all(|evidence| evidence.complete)
     }
 
-    pub(crate) fn embeddings(&self) -> u64 {
+    pub fn embeddings(&self) -> u64 {
         self.0.values().map(|evidence| evidence.embeddings).sum()
     }
 
@@ -45,12 +45,12 @@ impl Projections {
     }
 
     /// Discard evidence that no longer describes the committed chat.
-    pub(crate) fn retain_matching(&mut self, current: &BTreeMap<String, String>) {
+    pub fn retain_matching(&mut self, current: &BTreeMap<String, String>) {
         self.0
             .retain(|id, evidence| current.get(id) == Some(&evidence.fingerprint));
     }
 
-    pub(crate) fn merge_matching(&mut self, other: &Self, current: &BTreeMap<String, String>) {
+    pub fn merge_matching(&mut self, other: &Self, current: &BTreeMap<String, String>) {
         for (id, evidence) in other.chats() {
             let scope = id.clone();
             if self

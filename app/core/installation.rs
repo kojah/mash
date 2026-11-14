@@ -8,67 +8,7 @@ mod resources;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, schemars::JsonSchema,
-)]
-#[serde(rename_all = "kebab-case")]
-#[schemars(rename = "SetupAgent")]
-pub enum Agent {
-    Codex,
-    ClaudeCode,
-}
-
-impl Agent {
-    /// The `--agent` value and JSON name.
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::ClaudeCode => "claude-code",
-        }
-    }
-
-    /// The agent's own command-line program.
-    pub(crate) const fn program(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::ClaudeCode => "claude",
-        }
-    }
-
-    /// The agent CLI command that removes Mash's user-level MCP registration.
-    pub(crate) const fn remove_mcp(self) -> &'static str {
-        match self {
-            Self::Codex => "codex mcp remove mash",
-            Self::ClaudeCode => "claude mcp remove --scope user mash",
-        }
-    }
-
-    /// The agent CLI command that registers `executable` as Mash's MCP server.
-    pub(crate) fn add_mcp(self, executable: &str) -> String {
-        match self {
-            Self::Codex => format!("codex mcp add mash -- {executable} mcp"),
-            Self::ClaudeCode => format!("claude mcp add --scope user mash -- {executable} mcp"),
-        }
-    }
-
-    /// The online commands that install and enable the mash@mash plugin.
-    pub(crate) const fn install_plugin(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => {
-                "claude plugin marketplace add kojah/mash && claude plugin install mash@mash"
-            }
-            Self::Codex => "codex plugin marketplace add kojah/mash && codex plugin add mash@mash",
-        }
-    }
-
-    /// The agent CLI command that removes the mash@mash plugin.
-    pub(crate) const fn remove_plugin(self) -> &'static str {
-        match self {
-            Self::Codex => "codex plugin remove mash@mash",
-            Self::ClaudeCode => "claude plugin uninstall mash@mash",
-        }
-    }
-}
+pub use crate::config::Agent;
 
 /// Why an integration is expected for an agent, strongest reason first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

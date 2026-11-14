@@ -28,7 +28,7 @@ fn installation_lock(root: &Path) -> Result<fs::File, AppError> {
 }
 
 impl Models {
-    pub(crate) fn install(&self) -> Result<InstallSummary, AppError> {
+    pub fn install(&self) -> Result<InstallSummary, AppError> {
         // Keep the lock through downloads, smoke checks, inventory and marker
         // publication. Never unlink it: another process may hold the same inode.
         let _lock = installation_lock(&self.root)?;

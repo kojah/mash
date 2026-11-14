@@ -3,15 +3,15 @@ use crate::{AppError, config::Embeddings};
 use std::time::Duration;
 
 // This identifies the inference recipe, independently of execution location.
-pub(crate) const RECIPE: &str =
+pub const RECIPE: &str =
     "minilm-l6-v2:751bff37182d3f1213fa05d7196b954e230abad9:onnx-f32:mean-mask:512:l2:v1";
 const DIMENSIONS: usize = 384;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
-pub(crate) const MAX_INPUTS: usize = 256;
+pub const MAX_INPUTS: usize = 256;
 /// Requests kept in flight together. The worker serializes GPU inference but
 /// can receive and reply concurrently, hiding proxy round-trip latency.
-pub(crate) const REQUEST_CONCURRENCY: usize = 4;
+pub const REQUEST_CONCURRENCY: usize = 4;
 /// Small bodies gain nothing from framing overhead, so only compress requests
 /// whose text is large enough to pay for the zstd frame.
 const COMPRESSION_THRESHOLD: usize = 1024;
@@ -34,9 +34,9 @@ struct Input<'a> {
     text: &'a str,
 }
 
-pub(crate) struct Result {
-    pub(crate) vectors: Vec<Vec<f64>>,
-    pub(crate) inference_milliseconds: u64,
+pub struct Result {
+    pub vectors: Vec<Vec<f64>>,
+    pub inference_milliseconds: u64,
 }
 
 fn request<'a>(texts: &'a [&'a str]) -> std::result::Result<Batch<'a>, AppError> {
@@ -199,14 +199,14 @@ fn validate(bytes: &[u8], request: &Batch<'_>) -> std::result::Result<Result, Ap
     })
 }
 
-pub(crate) struct Client {
+pub struct Client {
     http: reqwest::Client,
     url: String,
     token: String,
 }
 
 impl Client {
-    pub(crate) fn new(configuration: &Embeddings) -> std::result::Result<Self, AppError> {
+    pub fn new(configuration: &Embeddings) -> std::result::Result<Self, AppError> {
         configuration.validate()?;
         let Embeddings::Remote {
             url,
@@ -232,7 +232,7 @@ impl Client {
         })
     }
 
-    pub(crate) async fn embed(&self, texts: &[&str]) -> std::result::Result<Result, AppError> {
+    pub async fn embed(&self, texts: &[&str]) -> std::result::Result<Result, AppError> {
         let mut batches = Vec::new();
         let mut remaining = texts;
         while !remaining.is_empty() {

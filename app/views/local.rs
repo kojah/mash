@@ -24,18 +24,18 @@ pub mod test_support;
 mod tests;
 
 pub struct Build {
-    pub(crate) counts: Counts,
+    pub counts: Counts,
     /// Every configured view is certified, including dense when enabled.
-    pub(crate) ready: bool,
+    pub ready: bool,
     /// Word search covers the current history, whatever became of dense.
-    pub(crate) words_ready: bool,
+    pub words_ready: bool,
     /// Why documents were stored without vectors in this pass, when they were.
-    pub(crate) inference_error: Option<String>,
-    pub(crate) manifest: Option<Manifest>,
-    pub(crate) embeddings: semantic::EmbeddingSummary,
-    pub(crate) model_load_milliseconds: u64,
-    pub(crate) search_refresh_milliseconds: u64,
-    pub(crate) embedding_milliseconds: u64,
+    pub inference_error: Option<String>,
+    pub manifest: Option<Manifest>,
+    pub embeddings: semantic::EmbeddingSummary,
+    pub model_load_milliseconds: u64,
+    pub search_refresh_milliseconds: u64,
+    pub embedding_milliseconds: u64,
 }
 
 pub struct Local {
@@ -43,9 +43,9 @@ pub struct Local {
     instance: String,
     /// A model-free reader needs the documents' text, not their vectors.
     words: bool,
-    pub(crate) store: Store,
-    pub(crate) scope: Scope,
-    pub(crate) certificate: crate::silver::certificate::Certificate,
+    pub store: Store,
+    pub scope: Scope,
+    pub certificate: crate::silver::certificate::Certificate,
 }
 
 fn key(configuration: &ResolvedConfig) -> Result<Option<String>, AppError> {
@@ -89,7 +89,7 @@ impl Local {
         Self::open_inner(database, configuration, false).await
     }
 
-    pub(crate) async fn open_exact(
+    pub async fn open_exact(
         database: &Path,
         configuration: &ResolvedConfig,
     ) -> Result<Self, AppError> {
@@ -140,7 +140,7 @@ impl Local {
     /// search is behind; with a watcher running that moment recurs after every
     /// pass. While a writer holds the index this waits briefly for it to
     /// finish, and never answers from views that are not certified.
-    pub(crate) async fn open_current(
+    pub async fn open_current(
         database: &Path,
         configuration: &ResolvedConfig,
     ) -> Result<Self, AppError> {
@@ -150,7 +150,7 @@ impl Local {
     /// The same brief wait for a model-free reader, which needs only the word
     /// index to be current. Word search is the default, so it is the reader a
     /// running watcher most often meets mid-pass.
-    pub(crate) async fn open_words_current(
+    pub async fn open_words_current(
         database: &Path,
         configuration: &ResolvedConfig,
     ) -> Result<Self, AppError> {
@@ -186,7 +186,7 @@ impl Local {
         }
     }
 
-    pub(crate) async fn current(&self) -> Result<Option<NodeViews>, AppError> {
+    pub async fn current(&self) -> Result<Option<NodeViews>, AppError> {
         let database = self.database.clone();
         let (instance, current) =
             crate::blocking(move || Storage::open_silver(&database)?.local_gold_state(&database))
@@ -206,12 +206,12 @@ impl Local {
     }
 
     /// Read what word matching needs while the caller loads its models.
-    pub(crate) async fn warm_matching(&self, input: &super::retrieval::Search) {
+    pub async fn warm_matching(&self, input: &super::retrieval::Search) {
         let active = std::collections::BTreeSet::from([self.scope.node_id.clone()]);
         self.store.warm_matching(&self.scope, input, &active).await;
     }
 
-    pub(crate) async fn candidates(
+    pub async fn candidates(
         &self,
         input: super::retrieval::Search,
     ) -> Result<super::retrieval::Candidates, AppError> {

@@ -25,7 +25,7 @@ const fn default_ef() -> usize {
     200
 }
 impl Search {
-    pub(crate) fn validate(self) -> Result<(), AppError> {
+    pub fn validate(self) -> Result<(), AppError> {
         if matches!(self, Self::Hnsw { ef_runtime } if !(1..=4096).contains(&ef_runtime)) {
             return Err(AppError::configuration(
                 "Qdrant ef_runtime must be between 1 and 4096",
@@ -33,7 +33,7 @@ impl Search {
         }
         Ok(())
     }
-    pub(crate) fn validate_request(self) -> Result<(), AppError> {
+    pub fn validate_request(self) -> Result<(), AppError> {
         self.validate()
             .map_err(|_| AppError::usage("shared vector ef_runtime must be between 1 and 4096"))
     }

@@ -35,17 +35,17 @@ pub(super) struct EmbeddingGroup {
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
-pub(crate) struct EmbeddingSummary {
-    pub(crate) stored_vectors: u64,
-    pub(crate) model_inferences: u64,
-    pub(crate) reused_vectors: u64,
+pub struct EmbeddingSummary {
+    pub stored_vectors: u64,
+    pub model_inferences: u64,
+    pub reused_vectors: u64,
     /// The part of `model_inferences` a remote worker computed, and how long
     /// its requests took end to end, including any worker start.
-    pub(crate) remote_inferences: u64,
-    pub(crate) remote_milliseconds: u64,
+    pub remote_inferences: u64,
+    pub remote_milliseconds: u64,
 }
 
-pub(crate) use crate::progress::EmbeddingProgress;
+pub use crate::progress::EmbeddingProgress;
 
 impl EmbeddingPool {
     /// Offline label experiment: retain document batches, isolate label inputs.
@@ -57,10 +57,7 @@ impl EmbeddingPool {
             reason = "the CPU-only experiment rejects Core ML backends"
         )
     )]
-    pub(crate) fn singleton_label_vectors(
-        &mut self,
-        texts: &[&str],
-    ) -> Result<Vec<Vec<f64>>, AppError> {
+    pub fn singleton_label_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
         if texts.len() > 64 {
             return Err(AppError::usage("singleton label batch cap exceeded"));
         }
@@ -93,7 +90,7 @@ impl EmbeddingPool {
         ))
     }
 
-    pub(crate) fn shared_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
+    pub fn shared_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
         let groups = texts
             .iter()
             .map(|text| EmbeddingGroup {

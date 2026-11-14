@@ -27,7 +27,7 @@ const COUNT: usize = 10;
 /// Where contextual reranking ran. One search pass uses one engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum RerankerEngine {
+pub enum RerankerEngine {
     Cpu,
     /// The configured remote reranking worker.
     Remote,
@@ -38,7 +38,7 @@ pub(crate) enum RerankerEngine {
 /// Why a search configured for remote reranking used the local CPU.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum RerankerFallback {
+pub enum RerankerFallback {
     /// No reply within the configured bound, typically a cold worker.
     Timeout,
     /// The connection failed or the worker returned an HTTP error.
@@ -57,24 +57,24 @@ pub(crate) enum RerankerFallback {
 pub struct Measurement {
     pub stage: Stage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) reranker_engine: Option<RerankerEngine>,
+    pub reranker_engine: Option<RerankerEngine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) reranker_fallback: Option<RerankerFallback>,
+    pub reranker_fallback: Option<RerankerFallback>,
     /// Placement of metadata/scope predicates, independent of call completion.
     #[serde(default)]
-    pub(crate) filters_before_limit: bool,
-    pub(crate) calls: u64,
-    pub(crate) completed_calls: u64,
-    pub(crate) total_us: u64,
-    pub(crate) max_us: u64,
+    pub filters_before_limit: bool,
+    pub calls: u64,
+    pub completed_calls: u64,
+    pub total_us: u64,
+    pub max_us: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) items_in: Option<u64>,
+    pub items_in: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) items_out: Option<u64>,
+    pub items_out: Option<u64>,
 }
 
 #[derive(Clone)]
-pub(crate) struct Capture(Arc<Mutex<[Option<Measurement>; COUNT]>>);
+pub struct Capture(Arc<Mutex<[Option<Measurement>; COUNT]>>);
 
 impl Default for Capture {
     fn default() -> Self {
@@ -85,14 +85,14 @@ impl Default for Capture {
 tokio::task_local! { static ACTIVE: Capture; }
 thread_local! { static BLOCKING: RefCell<Option<Capture>> = const { RefCell::new(None) }; }
 
-pub(crate) fn current() -> Option<Capture> {
+pub fn current() -> Option<Capture> {
     ACTIVE
         .try_with(Clone::clone)
         .ok()
         .or_else(|| BLOCKING.with(|c| c.borrow().clone()))
 }
 
-pub(crate) fn on_blocking_thread<T>(capture: Option<Capture>, work: impl FnOnce() -> T) -> T {
+pub fn on_blocking_thread<T>(capture: Option<Capture>, work: impl FnOnce() -> T) -> T {
     struct Restore(Option<Capture>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -104,11 +104,11 @@ pub(crate) fn on_blocking_thread<T>(capture: Option<Capture>, work: impl FnOnce(
 }
 
 impl Capture {
-    pub(crate) async fn scope<F: Future>(&self, work: F) -> F::Output {
+    pub async fn scope<F: Future>(&self, work: F) -> F::Output {
         ACTIVE.scope(self.clone(), work).await
     }
 
-    pub(crate) fn finish(&self) -> Vec<Measurement> {
+    pub fn finish(&self) -> Vec<Measurement> {
         self.0.lock().map_or_else(
             |_| Vec::new(),
             |items| items.iter().flatten().cloned().collect(),
@@ -125,10 +125,10 @@ struct Active {
     items_out: Option<u64>,
 }
 
-pub(crate) struct Guard(Option<Active>);
+pub struct Guard(Option<Active>);
 
 impl Guard {
-    pub(crate) fn begin(stage: Stage) -> Self {
+    pub fn begin(stage: Stage) -> Self {
         Self(current().map(|capture| Active {
             capture,
             stage,
@@ -139,7 +139,7 @@ impl Guard {
         }))
     }
 
-    pub(crate) fn complete(&mut self, inputs: Option<usize>, outputs: Option<usize>) {
+    pub fn complete(&mut self, inputs: Option<usize>, outputs: Option<usize>) {
         if let Some(active) = &mut self.0 {
             active.complete = true;
             active.items_in = inputs.map(|n| u64::try_from(n).unwrap_or(u64::MAX));
@@ -190,7 +190,7 @@ impl Drop for Guard {
     }
 }
 
-pub(crate) fn record_reranker(engine: RerankerEngine, fallback: Option<RerankerFallback>) {
+pub fn record_reranker(engine: RerankerEngine, fallback: Option<RerankerFallback>) {
     if let Some(capture) = current()
         && let Ok(mut items) = capture.0.lock()
         && let Some(item) = &mut items[Stage::Rerank as usize]
@@ -200,7 +200,7 @@ pub(crate) fn record_reranker(engine: RerankerEngine, fallback: Option<RerankerF
     }
 }
 
-pub(crate) fn measure_vec<T>(
+pub fn measure_vec<T>(
     stage: Stage,
     inputs: Option<usize>,
     work: impl FnOnce() -> Result<Vec<T>, crate::AppError>,

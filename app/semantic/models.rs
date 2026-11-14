@@ -17,13 +17,13 @@ use std::time::SystemTime;
 mod assets;
 mod downloads;
 mod generations;
-pub(crate) mod indexer;
+pub mod indexer;
 mod install;
 mod reranker;
 use assets::InstallMarker;
 pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
 
-pub(crate) struct Models {
+pub struct Models {
     root: PathBuf,
     reranking: crate::config::Reranking,
 }
@@ -36,7 +36,7 @@ type RemoteReranker = Option<
     >,
 >;
 
-pub(crate) struct Backend {
+pub struct Backend {
     embedding: TextEmbedding,
     reranker: Option<reranker::Reranker>,
     // Resolved on every load: configuration and credentials can change while
@@ -63,7 +63,7 @@ struct CachedBackend {
 // in-flight searches own their backend without holding a lock across I/O.
 static LOCAL_BACKEND: Mutex<Option<CachedBackend>> = Mutex::new(None);
 
-pub(crate) struct LoadedBackend {
+pub struct LoadedBackend {
     backend: Option<Backend>,
     cache_key: Option<BackendCacheKey>,
 }
@@ -100,15 +100,15 @@ impl Drop for LoadedBackend {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct InstallSummary {
-    pub(crate) embedding_model: &'static str,
-    pub(crate) reranker_model: &'static str,
-    pub(crate) embedding_dimensions: usize,
-    pub(crate) files: usize,
+pub struct InstallSummary {
+    pub embedding_model: &'static str,
+    pub reranker_model: &'static str,
+    pub embedding_dimensions: usize,
+    pub files: usize,
 }
 
 impl Models {
-    pub(crate) fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf) -> Self {
         Self {
             root,
             reranking: crate::config::Reranking::default(),
@@ -116,34 +116,34 @@ impl Models {
     }
 
     /// Contextual reranking placement for searches loaded by this handle.
-    pub(crate) fn with_reranking(mut self, reranking: crate::config::Reranking) -> Self {
+    pub fn with_reranking(mut self, reranking: crate::config::Reranking) -> Self {
         self.reranking = reranking;
         self
     }
 
     #[cfg(test)]
-    pub(crate) fn require_indexer(&self) -> Result<(), AppError> {
+    pub fn require_indexer(&self) -> Result<(), AppError> {
         self.require_installed()
     }
 
-    pub(crate) fn is_installed(&self) -> bool {
+    pub fn is_installed(&self) -> bool {
         self.read_valid_marker().is_ok()
     }
 
-    pub(crate) fn require_installed(&self) -> Result<(), AppError> {
+    pub fn require_installed(&self) -> Result<(), AppError> {
         if !self.root.join(MARKER_NAME).is_file() {
             return Err(AppError::models_missing());
         }
         self.read_valid_marker().map(|_| ())
     }
 
-    #[cfg(test)]
-    pub(crate) fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
         self.load_search(crate::views::config::Ranking::default())
     }
 
     #[tracing::instrument(name = "load_search_models", skip_all)]
-    pub(crate) fn load_search(
+    pub fn load_search(
         &self,
         ranking: crate::views::config::Ranking,
     ) -> Result<Option<LoadedBackend>, AppError> {
@@ -194,7 +194,7 @@ impl Models {
     }
 
     #[tracing::instrument(name = "load_embedding_models", skip_all)]
-    pub(crate) fn load_indexer(&self) -> Result<Option<indexer::LoadedIndexer>, AppError> {
+    pub fn load_indexer(&self) -> Result<Option<indexer::LoadedIndexer>, AppError> {
         #[cfg(any(test, feature = "test-support"))]
         if let Some(pool) = super::test_embeddings::load(&self.root) {
             return Ok(Some(pool));
@@ -299,7 +299,7 @@ impl Backend {
     }
 
     #[tracing::instrument(name = "embed", skip_all)]
-    pub(crate) fn embed<S: AsRef<str> + Send + Sync>(
+    pub fn embed<S: AsRef<str> + Send + Sync>(
         &mut self,
         texts: &[S],
     ) -> Result<Vec<Vec<f32>>, AppError> {
@@ -315,7 +315,7 @@ impl Backend {
     }
 
     #[tracing::instrument(name = "rerank_inference", skip_all)]
-    pub(crate) fn rerank<S: AsRef<str> + Send + Sync>(
+    pub fn rerank<S: AsRef<str> + Send + Sync>(
         &mut self,
         query: S,
         documents: &[S],
@@ -334,16 +334,12 @@ impl Backend {
         result
     }
 
-    pub(crate) fn remote_reranker(&self) -> RemoteReranker {
+    pub fn remote_reranker(&self) -> RemoteReranker {
         self.remote_reranker.clone()
     }
 
     /// Raw CPU logits in input order, for one complete reranking pass.
-    pub(crate) fn rerank_cpu(
-        &mut self,
-        query: &str,
-        documents: &[&str],
-    ) -> Result<Vec<f32>, AppError> {
+    pub fn rerank_cpu(&mut self, query: &str, documents: &[&str]) -> Result<Vec<f32>, AppError> {
         let mut scores = vec![f32::NEG_INFINITY; documents.len()];
         for result in self.rerank_batched(query, documents, 4)? {
             *scores
@@ -399,7 +395,7 @@ impl Backend {
     /// Focus long candidates on query evidence before the tokenizer truncates
     /// them. Keep the model's raw logits: they are not calibrated probabilities.
     #[cfg(test)]
-    pub(crate) fn rerank_search(
+    pub fn rerank_search(
         &mut self,
         query: &str,
         documents: &[&str],

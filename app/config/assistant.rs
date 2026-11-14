@@ -10,15 +10,15 @@ use serde::{Deserialize, Serialize};
 pub struct Assistant {
     /// The API's base, such as `https://openrouter.ai/api/v1`; requests go to
     /// `chat/completions` beneath it.
-    pub(crate) base_url: String,
+    pub base_url: String,
     /// The environment variable that holds the API key.
-    pub(crate) token_env: String,
+    pub token_env: String,
     /// The model's name as that service knows it.
     pub model: String,
 }
 
 impl Assistant {
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         super::embeddings::validate_service(&self.base_url, &self.token_env, "assistant")?;
         if self.model.trim().is_empty() || self.model.len() > 200 {
             return Err(AppError::configuration(

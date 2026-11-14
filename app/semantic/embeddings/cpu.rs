@@ -23,7 +23,7 @@ fn is_short_batch(model: &TextEmbedding, batch: &[EmbeddingGroup]) -> Result<boo
     Ok(encodings.iter().all(|e| e.len() <= SHORT_SEQUENCE_TOKENS))
 }
 
-pub(crate) fn embed_wave(
+pub fn embed_wave(
     workers: &mut [TextEmbedding],
     groups: &[EmbeddingGroup],
 ) -> Result<Vec<Vec<f32>>, AppError> {

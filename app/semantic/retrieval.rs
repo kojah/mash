@@ -13,7 +13,7 @@ pub(super) struct QuantizedVector {
 
 /// Fuse candidates and gather reranking context; inference happens in
 /// `search_ranking::finish`, where a remote worker can be awaited.
-pub(crate) fn finish_hybrid(
+pub fn finish_hybrid(
     storage: &Storage,
     query: &str,
     options: Options,
@@ -63,10 +63,7 @@ pub(crate) fn finish_hybrid(
 
 pub const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";
 
-pub(crate) fn shared_query_vector(
-    backend: &mut Backend,
-    query: &str,
-) -> Result<Vec<f64>, AppError> {
+pub fn shared_query_vector(backend: &mut Backend, query: &str) -> Result<Vec<f64>, AppError> {
     let vector = backend
         .embed(&[query])?
         .pop()
@@ -78,7 +75,7 @@ pub(crate) fn shared_query_vector(
         .collect())
 }
 
-pub(crate) fn fuse(
+pub fn fuse(
     lexical: Vec<SearchHit>,
     semantic: Vec<SearchHit>,
     unit: crate::search_results::SearchUnit,

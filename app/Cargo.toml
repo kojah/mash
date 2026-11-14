@@ -11,9 +11,9 @@ build = "build.rs"
 path = "lib.rs"
 
 [features]
-console = ["dep:console-subscriber", "tokio/tracing"]
+console = ["mash-search/console"]
 # Fixtures and hooks the tests of other workspace crates need.
-test-support = ["mash-storage/test-support"]
+test-support = ["mash-search/test-support"]
 
 [dependencies]
 console-subscriber = { version = "0.5", optional = true }
@@ -21,6 +21,7 @@ mash-query = { path = "../crates/mash-query" }
 mash-fleet = { path = "../crates/mash-fleet" }
 mash-model = { path = "../crates/mash-model" }
 mash-silver = { path = "../crates/mash-silver" }
+mash-search = { path = "../crates/mash-search" }
 mash-storage = { path = "../crates/mash-storage" }
 aho-corasick = "1.1.5"
 regex = "1.12"
@@ -74,6 +75,7 @@ ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"]
 tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 
 [dev-dependencies]
+mash-search = { path = "../crates/mash-search", features = ["test-support"] }
 mash-storage = { path = "../crates/mash-storage", features = ["test-support"] }
 mash-model = { path = "../crates/mash-model", features = ["test-support"] }
 mash-silver = { path = "../crates/mash-silver", features = ["test-support"] }

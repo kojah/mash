@@ -4,12 +4,12 @@ use crate::semantic::{EmbeddingSummary, LoadedIndexer, Models};
 use std::path::Path;
 use std::time::Instant;
 
-pub(crate) const BATCH_ROWS: usize = 32;
+pub const BATCH_ROWS: usize = 32;
 /// Cache I/O can span inference batches without changing model inputs.
-pub(crate) const CACHE_ROWS: usize = 256;
+pub const CACHE_ROWS: usize = 256;
 const _: () = assert!(CACHE_ROWS.is_multiple_of(BATCH_ROWS));
 
-pub(crate) const fn batch_rows(execution: &crate::config::Embeddings) -> usize {
+pub const fn batch_rows(execution: &crate::config::Embeddings) -> usize {
     match execution {
         crate::config::Embeddings::Local {} => BATCH_ROWS,
         crate::config::Embeddings::Remote { .. } => crate::semantic::remote::MAX_INPUTS,
@@ -17,19 +17,19 @@ pub(crate) const fn batch_rows(execution: &crate::config::Embeddings) -> usize {
 }
 
 #[derive(Default)]
-pub(crate) struct Build {
+pub struct Build {
     remote: Option<crate::semantic::remote::Client>,
-    pub(crate) embeddings: EmbeddingSummary,
-    pub(crate) model_load_milliseconds: u64,
-    pub(crate) embedding_milliseconds: u64,
+    pub embeddings: EmbeddingSummary,
+    pub model_load_milliseconds: u64,
+    pub embedding_milliseconds: u64,
     /// Why this pass stored documents without vectors, when it did.
-    pub(crate) inference_error: Option<String>,
+    pub inference_error: Option<String>,
 }
 
 /// Materialization and publication share vector validation, inference accounting,
 /// and association with the exact prepared input. Cache reads are owned by the
 /// caller: a publishing destination does not depend on local views availability.
-pub(crate) async fn embed_units(
+pub async fn embed_units(
     inputs: &[super::documents::EmbeddingInput<'_>],
     space: (&str, usize),
     model: Option<&Path>,
@@ -99,7 +99,7 @@ fn elapsed(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-pub(crate) async fn embed_texts(
+pub async fn embed_texts(
     models_dir: &Path,
     pool: &mut Option<LoadedIndexer>,
     texts: &[&str],

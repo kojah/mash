@@ -1850,6 +1850,7 @@ dependencies = [
  "mash-fleet",
  "mash-model",
  "mash-query",
+ "mash-search",
  "mash-silver",
  "mash-storage",
  "notify",
@@ -1984,6 +1985,45 @@ version = "0.1.0"
 dependencies = [
  "url",
  "whatlang",
+]
+
+[[package]]
+name = "mash-search"
+version = "0.7.0"
+dependencies = [
+ "axum",
+ "blake3",
+ "clap",
+ "console-subscriber",
+ "directories",
+ "fastembed",
+ "futures-util",
+ "getrandom 0.4.3",
+ "hf-hub",
+ "mash-model",
+ "mash-query",
+ "mash-silver",
+ "mash-storage",
+ "ort",
+ "proptest",
+ "prost",
+ "qdrant-client",
+ "reqwest",
+ "rmcp",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokenizers",
+ "tokio",
+ "toml",
+ "tonic",
+ "tonic-prost",
+ "tracing",
+ "tracing-subscriber",
+ "walkdir",
+ "zstd",
 ]
 
 [[package]]

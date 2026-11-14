@@ -2,7 +2,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
-pub(super) struct Capture(pub(super) Arc<Mutex<Vec<u8>>>);
+pub struct Capture(pub Arc<Mutex<Vec<u8>>>);
 
 impl Write for Capture {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

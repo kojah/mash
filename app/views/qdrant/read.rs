@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Payload field whose full-text index ranks and filters word search.
 const TEXT: &str = "unit.text";
 
-pub(crate) fn validate_search(input: &protocol::Search, identity: &Scope) -> Result<(), AppError> {
+pub fn validate_search(input: &protocol::Search, identity: &Scope) -> Result<(), AppError> {
     if let Some(policy) = input.vector_policy {
         policy.validate_request()?;
         if !input.intent.semantic() {
@@ -141,7 +141,7 @@ impl Store {
     /// Read the matching vocabulary this search will need, so a process that
     /// has other preparation to do (loading models) can do both at once.
     /// Best effort: the search reads it again if this did not keep it.
-    pub(crate) async fn warm_matching(
+    pub async fn warm_matching(
         &self,
         identity: &Scope,
         input: &protocol::Search,
@@ -257,7 +257,7 @@ impl Store {
     }
 
     #[tracing::instrument(name = "backend_search", skip_all, fields(backend = "qdrant"))]
-    pub(crate) async fn search(
+    pub async fn search(
         &self,
         identity: &Scope,
         mut input: protocol::Search,

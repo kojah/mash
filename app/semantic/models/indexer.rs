@@ -26,19 +26,19 @@ pub(super) struct AssetsKey {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct Cache(Arc<Mutex<Option<CachedIndexer>>>);
+pub struct Cache(Arc<Mutex<Option<CachedIndexer>>>);
 
 tokio::task_local! { static ASYNC_CACHE: Cache; }
 thread_local! { static BLOCKING_CACHE: RefCell<Option<Cache>> = const { RefCell::new(None) }; }
 
-pub(crate) fn current() -> Option<Cache> {
+pub fn current() -> Option<Cache> {
     ASYNC_CACHE
         .try_with(Clone::clone)
         .ok()
         .or_else(|| BLOCKING_CACHE.with(|cache| cache.borrow().clone()))
 }
 
-pub(crate) fn on_blocking_thread<T>(cache: Option<Cache>, work: impl FnOnce() -> T) -> T {
+pub fn on_blocking_thread<T>(cache: Option<Cache>, work: impl FnOnce() -> T) -> T {
     struct Restore(Option<Cache>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -49,7 +49,7 @@ pub(crate) fn on_blocking_thread<T>(cache: Option<Cache>, work: impl FnOnce() ->
     work()
 }
 
-pub(crate) fn scope<T>(work: impl Future<Output = T>) -> impl Future<Output = T> {
+pub fn scope<T>(work: impl Future<Output = T>) -> impl Future<Output = T> {
     scope_with_idle_timeout(Box::pin(work), IDLE_TIMEOUT)
 }
 
@@ -118,7 +118,7 @@ impl Cache {
     }
 }
 
-pub(crate) struct LoadedIndexer {
+pub struct LoadedIndexer {
     pool: Option<EmbeddingPool>,
     cache: Option<(AssetsKey, Cache)>,
 }

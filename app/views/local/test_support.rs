@@ -103,8 +103,7 @@ impl Fixture {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) async fn candidates(
+    pub async fn candidates(
         &self,
         query: &str,
         mut vector: Vec<f64>,

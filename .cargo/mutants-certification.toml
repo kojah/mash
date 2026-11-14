@@ -1,7 +1,7 @@
 # Real-backend audit of coverage, freshness and local database identity.
 examine_globs = ["app/shared/server/store/sync.rs", "app/views/qdrant/views.rs", "app/views/qdrant/evidence.rs", "app/views/local.rs"]
 examine_re = ["in Store::certify", "replace Store::certify", "NodeViews::current", "NodeViews::compatible", "NodeViews::searchable", "Local::current", "Store::reusable_vectors", "Projections::merge_matching", "Projections::retain_matching", "Projections::complete"]
-test_package = ["mash-app", "mash-server"]
+test_package = ["mash-app", "mash-search", "mash-server"]
 test_tool = "nextest"
 cap_lints = true
 additional_cargo_args = ["--locked", "--lib", "-Zcodegen-backend", "--config", 'profile.dev.package.mash-app.codegen-backend="cranelift"', "--config", 'profile.dev.package.mash-query.codegen-backend="cranelift"']

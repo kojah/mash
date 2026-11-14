@@ -3,22 +3,22 @@ use super::config::{Build, RetrievalUnit};
 use crate::{AppError, message_context::MessageContext, role::Role};
 use rusqlite::{OptionalExtension, params};
 
-pub(crate) const PARENT_CHARS: usize = 2048;
+pub const PARENT_CHARS: usize = 2048;
 
 #[derive(Clone, Copy)]
-pub(crate) struct Input<'a> {
-    pub(crate) chat: &'a str,
-    pub(crate) id: &'a str,
-    pub(crate) ordinal: i64,
-    pub(crate) context: &'a MessageContext,
-    pub(crate) role: &'a Role,
-    pub(crate) projection: &'a str,
+pub struct Input<'a> {
+    pub chat: &'a str,
+    pub id: &'a str,
+    pub ordinal: i64,
+    pub context: &'a MessageContext,
+    pub role: &'a Role,
+    pub projection: &'a str,
 }
 
 /// Private disk-backed parent lookup, bounded to one chat and 2048 chars/row.
 /// The default message recipe does not create a scratch database.
 #[derive(Default)]
-pub(crate) struct Stream {
+pub struct Stream {
     parents: Option<Parents>,
 }
 
@@ -97,7 +97,7 @@ impl Parents {
 
 impl Stream {
     /// Call on a blocking worker, for every row in chat/ordinal order.
-    pub(crate) fn prepare(
+    pub fn prepare(
         &mut self,
         build: &Build,
         input: Input<'_>,

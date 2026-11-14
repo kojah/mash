@@ -11,7 +11,7 @@ const SPARSE_SCHEMA_VERSION: u32 = 12;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Configuration {
+pub struct Configuration {
     pub(super) kind: PointKind,
     pub(super) schema_version: u32,
     pub(super) version: String,
@@ -54,7 +54,7 @@ fn version() -> Result<String, AppError> {
 impl Store {
     /// Exact retrieval uses the persisted recipe, without activating requested
     /// dense-only changes. Its node must still certify the current silver.
-    pub(crate) async fn with_lexical_build(mut self, identity: &Scope) -> Result<Self, AppError> {
+    pub async fn with_lexical_build(mut self, identity: &Scope) -> Result<Self, AppError> {
         let configuration = self.group_configuration(identity).await?.ok_or_else(|| {
             AppError::search_not_ready("Qdrant views configuration is missing; rebuild views")
         })?;
@@ -64,7 +64,7 @@ impl Store {
         Ok(self)
     }
 
-    pub(crate) fn with_query(mut self, query: super::VectorIndex) -> Self {
+    pub fn with_query(mut self, query: super::VectorIndex) -> Self {
         self.vector_index = query;
         self
     }
@@ -178,11 +178,7 @@ impl Store {
     }
 
     /// Select retrieval defaults and, on explicit activation, planner thresholds.
-    pub(crate) async fn select_query(
-        &self,
-        identity: &Scope,
-        activate: bool,
-    ) -> Result<(), AppError> {
+    pub async fn select_query(&self, identity: &Scope, activate: bool) -> Result<(), AppError> {
         self.vector_index.validate()?;
         let mut configuration = self.active_configuration(identity).await?;
         if configuration.vector_search != self.vector_index && !activate {
@@ -204,7 +200,7 @@ impl Store {
         Ok(())
     }
 
-    pub(crate) async fn views_configuration(&self, identity: &Scope) -> Result<Settings, AppError> {
+    pub async fn views_configuration(&self, identity: &Scope) -> Result<Settings, AppError> {
         let current = self.active_configuration(identity).await?;
         Ok(Settings {
             version: current.version,
@@ -215,10 +211,7 @@ impl Store {
         })
     }
 
-    pub(super) async fn active_configuration(
-        &self,
-        identity: &Scope,
-    ) -> Result<Configuration, AppError> {
+    pub async fn active_configuration(&self, identity: &Scope) -> Result<Configuration, AppError> {
         let current = self.group_configuration(identity).await?.ok_or_else(|| {
             super::conflict("Qdrant views configuration is missing; rebuild views from silver")
         })?;
@@ -234,11 +227,11 @@ impl Store {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "CollectionSettings")]
-pub(crate) struct Settings {
-    pub(crate) version: String,
-    pub(crate) build: crate::views::config::Build,
-    pub(crate) generation: String,
-    pub(crate) dimensions: usize,
+pub struct Settings {
+    pub version: String,
+    pub build: crate::views::config::Build,
+    pub generation: String,
+    pub dimensions: usize,
     #[serde(default)]
-    pub(crate) vector_search: super::VectorIndex,
+    pub vector_search: super::VectorIndex,
 }

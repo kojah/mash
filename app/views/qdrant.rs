@@ -1,34 +1,33 @@
 //! Common Qdrant views: search documents and readiness derived from canonical
 //! silver in SQLite. Every point here can be rebuilt by replaying silver.
-mod api;
-mod configuration;
+pub mod api;
+pub mod configuration;
 #[cfg(test)]
 mod document_tests;
-mod evidence;
-mod exact;
-mod read;
-#[cfg(test)]
-mod tests;
-mod views;
-mod vocabulary;
+pub mod evidence;
+pub mod exact;
+pub mod read;
+pub mod service;
+pub mod views;
+pub mod vocabulary;
 
 use crate::AppError;
 use crate::views::scope::Scope;
-pub(crate) use api::endpoint;
+pub use api::endpoint;
 pub use configuration::SCHEMA_VERSION;
-pub(crate) use configuration::Settings;
+pub use configuration::Settings;
 use serde::{Deserialize, Serialize};
-pub(crate) use vocabulary::file_beside as vocabulary_file;
+pub use vocabulary::file_beside as vocabulary_file;
 
-pub(crate) use evidence::{ProjectionEvidence, Projections};
-pub(crate) use read::validate_search;
-pub(crate) use views::{Documents, Expected, NodeViews};
+pub use evidence::{ProjectionEvidence, Projections};
+pub use read::validate_search;
+pub use views::{Documents, Expected, NodeViews};
 
 #[derive(
     Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema,
 )]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum MemoryTier {
+pub enum MemoryTier {
     #[default]
     Durable,
     Cached,
@@ -37,24 +36,24 @@ pub(crate) enum MemoryTier {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum PhysicalMemory {
+pub enum PhysicalMemory {
     Cached,
     Cold,
     Pinned,
 }
 
 /// Payloads are read only for returned hits; every profile keeps them cold on disk.
-const PAYLOAD_MEMORY: PhysicalMemory = PhysicalMemory::Cold;
+pub const PAYLOAD_MEMORY: PhysicalMemory = PhysicalMemory::Cold;
 
 impl MemoryTier {
-    fn dense(self) -> PhysicalMemory {
+    pub fn dense(self) -> PhysicalMemory {
         if self == Self::Cold {
             PhysicalMemory::Cold
         } else {
             PhysicalMemory::Cached
         }
     }
-    fn index(self) -> PhysicalMemory {
+    pub fn index(self) -> PhysicalMemory {
         if self == Self::Durable {
             PhysicalMemory::Pinned
         } else {
@@ -65,8 +64,8 @@ impl MemoryTier {
 
 #[derive(Clone, Copy, Default)]
 pub struct MemoryPolicy {
-    pub(crate) tier: MemoryTier,
-    pub(crate) activate: bool,
+    pub tier: MemoryTier,
+    pub activate: bool,
 }
 impl From<MemoryTier> for MemoryPolicy {
     fn from(tier: MemoryTier) -> Self {
@@ -83,7 +82,7 @@ pub use crate::views::vector::Search as VectorIndex;
 pub struct Store {
     dense_names: std::collections::BTreeMap<String, String>,
     build: crate::views::config::Build,
-    api: api::Client,
+    pub api: api::Client,
     vector_index: VectorIndex,
     /// Match evidence follows the server's response masking.
     responses: crate::redaction::Policy,
@@ -94,44 +93,44 @@ pub struct Store {
 /// denormalized from the source and checked when decoding a result.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Document {
-    node_id: String,
-    provider: crate::provider::Provider,
+pub struct Document {
+    pub node_id: String,
+    pub provider: crate::provider::Provider,
     role: crate::role::Role,
     chat_id: String,
     project: Option<String>,
     repository: Option<String>,
     created_at: Option<i64>,
     tokens: Vec<String>,
-    unit: SearchUnit,
+    pub unit: SearchUnit,
     /// Omitted by literal scans, which do not inspect dense evidence.
     #[serde(default)]
-    vector: Option<Vec<f64>>,
-    embedding_fingerprint: Option<String>,
+    pub vector: Option<Vec<f64>>,
+    pub embedding_fingerprint: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SearchUnit {
-    pub(crate) anchor: String,
+pub struct SearchUnit {
+    pub anchor: String,
     /// Indexed and embedded text; synchronization also fingerprints the evidence.
-    pub(crate) text: String,
-    pub(crate) content: String,
+    pub text: String,
+    pub content: String,
     /// Message position in its chat.
-    pub(crate) sequence: i64,
+    pub sequence: i64,
     /// Chat facts that documents once copied from their chat. Search reads
     /// them from silver now and nothing writes them; a document written
     /// before that still carries them until its chat next changes.
     #[serde(default, skip_serializing)]
-    pub(crate) title: Option<String>,
+    pub title: Option<String>,
     #[serde(default, skip_serializing)]
-    pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
+    pub enrichment: Option<crate::silver::enrichment::Evidence>,
     #[serde(default, skip_serializing)]
-    pub(crate) chat_created_at: Option<i64>,
+    pub chat_created_at: Option<i64>,
     #[serde(default, skip_serializing)]
-    pub(crate) chat_updated_at: Option<i64>,
+    pub chat_updated_at: Option<i64>,
     /// Set when the point carries a dense vector of this generation.
-    pub(crate) generation: Option<String>,
+    pub generation: Option<String>,
 }
 
 /// Verify source identity, grouping and projection evidence for every query mode.
@@ -218,14 +217,14 @@ pub enum Reachability {
 /// The configured local Qdrant service, as one bounded request observed it.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct ServiceStatus {
-    pub(crate) url: String,
+    pub url: String,
     pub state: Reachability,
     /// Why it is not reachable, and how to start it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
     /// The Qdrant `mash qdrant install` set up on this machine, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) installed: Option<crate::core::qdrant::Managed>,
+    pub installed: Option<service::Managed>,
 }
 
 /// Ask the configured Qdrant for its version, waiting at most a few seconds.
@@ -250,14 +249,14 @@ pub async fn reachability(config: &crate::config::QdrantConfig) -> ServiceStatus
 /// optional `note` and the caller's own next step `then` instead of a bare
 /// retry. `None` when `url` is not a valid endpoint, which never reaches
 /// Qdrant and so never yields that error.
-pub(crate) fn unavailable_message(url: &str, note: Option<&str>, then: &str) -> Option<String> {
+pub fn unavailable_message(url: &str, note: Option<&str>, then: &str) -> Option<String> {
     api::endpoint(url)
         .ok()
         .map(|url| api::unavailable_message(&url, note, then))
 }
 
 /// The typed error behind [`reachability`]; unreachable is `qdrant-unavailable`.
-pub(crate) async fn check(config: &crate::config::QdrantConfig) -> Result<(), AppError> {
+pub async fn check(config: &crate::config::QdrantConfig) -> Result<(), AppError> {
     let key = config
         .api_key_env
         .as_ref()
@@ -273,14 +272,14 @@ pub(crate) async fn check(config: &crate::config::QdrantConfig) -> Result<(), Ap
         .unwrap_or_else(|_| Err(api.unavailable()))
 }
 
-fn collection(group: &str, metadata: bool) -> String {
+pub fn collection(group: &str, metadata: bool) -> String {
     format!(
         "mash_views_{}_{}",
         blake3::hash(group.as_bytes()).to_hex(),
         if metadata { "state" } else { "messages" }
     )
 }
-fn point_id(parts: &[&str]) -> String {
+pub fn point_id(parts: &[&str]) -> String {
     let mut hash = blake3::Hasher::new();
     for part in parts {
         hash.update(&u64::try_from(part.len()).unwrap_or(u64::MAX).to_le_bytes());
@@ -296,7 +295,7 @@ fn point_id(parts: &[&str]) -> String {
         &hex[20..32]
     )
 }
-fn document_id(node: &str, message: &str) -> String {
+pub fn document_id(node: &str, message: &str) -> String {
     point_id(&["message", node, message])
 }
 fn failure() -> AppError {
@@ -325,15 +324,15 @@ impl Store {
             vocabulary: vocabulary::Vocabulary::default(),
         }
     }
-    pub(crate) fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
+    pub fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
         self.responses = responses;
         self
     }
-    pub(crate) fn with_build(mut self, build: crate::views::config::Build) -> Self {
+    pub fn with_build(mut self, build: crate::views::config::Build) -> Self {
         self.build = build;
         self
     }
-    pub(crate) fn build(&self) -> &crate::views::config::Build {
+    pub fn build(&self) -> &crate::views::config::Build {
         &self.build
     }
     /// Explicit setup of each group's document and views-state collections.
@@ -371,7 +370,7 @@ impl Store {
 
     /// Open existing views for readers. Missing or incomplete setup fails closed;
     /// only the explicit setup path may create indexes or change vector fields.
-    pub(crate) async fn open(
+    pub async fn open(
         url: &str,
         key: Option<&str>,
         groups: &[String],
@@ -401,7 +400,7 @@ impl Store {
             vocabulary: vocabulary::Vocabulary::default(),
         })
     }
-    fn dense_name(&self, identity: &Scope) -> &str {
+    pub fn dense_name(&self, identity: &Scope) -> &str {
         self.dense_names
             .get(&identity.group_id)
             .map_or("dense", String::as_str)

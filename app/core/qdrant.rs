@@ -80,20 +80,7 @@ pub struct UninstallResponse {
     pub(crate) kept_storage: Option<PathBuf>,
 }
 
-/// A Qdrant installed by `mash qdrant install`, as `mash status` reports it.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-pub(crate) struct Managed {
-    pub(crate) version: String,
-    pub(crate) state: ServiceState,
-    pub(crate) supervisor: Supervisor,
-    /// The systemd unit, launchd label or scheduled task name.
-    pub(crate) service: String,
-    pub(crate) definition: PathBuf,
-    pub(crate) binary: PathBuf,
-    pub(crate) storage: PathBuf,
-    /// Where Qdrant's own output goes: a file, or the command that shows it.
-    pub(crate) logs: String,
-}
+pub(crate) use crate::views::qdrant::service::Managed;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

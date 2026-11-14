@@ -8,7 +8,7 @@ use crate::AppError;
 use crate::semantic::LoadedIndexer;
 use std::path::Path;
 
-pub(crate) struct Writer<'a> {
+pub struct Writer<'a> {
     store: &'a Store,
     scope: &'a Scope,
     model: Option<&'a Path>,
@@ -20,10 +20,10 @@ pub(crate) struct Writer<'a> {
     documents: Documents,
 }
 
-pub(crate) struct ChatBuild {
-    pub(crate) messages: u64,
-    pub(crate) embeddings: u64,
-    pub(crate) complete: bool,
+pub struct ChatBuild {
+    pub messages: u64,
+    pub embeddings: u64,
+    pub complete: bool,
 }
 
 #[derive(Clone, Default)]
@@ -41,7 +41,7 @@ struct PendingChunk<'a> {
     cached: Vec<Option<Vec<f64>>>,
 }
 
-struct Prepared {
+pub struct Prepared {
     rows: Vec<SearchMessage>,
     texts: Vec<Option<String>>,
     cached: Vec<Option<Vec<f64>>>,
@@ -115,7 +115,7 @@ fn inputs<'a>(
 }
 
 impl<'a> Writer<'a> {
-    pub(crate) fn new(store: &'a Store, scope: &'a Scope, model: Option<&'a Path>) -> Self {
+    pub fn new(store: &'a Store, scope: &'a Scope, model: Option<&'a Path>) -> Self {
         Self {
             store,
             scope,
@@ -129,13 +129,13 @@ impl<'a> Writer<'a> {
         }
     }
 
-    pub(crate) fn with_execution(mut self, execution: crate::config::Embeddings) -> Self {
+    pub fn with_execution(mut self, execution: crate::config::Embeddings) -> Self {
         self.execution = execution;
         self
     }
 
     /// Stage writes without awaiting each batch; the caller supplies the barrier.
-    pub(crate) fn with_bulk(mut self) -> Self {
+    pub fn with_bulk(mut self) -> Self {
         self.documents = self.documents.with_wait(false);
         self
     }
@@ -144,19 +144,19 @@ impl<'a> Writer<'a> {
     /// and record why, instead of failing the pass: their text stays
     /// searchable by word and their chats stay incomplete for dense. Nothing
     /// is embedded again in this pass, so a failed request is never retried.
-    pub(crate) fn keeping_words_without_inference(mut self) -> Self {
+    pub fn keeping_words_without_inference(mut self) -> Self {
         self.words_survive_inference = true;
         self
     }
 
     /// Whether inference has already failed in this pass, so nothing more
     /// will be embedded by it.
-    pub(crate) fn inference_failed(&self) -> bool {
+    pub fn inference_failed(&self) -> bool {
         self.build.inference_error.is_some()
     }
 
     /// A replay starts from an empty node; do not query Qdrant for vectors to reuse.
-    pub(crate) fn without_reuse(mut self) -> Self {
+    pub fn without_reuse(mut self) -> Self {
         self.reuse = false;
         self
     }
@@ -164,8 +164,8 @@ impl<'a> Writer<'a> {
     /// Input is canonical silver in chat order. Hidden rows still define
     /// inference batch boundaries, which can affect quantized model output.
     /// Production materializes chat windows; focused tests use this helper.
-    #[cfg(test)]
-    pub(crate) async fn write_chat(
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn write_chat(
         &mut self,
         chat: &ChatRecord,
         messages: &[SearchMessage],
@@ -214,7 +214,7 @@ impl<'a> Writer<'a> {
     /// Materialize a bounded window of chats together, so remote inference
     /// fills whole batches across chat boundaries instead of one request per
     /// chat. Documents are still written per chat and per message.
-    pub(crate) async fn write_chats(
+    pub async fn write_chats(
         &mut self,
         chats: &[(ChatRecord, Vec<SearchMessage>)],
     ) -> Result<Vec<(String, ChatBuild)>, AppError> {
@@ -433,8 +433,8 @@ impl<'a> Writer<'a> {
         Ok(())
     }
 
-    #[cfg(test)]
-    async fn write_prepared(
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn write_prepared(
         &mut self,
         chat: &ChatRecord,
         prepared: Prepared,
@@ -489,12 +489,12 @@ impl<'a> Writer<'a> {
     }
 
     /// Preserve coordinator flush boundaries while retaining the loaded model.
-    pub(crate) async fn flush(&mut self) -> Result<(), AppError> {
+    pub async fn flush(&mut self) -> Result<(), AppError> {
         self.documents.flush(self.store).await
     }
 
     /// All queued documents must finish before the caller certifies coverage.
-    pub(crate) async fn finish(self) -> Result<Build, AppError> {
+    pub async fn finish(self) -> Result<Build, AppError> {
         self.documents.finish(self.store).await?;
         Ok(self.build)
     }

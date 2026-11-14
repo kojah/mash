@@ -17,16 +17,16 @@ const RERANK_THREADS: usize = 10;
 /// Messages of each such thread that are reranked.
 const THREAD_MESSAGES: usize = 6;
 
-pub(crate) struct Selection {
-    pub(crate) hits: Vec<SearchHit>,
-    pub(crate) count: usize,
+pub struct Selection {
+    pub hits: Vec<SearchHit>,
+    pub count: usize,
 }
 
 /// Combine the relevance order with recency, by reciprocal rank like
 /// candidate fusion. Newer messages move up among comparably relevant ones,
 /// while a strong old match still outranks a weak new one. Undated messages
 /// get no recency credit.
-pub(crate) fn favour_recent(hits: &mut [SearchHit], fusion: Fusion) {
+pub fn favour_recent(hits: &mut [SearchHit], fusion: Fusion) {
     if fusion.recency_weight == 0 || hits.len() < 2 {
         return;
     }
@@ -61,7 +61,7 @@ pub(crate) fn favour_recent(hits: &mut [SearchHit], fusion: Fusion) {
 }
 
 /// Preserve fused ordering and all evidence; result collection pages it.
-pub(crate) fn finish_fusion(mut hits: Vec<SearchHit>, fusion: Fusion) -> Vec<SearchHit> {
+pub fn finish_fusion(mut hits: Vec<SearchHit>, fusion: Fusion) -> Vec<SearchHit> {
     favour_recent(&mut hits, fusion);
     hits
 }
@@ -69,7 +69,7 @@ pub(crate) fn finish_fusion(mut hits: Vec<SearchHit>, fusion: Fusion) -> Vec<Sea
 /// Choose the evidence to rerank. Chat searches take the best-fused threads
 /// in fused order, each with its first messages; the contextual reranker then
 /// scores that evidence once. Selecting needs no inference.
-pub(crate) fn select(hits: Vec<SearchHit>, unit: SearchUnit) -> Selection {
+pub fn select(hits: Vec<SearchHit>, unit: SearchUnit) -> Selection {
     if matches!(unit, SearchUnit::Messages) {
         return Selection {
             count: hits.len().min(unit.rerank_limit()),
@@ -105,12 +105,12 @@ pub(crate) fn select(hits: Vec<SearchHit>, unit: SearchUnit) -> Selection {
 
 /// Hits ranked without inference, or the evidence that still needs one
 /// contextual reranking pass.
-pub(crate) enum Ranked {
+pub enum Ranked {
     Finished(Vec<SearchHit>),
     Rerank(Pending),
 }
 
-pub(crate) struct Pending {
+pub struct Pending {
     selection: Selection,
     query: String,
     /// Query-focused windows of the selected evidence, in selection order.
@@ -120,7 +120,7 @@ pub(crate) struct Pending {
 }
 
 impl Pending {
-    pub(crate) fn new(
+    pub fn new(
         query: &str,
         selection: Selection,
         documents: &[String],
@@ -174,10 +174,7 @@ impl Pending {
 
 /// Finish a search: rerank its selected evidence once, on the configured
 /// remote worker or the local CPU, and release the backend off the runtime.
-pub(crate) async fn finish(
-    backend: LoadedBackend,
-    ranked: Ranked,
-) -> Result<Vec<SearchHit>, AppError> {
+pub async fn finish(backend: LoadedBackend, ranked: Ranked) -> Result<Vec<SearchHit>, AppError> {
     let pending = match ranked {
         Ranked::Rerank(pending) if !pending.windows.is_empty() => pending,
         Ranked::Rerank(pending) => {

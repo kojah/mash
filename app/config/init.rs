@@ -173,7 +173,7 @@ pub fn render(providers: &ProviderRoots, semantic: bool) -> Result<String, AppEr
 
 /// Write `text` to `path`, keeping an existing file as `<name>.previous` and
 /// returning where it went.
-pub(crate) fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, AppError> {
+pub fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, AppError> {
     let failed = |operation: &str, error: &std::io::Error| {
         AppError::configuration(format!(
             "failed to {operation} configuration {}: {error}",
@@ -201,9 +201,9 @@ pub(crate) fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, AppError
 
 /// Record in the configuration at `path` that `mash init` connected
 /// `agents`, keeping agents recorded earlier. Returns whether it changed.
-pub(crate) fn record_connected_agents(
+pub fn record_connected_agents(
     path: &Path,
-    agents: &[crate::core::installation::Agent],
+    agents: &[crate::config::Agent],
 ) -> Result<bool, AppError> {
     let text = fs::read_to_string(path).map_err(|error| {
         AppError::configuration(format!(
@@ -230,7 +230,7 @@ pub(crate) fn record_connected_agents(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::installation::Agent;
+    use crate::config::Agent;
 
     #[test]
     fn init_records_connected_agents_and_keeps_comments() {

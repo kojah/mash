@@ -305,42 +305,7 @@ impl IndexResponse {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum SearchMode {
-    Lexical,
-    LocalLexical,
-    MergedLexical,
-    Hybrid,
-    LocalHybrid,
-    MergedHybrid,
-    Unavailable,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct SearchResponse {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) freshness_warnings: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diagnostics: Option<crate::views::diagnostics::Diagnostics>,
-    pub(crate) query: String,
-    #[serde(default)]
-    pub(crate) intent: crate::views::exact::Intent,
-    pub(crate) realized_mode: SearchMode,
-    pub unit: crate::search_results::SearchUnit,
-    pub results: crate::search_results::Results,
-    /// Offset of the next page of the same ranked list; null on the last page.
-    #[serde(default)]
-    pub(crate) next_offset: Option<usize>,
-    pub shared: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shared_error: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) shared_context_error: Option<String>,
-    /// Why an empty result may not mean the history lacks the subject.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) notice: Option<String>,
-}
+pub use crate::views::diagnostics::{SearchMode, SearchResponse};
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ViewResponse {

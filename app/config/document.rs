@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{DEFAULT_SINCE_DAYS, IndexDestination, MAX_SINCE_DAYS, SharedConfig};
 use crate::AppError;
-use crate::core::installation::Agent;
+use crate::config::Agent;
 use crate::provider::{Provider, ProviderRoots};
 
 #[derive(Debug)]
