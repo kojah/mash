@@ -1,3 +1,6 @@
+// The search futures this crate drives nest deeper than the default limit
+// when the compiler proves them `Send`, as they do in `mash-app`.
+#![recursion_limit = "256"]
 use futures_util::FutureExt;
 use mash_app::core::output::Detail;
 use mash_app::core::{self, IndexRequest, Operation, Paths, Request};
