@@ -29,7 +29,7 @@ terminal, or browse conversations in the dashboard.
 - **BM25 keyword search + vector search with Qdrant**, so you can search for an exact error or describe what you remember. [Search →](docs/search.md)
 - **Search across machines** with `mash-server`, or keep everything local. [Multi-machine setup →](docs/shared-index.md)
 - **Local embeddings by default**, with opt-in [remote batch inference](docs/configuration.md#embedding-inference).
-- Runs on **Linux, macOS, and Windows**.
+- Runs on **Linux, macOS, and Windows**. [Tested with →](#tested-with)
 
 **Documentation website:** [getmash.io](https://getmash.io)
 
@@ -164,6 +164,30 @@ Mash masks recognizable credentials in results by default, but detection is
 best effort. Local history and exports can contain sensitive text;
 treat backups like the original chats. Mash never modifies the agent’s source
 history. [Privacy and redaction →](docs/privacy.md)
+
+## Tested with
+
+Where each agent's history has been indexed and searched so far:
+
+| Agent | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Claude Code | Daily use | Daily use | Light use |
+| Codex | Daily use | Daily use | Light use |
+| GitHub Copilot | Light use | Light use | Recorded history only |
+| OpenCode | Recorded history only | Light use | Simulated in CI |
+| Antigravity | Recorded history only | Light use | Recorded history only |
+| Cursor | Recorded history only | Not yet tested | Recorded history only |
+
+- **Daily use:** hundreds of real chats from an installed agent on that system.
+- **Light use:** fewer than twenty real chats from an installed agent on that system.
+- **Simulated in CI:** every push indexes a history written the way the agent
+  writes it on that system, while it is being written.
+- **Recorded history only:** the reader is tested on every push against history
+  in the agent's format, but no installed copy has been indexed on that system.
+
+The Linux and Windows test suites run on every push; macOS has no automated
+tests yet. If an agent's chats are missing or look wrong on your system,
+[open an issue](https://github.com/kojah/mash/issues).
 
 ## Build from source
 
