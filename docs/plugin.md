@@ -22,7 +22,7 @@ for them by name.
 | `standup` | `/mash:standup`, or `/mash:standup this week` | pick the `standup` skill, or ask "what did I work on yesterday?" | Summarises your work over a period, grouped by project, across agents and machines. With nothing after it, covers the previous working day. |
 | `export` | `/mash:export`, or `/mash:export a chat` | pick the `export` skill, or say "export this chat" | Opens the [dashboard](dashboard.md#save-a-transcript) on the chat, where the Export menu saves it as Markdown, HTML or PDF. Can write a Markdown file itself if you ask for that. |
 | `status` | `/mash:status` | pick the `status` skill, or ask "is Mash working?" | A plain-language check of the index, search, agent connections and your other machines, with the one next step when something is off. |
-| `dashboard` | `/mash:dashboard` | pick the `dashboard` skill, or say "open the Mash dashboard" | Starts the [dashboard](dashboard.md) if it is not running and opens it in your browser. Ask for "this chat" to land on the current conversation. |
+| `dashboard` | `/mash:dashboard` | pick the `dashboard` skill, or say "open the Mash dashboard" | Finds the running [dashboard](dashboard.md), or starts one, and opens it in your browser. Ask for "this chat" to land on the current conversation. |
 | `mash-history` | `/mash:mash-history`, or just ask | pick the `mash-history` skill, or just ask | Searches your past chats and answers with the messages behind the result. The agent also uses it unprompted when you refer to earlier work. |
 
 You do not need the commands for everyday use. Ask in plain words:
