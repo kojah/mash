@@ -292,6 +292,9 @@ function followed(event: MouseEvent): void {
           id="mashy-question"
           rows="1"
           enterkeyhint="send"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
           placeholder={mashy.busy ? "Mashy is answering…" : "Ask Mashy about your past chats"}
           bind:this={input}
           bind:value={draft}
