@@ -12,8 +12,10 @@ records and recent chats without reading them; this reads them. Hosts may prefix
 
 ## Gather
 
-1. Call `help` with `tool: "search"` for the current arguments; live help is
-   authoritative.
+1. Call the `index` tool once, so chats that ended moments ago, and any
+   handoff written in them, are searchable. If it fails or is busy, carry
+   on and say the newest work may be missing. Then call `help` with
+   `tool: "search"` for the current arguments; live help is authoritative.
 2. Find the most recent chats for this project. With words after the
    command, `search` for them restricted to this project. Otherwise start
    from the recent chats in the Mash note at the start of this session,

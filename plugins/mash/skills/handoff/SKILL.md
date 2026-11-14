@@ -8,12 +8,12 @@ description: Write a brief of this session so another agent, machine or later se
 The person is stopping here and wants the next session, possibly in another
 agent or on another machine, to continue without rereading this one. Mash
 indexes this conversation, so the brief goes into the conversation itself,
-where `/mash:resume` finds it. Hosts may prefix the tool names.
+where `/mash:resume` finds it once the chat is indexed. Hosts may prefix the tool names.
 
 ## Write the brief
 
-Reply with the brief as your message, under exactly this first line so it
-can be found later:
+Do any saving first (see below), then reply with the brief as your final
+message, under exactly this first line so it can be found later:
 
 `Mash handoff: <project> — <one-line goal>`
 
@@ -36,16 +36,15 @@ this text is stored and may be shared across the person's machines.
 ## Keep the decisions
 
 A brief is not memory. If the person stated decisions or preferences in
-their own words here, end with one line naming them and offering to save
-them with `/mash:remember`. Ask once, not per decision, and do not save
-your own conclusions as their decisions.
+their own words here, name them in the brief's Decisions and offer once, in
+its last lines, to save them with `/mash:remember`. Do not save your own
+conclusions as their decisions.
 
 ## Make it findable
 
-After the brief is written, call the `index` tool so this conversation is
-indexed now, not at the next background refresh. If that fails, say so: the
-brief is still in this chat and will be indexed later. Do not call it again
-on an unknown outcome.
+Make the brief the last thing you write in this turn, and call no tool
+after it. Mash can only index a message once the turn that wrote it has
+ended, so indexing from inside this turn would miss the brief.
 
-Then confirm in one line that the handoff is written and how to pick it up:
-`/mash:resume` in the next session.
+Close the brief with one line: the next session picks it up with
+`/mash:resume`, which refreshes the index first.
