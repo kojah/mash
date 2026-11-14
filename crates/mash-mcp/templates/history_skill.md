@@ -1,6 +1,6 @@
 ---
 name: mash-history
-description: Find past chats, requests, decisions, and supporting messages across providers and machines using Mash. Use when the user refers to previous conversations or earlier work ("yesterday", "last week", "do you remember", "what did we decide", "where did we leave off", "that diagram we made"), asks about the status or history of a PR, task or decision, or names a person, project, PR, ticket, file or term you don't recognize from the current conversation or codebase. Search Mash before asking the user or guessing.
+description: Find past chats, requests, decisions, and supporting messages across providers and machines using Mash. Use when the user refers to previous conversations or earlier work ("yesterday", "last week", "do you remember", "what did we decide", "that diagram we made"), asks about the status or history of a PR, task or decision, or names a person, project, PR, ticket, file or term you don't recognize from the current conversation or codebase. Search Mash before asking the user or guessing.
 ---
 
 # Search agent history with Mash

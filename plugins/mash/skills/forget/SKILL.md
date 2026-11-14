@@ -15,8 +15,8 @@ instruction.
 
 ## Find the one target
 
-1. Call `help` with `tool: "record"` and `tool: "forget"` for the current
-   arguments; live help is authoritative.
+1. Call `help` twice, once with `tool: "record"` and once with
+   `tool: "forget"`, for the current arguments; live help is authoritative.
 2. For a memory record, use `list_records` with the person's words as
    `query`, in this project's scope and then personal scope. For a chat,
    use `list_chats` or `search`.

@@ -25,7 +25,10 @@ records and recent chats without reading them; this reads them. Hosts may prefix
    the shared index when one is configured, and leave out the current
    session.
 3. Look for a handoff first: `search` this project for the exact words
-   "Mash handoff". The newest one is a brief the person left on purpose, so
+   "Mash handoff". Word search matches chats that merely mention a
+   handoff, including earlier resume reports, so keep only messages that
+   begin with the line `Mash handoff:`. The newest such message is a brief
+   the person left on purpose, so
    lead with it, and check the chats after it for anything newer.
 4. Read the end of the three or so most recent with `view`: the last
    requests and replies are what matter. Read further back only where the
