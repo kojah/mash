@@ -4,6 +4,10 @@
 //! same typed core as the CLI and MCP. It binds to loopback by default and
 //! answers only requests addressed to the bound host, so other websites cannot
 //! reach it through DNS rebinding; it sends no CORS headers.
+// The search futures this crate drives nest deeper than the default limit
+// when the compiler proves them `Send`, as they do in `mash-app`.
+#![recursion_limit = "256"]
+
 use axum::Router;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, Uri, header};

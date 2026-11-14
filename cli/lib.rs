@@ -1,5 +1,8 @@
 //! The `mash` and `mash-server` executables: argument parsing and output over
 //! the typed application library, `mash-app`.
+// The search futures this crate drives nest deeper than the default limit
+// when the compiler proves them `Send`, as they do in `mash-app`.
+#![recursion_limit = "256"]
 mod cli;
 mod server_cli;
 
