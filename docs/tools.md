@@ -148,8 +148,8 @@ history.
 <p class="none">Changes or removes stored data.</p>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>change</code><small>object (<code>Change</code>)</small><b>required</b></span><span class="about">link needs expected, target, relation. create needs scope, body, evidence. revise needs expected, body, evidence. supersede needs expected, body, evidence. confirm needs expected, evidence. forget needs expected.</span></div>
-<div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>change</code><small>object (<code>Change</code>)</small><b>required</b></span><span class="about">What to do; <code>action</code> decides which of the other fields apply.</span></div>
+<div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about">A stable ID for this change, here at the top level beside <code>change</code>, so a retry is safe.</span></div>
 </div>
 </details>
 

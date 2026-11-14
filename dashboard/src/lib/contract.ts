@@ -503,18 +503,26 @@ export interface components {
             total: number;
         };
         Body: {
+            /** @description Its kind and state, with that kind's own fields and nothing else. */
             details: components["schemas"]["Details"];
             /**
              * Format: int64
              * @description When the choice/claim applied, in Unix milliseconds; unknown stays null.
              */
             effective_at?: number | null;
-            /** @default  */
+            /**
+             * @description Why, when known.
+             * @default
+             */
             rationale: string;
-            /** @description Attribution supplied by the caller, not authenticated human identity. */
+            /**
+             * @description Who is recording, such as the agent's name; in `body`, not in `details`.
+             *     Attribution supplied by the caller, not authenticated human identity.
+             */
             recorded_by: string;
             /** @default candidate */
             review: components["schemas"]["Review"];
+            /** @description The decision, preference or fact itself, in a sentence or two. */
             statement: string;
         };
         /** @enum {string} */

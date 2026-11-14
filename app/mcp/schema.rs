@@ -103,31 +103,8 @@ fn flatten(value: Value) -> Value {
     let Some(Value::Array(alternatives)) = fields.get("oneOf") else {
         return Value::Object(fields);
     };
-    // Named values, each with what it means.
-    if alternatives
-        .iter()
-        .all(|one| one.get("const").is_some_and(Value::is_string))
-    {
-        let names: Vec<Value> = alternatives
-            .iter()
-            .map(|one| one["const"].clone())
-            .collect();
-        let meanings: Vec<String> = alternatives
-            .iter()
-            .filter_map(|one| {
-                let meaning = one.get("description")?.as_str()?;
-                Some(format!(
-                    "{}: {}",
-                    one["const"].as_str()?,
-                    meaning.replace('\n', " ")
-                ))
-            })
-            .collect();
-        fields.remove("oneOf");
-        fields.insert("type".into(), "string".into());
-        fields.insert("enum".into(), Value::Array(names));
-        describe(&mut fields, &meanings.join(" "));
-        return Value::Object(fields);
+    if let Some(values) = alternatives.iter().map(named).collect::<Option<Vec<_>>>() {
+        return Value::Object(choice(fields, values));
     }
     let Some(tag) = tag(alternatives) else {
         return Value::Object(fields);
@@ -135,17 +112,33 @@ fn flatten(value: Value) -> Value {
     let mut properties = Map::new();
     let mut names = Vec::new();
     let mut needs = Vec::new();
+    let mut varying: Vec<String> = Vec::new();
     for alternative in alternatives {
         let Some(own) = alternative.get("properties").and_then(Value::as_object) else {
             return Value::Object(fields);
         };
         let name = own[&tag]["const"].as_str().unwrap_or_default().to_owned();
         for (property, schema) in own.iter().filter(|(property, _)| **property != tag) {
-            match properties.get(property) {
-                Some(seen) if seen != schema => return Value::Object(fields),
-                Some(_) => {}
+            match properties.get_mut(property) {
                 None => {
                     properties.insert(property.clone(), schema.clone());
+                }
+                Some(seen) if seen == schema => {}
+                // One name with its own values in each alternative, such as a
+                // state: every value is listed, and which belong to which is said.
+                Some(seen) => {
+                    let (Some(mut all), Some(more)) = (named(seen), named(schema)) else {
+                        return Value::Object(fields);
+                    };
+                    for value in more {
+                        if !all.contains(&value) {
+                            all.push(value);
+                        }
+                    }
+                    *seen = serde_json::json!({"type": "string", "enum": all});
+                    if !varying.contains(property) {
+                        varying.push(property.clone());
+                    }
                 }
             }
         }
@@ -162,6 +155,16 @@ fn flatten(value: Value) -> Value {
         }
         names.push(Value::String(name));
     }
+    for property in &varying {
+        for alternative in alternatives {
+            let own = &alternative["properties"];
+            if let (Some(name), Some(values)) = (own[&tag]["const"].as_str(), named(&own[property]))
+            {
+                let values: Vec<&str> = values.iter().filter_map(Value::as_str).collect();
+                needs.push(format!("{name} {property}: {}.", values.join(", ")));
+            }
+        }
+    }
     let mut all = Map::new();
     all.insert(
         tag.clone(),
@@ -174,6 +177,51 @@ fn flatten(value: Value) -> Value {
     fields.insert("required".into(), serde_json::json!([tag]));
     describe(&mut fields, &needs.join(" "));
     Value::Object(fields)
+}
+
+/// Alternatives that are each a named value or a few become one list of
+/// values, with what the described ones mean.
+fn choice(mut fields: Map<String, Value>, values: Vec<Vec<Value>>) -> Map<String, Value> {
+    let meanings: Vec<String> = fields
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|one| {
+            let meaning = one.get("description")?.as_str()?;
+            Some(format!(
+                "{}: {}",
+                one.get("const")?.as_str()?,
+                meaning.replace('\n', " ")
+            ))
+        })
+        .collect();
+    fields.remove("oneOf");
+    fields.insert("type".into(), "string".into());
+    fields.insert(
+        "enum".into(),
+        Value::Array(values.into_iter().flatten().collect()),
+    );
+    describe(&mut fields, &meanings.join(" "));
+    fields
+}
+
+/// The values of a schema that is only a choice among named strings.
+fn named(schema: &Value) -> Option<Vec<Value>> {
+    let fields = schema.as_object()?;
+    if fields
+        .keys()
+        .any(|key| !matches!(key.as_str(), "type" | "enum" | "const" | "description"))
+    {
+        return None;
+    }
+    match (fields.get("const"), fields.get("enum")) {
+        (Some(value @ Value::String(_)), None) => Some(vec![value.clone()]),
+        (None, Some(Value::Array(values))) if values.iter().all(Value::is_string) => {
+            Some(values.clone())
+        }
+        _ => None,
+    }
 }
 
 /// Adds `more` to what a schema says about itself.
@@ -392,15 +440,56 @@ mod tests {
     }
 
     #[test]
-    fn alternatives_that_give_a_property_different_meanings_stay_apart() {
+    fn a_property_with_its_own_values_per_alternative_lists_them_all_and_says_whose() {
+        let schema = reduced(
+            &json!({"type": "object", "properties": {"details": {"oneOf": [
+                {"type": "object", "required": ["kind", "state"], "properties": {
+                    "kind": {"type": "string", "const": "decision"}, "state": {"type": "string", "enum": ["accepted", "superseded"]}}},
+                {"type": "object", "required": ["kind", "state", "reported_by"], "properties": {
+                    "kind": {"type": "string", "const": "fact"}, "reported_by": {"type": "string"},
+                    "state": {"type": "string", "enum": ["current", "superseded"]}}}
+            ]}}}),
+        );
+        assert_eq!(
+            schema["properties"]["details"],
+            json!({
+                "type": "object",
+                "required": ["kind"],
+                "description": "decision needs state. fact needs state, reported_by. decision state: accepted, superseded. fact state: current, superseded.",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["decision", "fact"]},
+                    "state": {"type": "string", "enum": ["accepted", "superseded", "current"]},
+                    "reported_by": {"type": "string"}
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn alternatives_that_give_a_property_different_shapes_stay_apart() {
         let details = json!({"oneOf": [
-            {"type": "object", "required": ["kind", "state"], "properties": {
-                "kind": {"type": "string", "const": "decision"}, "state": {"type": "string", "enum": ["accepted", "rejected"]}}},
-            {"type": "object", "required": ["kind", "state"], "properties": {
-                "kind": {"type": "string", "const": "fact"}, "state": {"type": "string", "enum": ["current", "retracted"]}}}
+            {"type": "object", "required": ["kind"], "properties": {
+                "kind": {"type": "string", "const": "one"}, "value": {"type": "string"}}},
+            {"type": "object", "required": ["kind"], "properties": {
+                "kind": {"type": "string", "const": "many"}, "value": {"type": "array", "items": {"type": "string"}}}}
         ]});
         let schema = reduced(&json!({"type": "object", "properties": {"details": details}}));
         assert_eq!(schema["properties"]["details"], details);
+    }
+
+    #[test]
+    fn a_choice_given_as_a_list_and_a_described_value_is_one_list() {
+        let schema = reduced(
+            &json!({"type": "object", "properties": {"purpose": {"default": "context", "oneOf": [
+                {"type": "string", "enum": ["context", "report"]},
+                {"type": "string", "const": "endorsement", "description": "The person's own approval."}
+            ]}}}),
+        );
+        assert_eq!(
+            schema["properties"]["purpose"],
+            json!({"type": "string", "default": "context", "enum": ["context", "report", "endorsement"],
+                "description": "endorsement: The person's own approval."})
+        );
     }
 
     #[test]

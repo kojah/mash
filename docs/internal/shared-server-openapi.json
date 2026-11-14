@@ -219,7 +219,12 @@
         "additionalProperties": false,
         "properties": {
           "details": {
-            "$ref": "#/components/schemas/Details"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Details"
+              }
+            ],
+            "description": "Its kind and state, with that kind's own fields and nothing else."
           },
           "effective_at": {
             "description": "When the choice/claim applied, in Unix milliseconds; unknown stays null.",
@@ -231,10 +236,11 @@
           },
           "rationale": {
             "default": "",
+            "description": "Why, when known.",
             "type": "string"
           },
           "recorded_by": {
-            "description": "Attribution supplied by the caller, not authenticated human identity.",
+            "description": "Who is recording, such as the agent's name; in `body`, not in `details`.\nAttribution supplied by the caller, not authenticated human identity.",
             "type": "string"
           },
           "review": {
@@ -246,6 +252,7 @@
             "default": "candidate"
           },
           "statement": {
+            "description": "The decision, preference or fact itself, in a sentence or two.",
             "type": "string"
           }
         },

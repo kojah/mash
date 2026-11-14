@@ -183,14 +183,18 @@ impl Details {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Body {
+    /// The decision, preference or fact itself, in a sentence or two.
     pub statement: String,
+    /// Why, when known.
     #[serde(default)]
     pub rationale: String,
     #[serde(default)]
     pub review: Review,
+    /// Its kind and state, with that kind's own fields and nothing else.
     pub details: Details,
     /// When the choice/claim applied, in Unix milliseconds; unknown stays null.
     pub effective_at: Option<i64>,
+    /// Who is recording, such as the agent's name; in `body`, not in `details`.
     /// Attribution supplied by the caller, not authenticated human identity.
     pub recorded_by: String,
 }
@@ -341,7 +345,9 @@ pub enum Change {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Mutation {
+    /// A stable ID for this change, here at the top level beside `change`, so a retry is safe.
     pub operation_id: String,
+    /// What to do; `action` decides which of the other fields apply.
     pub change: Change,
 }
 
