@@ -137,3 +137,38 @@ test("on a phone the Back button closes Mashy and returns to it from a linked ch
   await expect(mashy).toHaveCount(0);
   await expect(page).toHaveURL(/#\/$/);
 });
+
+test("the Mashy window can be dragged by its header and stays on screen", async ({ page }) => {
+  await page.route("**/api/assistant**", (route) =>
+    route.fulfill({ json: { enabled: true, model: "test/model" } }),
+  );
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Mashy" }).click();
+  const panel = page.locator("#mashy");
+  const before = await panel.boundingBox();
+  if (!before) throw new Error("Mashy did not open");
+  await page.mouse.move(before.x + 120, before.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(before.x - 180, before.y - 80, { steps: 5 });
+  await page.mouse.up();
+  const after = await panel.boundingBox();
+  expect(after?.x).toBeCloseTo(before.x - 300, 0);
+  expect(after?.y).toBeCloseTo(before.y - 100, 0);
+
+  // Dragged far past a corner, the whole window is still visible.
+  await page.mouse.move((after?.x ?? 0) + 120, (after?.y ?? 0) + 20);
+  await page.mouse.down();
+  await page.mouse.move(-500, -500, { steps: 5 });
+  await page.mouse.up();
+  const corner = await panel.boundingBox();
+  expect(corner?.x).toBe(8);
+  expect(corner?.y).toBe(8);
+
+  // The place is kept across a reload, and a double click puts it back.
+  await page.reload();
+  await page.getByRole("button", { name: "Open Mashy" }).click();
+  expect((await panel.boundingBox())?.x).toBe(8);
+  await page.locator("#mashy > header strong").dblclick();
+  expect((await panel.boundingBox())?.x).toBeCloseTo(before.x, 0);
+});

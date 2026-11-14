@@ -149,6 +149,9 @@ words:
 - "What did we decide about the restart test?"
 - On a chat's page: "Summarise this chat."
 
+On a wide screen, drag the window by its top bar to move it off what you are
+reading; double-click the bar to put it back. On a phone it fills the screen.
+
 Mashy searches your chats and memories and answers briefly. A chat or memory
 it mentions is a chip: choose it to open that chat or memory in the dashboard
 behind. Under an answer it suggests questions that follow from it. If it finds

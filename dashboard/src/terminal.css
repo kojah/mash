@@ -3509,6 +3509,20 @@ summary.rw::-webkit-details-marker {
   gap: 10px;
   padding: 10px 8px 10px 12px;
   border-bottom: 1px solid var(--hair);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+#mashy > header img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+#mashy > header:active {
+  cursor: grabbing;
+}
+#mashy > header button {
+  cursor: pointer;
 }
 #mashy > header img {
   width: 30px;
@@ -3767,6 +3781,12 @@ body:has(#mashy-fab) #main {
        different shade shows at its edges. */
     background: var(--bg);
     box-shadow: none;
+    /* A sheet fills the screen; it has nowhere to be moved to. */
+    translate: none !important;
+  }
+  #mashy > header {
+    cursor: auto;
+    touch-action: auto;
   }
   #mashy textarea,
   #mashy .mashy-note,

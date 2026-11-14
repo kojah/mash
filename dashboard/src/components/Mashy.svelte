@@ -93,6 +93,69 @@ async function close(): Promise<void> {
   if (sheetEntry()) history.back();
   else await hide();
 }
+// The window can be moved by its header, away from what it covers. Where it
+// was left is remembered for this browser; a double click puts it back.
+const PLACE = "mashy.place";
+let panel = $state<HTMLElement>();
+let moved = $state(placed());
+let grip: { x: number; y: number; left: number; top: number } | undefined;
+function placed(): { x: number; y: number } {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(PLACE) ?? "null");
+    if (saved && typeof saved === "object" && "x" in saved && "y" in saved) {
+      const { x, y } = saved;
+      if (typeof x === "number" && typeof y === "number") return { x, y };
+    }
+  } catch {
+    // Without storage the window starts in its corner.
+  }
+  return { x: 0, y: 0 };
+}
+function place(x: number, y: number): void {
+  moved = { x, y };
+  try {
+    localStorage.setItem(PLACE, JSON.stringify(moved));
+  } catch {
+    // Not remembered, and nothing else depends on it.
+  }
+}
+// Keep the whole window on screen, whatever the offset or the window's size.
+function keepIn(): void {
+  if (!panel || window.matchMedia(SHEET).matches) return;
+  const box = panel.getBoundingClientRect();
+  const x = moved.x + Math.min(Math.max(8 - box.left, 0), window.innerWidth - 8 - box.right);
+  const y = moved.y + Math.min(Math.max(8 - box.top, 0), window.innerHeight - 8 - box.bottom);
+  if (x !== moved.x || y !== moved.y) moved = { x, y };
+}
+$effect(() => {
+  if (panel) keepIn();
+});
+function grab(event: PointerEvent): void {
+  if (event.button !== 0 || window.matchMedia(SHEET).matches) return;
+  if (!(event.target instanceof Element) || event.target.closest("button")) return;
+  if (!(event.currentTarget instanceof HTMLElement) || !panel) return;
+  const box = panel.getBoundingClientRect();
+  grip = {
+    x: event.clientX - moved.x,
+    y: event.clientY - moved.y,
+    left: box.left - moved.x,
+    top: box.top - moved.y,
+  };
+  event.currentTarget.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+function drag(event: PointerEvent): void {
+  if (!grip || !panel) return;
+  const low = (edge: number, span: number, limit: number, wanted: number): number =>
+    Math.min(Math.max(wanted, 8 - edge), Math.max(8 - edge, limit - 8 - span - edge));
+  place(
+    low(grip.left, panel.offsetWidth, window.innerWidth, event.clientX - grip.x),
+    low(grip.top, panel.offsetHeight, window.innerHeight, event.clientY - grip.y),
+  );
+}
+function drop(): void {
+  grip = undefined;
+}
 async function submit(text: string): Promise<void> {
   if (!text.trim() || mashy.busy) return;
   draft = "";
@@ -146,6 +209,7 @@ function followed(event: MouseEvent): void {
 </script>
 
 <svelte:window
+  onresize={keepIn}
   onpopstate={() => {
     if (sheetEntry() && window.matchMedia(SHEET).matches) void show();
     else if (mashy.open && window.matchMedia(SHEET).matches) void hide();
@@ -160,8 +224,9 @@ function followed(event: MouseEvent): void {
 {#if status.data?.enabled}
   {#if mashy.open}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-    <section id="mashy" class:fresh={empty} aria-label="Mashy" onclick={followed}>
-      <header>
+    <section id="mashy" class:fresh={empty} aria-label="Mashy" bind:this={panel} style:translate="{moved.x}px {moved.y}px" onclick={followed}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <header title="Drag to move" onpointerdown={grab} onpointermove={drag} onpointerup={drop} onpointercancel={drop} ondblclick={(event) => { if (!(event.target instanceof Element) || !event.target.closest("button")) place(0, 0); }}>
         <img src={asset("mashy.png")} alt="" />
         <div><strong>Mashy</strong></div>
         {#if mashy.turns.length}<button type="button" aria-label="Start over" title="Start over" onclick={() => { mashy.clear(); input?.focus(); }}><Trash2 size={16} /></button>{/if}
