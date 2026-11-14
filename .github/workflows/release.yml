@@ -162,7 +162,7 @@ jobs:
           fi
           python3 packaging/render.py "$GITHUB_REF_NAME" dist/SHA256SUMS \
             packaging/homebrew/mash.rb.in mash.rb
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/kojah/homebrew-tap.git" tap
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/mashium/homebrew-tap.git" tap
           mkdir -p tap/Formula
           cp mash.rb tap/Formula/mash.rb
           cd tap

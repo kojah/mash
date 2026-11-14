@@ -68,7 +68,7 @@ Prefer a package manager?
 
 | Channel | Command |
 | --- | --- |
-| Homebrew | `brew install kojah/tap/mash` |
+| Homebrew | `brew install mashium/tap/mash` |
 | apt, Debian and Ubuntu | [add the Mash repository](docs/installation.md#package-manager-alternatives), then `sudo apt install mash` |
 | Scoop | `scoop bucket add mashium https://github.com/mashium/mash`, then `scoop install mashium/mash` |
 | mise | `mise use -g github:mashium/mash` |

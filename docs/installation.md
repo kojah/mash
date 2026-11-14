@@ -43,7 +43,7 @@ directory. They do not modify your shell profile or download models.
 **Homebrew, macOS or Linux**
 
 ```sh
-brew install kojah/tap/mash
+brew install mashium/tap/mash
 ```
 
 **apt, Debian or Ubuntu**
