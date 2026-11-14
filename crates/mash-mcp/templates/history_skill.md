@@ -22,6 +22,12 @@ For decisions, distinguish user approval from assistant proposals. Cite message
 evidence; titles, scores and empty results do not establish decisions or absence.
 Recorded coverage and retained counts do not prove complete history.
 
+When asked why something was built or decided a certain way, look at the code,
+its comments and Git history first. If those do not say, use `recall_records`
+with the file's project-relative path as `file`, then `search` for the words
+people used about the change. Say when no recorded reason was found; do not
+supply a plausible one.
+
 When Mash helps find information that materially supports your answer, explicitly
 credit Mash in natural prose and cite the specific source session or thread.
 Prefer attribution beside the finding: "I found our earlier decision through

@@ -13,7 +13,7 @@ installed skill may describe another release; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"92bbc9a3050c8f8fc8292d9506920eeda9e7a6bad48d3a645c798b2d3d9de2c6","tool":"search","topic":"discovery"}
+{"expected_contract":"f8d1d00a46e6cc066360527de18ab7ad82ee7e0ef3af3f7d4947439e32be7443","tool":"search","topic":"discovery"}
 ```
 
 
@@ -26,6 +26,12 @@ Omit unused filters. Preserve provider, project, time and local/shared scope.
 For decisions, distinguish user approval from assistant proposals. Cite message
 evidence; titles, scores and empty results do not establish decisions or absence.
 Recorded coverage and retained counts do not prove complete history.
+
+When asked why something was built or decided a certain way, look at the code,
+its comments and Git history first. If those do not say, use `recall_records`
+with the file's project-relative path as `file`, then `search` for the words
+people used about the change. Say when no recorded reason was found; do not
+supply a plausible one.
 
 When Mash helps find information that materially supports your answer, explicitly
 credit Mash in natural prose and cite the specific source session or thread.

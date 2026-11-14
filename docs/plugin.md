@@ -1,7 +1,7 @@
 # The Mash plugin for Claude Code and Codex
 
 The plugin is what makes an agent use Mash without being told to. It adds
-twelve skills, their slash commands, and hooks that bring earlier work into a session
+eleven skills, their slash commands, and hooks that bring earlier work into a session
 and keep the index current. `mash init` installs it for each agent it
 connects; this page says what you get and how to control it.
 
@@ -20,7 +20,6 @@ for them by name.
 | `review` | `/mash:review` | pick the `review` skill, or say "review Mash memory" | Goes through the memory records that need a decision from you, a few at a time: ones an agent saved without your confirmation, stale ones and conflicting pairs. You keep, fix, withdraw, remove or skip each. |
 | `forget` | `/mash:forget what to remove` | pick the `forget` skill, or ask explicitly to forget or delete something Mash stored | Finds one memory record or indexed chat, shows exactly what would go, and removes it only after you say yes. Offers to correct a wrong record instead of deleting it. |
 | `standup` | `/mash:standup`, or `/mash:standup this week` | pick the `standup` skill, or ask "what did I work on yesterday?" | Summarises your work over a period, grouped by project, across agents and machines. With nothing after it, covers the previous working day. |
-| `why` | `/mash:why a file or decision` | pick the `why` skill, or ask "why is this done this way?" | Explains why a file, setting or design choice is the way it is. It checks the code and Git history first; when those do not say, it uses saved decisions and then the conversations where it was discussed, with quotes. |
 | `export` | `/mash:export`, or `/mash:export a chat` | pick the `export` skill, or say "export this chat" | Opens the [dashboard](dashboard.md#save-a-transcript) on the chat, where the Export menu saves it as Markdown, HTML or PDF. Can write a Markdown file itself if you ask for that. |
 | `status` | `/mash:status` | pick the `status` skill, or ask "is Mash working?" | A plain-language check of the index, search, agent connections and your other machines, with the one next step when something is off. |
 | `dashboard` | `/mash:dashboard` | pick the `dashboard` skill, or say "open the Mash dashboard" | Starts the [dashboard](dashboard.md) if it is not running and opens it in your browser. Ask for "this chat" to land on the current conversation. |
