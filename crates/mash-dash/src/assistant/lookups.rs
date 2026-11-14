@@ -1026,15 +1026,13 @@ async fn memories(state: &Dash, reader: &mut Reader, arguments: &str) -> Result<
             _ => break,
         }
     }
-    let words: Vec<String> = given(input.about)
-        .map(|about| {
-            about
-                .to_lowercase()
-                .split_whitespace()
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
+    let words: Vec<String> = given(input.about).map_or_default(|about| {
+        about
+            .to_lowercase()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect()
+    });
     let mut entries = Vec::new();
     for record in &all {
         // The listing gives a memory either with its revisions, the current

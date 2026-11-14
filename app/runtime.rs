@@ -247,7 +247,7 @@ pub fn restart(executable: &Path, arguments: &[std::ffi::OsString]) -> AppError 
 /// Windows cannot replace a running process image; its scheduled task starts
 /// the replacement instead.
 #[cfg(not(unix))]
-pub(crate) fn restart(_executable: &Path, _arguments: &[std::ffi::OsString]) -> AppError {
+pub fn restart(_executable: &Path, _arguments: &[std::ffi::OsString]) -> AppError {
     superseded()
 }
 
