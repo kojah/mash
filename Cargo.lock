@@ -1816,6 +1816,7 @@ dependencies = [
  "indicatif",
  "inquire",
  "mash-fleet",
+ "mash-model",
  "mash-query",
  "notify",
  "ort",
@@ -1867,6 +1868,23 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+]
+
+[[package]]
+name = "mash-model"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "blake3",
+ "clap",
+ "directories",
+ "regex",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "url",
 ]
 
 [[package]]

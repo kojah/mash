@@ -23,8 +23,8 @@ bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "zip"
 
 [workspace]
-members = ["crates/mash-query", "crates/mash-fleet"]
-default-members = [".", "crates/mash-query", "crates/mash-fleet"]
+members = ["crates/mash-query", "crates/mash-fleet", "crates/mash-model"]
+default-members = [".", "crates/mash-query", "crates/mash-fleet", "crates/mash-model"]
 resolver = "3"
 
 [lib]
@@ -55,6 +55,7 @@ console = ["dep:console-subscriber", "tokio/tracing"]
 console-subscriber = { version = "0.5", optional = true }
 mash-query = { path = "crates/mash-query" }
 mash-fleet = { path = "crates/mash-fleet" }
+mash-model = { path = "crates/mash-model" }
 aho-corasick = "1.1.5"
 regex = "1.12"
 rmcp = { version = "3.4.0", default-features = false, features = ["client", "server", "macros", "transport-io", "transport-child-process"] }

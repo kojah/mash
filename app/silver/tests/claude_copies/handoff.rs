@@ -19,8 +19,11 @@ fn handoff(
             scope.spawn(move || {
                 let history = HistorySource::file(path);
                 let mut stamp = history.stamp().unwrap();
-                let parsed =
-                    parse_source_with_retries(&history, &mut stamp, Provider::ClaudeCode.parser());
+                let parsed = parse_source_with_retries(
+                    &history,
+                    &mut stamp,
+                    Parser::Native(Provider::ClaudeCode),
+                );
                 let source = ParsedSource {
                     source: SourceFile {
                         history,

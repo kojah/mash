@@ -348,7 +348,7 @@ pub(super) fn prepare_candidates(
         .chain(&mut candidates.semantic)
     {
         hit.content = redaction.projection(&hit.content);
-        redaction.metadata(&mut hit.metadata);
+        hit.metadata.redact(redaction);
         // Clients restore projections before fusion and reranking. Send text
         // once when the same node/message document supplies it; exact matches
         // have no document records and keep their content inline.
@@ -391,7 +391,7 @@ async fn list_chats(
     input.validate()?;
     let mut page = app.store.list_chats(&id, input).await?;
     for thread in &mut page.chats {
-        app.store.responses().metadata(&mut thread.metadata);
+        thread.metadata.redact(app.store.responses());
     }
     Ok(Json(page))
 }
@@ -444,7 +444,7 @@ async fn catalog(
         if let Some(title) = &mut chat.metadata.title {
             crate::chat_catalog::headline(title);
         }
-        app.store.responses().metadata(&mut chat.metadata);
+        chat.metadata.redact(app.store.responses());
     }
     Ok(Json(chats))
 }

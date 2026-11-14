@@ -1,4 +1,3 @@
-use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
 #[derive(
@@ -13,10 +12,10 @@ use serde::{Deserialize, Serialize};
     Deserialize,
     Serialize,
     clap::ValueEnum,
-    rmcp::schemars::JsonSchema,
+    schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Provider {
+pub enum Provider {
     ClaudeCode,
     Codex,
     Opencode,
@@ -27,10 +26,10 @@ pub(crate) enum Provider {
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
 /// field for every provider. The serialized keys remain provider names.
-pub(crate) type ProviderRoots = std::collections::BTreeMap<Provider, Vec<std::path::PathBuf>>;
+pub type ProviderRoots = std::collections::BTreeMap<Provider, Vec<std::path::PathBuf>>;
 
 impl Provider {
-    pub(crate) const ALL: &[Self] = &[
+    pub const ALL: &[Self] = &[
         Self::ClaudeCode,
         Self::Codex,
         Self::Opencode,
@@ -39,7 +38,7 @@ impl Provider {
         Self::Antigravity,
     ];
 
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
@@ -126,12 +125,6 @@ mod tests {
             assert!(name.parse::<Provider>().is_err());
             let json = serde_json::to_string(name).unwrap();
             assert!(serde_json::from_str::<Provider>(&json).is_err());
-            assert!(
-                serde_json::from_str::<crate::search_filter::Filter>(&format!(
-                    r#"{{"provider":[{json}]}}"#
-                ))
-                .is_err()
-            );
         }
     }
 }

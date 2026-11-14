@@ -381,7 +381,8 @@ fn queued_jsonl_prefix_applies_once_and_later_appends_remain_pending() {
     write_claude_session(&path, "session", "original sentinel");
     let history = HistorySource::file(&path);
     let mut stamp = history.stamp().unwrap();
-    let parsed = parse_stable_source(&history, &mut stamp, Provider::ClaudeCode.parser()).unwrap();
+    let parsed =
+        parse_stable_source(&history, &mut stamp, Parser::Native(Provider::ClaudeCode)).unwrap();
     let original_id = parsed.chat.as_ref().unwrap().messages.inline()[0]
         .id
         .clone();
@@ -459,7 +460,7 @@ fn queued_results_refresh_changed_sources_and_reject_removed_sources_before_writ
         let parsed = parse_stable_source(
             &HistorySource::file(&source),
             &mut stamp,
-            Provider::ClaudeCode.parser(),
+            Parser::Native(Provider::ClaudeCode),
         )
         .unwrap();
         if remove {
@@ -890,7 +891,7 @@ fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
             provider: Provider::ClaudeCode,
             roots: std::slice::from_ref(&root),
             cutoff_modified_ns: None,
-            parse: Provider::ClaudeCode.parser(),
+            parse: Parser::Native(Provider::ClaudeCode),
             authoritative: true,
         },
         discovery,

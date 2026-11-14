@@ -54,13 +54,13 @@ pub(crate) fn write_event(
     let event = match event {
         Event::Batch(batch) => {
             let mut batch = batch.clone();
-            redaction.batch(&mut batch);
+            batch.redact(redaction);
             safe = Event::Batch(batch);
             &safe
         }
         Event::Amend(amendment) => {
             let mut amendment = amendment.clone();
-            redaction.chat(&mut amendment.chat);
+            amendment.chat.redact(redaction);
             safe = Event::Amend(amendment);
             &safe
         }

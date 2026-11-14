@@ -48,7 +48,7 @@ cargo run-clif -- status
 cargo test-clif
 ```
 
-These aliases select Cranelift for mash and mash-query in the development profile. Dependencies
+These aliases select Cranelift for the workspace crates in the development profile. Dependencies
 keep LLVM, so their existing build cache can be reused. `test-clif` requires
 `cargo-nextest`. Use the usual commands below for standard LLVM verification
 and `cargo build --release` for optimized builds. Cranelift is an experimental
@@ -62,8 +62,26 @@ cargo clippy --all-targets -- -D warnings
 cargo test --doc
 ```
 
-The handwritten workspace includes the application and the pure `mash-query`
-crate. These default commands cover both. For an isolated query edit cycle,
+The workspace is the application crate `mash` (`app/`) and the crates under
+`crates/`. These default commands cover all of them.
+
+| Crate | Holds | Depends on |
+| --- | --- | --- |
+| `mash-query` | Pure query validation and literal matching | nothing of ours |
+| `mash-fleet` | Fleet CLI and readiness probe | nothing of ours |
+| `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
+| `mash` | Everything else, and both executables | all of the above |
+
+`mash` is being divided from the bottom up so that an edit recompiles only its
+own crate and the ones above it; the measurements under
+[The edit loop](#the-edit-loop) say why. The crates under `crates/` are
+internal: an item is `pub` there so another workspace crate can use it, not as
+a supported API, which is why they allow the Clippy lints that ask for
+published-API documentation. A lower crate never refers to a higher one. When
+a function needs a type from above, it belongs with that type: masking a
+search result is `ChatMetadata::redact`, next to `ChatMetadata`, not in
+`mash-model`'s `redaction`. Inside `mash`, `crate::role`, `crate::AppError`
+and the like still resolve, through imports in `app/lib.rs`. For an isolated query edit cycle,
 use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [crate boundaries](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
 the integrated checks required when changing search behavior.

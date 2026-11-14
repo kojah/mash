@@ -27,7 +27,7 @@ fn benchmark_parser_admission_retention() {
             provider: Provider::ClaudeCode,
             roots: &roots,
             cutoff_modified_ns: None,
-            parse: Provider::ClaudeCode.parser(),
+            parse: Parser::Native(Provider::ClaudeCode),
             authoritative: false,
         },
         discovery,

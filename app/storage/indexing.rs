@@ -238,7 +238,7 @@ impl Storage {
 
         for message in chat.messages.rows()? {
             let mut message = message?;
-            crate::redaction::private_message(&mut message);
+            crate::silver::NormalizedMessage::mask_private(&mut message);
             let fingerprint = message_fingerprint(&message);
             if existing_messages
                 .get(&message.id)

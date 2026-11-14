@@ -14,46 +14,46 @@ const MAX_LABEL_BYTES: usize = 4096;
 /// One provider message can carry several of each.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Activity {
+pub struct Activity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) tool_calls: Vec<ToolCall>,
+    pub tool_calls: Vec<ToolCall>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) tool_results: Vec<ToolResult>,
+    pub tool_results: Vec<ToolResult>,
 }
 
 /// One requested tool invocation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ToolCall {
+pub struct ToolCall {
     /// The provider's tool name; absent only where the provider omits it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) name: Option<String>,
+    pub name: Option<String>,
     /// Links results to this call within the chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) call_id: Option<String>,
+    pub call_id: Option<String>,
     /// The provider's arguments, verbatim; a JSON string when the provider
     /// records encoded or free-form arguments.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) input: Option<Value>,
+    pub input: Option<Value>,
 }
 
 /// One reported tool result. Its output stays in the entry's content.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ToolResult {
+pub struct ToolResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) call_id: Option<String>,
+    pub call_id: Option<String>,
     /// Present only where the provider records an error flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) is_error: Option<bool>,
+    pub is_error: Option<bool>,
 }
 
 impl Activity {
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.tool_calls.is_empty() && self.tool_results.is_empty()
     }
 
-    pub(crate) fn call(name: Option<&str>, call_id: Option<&str>, input: Option<&Value>) -> Self {
+    pub fn call(name: Option<&str>, call_id: Option<&str>, input: Option<&Value>) -> Self {
         Self {
             tool_calls: vec![ToolCall {
                 name: name.map(str::to_owned),
@@ -64,7 +64,7 @@ impl Activity {
         }
     }
 
-    pub(crate) fn result(call_id: Option<&str>, is_error: Option<bool>) -> Self {
+    pub fn result(call_id: Option<&str>, is_error: Option<bool>) -> Self {
         Self {
             tool_calls: Vec::new(),
             tool_results: vec![ToolResult {
@@ -74,13 +74,13 @@ impl Activity {
         }
     }
 
-    pub(crate) fn extend(&mut self, other: Self) {
+    pub fn extend(&mut self, other: Self) {
         self.tool_calls.extend(other.tool_calls);
         self.tool_results.extend(other.tool_results);
     }
 
     /// The silver `metadata` encoding: `None` when the entry has no activity.
-    pub(crate) fn encode(&self) -> Result<Option<String>, AppError> {
+    pub fn encode(&self) -> Result<Option<String>, AppError> {
         if self.is_empty() {
             return Ok(None);
         }
@@ -89,7 +89,7 @@ impl Activity {
             .map_err(|_| AppError::internal("serialize tool activity"))
     }
 
-    pub(crate) fn decode(value: Option<&str>) -> Result<Self, AppError> {
+    pub fn decode(value: Option<&str>) -> Result<Self, AppError> {
         value.map_or_else(
             || Ok(Self::default()),
             |json| {
@@ -100,7 +100,7 @@ impl Activity {
     }
 
     /// Approximate retained heap bytes, for bounded message staging.
-    pub(crate) fn retained_size(&self) -> usize {
+    pub fn retained_size(&self) -> usize {
         let label = |value: &Option<String>| value.as_ref().map_or(0, String::capacity);
         self.tool_calls
             .iter()
@@ -119,7 +119,7 @@ impl Activity {
     }
 
     /// External records name tools with bounded single-line labels.
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         let label = |value: &Option<String>| {
             value.as_ref().is_none_or(|value| {
                 !value.is_empty()
@@ -145,12 +145,12 @@ impl Activity {
 
     /// Mask recognizable credentials in every label and string leaf of the
     /// opaque inputs, keeping the inputs valid JSON.
-    pub(crate) fn redact(&mut self) {
+    pub fn redact(&mut self) {
         self.map_strings(crate::redaction::text);
     }
 
     /// Replace every label and string leaf of the opaque inputs.
-    pub(crate) fn map_strings(&mut self, map: impl Fn(&str) -> String + Copy) {
+    pub fn map_strings(&mut self, map: impl Fn(&str) -> String + Copy) {
         let mask = |value: &mut Option<String>| {
             if let Some(value) = value {
                 *value = map(value);

@@ -2,14 +2,14 @@
 use crate::AppError;
 use std::path::Path;
 
-pub(crate) fn directory(prefix: &str) -> Result<tempfile::TempDir, AppError> {
+pub fn directory(prefix: &str) -> Result<tempfile::TempDir, AppError> {
     let mut builder = tempfile::Builder::new();
     builder.prefix(prefix);
     crate::platform::private_tempdir(&mut builder);
     builder.tempdir().map_err(AppError::io)
 }
 
-pub(crate) fn sqlite(path: &Path) -> Result<rusqlite::Connection, AppError> {
+pub fn sqlite(path: &Path) -> Result<rusqlite::Connection, AppError> {
     let parent = path
         .parent()
         .ok_or_else(|| AppError::internal("scratch database has no directory"))?;

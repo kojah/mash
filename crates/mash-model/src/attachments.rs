@@ -8,22 +8,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) const MAX_BYTES: usize = 4 * 1024 * 1024;
-pub(crate) const MAX_FILES: usize = 32;
+pub const MAX_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_FILES: usize = 32;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "AttachmentConfiguration")]
-pub(crate) struct Configuration {
+pub struct Configuration {
     #[serde(default)]
-    pub(crate) share_files: bool,
+    pub share_files: bool,
     /// Only explicit provider attachment references within these roots can be retained.
     #[serde(default)]
-    pub(crate) allowed_roots: Vec<PathBuf>,
+    pub allowed_roots: Vec<PathBuf>,
 }
 
 impl Configuration {
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         if self.allowed_roots.len() > 32 || self.allowed_roots.iter().any(|p| !p.is_absolute()) {
             return Err(AppError::configuration(
                 "attachments.allowed_roots must contain at most 32 absolute paths",
@@ -35,7 +35,7 @@ impl Configuration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Source {
+pub enum Source {
     Retained {
         metadata: Metadata,
     },
@@ -56,7 +56,7 @@ pub(crate) enum Source {
 }
 
 impl Source {
-    pub(crate) fn retained_size(&self) -> usize {
+    pub fn retained_size(&self) -> usize {
         match self {
             Self::Base64 {
                 name,
@@ -88,7 +88,7 @@ impl Source {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Availability {
+pub enum Availability {
     NotUploaded,
     Retained,
     Missing,
@@ -98,7 +98,7 @@ pub(crate) enum Availability {
     External,
 }
 
-pub(crate) fn validate_metadata(records: &[Metadata]) -> Result<(), AppError> {
+pub fn validate_metadata(records: &[Metadata]) -> Result<(), AppError> {
     let mut ids = std::collections::HashSet::new();
     if records.len() > MAX_FILES
         || records.iter().any(|m| {
@@ -126,7 +126,7 @@ fn valid_digest(digest: &str) -> bool {
 
 /// Persist already-decoded attachment bytes. Binary `/v1/sync` uploads use
 /// this path directly; HTTP JSON uploads decode base64 first.
-pub(crate) fn write_bytes(root: &Path, metadata: &Metadata, bytes: &[u8]) -> Result<(), AppError> {
+pub fn write_bytes(root: &Path, metadata: &Metadata, bytes: &[u8]) -> Result<(), AppError> {
     validate_metadata(std::slice::from_ref(metadata))?;
     if metadata.availability != Availability::Retained {
         return Err(AppError::usage("invalid attachment upload"));
@@ -162,30 +162,30 @@ pub(crate) fn write_bytes(root: &Path, metadata: &Metadata, bytes: &[u8]) -> Res
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Metadata {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) media_type: String,
-    pub(crate) availability: Availability,
-    pub(crate) bytes: Option<u64>,
-    pub(crate) digest: Option<String>,
+pub struct Metadata {
+    pub id: String,
+    pub name: String,
+    pub media_type: String,
+    pub availability: Availability,
+    pub bytes: Option<u64>,
+    pub digest: Option<String>,
     /// Text is retained as a redacted UTF-8 view, never the original secret-bearing bytes.
-    pub(crate) redacted: bool,
+    pub redacted: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Listing {
-    pub(crate) message_id: String,
-    pub(crate) attachments: Vec<Metadata>,
+pub struct Listing {
+    pub message_id: String,
+    pub attachments: Vec<Metadata>,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Retrieved {
-    pub(crate) message_id: String,
-    pub(crate) attachment: Metadata,
-    pub(crate) data: String,
+pub struct Retrieved {
+    pub message_id: String,
+    pub attachment: Metadata,
+    pub data: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -195,13 +195,13 @@ pub(crate) struct Retrieved {
     reason = "wire identities distinguish publishing node, message and attachment"
 )]
 #[derive(schemars::JsonSchema)]
-pub(crate) struct Request {
-    pub(crate) node_id: String,
-    pub(crate) message_id: String,
-    pub(crate) attachment_id: Option<String>,
+pub struct Request {
+    pub node_id: String,
+    pub message_id: String,
+    pub attachment_id: Option<String>,
 }
 
-pub(crate) fn directory(database: &Path) -> PathBuf {
+pub fn directory(database: &Path) -> PathBuf {
     let mut path = database.as_os_str().to_owned();
     path.push(".attachments");
     PathBuf::from(path)
@@ -217,7 +217,7 @@ fn clean_name(name: &str) -> String {
     )
 }
 
-pub(crate) fn retain(
+pub fn retain(
     root: &Path,
     config: &Configuration,
     message_id: &str,
@@ -335,7 +335,7 @@ fn read_source(path: &Path, config: &Configuration) -> Result<Vec<u8>, Availabil
     Ok(bytes)
 }
 
-pub(crate) fn read(root: &Path, metadata: &Metadata) -> Result<String, AppError> {
+pub fn read(root: &Path, metadata: &Metadata) -> Result<String, AppError> {
     if metadata.availability != Availability::Retained {
         return Err(AppError::usage(
             "attachment bytes were not retained; inspect its availability",
@@ -366,7 +366,7 @@ pub(crate) fn read(root: &Path, metadata: &Metadata) -> Result<String, AppError>
     Ok(STANDARD.encode(bytes))
 }
 
-pub(crate) fn url(name: &str, url: &str) -> Source {
+pub fn url(name: &str, url: &str) -> Source {
     if let Some(data) = url
         .strip_prefix("data:")
         .and_then(|s| s.split_once(";base64,"))
@@ -376,7 +376,7 @@ pub(crate) fn url(name: &str, url: &str) -> Source {
             media_type: data.0.into(),
             data: data.1.into(),
         }
-    } else if let Ok(url) = reqwest::Url::parse(url)
+    } else if let Ok(url) = url::Url::parse(url)
         && let Ok(path) = url.to_file_path()
     {
         Source::File {
@@ -392,7 +392,7 @@ pub(crate) fn url(name: &str, url: &str) -> Source {
     }
 }
 
-pub(crate) fn local_image(path: &Path) -> Source {
+pub fn local_image(path: &Path) -> Source {
     let media_type = match path
         .extension()
         .and_then(|s| s.to_str())

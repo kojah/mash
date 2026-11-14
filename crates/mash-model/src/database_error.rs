@@ -7,7 +7,7 @@ use crate::{AppError, ErrorKind};
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[schemars(rename = "DatabaseOperation")]
-pub(crate) enum Operation {
+pub enum Operation {
     Unspecified,
     OpenCatalog,
     InspectCatalog,
@@ -30,7 +30,7 @@ impl Operation {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct DatabaseDetails {
+pub struct DatabaseDetails {
     operation: Operation,
     #[serde(skip_serializing_if = "Option::is_none")]
     sqlite_code: Option<i32>,
@@ -38,7 +38,7 @@ pub(crate) struct DatabaseDetails {
     sqlite_extended_code: Option<i32>,
 }
 
-pub(crate) fn error(operation: Operation, error: rusqlite::Error) -> AppError {
+pub fn error(operation: Operation, error: rusqlite::Error) -> AppError {
     let sqlite = error.sqlite_error();
     let locked = sqlite.is_some_and(|details| {
         matches!(

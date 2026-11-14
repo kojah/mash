@@ -87,7 +87,7 @@ fn compact_candidates_restore_identical_redacted_hits_before_ranking() {
         .chain(&mut candidates.semantic)
     {
         hit.content = crate::redaction::projection(&hit.content);
-        crate::redaction::metadata(&mut hit.metadata);
+        hit.metadata.redact(crate::redaction::Policy::ON);
     }
     for document in &mut candidates.documents {
         document.projection = crate::redaction::projection(&document.projection);

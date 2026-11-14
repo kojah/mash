@@ -98,3 +98,22 @@ fn parse_then_append(source: &HistorySource) -> Result<ParsedFile, AppError> {
         .map_err(AppError::io)?;
     Ok(parsed)
 }
+
+#[test]
+fn private_spans_are_removed_from_messages() {
+    let message: crate::silver::NormalizedMessage = serde_json::from_value(serde_json::json!({
+        "id": "m", "ordinal": 0, "context": {"kind": "linear"}, "role": "user",
+        "content": "a <private>secret plan</private>",
+        "dialogue_text": "a <private>secret plan</private>",
+        "created_at": null
+    }))
+    .unwrap();
+    let mut message = std::borrow::Cow::Borrowed(&message);
+    NormalizedMessage::mask_private(&mut message);
+    assert!(matches!(message, std::borrow::Cow::Owned(_)));
+    assert_eq!(message.content, "a <private>[PRIVATE]</private>");
+    assert_eq!(
+        message.dialogue_text.as_deref(),
+        Some("a <private>[PRIVATE]</private>")
+    );
+}

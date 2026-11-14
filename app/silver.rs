@@ -57,12 +57,6 @@ const MAX_RECORD_BYTES: usize = 8 * 1024 * 1024;
 const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 
-impl Provider {
-    fn parser(self) -> Parser {
-        Parser::Native(self)
-    }
-}
-
 #[derive(Clone, Copy)]
 enum Parser {
     Native(Provider),
@@ -155,6 +149,27 @@ pub(crate) struct NormalizedMessage {
 }
 
 impl NormalizedMessage {
+    /// Masks `<private>` spans, copying the message only when it holds one.
+    pub(crate) fn mask_private(message: &mut std::borrow::Cow<'_, Self>) {
+        use crate::redaction::{private, private_text};
+        let tagged = |text: &str| text.to_ascii_lowercase().contains("<private>");
+        let tools = message.tools.encode().ok().flatten();
+        if !(tagged(&message.content)
+            || message.dialogue_text.as_deref().is_some_and(tagged)
+            || tools.as_deref().is_some_and(tagged))
+        {
+            return;
+        }
+        let message = message.to_mut();
+        private_text(&mut message.content);
+        if let Some(text) = &mut message.dialogue_text {
+            private_text(text);
+        }
+        message
+            .tools
+            .map_strings(|value| private(value).into_owned());
+    }
+
     #[cfg(test)]
     pub(crate) fn dialogue(&self) -> &str {
         self.dialogue_text.as_deref().unwrap_or(&self.content)
@@ -251,7 +266,7 @@ fn index_at(
                 provider,
                 roots,
                 cutoff_modified_ns,
-                parse: provider.parser(),
+                parse: Parser::Native(provider),
                 authoritative: options.roots_are_authoritative,
             },
             discovery,
@@ -578,7 +593,7 @@ pub(crate) fn read_transcript(
     source: &HistorySource,
 ) -> Result<Option<Chat>, AppError> {
     let mut stamp = source.stamp()?;
-    Ok(parse_source_with_retries(source, &mut stamp, provider.parser())?.chat)
+    Ok(parse_source_with_retries(source, &mut stamp, Parser::Native(provider))?.chat)
 }
 
 /// A Codex session's source from the thread store at `store`, as indexing
@@ -661,7 +676,7 @@ fn apply_parsed_source(
         parsed = parse_source_with_retries(
             &result.source.history,
             &mut result.source.stamp,
-            provider.parser(),
+            Parser::Native(provider),
         )?;
     }
     summary.malformed_records += parsed.malformed_records;

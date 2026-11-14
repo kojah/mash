@@ -136,6 +136,26 @@ pub(crate) enum BatchKind {
 }
 
 impl Batch {
+    /// Masks credentials in everything a batch publishes.
+    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+        if !policy.enabled() {
+            return;
+        }
+        match self {
+            Self::Records { records } => records.iter_mut().for_each(|row| row.redact(policy)),
+            Self::Chats { records } => records.iter_mut().for_each(|chat| chat.redact(policy)),
+            Self::Messages { records } => {
+                for record in records {
+                    record.content = crate::redaction::text(&record.content);
+                    record.projection = crate::redaction::text(&record.projection);
+                    crate::redaction::attachments(&mut record.attachments);
+                    record.tools.redact();
+                }
+            }
+            Self::Tombstones { .. } => {}
+        }
+    }
+
     pub(crate) fn take(&mut self) -> Self {
         match self {
             Self::Records { records } => Self::Records {
@@ -163,6 +183,26 @@ impl Batch {
 }
 
 impl ChatRecord {
+    /// Masks credentials in the descriptive fields; enrichment derived from a
+    /// masked field is dropped with it.
+    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+        if !policy.enabled() {
+            return;
+        }
+        let mut changed = false;
+        for value in [&mut self.title, &mut self.project, &mut self.repository]
+            .into_iter()
+            .flatten()
+        {
+            let safe = crate::redaction::text(value);
+            changed |= safe != *value;
+            *value = safe;
+        }
+        if changed {
+            self.enrichment = None;
+        }
+    }
+
     pub(crate) fn validate_enrichment(&self) -> Result<(), crate::AppError> {
         if let Some(evidence) = &self.enrichment {
             if !evidence.is_current()

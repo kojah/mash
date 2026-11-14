@@ -1050,3 +1050,47 @@ fn turning_publication_masking_off_changes_the_publication_target() {
     // A different target makes the next publication a full replacement.
     assert_ne!(super::publication::target(&config), masked);
 }
+
+#[test]
+fn upload_serialization_masks_canonical_projection_and_metadata() {
+    use crate::shared::protocol::{Batch, Event, MessageRecord};
+    let event = Event::Batch(Batch::Messages {
+        records: vec![MessageRecord {
+            attachments: Vec::new(),
+            id: "m".into(),
+            chat_id: "c".into(),
+            ordinal: 0,
+            context: crate::message_context::MessageContext::default(),
+            role: crate::role::Role::User,
+            content: "password=\"hunter2\"".into(),
+            projection: "Authorization: Bearer opaque-value".into(),
+            created_at: None,
+            generation: None,
+            vector: None,
+            tools: crate::tools::Activity::default(),
+        }],
+    });
+    let mut buffer = Vec::new();
+    crate::shared::write_event(&mut buffer, &event, crate::redaction::Policy::ON).unwrap();
+    let safe = String::from_utf8(buffer).unwrap();
+    assert!(!safe.contains("hunter2") && !safe.contains("opaque-value"));
+    assert!(safe.contains("[REDACTED_SECRET]"));
+    // With publication masking off, uploads carry canonical text.
+    let mut raw = Vec::new();
+    crate::shared::write_event(&mut raw, &event, crate::redaction::Policy::new(false)).unwrap();
+    let raw = String::from_utf8(raw).unwrap();
+    assert!(raw.contains("hunter2") && raw.contains("opaque-value"));
+    let mut metadata = crate::search_results::ChatMetadata {
+        title: Some("password=\"hunter2\"".into()),
+        project: Some("postgres://u:secret@host/db".into()),
+        ..Default::default()
+    };
+    metadata.redact(crate::redaction::Policy::ON);
+    assert!(!metadata.title.unwrap().contains("hunter2"));
+    assert!(!metadata.project.unwrap().contains("secret@"));
+    // Local canonical rows are intentionally retained.
+    let Event::Batch(Batch::Messages { records }) = event else {
+        panic!()
+    };
+    assert!(records[0].content.contains("hunter2"));
+}

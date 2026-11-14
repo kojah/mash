@@ -651,3 +651,23 @@ fn a_message_copied_into_forked_chats_takes_one_chat_result() {
         2
     );
 }
+
+#[test]
+fn clipping_never_exposes_a_partial_token() {
+    let secret = "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r";
+    let source = format!("{} token: {secret} trailing", "padding ".repeat(30));
+    let excerpt = evidence_window(&source, "token", 180);
+    assert!(!excerpt.contains("ghp_") && !excerpt.contains("K9nR2"));
+    assert!(excerpt.contains("*****"));
+}
+
+#[test]
+fn a_disabled_policy_passes_metadata_through() {
+    let policy = crate::redaction::Policy::new(false);
+    let mut metadata = crate::search_results::ChatMetadata {
+        title: Some("password=\"hunter2\"".into()),
+        ..Default::default()
+    };
+    metadata.redact(policy);
+    assert_eq!(metadata.title.as_deref(), Some("password=\"hunter2\""));
+}

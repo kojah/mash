@@ -160,7 +160,7 @@ impl Storage {
             .map_err(AppError::database)?;
         for message in source.messages.rows()? {
             let mut message = message?;
-            crate::redaction::private_message(&mut message);
+            crate::silver::NormalizedMessage::mask_private(&mut message);
             if !written.insert(message.id.clone()) {
                 return Err(AppError::database_data(
                     "Claude contribution repeats a message",

@@ -419,5 +419,6 @@ pub(crate) fn discovered_sources(provider: Provider, roots: &[PathBuf]) -> Vec<H
 #[cfg(test)]
 pub(crate) fn parse_test_source(provider: Provider, source: &HistorySource) -> super::ParsedFile {
     let mut stamp = source.stamp().expect("test source stamp");
-    super::parse_stable_source(source, &mut stamp, provider.parser()).expect("test parse")
+    super::parse_stable_source(source, &mut stamp, super::Parser::Native(provider))
+        .expect("test parse")
 }

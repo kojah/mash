@@ -132,8 +132,7 @@ mod tests {
         ] {
             let path = root.path().join(format!("{}.jsonl", provider.as_str()));
             std::fs::write(&path, text).unwrap();
-            let expected = provider
-                .parser()
+            let expected = crate::silver::Parser::Native(provider)
                 .parse(&crate::silver::HistorySource::file(&path))
                 .unwrap()
                 .chat
@@ -162,7 +161,7 @@ mod tests {
             let parsed = crate::silver::parse_stable_source(
                 &crate::silver::HistorySource::file(&path),
                 &mut stamp,
-                provider.parser(),
+                crate::silver::Parser::Native(provider),
             )
             .unwrap();
             assert_eq!(parsed.malformed_records, 1);

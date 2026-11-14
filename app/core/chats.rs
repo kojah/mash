@@ -213,7 +213,7 @@ pub(super) async fn run(
         None => work.await?,
     };
     for row in &mut response.chats {
-        config.redaction.output().metadata(&mut row.chat.metadata);
+        row.chat.metadata.redact(config.redaction.output());
     }
     if let Some(capture) = capture {
         let use_shared = shared_only || (!local_only && config.shared.is_some());

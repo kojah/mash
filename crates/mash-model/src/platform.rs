@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 /// Temporary directories readable only by the current user where the
 /// platform has Unix modes; elsewhere the user profile's access control applies.
-pub(crate) fn private_tempdir(builder: &mut tempfile::Builder<'_, '_>) {
+pub fn private_tempdir(builder: &mut tempfile::Builder<'_, '_>) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -18,7 +18,7 @@ pub(crate) fn private_tempdir(builder: &mut tempfile::Builder<'_, '_>) {
 }
 
 /// Directories readable only by the current user, as for `private_tempdir`.
-pub(crate) fn private_directory(builder: &mut fs::DirBuilder) {
+pub fn private_directory(builder: &mut fs::DirBuilder) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -29,7 +29,7 @@ pub(crate) fn private_directory(builder: &mut fs::DirBuilder) {
 }
 
 /// Files readable only by the current user, as for `private_tempdir`.
-pub(crate) fn private_file(options: &mut fs::OpenOptions) {
+pub fn private_file(options: &mut fs::OpenOptions) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -41,14 +41,14 @@ pub(crate) fn private_file(options: &mut fs::OpenOptions) {
 
 /// Mash's own directory, `~/.mash`, on every platform: its configuration,
 /// index, models and Qdrant all live here, next to the agents' own folders.
-pub(crate) fn mash_home() -> Option<PathBuf> {
+pub fn mash_home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|directories| directories.home_dir().join(".mash"))
 }
 
 /// Persist a directory's entries, such as a rename into it. Windows cannot
 /// open a directory to sync it: its renames stay atomic for other processes
 /// but are not ordered against power loss, so callers must not claim that.
-pub(crate) fn sync_directory(path: &Path) -> io::Result<()> {
+pub fn sync_directory(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
         fs::File::open(path).and_then(|file| file.sync_all())
@@ -62,7 +62,7 @@ pub(crate) fn sync_directory(path: &Path) -> io::Result<()> {
 
 /// Flush a file's contents to disk. Windows flushes only through a handle
 /// opened for writing; the file's bytes are not changed.
-pub(crate) fn sync_file(path: &Path) -> io::Result<()> {
+pub fn sync_file(path: &Path) -> io::Result<()> {
     #[cfg(windows)]
     let file = fs::OpenOptions::new().write(true).open(path)?;
     #[cfg(not(windows))]
@@ -72,7 +72,7 @@ pub(crate) fn sync_file(path: &Path) -> io::Result<()> {
 
 /// Whether a regular file can be run: an execute bit on Unix; on Windows the
 /// extension decides, which PATH lookups apply through PATHEXT.
-pub(crate) fn is_executable(metadata: &fs::Metadata) -> bool {
+pub fn is_executable(metadata: &fs::Metadata) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -87,11 +87,7 @@ pub(crate) fn is_executable(metadata: &fs::Metadata) -> bool {
 /// The executable a bare command name resolves to in `path` (a PATH value),
 /// relative entries taken from `base`. Windows also tries each `PATHEXT`
 /// extension, which is how `claude` finds npm's `claude.cmd`.
-pub(crate) fn find_program(
-    name: &str,
-    path: &std::ffi::OsStr,
-    base: &Path,
-) -> Option<std::path::PathBuf> {
+pub fn find_program(name: &str, path: &std::ffi::OsStr, base: &Path) -> Option<std::path::PathBuf> {
     let extensions: Vec<String> = if cfg!(windows) {
         std::env::var("PATHEXT")
             .unwrap_or_else(|_| ".EXE;.CMD;.BAT".to_owned())
@@ -116,8 +112,8 @@ pub(crate) fn find_program(
 /// Windows converts only drive paths (`file:///c%3A/...`) natively, so a
 /// drive-less URI (a WSL or remote workspace) keeps its decoded POSIX path
 /// there instead of being dropped; elsewhere the standard conversion applies.
-pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
-    let url = reqwest::Url::parse(uri).ok()?;
+pub fn file_uri_path(uri: &str) -> Option<String> {
+    let url = url::Url::parse(uri).ok()?;
     if url.scheme() != "file" {
         return None;
     }
@@ -133,8 +129,8 @@ pub(crate) fn file_uri_path(uri: &str) -> Option<String> {
 /// The path a VS Code remote workspace URI names on its remote machine
 /// (`vscode-remote://ssh-remote%2Bhost/home/me/repo` is `/home/me/repo`).
 /// The authority identifies the SSH host, container or Codespace instead.
-pub(crate) fn remote_uri_path(uri: &str) -> Option<String> {
-    let url = reqwest::Url::parse(uri).ok()?;
+pub fn remote_uri_path(uri: &str) -> Option<String> {
+    let url = url::Url::parse(uri).ok()?;
     if url.scheme() != "vscode-remote" || url.host_str().is_none_or(str::is_empty) {
         return None;
     }
@@ -144,7 +140,7 @@ pub(crate) fn remote_uri_path(uri: &str) -> Option<String> {
 /// The local path for a decoded URI path, as structured editor URIs carry
 /// it: always `/`-rooted. On Windows a drive path (`/c:/...`) becomes native
 /// (`C:\...`); any other rooted path keeps its POSIX form.
-pub(crate) fn uri_path(path: &str) -> Option<String> {
+pub fn uri_path(path: &str) -> Option<String> {
     if !path.starts_with('/') {
         return None;
     }
@@ -156,7 +152,7 @@ pub(crate) fn uri_path(path: &str) -> Option<String> {
 
 /// Whether `path` starts with a Windows drive (`C:\` or `c:/`), whichever
 /// platform reads it: histories written on Windows can be read elsewhere.
-pub(crate) fn is_drive_path(path: &str) -> bool {
+pub fn is_drive_path(path: &str) -> bool {
     let bytes = path.as_bytes();
     bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
@@ -203,7 +199,7 @@ fn percent_decode(text: &str) -> Option<String> {
 /// administrator install) keeps running in place. Between the two renames the
 /// installed path is briefly absent, so `MASH_KEEP_EXECUTABLE=1` opts out
 /// where processes start constantly (test runners). No-op elsewhere.
-pub(crate) fn release_installed_executable() {
+pub fn release_installed_executable() {
     #[cfg(windows)]
     {
         if std::env::var_os("MASH_KEEP_EXECUTABLE").is_some_and(|value| value == "1") {

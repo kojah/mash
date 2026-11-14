@@ -108,6 +108,28 @@ pub(crate) struct ChatMetadata {
     pub(crate) updated_at: Option<i64>,
 }
 
+impl ChatMetadata {
+    /// Masks credentials in the descriptive fields; enrichment derived from a
+    /// masked field is dropped with it.
+    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+        if !policy.enabled() {
+            return;
+        }
+        let mut changed = false;
+        for value in [&mut self.title, &mut self.project, &mut self.repository]
+            .into_iter()
+            .flatten()
+        {
+            let safe = crate::redaction::text(value);
+            changed |= safe != *value;
+            *value = safe;
+        }
+        if changed {
+            self.enrichment = None;
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub(crate) enum Results {
@@ -396,7 +418,7 @@ fn collect_inner(
         );
         for hit in &mut hits {
             hit.content = redaction.text(&hit.content);
-            redaction.metadata(&mut hit.metadata);
+            hit.metadata.redact(redaction);
         }
         return Collected {
             results: Results::Messages(hits),
@@ -413,7 +435,7 @@ fn collect_inner(
         .filter(matches)
         .enumerate()
     {
-        redaction.metadata(&mut hit.metadata);
+        hit.metadata.redact(redaction);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.provider, hit.chat_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {

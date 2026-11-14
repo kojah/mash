@@ -109,7 +109,7 @@ fn encoded_value(text: &str, start: usize, escape_depth: usize) -> Range<usize> 
     start..text.len()
 }
 
-pub(crate) fn ranges(text: &str) -> Vec<Range<usize>> {
+pub fn ranges(text: &str) -> Vec<Range<usize>> {
     let Some(patterns) = patterns().filter(|_| text.len() <= MAX_BYTES) else {
         return std::iter::once(0..text.len()).collect();
     };
@@ -156,7 +156,7 @@ pub(crate) fn ranges(text: &str) -> Vec<Range<usize>> {
 
 /// Replaces what a person wrapped in `<private>…</private>` (any case, closed in
 /// the same text). An unclosed tag, often one being discussed, masks nothing.
-pub(crate) fn private(text: &str) -> Cow<'_, str> {
+pub fn private(text: &str) -> Cow<'_, str> {
     static PRIVATE: OnceLock<Option<Regex>> = OnceLock::new();
     let Some(pattern) = PRIVATE
         .get_or_init(|| Regex::new(r"(?is)(<private>)(.*?)(</private>)").ok())
@@ -179,14 +179,14 @@ pub(crate) fn private(text: &str) -> Cow<'_, str> {
     }
 }
 
-pub(crate) fn text(text: &str) -> String {
+pub fn text(text: &str) -> String {
     replace(text, &ranges(text), false)
 }
 
 // Excerpts retain source character offsets. Mask the full source before slicing,
 // so clipping a token cannot bypass detection. ASCII stars preserve byte/char
 // offsets for ASCII secrets; Unicode secret characters retain their byte width.
-pub(crate) fn projection(text: &str) -> String {
+pub fn projection(text: &str) -> String {
     replace(text, &ranges(text), true)
 }
 

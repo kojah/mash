@@ -1,10 +1,10 @@
-use rmcp::schemars;
+use schemars;
 use serde::{Deserialize, Serialize};
 
 /// Preserve provider-defined roles while making the common roles explicit.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(from = "String", into = "String")]
-pub(crate) enum Role {
+pub enum Role {
     User,
     Assistant,
     System,
@@ -14,7 +14,7 @@ pub(crate) enum Role {
 }
 
 impl Role {
-    pub(crate) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::User => "user",
             Self::Assistant => "assistant",

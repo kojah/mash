@@ -97,7 +97,7 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                 write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
             snapshot.visit_selected(BatchKind::Chats, false, delta, |mut batch| {
-                target.redaction.batch(&mut batch);
+                batch.redact(target.redaction);
                 if let Batch::Chats { records } = &batch {
                     for chat in records {
                         chats.insert(chat.id.clone(), chat.clone());
@@ -108,7 +108,7 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
             let amended = delta.filter(|delta| delta.amend).map(|delta| delta.after);
             if let Some(after) = amended {
                 snapshot.visit_amendments(after, |mut amendment| {
-                    target.redaction.chat(&mut amendment.chat);
+                    amendment.chat.redact(target.redaction);
                     chats.insert(amendment.chat.id.clone(), amendment.chat.clone());
                     write_event(
                         &mut writer,
@@ -118,7 +118,7 @@ fn capture(path: &Path, target: &Target, selection: Selection) -> Result<Source,
                 })?;
             }
             let mut messages = |mut batch: Batch| {
-                target.redaction.batch(&mut batch);
+                batch.redact(target.redaction);
                 if let Batch::Messages { records } = &mut batch {
                     for message in records {
                         visible += u64::from(
