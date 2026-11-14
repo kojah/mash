@@ -1570,23 +1570,25 @@ h1:focus {
   color: var(--fg);
 }
 @media (hover: none) {
-  /* Without hover the button is always shown, so it sits under the message
-     where it cannot cover the text. */
+  /* Without hover the button is always shown. It sits where it cannot cover
+     the text and takes no room of its own: under an answer, in the gap the
+     next message leaves; beside your own message, in the space to its left. */
   .cp {
-    position: static;
     width: 44px;
-    height: 32px;
-    margin-left: auto;
+    height: 28px;
     background: none;
     opacity: 0.7;
   }
-  /* Pull it up into the gap the message already leaves below its text. */
   .msg > .cp {
-    margin-top: -18px;
-    margin-bottom: -10px;
+    position: static;
+    margin: -20px 0 -24px auto;
   }
-  .you > .cp {
-    margin: 2px -6px -6px auto;
+  .log .you > .cp {
+    top: auto;
+    right: 100%;
+    bottom: 0;
+    background: none;
+    color: var(--dim);
   }
 }
 @keyframes skp {
@@ -3653,11 +3655,37 @@ summary.rw::-webkit-details-marker {
   min-height: 32px;
   margin-top: 4px;
 }
+/* Before the first question: the greeting and some questions to start from,
+   together in the middle, in a chat no taller than they need. */
+#mashy.fresh {
+  height: auto;
+  max-height: min(560px, calc(100dvh - 120px));
+}
+.mashy-hello {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: auto;
+  padding: 14px 4px 10px;
+  color: var(--body);
+  font-size: 14px;
+  text-align: center;
+}
+.mashy-hello img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+.mashy-hello p {
+  max-width: 30ch;
+  margin: 0;
+}
 .mashy-sugg {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
-  padding: 0 12px 8px;
 }
 .mashy-sugg button {
   min-height: 30px;
@@ -3712,10 +3740,33 @@ summary.rw::-webkit-details-marker {
     width: auto;
     max-width: none;
     height: auto;
+    max-height: none;
     border: 0;
     border-radius: 0;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* A browser's own bars can sit outside this box and show the page
+       behind; the same colour all round it leaves nothing to show. */
+    box-shadow: 0 0 0 100vmax var(--raised);
+  }
+  #mashy.fresh {
+    height: auto;
+    max-height: none;
+  }
+  /* The page behind stays where it is while the sheet is over it. */
+  html:has(#mashy),
+  html:has(#mashy) body {
+    overflow: hidden;
+  }
+  .mashy-sugg {
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .mashy-sugg button {
+    min-height: 40px;
+    padding: 0 16px;
+    font-size: 14px;
   }
   #mashy textarea {
     /* Below 16px, iOS zooms the page when the field is focused. */

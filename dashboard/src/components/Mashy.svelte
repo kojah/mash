@@ -82,7 +82,7 @@ function followed(event: MouseEvent): void {
 {#if status.data?.enabled}
   {#if mashy.open}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-    <section id="mashy" aria-label="Mashy" onclick={followed}>
+    <section id="mashy" class:fresh={empty} aria-label="Mashy" onclick={followed}>
       <header>
         <img src={asset("mashy.png")} alt="" />
         <div><strong>Mashy</strong><small>reads your chats and memories · changes nothing</small></div>
@@ -91,7 +91,15 @@ function followed(event: MouseEvent): void {
       </header>
       <div class="mashy-log" bind:this={log} aria-live="polite">
         {#if openChat}<span class="mashy-ctx"><i></i>About: {openChat.title ?? `chat ${openChat.id.slice(-8)}`}</span>{/if}
-        {#if empty}<div class="mashy-a"><p>Hi, I’m Mashy. Ask me about anything in your past chats{openChat ? ", or about the chat you have open" : ""}.</p></div>{/if}
+        {#if empty}
+          <div class="mashy-hello">
+            <img src={asset("mashy.png")} alt="" />
+            <p>Hi, I’m Mashy. Ask me about anything in your past chats{openChat ? ", or about the chat you have open" : ""}.</p>
+            <div class="mashy-sugg">
+              {#each suggestions as suggestion (suggestion)}<button type="button" onclick={() => submit(suggestion)}>{suggestion}</button>{/each}
+            </div>
+          </div>
+        {/if}
         {#each mashy.turns as turn, index (index)}
           {#if turn.role === "user"}
             <div class="mashy-q">{turn.content}</div>
@@ -117,11 +125,6 @@ function followed(event: MouseEvent): void {
           </div>
         {/if}
       </div>
-      {#if !mashy.busy}
-        <div class="mashy-sugg">
-          {#each suggestions as suggestion (suggestion)}<button type="button" onclick={() => submit(suggestion)}>{suggestion}</button>{/each}
-        </div>
-      {/if}
       <form onsubmit={(event) => { event.preventDefault(); submit(draft); }}>
         <label class="sr-only" for="mashy-question">Ask Mashy about your past chats</label>
         <textarea

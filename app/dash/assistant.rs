@@ -36,7 +36,9 @@ const MAX_RESULT: usize = 16_000;
 const MAX_MESSAGE: usize = 1_500;
 /// Messages one `read_chat` returns.
 const CHAT_PAGE: u32 = 60;
-const MAX_ANSWER_TOKENS: u32 = 1_200;
+/// Tokens of one reply. Models that think before they write spend this on
+/// the thinking too, so it is several answers' worth.
+const MAX_REPLY_TOKENS: u32 = 8_000;
 /// How long the model may take over one reply.
 const DEADLINE: Duration = Duration::from_secs(90);
 /// Questions answered at once, across every browser.
@@ -44,6 +46,9 @@ pub(super) const MAX_QUESTIONS: usize = 2;
 
 /// What the model is told when its lookups are used up.
 const ANSWER_NOW: &str = "You have used all your lookups for this question. Answer now from what you found, and do not ask for more.";
+/// What the reader is told when a reply hit its length limit before any text.
+const OUT_OF_ROOM: &str =
+    "The model ran out of room before it wrote an answer. Try again, or ask something narrower.";
 /// What the reader is told when the model still has nothing to say.
 const NOTHING_TO_SAY: &str =
     "I couldn’t get to an answer in the lookups I had. Try asking about something narrower.";
@@ -207,11 +212,32 @@ async fn ask(
     let (events, receiver) = mpsc::channel(32);
     tokio::spawn(async move {
         let _permit = permit;
+        let started = std::time::Instant::now();
         let outcome = converse(&state, &assistant, &token, ask, &events).await;
+        let elapsed_ms = crate::progress::milliseconds(started);
         let last = match outcome {
-            Ok(partial) => Event::Done { partial },
-            Err(Stop::Gone) => return,
-            Err(Stop::Failed(reason, message)) => Event::Failed { reason, message },
+            Ok(partial) => {
+                tracing::info!(
+                    outcome = "answered",
+                    partial,
+                    elapsed_ms,
+                    "assistant_question"
+                );
+                Event::Done { partial }
+            }
+            Err(Stop::Gone) => {
+                tracing::info!(outcome = "abandoned", elapsed_ms, "assistant_question");
+                return;
+            }
+            Err(Stop::Failed(reason, message)) => {
+                tracing::warn!(
+                    outcome = "failed",
+                    ?reason,
+                    elapsed_ms,
+                    "assistant_question"
+                );
+                Event::Failed { reason, message }
+            }
         };
         let _ = events.send(last).await;
     });
@@ -306,12 +332,26 @@ struct Chunk {
     /// Some services report a failure inside the stream.
     #[serde(default)]
     error: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    usage: Option<Usage>,
+}
+
+/// What the service says a reply cost, when it says.
+#[derive(Clone, Copy, Default, serde::Deserialize)]
+struct Usage {
+    #[serde(default)]
+    prompt_tokens: u64,
+    #[serde(default)]
+    completion_tokens: u64,
 }
 
 #[derive(serde::Deserialize)]
 struct Choice {
     #[serde(default)]
     delta: Delta,
+    /// Why the reply ended: `stop`, `tool_calls`, `length` and others.
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Default, serde::Deserialize)]
@@ -339,6 +379,14 @@ struct FunctionDelta {
     #[serde(default)]
     arguments: Option<String>,
 }
+
+const LOOKUPS: [&str; 5] = [
+    "search",
+    "recent_chats",
+    "read_chat",
+    "read_message",
+    "memories",
+];
 
 /// One lookup the model may ask for.
 fn tool(name: &str, description: &str, properties: &serde_json::Value, required: &[&str]) -> Tool {
@@ -478,8 +526,16 @@ async fn converse(
     }));
     let mut lookups = 0;
     loop {
-        let reply = complete(assistant, token, &messages, &tools, events).await?;
+        let (reply, cut) = complete(assistant, token, &messages, &tools, events).await?;
         let exhausted = lookups >= MAX_LOOKUPS;
+        if cut {
+            // The reply hit its length limit: any lookup it was asking for is
+            // unfinished, and its text stops mid-sentence.
+            if reply.content.is_none() {
+                return Err(failed(Reason::Failed, OUT_OF_ROOM));
+            }
+            return Ok(true);
+        }
         if reply.tool_calls.is_empty() || exhausted {
             if reply.content.is_none() {
                 let delta = NOTHING_TO_SAY.to_owned();
@@ -519,14 +575,15 @@ async fn converse(
 }
 
 /// One reply from the model. Its text goes to the browser as it arrives; the
-/// lookups it asks for are returned with it.
+/// lookups it asks for are returned with it, and whether the reply was cut
+/// off at its length limit.
 async fn complete(
     assistant: &Assistant,
     token: &str,
     messages: &[Message],
     tools: &[Tool],
     events: &mpsc::Sender<Event>,
-) -> Result<Message, Stop> {
+) -> Result<(Message, bool), Stop> {
     let unreachable = || failed(Reason::Unreachable, "Couldn’t reach the model.");
     let client = CLIENT.as_ref().map_err(|_| unreachable())?;
     let request = client
@@ -539,36 +596,20 @@ async fn complete(
             tools,
             tool_choice: "auto",
             stream: true,
-            max_tokens: MAX_ANSWER_TOKENS,
+            max_tokens: MAX_REPLY_TOKENS,
         });
     // One attempt: a request that may have been billed is never sent again.
-    let response = request.send().await.map_err(|_| unreachable())?;
-    match response.status().as_u16() {
-        200..=299 => {}
-        401..=403 => {
-            return Err(failed(
-                Reason::Refused,
-                "The model’s service refused the key, or the account is out of credit.",
-            ));
-        }
-        429 => {
-            return Err(failed(
-                Reason::Limited,
-                "The model’s service is limiting requests. Try again in a moment.",
-            ));
-        }
-        404 => {
-            return Err(failed(
-                Reason::Failed,
-                "The model’s service does not know the configured model or address.",
-            ));
-        }
-        _ => {
-            return Err(failed(
-                Reason::Failed,
-                "The model’s service reported an error.",
-            ));
-        }
+    let started = std::time::Instant::now();
+    let response = request.send().await.map_err(|error| {
+        tracing::warn!(
+            timeout = error.is_timeout(),
+            connect = error.is_connect(),
+            "assistant_model_unreachable"
+        );
+        unreachable()
+    })?;
+    if let Some(stop) = turned_down(response.status().as_u16()) {
+        return Err(stop);
     }
     let mut reply = Message {
         role: "assistant",
@@ -577,6 +618,8 @@ async fn complete(
         tool_call_id: None,
     };
     let mut text = String::new();
+    let mut finish = None;
+    let mut usage = Usage::default();
     let mut body = response.bytes_stream();
     let mut pending = Vec::new();
     while let Some(bytes) = body.next().await {
@@ -584,13 +627,20 @@ async fn complete(
         while let Some(end) = pending.iter().position(|byte| *byte == b'\n') {
             let line: Vec<u8> = pending.drain(..=end).collect();
             let Some(chunk) = chunk(&line) else { continue };
+            if let Some(reported) = chunk.usage {
+                usage = reported;
+            }
             if chunk.error.is_some() {
+                tracing::warn!("assistant_model_stream_error");
                 return Err(failed(
                     Reason::Failed,
                     "The model’s service reported an error.",
                 ));
             }
             for choice in chunk.choices {
+                if choice.finish_reason.is_some() {
+                    finish = choice.finish_reason;
+                }
                 if let Some(delta) = choice.delta.content {
                     // Models often open with blank lines, above all before
                     // asking for a lookup; an answer starts at its first word.
@@ -616,8 +666,41 @@ async fn complete(
             return Err(failed(Reason::Failed, "The model’s reply was too long."));
         }
     }
+    // Sizes and the service's own words for why it stopped; never the text.
+    tracing::info!(
+        finish = finish.as_deref().unwrap_or("none"),
+        text_chars = text.chars().count(),
+        lookups = reply.tool_calls.len(),
+        prompt_tokens = usage.prompt_tokens,
+        completion_tokens = usage.completion_tokens,
+        elapsed_ms = crate::progress::milliseconds(started),
+        "assistant_model_reply"
+    );
     reply.content = (!text.is_empty()).then_some(text);
-    Ok(reply)
+    Ok((reply, finish.as_deref() == Some("length")))
+}
+
+/// What a status other than success from the model's service means.
+fn turned_down(status: u16) -> Option<Stop> {
+    if (200..=299).contains(&status) {
+        return None;
+    }
+    tracing::warn!(status, "assistant_model_refused");
+    Some(match status {
+        401..=403 => failed(
+            Reason::Refused,
+            "The model’s service refused the key, or the account is out of credit.",
+        ),
+        429 => failed(
+            Reason::Limited,
+            "The model’s service is limiting requests. Try again in a moment.",
+        ),
+        404 => failed(
+            Reason::Failed,
+            "The model’s service does not know the configured model or address.",
+        ),
+        _ => failed(Reason::Failed, "The model’s service reported an error."),
+    })
 }
 
 /// One line of the model's stream, when it carries data.
@@ -778,6 +861,24 @@ fn plan(call: &Function) -> Result<Plan, &'static str> {
 /// model can read; nothing else happens. The console refuses any tool that is
 /// not read-only, whatever this module asks it for.
 async fn lookup(state: &Dash, call: &Function) -> String {
+    let started = std::time::Instant::now();
+    // Only a lookup on the list is named; the model can write anything.
+    let name = LOOKUPS
+        .iter()
+        .find(|name| **name == call.name)
+        .copied()
+        .unwrap_or("unknown");
+    let result = run(state, call).await;
+    tracing::info!(
+        name,
+        result_chars = result.chars().count(),
+        elapsed_ms = crate::progress::milliseconds(started),
+        "assistant_lookup"
+    );
+    result
+}
+
+async fn run(state: &Dash, call: &Function) -> String {
     match plan(call) {
         Err(refusal) => refusal.to_owned(),
         Ok(Plan::Chat(input)) => read_chat(state, input).await,

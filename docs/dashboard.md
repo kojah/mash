@@ -161,6 +161,11 @@ history.
 Each question sends the text Mashy reads to the model you configured. Without
 that configuration there is no circle and nothing is sent.
 
+If Mashy fails or answers badly, start the dashboard with `MASH_TRACE=1` and
+ask again. Its log then records each step of a question: which lookups ran and
+how much they returned, how long the model took, how many tokens it used and
+why it stopped. Questions, answers and history text are never logged.
+
 ## Save a transcript
 
 Use the transcript's **Export** menu to download the whole chat as Markdown or

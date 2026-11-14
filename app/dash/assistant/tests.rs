@@ -307,6 +307,52 @@ async fn a_model_that_never_answers_is_stopped_and_the_reader_is_told() {
     assert_eq!(fixture.asked.lock().unwrap().len(), MAX_LOOKUPS + 1);
 }
 
+/// A reply the service ended at its length limit, as a model that spent the
+/// limit thinking sends it: little or no text, then `length`.
+fn runs_out(text: &str) -> String {
+    let mut body = String::new();
+    if !text.is_empty() {
+        let _ = write!(
+            body,
+            "data: {}\n\n",
+            json!({"choices": [{"delta": {"content": text}}]})
+        );
+    }
+    let _ = write!(
+        body,
+        "data: {}\n\ndata: [DONE]\n\n",
+        json!({"choices": [{"delta": {}, "finish_reason": "length"}], "usage": {"prompt_tokens": 9, "completion_tokens": 4000}})
+    );
+    body
+}
+
+#[tokio::test]
+async fn a_reply_cut_off_at_its_length_limit_is_said_to_be_cut_off() {
+    let nothing = fixture(Some(Arc::new(|_| (200, runs_out("")))), None).await;
+    let events = nothing.ask(question("What did I do yesterday?")).await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0]["type"], "failed");
+    assert_eq!(events[0]["reason"], "failed");
+    assert!(
+        events[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("ran out of room")
+    );
+    assert_eq!(nothing.asked.lock().unwrap().len(), 1);
+
+    let some = fixture(Some(Arc::new(|_| (200, runs_out("It uses port")))), None).await;
+    let events = some.ask(question("Which port?")).await;
+    assert_eq!(events[0], json!({"type": "text", "delta": "It uses port"}));
+    assert_eq!(events[1], json!({"type": "done", "partial": true}));
+    assert!(
+        some.asked.lock().unwrap()[0].1["max_tokens"]
+            .as_u64()
+            .unwrap()
+            >= 4000
+    );
+}
+
 #[tokio::test]
 async fn a_service_that_refuses_or_limits_is_reported_once_and_not_retried() {
     for (status, reason) in [
