@@ -6,10 +6,6 @@ description = "Mash's configuration, embedding and reranking models, Qdrant view
 license = "MIT"
 publish = false
 
-# The sources stay under `app/`, beside the application library that used to
-# own them, as `mash-storage`'s do.
-[lib]
-path = "../../app/mash_search.rs"
 
 [features]
 console = ["dep:console-subscriber", "tokio/tracing"]

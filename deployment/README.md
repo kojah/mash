@@ -207,7 +207,7 @@ Default rollout selects shared-api and xenia. Include Macs only when requested
 or known available. Builds run once per selected platform.
 
 An API installer that preserves the existing shared silver root must include
-`bash tools/check-shared-silver.sh app/storage/schema.rs /absolute/shared-silver`
+`bash tools/check-shared-silver.sh crates/mash-storage/src/storage/schema.rs /absolute/shared-silver`
 in its read-only deployment preflight. This checks every immediate group/node
 SQLite file against the source release's schema before compilation; unknown or
 unreadable schemas fail. A successful lifecycle/authentication check alone does

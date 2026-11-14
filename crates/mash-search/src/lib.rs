@@ -1,7 +1,5 @@
 //! Root of the `mash-search` crate: configuration, the embedding and
-//! reranking models, local and shared Qdrant views, and ranking. Its files
-//! live beside the application library's under `app/`, as `mash-storage`'s do;
-//! a module belongs to whichever root declares it.
+//! reranking models, local and shared Qdrant views, and ranking.
 //!
 //! An internal crate: its public items are what the rest of the workspace may
 //! use, not a supported API.

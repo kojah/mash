@@ -1,6 +1,6 @@
 //! Root of the `mash-sync` crate: the shared index. It holds the node-side
 //! client, sync and publication, shared retrieval, and the server's silver
-//! store and view synchronization. Its files live under `app/shared/`.
+//! store and view synchronization.
 //!
 //! An internal crate: its public items are what the rest of the workspace may
 //! use, not a supported API.

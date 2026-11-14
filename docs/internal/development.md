@@ -62,8 +62,8 @@ cargo clippy --all-targets -- -D warnings
 cargo test --doc
 ```
 
-The workspace is the application crate `mash` (`app/`) and the crates under
-`crates/`. These default commands cover all of them.
+The workspace is the executables' crate `mash` (`cli/`), the application
+library `mash-app` (`app/`) and the crates under `crates/`. These default commands cover all of them.
 
 | Crate | Holds | Depends on |
 | --- | --- | --- |
@@ -71,9 +71,9 @@ The workspace is the application crate `mash` (`app/`) and the crates under
 | `mash-fleet` | Fleet CLI and readiness probe | nothing of ours |
 | `mash-model` | Vocabulary every layer shares: roles, providers, tool activity, attachments, credential masking, platform helpers, the typed error | nothing of ours |
 | `mash-silver` | The provider-independent chat model and the native history adapters: discovery, parsing, reconciliation inputs. Never opens the index | `mash-model` |
-| `mash-storage` (root `app/mash_storage.rs`) | The silver SQLite index and its migrations, memory records, portable export, and the search filter, result and catalogue types the layers above share. Its files stay under `app/` (`app/storage/`, `app/records/`, ...), beside the application library's: deploy tooling reads `app/storage/schema.rs` by path. A module belongs to whichever of the two roots declares it | `mash-query`, `mash-model`, `mash-silver` |
-| `mash-search` (root `app/mash_search.rs`) | Configuration, the embedding and reranking models, local and shared Qdrant views, ranking, tracing, and `blocking`. Its files also stay under `app/` (`app/config/`, `app/semantic/`, `app/views/`, ...) | `mash-query`, `mash-model`, `mash-silver`, `mash-storage` |
-| `mash-sync` (root `app/mash_sync.rs`) | The shared index: the node-side client, sync and publication, shared retrieval, and the server's silver store and view synchronization. Its files are `app/shared/` | `mash-query`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search` |
+| `mash-storage` | The silver SQLite index and its migrations, memory records, portable export, and the search filter, result and catalogue types the layers above share. Deploy tooling reads `crates/mash-storage/src/storage/schema.rs` by path | `mash-query`, `mash-model`, `mash-silver` |
+| `mash-search` | Configuration, the embedding and reranking models, local and shared Qdrant views, ranking, tracing, and `blocking`. | `mash-query`, `mash-model`, `mash-silver`, `mash-storage` |
+| `mash-sync` | The shared index: the node-side client, sync and publication, shared retrieval, and the server's silver store and view synchronization. | `mash-query`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search` |
 | `mash-app` (`app/`) | The application library: the indexing pipeline, the typed core the CLI, MCP and dashboard call, watching, runtime leases and service setup | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search`, `mash-sync` |
 | `mash-server` | The authenticated HTTP service for the shared index: routes, authorization, the sync protocol's endpoints and service setup. Its store stays in `mash-app` (`shared::server`) | `mash-app`, `mash-model` |
 | `mash-mcp` | The stdio MCP server, its tool contract, the dashboard's console and the generated history skill | `mash-app`, `mash-model`, `mash-silver` |

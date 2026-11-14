@@ -79,7 +79,7 @@ generate-queries:
 	bash queries/generate.sh
 
 check-generated: generate-queries
-	git diff --exit-code -- app/storage/generated app/shared/silver_store/generated
+	git diff --exit-code -- crates/mash-storage/src/storage/generated crates/mash-sync/src/shared/silver_store/generated
 
 # Coverage includes the installed-model and disposable shared-backend contracts.
 # LLVM instrumentation is required here; ordinary development uses Cranelift.

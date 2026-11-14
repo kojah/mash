@@ -16,7 +16,7 @@ all:
           mash_deploy_preflight:
             - [bash, tools/check-dev-api.sh, --deployment, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
             # Use the exact silver_dir from server.toml; this ordinary rollout preserves it.
-            - [bash, tools/check-shared-silver.sh, app/storage/schema.rs, /private/shared-silver]
+            - [bash, tools/check-shared-silver.sh, crates/mash-storage/src/storage/schema.rs, /private/shared-silver]
             # This installer owns a PID, so a supervised API must use a different rollout.
             - [sh, -c, 'test "$(systemctl --user show mash-shared.service --property ActiveState --value)" = inactive']
           mash_install:

@@ -151,7 +151,7 @@ jobs:
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ runner.temp }}/mash-test-models
-          key: mash-models-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'app/semantic.rs', 'app/semantic/models.rs', 'app/semantic/models/assets.rs', 'app/semantic/models/downloads.rs', 'app/semantic/models/install.rs', 'app/semantic/models/generations.rs') }}
+          key: mash-models-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'crates/mash-search/src/semantic.rs', 'crates/mash-search/src/semantic/models.rs', 'crates/mash-search/src/semantic/models/assets.rs', 'crates/mash-search/src/semantic/models/downloads.rs', 'crates/mash-search/src/semantic/models/install.rs', 'crates/mash-search/src/semantic/models/generations.rs') }}
       - name: Explicitly install and smoke-test local models
         if: steps.model-cache.outputs.cache-hit != 'true'
         run: |

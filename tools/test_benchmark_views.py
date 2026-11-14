@@ -22,7 +22,7 @@ class CanonicalWitnessTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.database = Path(self.directory.name) / "silver.sqlite3"
-        schema = Path(__file__).resolve().parents[1] / "app/storage/silver.sql"
+        schema = Path(__file__).resolve().parents[1] / "crates/mash-storage/src/storage/silver.sql"
         with closing(sqlite3.connect(self.database)) as connection:
             # Only schema creation knows this function. The witness connection
             # must read stored bytes, never depend on a Python silver codec.

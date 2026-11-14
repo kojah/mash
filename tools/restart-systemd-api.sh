@@ -72,7 +72,7 @@ check_service() {
 check_service
 [[ $action != check ]] || exit 0
 [[ ( ! -e $destination || -w $destination ) && -w $(dirname "$destination") && -w $pointer && -w $(dirname "$pointer") ]]
-silver_schema_range "$(dirname "$0")/../app/storage/schema.rs"
+silver_schema_range "$(dirname "$0")/../crates/mash-storage/src/storage/schema.rs"
 if [[ $action == install ]]; then
     [[ -x $artifact ]]
     source_schema=$schema source_schema_min=$schema_min

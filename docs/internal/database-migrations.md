@@ -5,7 +5,7 @@ and full search rebuilds. Use the same migration definitions for local silver
 and each node's shared silver database. Export/import remains for portability,
 recovery and legacy transitions that do not have a tested migration.
 
-`app/storage/schema.rs` supports upgrades from versions 62 through 65 to 66.
+`crates/mash-storage/src/storage/schema.rs` supports upgrades from versions 62 through 65 to 66.
 These are the supported older starting versions. The same initializer creates
 and upgrades local and shared silver. Read-only commands do not migrate.
 

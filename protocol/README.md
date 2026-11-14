@@ -82,7 +82,7 @@ invariants and missing tools fail the command. Negative configurations deliberat
 break the modeled contracts, including the historical replay-ordering bug below.
 A green suite establishes properties of these bounded abstractions only.
 
-The Qdrant engine lives under `app/views/qdrant`, with common scope, projection,
+The Qdrant engine lives under `crates/mash-search/src/views/qdrant`, with common scope, projection,
 and retrieval types for direct local access and the shared HTTP service. The
 original extraction preserved shared mutation ordering and revision checks.
 The local cutover is modeled separately by `LocalWriter` and `LocalGold` below;
@@ -97,7 +97,7 @@ and lock boundaries remain unchanged. Node-scoped deletion is tested against
 another publisher with identical chat and message IDs.
 
 Qdrant point publication now uses the generated Tonic client in
-`app/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
+`crates/mash-search/src/views/qdrant/api/grpc.rs`; REST remains for reads and collection setup.
 This changes encoding and transport, not modeled atomic actions: each upsert or
 delete awaits strong ordering and requires `Completed`, without automatic RPC
 retries. Partial batches still fail before certification. Request/response limits,
@@ -327,7 +327,7 @@ not fence those requests; that uncovered risk is tracked in
 `mash-c05a`. It also assumes all silver writers obey admission, Qdrant retains
 acknowledged writes, and collection/configuration mutation by external clients
 does not race the operation. No power-loss or remote fencing proof is claimed.
-The direct local lifecycle tests in `app/views/local/tests.rs` exercise real
+The direct local lifecycle tests in `crates/mash-search/src/views/local/tests.rs` exercise real
 gRPC mutations, hidden/deleted projections, failed inference, and replay. Status
 reads use one SQLite snapshot for counts and certificate and decline readiness
 if their later Qdrant inspection captured different silver.
@@ -404,13 +404,13 @@ captured for the upload. TLC catches an edit between capture and acknowledgement
 
 Source mapping:
 
-- [shared/publication.rs](../app/shared/publication.rs): `publish_result`,
+- [shared/publication.rs](../crates/mash-sync/src/shared/publication.rs): `publish_result`,
   `acknowledge`, `already_published`.
-- [storage/publication.rs](../app/storage/publication.rs):
+- [storage/publication.rs](../crates/mash-storage/src/storage/publication.rs):
   `with_publication_snapshot`, `acknowledge_publication`.
 - Existing regressions:
-  [journal preservation](../app/storage/tests/publication.rs) and
-  [lost-ack recovery](../app/shared/tests/publication_recovery.rs).
+  [journal preservation](../crates/mash-storage/src/storage/tests/publication.rs) and
+  [lost-ack recovery](../crates/mash-sync/src/shared/tests/publication_recovery.rs).
 
 The successful freshness recovery is abstracted as a transition with all
 identity/source/artifact checks already satisfied. This does not verify the
@@ -450,9 +450,9 @@ finds resurrection.
 
 Source mapping:
 
-- [silver_store/apply.rs](../app/shared/silver_store/apply.rs): `start`,
+- [silver_store/apply.rs](../crates/mash-sync/src/shared/silver_store/apply.rs): `start`,
   `apply`, `Upload::forget`, `Upload::chat`.
-- [silver_store.rs](../app/shared/silver_store.rs): `SilverStore::write`.
+- [silver_store.rs](../crates/mash-sync/src/shared/silver_store.rs): `SilverStore::write`.
 - Existing regression:
   [canonical revision and atomic publication](../crates/mash-server/src/tests/silver_revision.rs).
 
@@ -481,18 +481,18 @@ unfinished point writes; certification follows only completed work.
 
 Source mapping:
 
-- [server/store/sync.rs](../app/shared/server/store/sync.rs): `index`,
+- [server/store/sync.rs](../crates/mash-sync/src/shared/server/store/sync.rs): `index`,
   `sync_upload`, `certify`.
-- [server/store/replay.rs](../app/shared/server/store/replay.rs): `replay`.
-- [views/materialize.rs](../app/views/materialize.rs): `Writer::write_chat`
+- [server/store/replay.rs](../crates/mash-sync/src/shared/server/store/replay.rs): `replay`.
+- [views/materialize.rs](../crates/mash-search/src/views/materialize.rs): `Writer::write_chat`
   and `finish` retain replay's inference batches and awaited point writes;
   invalidation, ownership and certification remain in the replay coordinator.
-- [views/qdrant/views.rs](../app/views/qdrant/views.rs): `NodeViews::current`,
+- [views/qdrant/views.rs](../crates/mash-search/src/views/qdrant/views.rs): `NodeViews::current`,
   `put_node_views`, `delete_node_documents`.
-- [views/qdrant/configuration.rs](../app/views/qdrant/configuration.rs):
+- [views/qdrant/configuration.rs](../crates/mash-search/src/views/qdrant/configuration.rs):
   `select_views`, `active_configuration`.
-- [server/store.rs](../app/shared/server/store.rs): per-node `lock`;
-  [silver_store.rs](../app/shared/silver_store.rs): exclusive directory ownership.
+- [server/store.rs](../crates/mash-sync/src/shared/server/store.rs): per-node `lock`;
+  [silver_store.rs](../crates/mash-sync/src/shared/silver_store.rs): exclusive directory ownership.
 - Existing regressions in [recovery.rs](../app/views/qdrant/tests/recovery.rs)
   and [recipe.rs](../app/views/qdrant/tests/recipe.rs).
 
@@ -563,7 +563,7 @@ The real-backend readiness regression checks applied insert/replacement/deletion
 visibility while a proxy continuously reports optimization; API tests forbid
 polling the optimization queue. These checks do not prove latency at fleet scale.
 
-Retiring a node ([server/store/retire.rs](../app/shared/server/store/retire.rs),
+Retiring a node ([server/store/retire.rs](../crates/mash-sync/src/shared/server/store/retire.rs),
 `mash-server --retire-node`) is not a modeled action and needs none. It runs
 with the service stopped, under the history directory's exclusive hold, so it
 interleaves with no upload, replay or certification. Its three durable steps
@@ -848,7 +848,7 @@ Implemented source mapping:
 
 - `Receive` / `ChangedRetry`: `crates/mash-server/src/sync.rs::handle_chunk` checks
   the negotiated limits, zstd envelope and decoded digest before
-  `app/shared/sync/catalog.rs::append` rejects gaps, foreign owners and
+  `crates/mash-sync/src/shared/sync/catalog.rs::append` rejects gaps, foreign owners and
   conflicting retries of a retained sequence.
 - `Persist`: `Catalog::write_piece` creates the piece file with `create_new`,
   calls `sync_all` on the file and the piece directory, and only then lets the
@@ -1034,7 +1034,7 @@ Known implementation/model gaps, recorded in Beads:
 
 Two benchmarks cover different layers:
 
-- **Codec** (`app/shared/sync/bench.rs`, `cargo test --lib sync::bench --
+- **Codec** (`crates/mash-sync/src/shared/sync/bench.rs`, `cargo test --lib sync::bench --
   --nocapture`) compares the old uncompressed NDJSON body, whole-batch zstd over
   that NDJSON, and the production Protobuf+zstd pieces over a deterministic
   varied corpus. It reports wire bytes, encode/decode medians and projected
@@ -1093,7 +1093,7 @@ server commits receive revisions 1..3. `Commit`, `Receive`, `Save` and `Restart`
 represent separate remote commits, returned receipts, atomic file replacement
 and reopening the client. Responses may arrive out of order or be lost before
 saving. `BackfillReceipts::record`, `load_backfill_receipts` and
-`store_backfill_receipts` in `app/shared/publication.rs` implement these local
+`store_backfill_receipts` in `crates/mash-sync/src/shared/publication.rs` implement these local
 boundaries; the sender's atomic maximum aggregates concurrent lane responses.
 Source identity stays fixed, and server progress is the maximum received server
 revision, initially zero. The mixed-domain and last-response-wins configurations
@@ -1110,7 +1110,7 @@ configuration reproduces the first invalid state.
 [ProgressiveBackfill.tla](ProgressiveBackfill.tla) is a **partially implemented
 design contract**. The manifest transfer, durable membership table, coverage
 evidence, completion check, per-chat ordering and tombstone dominance
-exist in `app/shared/sync/catalog.rs` and the `/v1/sync` handlers:
+exist in `crates/mash-sync/src/shared/sync/catalog.rs` and the `/v1/sync` handlers:
 
 - While a baseline is active, every committed `/v1/sync` live publication records
   `live_revision` per chat in `backfill_members` and covers its baseline

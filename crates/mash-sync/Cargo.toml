@@ -6,10 +6,6 @@ description = "Mash's shared index: the node-side client, sync and publication, 
 license = "MIT"
 publish = false
 
-# The sources stay under `app/shared/`, as `mash-storage`'s and `mash-search`'s
-# stay under `app/`.
-[lib]
-path = "../../app/mash_sync.rs"
 
 [features]
 # Fixtures and hooks the tests of other workspace crates need.

@@ -95,14 +95,14 @@ fn body(seed: u64, tokens: usize) -> String {
         "stream",
     ];
     const PATHS: &[&str] = &[
-        "app/shared/sync/wire.rs",
-        "app/shared/sync/catalog.rs",
+        "crates/mash-sync/src/shared/sync/wire.rs",
+        "crates/mash-sync/src/shared/sync/catalog.rs",
         "app/shared/server/sync.rs",
-        "app/shared/silver_store/apply.rs",
+        "crates/mash-sync/src/shared/silver_store/apply.rs",
         "protocol/SyncTransfer.tla",
-        "app/shared/publication.rs",
+        "crates/mash-sync/src/shared/publication.rs",
         "crates/mash-query/src/lib.rs",
-        "app/storage/silver.sql",
+        "crates/mash-storage/src/storage/silver.sql",
     ];
     let mut state = seed | 1;
     let mut text = String::with_capacity(tokens * 8);

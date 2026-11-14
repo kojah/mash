@@ -18,7 +18,7 @@ and never downloads or starts Qdrant.
 
 - Use Rusqlite as the sole SQLite library.
 - Use the common Qdrant engine and collection schema for local and shared lexical/vector search.
-- Keep one silver schema (`app/storage/silver.sql` with `app/storage/records.sql`) for local indexes and for
+- Keep one silver schema (`crates/mash-storage/src/storage/silver.sql` with `crates/mash-storage/src/storage/records.sql`) for local indexes and for
   each node's shared silver database on the server. Local views live in Qdrant;
   neither views store may be certified against history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-views --full`,
@@ -366,7 +366,7 @@ in that loop, and doctests at release milestones. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
-The workspace is `mash` (the executables, CLI and CLI contract tests, in `cli/`), `mash-app` (the application library, in `app/`) and the crates under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search`, `mash-sync`, `mash-mcp`, `mash-server`, `mash-dash`). `mash-storage`, `mash-search` and `mash-sync` keep their files under `app/` (their roots are `app/mash_storage.rs`, `app/mash_search.rs` and `app/mash_sync.rs`); storage and Qdrant tests that need the indexing pipeline or the layers above live in `app/storage_tests/`; see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
+The workspace is `mash` (the executables, CLI and CLI contract tests, in `cli/`), `mash-app` (the application library, in `app/`) and the crates under `crates/` (`mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search`, `mash-sync`, `mash-mcp`, `mash-server`, `mash-dash`). Each crate's files are under its own directory; `app/` holds only `mash-app`. Storage and Qdrant tests that need the indexing pipeline or the layers above live in `app/storage_tests/`; see the crate table in `docs/internal/development.md`. A lower crate never refers to a higher one, and a new workspace crate must be added to the Cranelift aliases in `.cargo/config.toml`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See [docs/crate-boundaries.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
 when changing query behavior.

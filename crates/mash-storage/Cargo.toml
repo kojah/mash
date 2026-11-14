@@ -6,10 +6,6 @@ description = "Mash's silver SQLite index, memory records and the search result 
 license = "MIT"
 publish = false
 
-# The sources stay under `app/`, beside the application library that used to
-# own them: deploy tooling reads `app/storage/schema.rs` by path.
-[lib]
-path = "../../app/mash_storage.rs"
 
 [features]
 # Fixtures and hooks the tests of other workspace crates need.

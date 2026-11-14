@@ -5,4 +5,4 @@ cd "$(dirname "$0")/.."
 # Keep checked-in SQLite queries reproducible.
 test "$(sqlc version)" = "v1.31.1"
 sqlc generate
-rustfmt --edition 2024 app/storage/generated/queries.rs app/shared/silver_store/generated/queries.rs
+rustfmt --edition 2024 crates/mash-storage/src/storage/generated/queries.rs crates/mash-sync/src/shared/silver_store/generated/queries.rs

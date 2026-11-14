@@ -7,20 +7,20 @@ plugins:
 sql:
   - engine: sqlite
     schema:
-      - app/storage/silver.sql
+      - crates/mash-storage/src/storage/silver.sql
     queries: queries/sqlite/index.sql
     codegen:
       - plugin: rust
-        out: app/storage/generated
+        out: crates/mash-storage/src/storage/generated
         options:
           db_crate: rusqlite
           output: queries.rs
   - engine: sqlite
-    schema: app/storage/silver.sql
+    schema: crates/mash-storage/src/storage/silver.sql
     queries: queries/sqlite/shared.sql
     codegen:
       - plugin: rust
-        out: app/shared/silver_store/generated
+        out: crates/mash-sync/src/shared/silver_store/generated
         options:
           db_crate: rusqlite
           output: queries.rs

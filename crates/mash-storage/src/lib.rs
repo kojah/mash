@@ -1,7 +1,5 @@
 //! Root of the `mash-storage` crate: the silver SQLite index, memory records,
 //! and the search filter, result and catalogue types every layer above shares.
-//! Its files live beside the application library's under `app/`; a module
-//! belongs to exactly one of the two crates, the one whose root declares it.
 //!
 //! An internal crate: its public items are what the rest of the workspace may
 //! use, not a supported API.
