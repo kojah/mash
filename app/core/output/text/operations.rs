@@ -30,7 +30,7 @@ pub(super) fn view(out: &mut String, value: &ViewResponse) -> Result<(), serde_j
         line(
             out,
             &format!(
-                "\nMessage: {} · {} · ordinal={} · time (Unix ms): {}",
+                "\nMessage: {} · {} · ordinal={} · {}",
                 safe(&message.id),
                 message.role.as_str(),
                 message.ordinal,

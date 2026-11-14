@@ -1288,12 +1288,12 @@
         "oneOf": [
           {
             "const": "related-discussion",
-            "description": "What a shared-API request that omits its intent means; the configured\ndefault for searches is `views.query.intent`.",
+            "description": "By meaning, for a question or a topic; uses the query models.",
             "type": "string"
           },
           {
             "const": "exact-mention",
-            "description": "Model-free: every query word in any order, ranked by BM25, or a quoted\nquery as one literal phrase.",
+            "description": "By words: every query word in any order, or a \"quoted\" phrase; no models.",
             "type": "string"
           }
         ]

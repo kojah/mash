@@ -1,5 +1,5 @@
 //! Human-readable MCP discovery content, rendered from the same typed views as JSON.
-use super::{Chat, Detail, Response, Search, SearchResults, Status};
+use super::{Chat, Detail, Memories, Response, Search, SearchResults, Status};
 use crate::search_results::{ChatMetadata, MessageReference, lookup::Lookup};
 use serde::Serialize;
 
@@ -21,8 +21,27 @@ fn safe(text: &str) -> String {
     })
 }
 
+/// A Unix-millisecond time as a UTC date and minute, which a reader can
+/// compare at sight; the exact value stays in the structured result.
 fn time(value: Option<i64>) -> String {
-    value.map_or_else(|| "unknown".into(), |value| value.to_string())
+    value
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map_or_else(
+            || "unknown".into(),
+            |time| time.format("%Y-%m-%dT%H:%MZ").to_string(),
+        )
+}
+
+/// Characters of a chat title in a result heading. Many titles are a whole
+/// first prompt; the structured result keeps them complete.
+const TITLE_CHARS: usize = 160;
+
+fn title(value: Option<&str>) -> String {
+    let title = safe(value.unwrap_or("Untitled thread"));
+    match title.char_indices().nth(TITLE_CHARS) {
+        Some((end, _)) => format!("{}…", &title[..end]),
+        None => title,
+    }
 }
 
 fn json(out: &mut String, name: &str, value: &impl Serialize) -> Result<(), serde_json::Error> {
@@ -36,9 +55,9 @@ fn warning(out: &mut String, name: &str, value: Option<&str>) {
     }
 }
 
+/// Where and when a chat happened. Its title is the result's heading.
 fn metadata(out: &mut String, value: &ChatMetadata) {
     for (name, value) in [
-        ("Title", &value.title),
         ("Project", &value.project),
         ("Repository", &value.repository),
     ] {
@@ -50,7 +69,7 @@ fn metadata(out: &mut String, value: &ChatMetadata) {
         line(
             out,
             &format!(
-                "  Chat times (Unix ms): created={}, updated={}",
+                "  Chat times (UTC): created {}, updated {}",
                 time(value.created_at),
                 time(value.updated_at)
             ),
@@ -76,9 +95,9 @@ fn anchors(
     lookup: Option<&Lookup>,
     copies: &[MessageReference],
 ) -> Result<(), serde_json::Error> {
+    // list_attachments takes the same message ID and shared value.
     if let Some(lookup) = lookup {
         json(out, "  lookup.view", &lookup.view)?;
-        json(out, "  lookup.list_attachments", &lookup.list_attachments)?;
     }
     if !copies.is_empty() {
         json(out, "  Copies", &copies)?;
@@ -109,7 +128,7 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
         out,
         &format!(
             "\n{number}. {} · {} · node {}",
-            safe(value.metadata.title.as_deref().unwrap_or("Untitled thread")),
+            title(value.metadata.title.as_deref()),
             safe(&value.provider.to_string()),
             safe(value.node_id.unwrap_or("unspecified"))
         ),
@@ -123,19 +142,21 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
         json(out, "  First message view", &lookup.view)?;
     }
     for hit in &value.matches {
+        // The message ID is in lookup.view below; without one it is given here.
+        let identity = if hit.lookup.is_some() {
+            String::new()
+        } else {
+            format!("{} · ", safe(hit.message_id))
+        };
         line(
             out,
             &format!(
-                "  Message: {} · {} · {} · time (Unix ms): {}",
-                safe(hit.message_id),
+                "  Message: {identity}{} · {} · {}",
                 hit.role.as_str(),
                 origin(hit.node_id, hit.lookup),
                 time(hit.created_at)
             ),
         );
-        if let Some(matched) = hit.lexical_match {
-            json(out, "  Lexical match", matched)?;
-        }
         evidence(out, &hit.snippet, hit.snippet_truncated);
         anchors(out, hit.lookup, hit.copies)?;
     }
@@ -187,16 +208,16 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                 line(
                     out,
                     &format!(
-                        "  Chat: {} · role: {} · time (Unix ms): {}",
+                        "  Chat: {} · role: {} · {}",
                         safe(hit.chat_id),
                         hit.role.as_str(),
                         time(hit.created_at)
                     ),
                 );
-                metadata(out, &hit.metadata);
-                if let Some(matched) = hit.lexical_match {
-                    json(out, "  Lexical match", matched)?;
+                if let Some(title) = hit.metadata.title.as_deref() {
+                    line(out, &format!("  Title: {}", self::title(Some(title))));
                 }
+                metadata(out, &hit.metadata);
                 evidence(out, &hit.content, hit.content_truncated);
                 anchors(out, hit.lookup, hit.copies)?;
             }
@@ -363,7 +384,7 @@ pub(crate) fn render(
     let mut out = String::new();
     match response {
         Response::RecordMutation(value) => json(&mut out, "Record operation", value)?,
-        Response::Records(value) => json(&mut out, "Records", value)?,
+        Response::Records(value) => records(&mut out, &Memories::from(value))?,
         Response::Record(value) => json(&mut out, "Record", value)?,
         Response::RecallRecords(value) => json(&mut out, "Record recall", value)?,
         Response::RecordCapture(value) => json(&mut out, "Memory capture", value)?,
@@ -438,7 +459,10 @@ pub(crate) fn render(
     if matches!(detail, Detail::Extended)
         && matches!(
             response,
-            Response::Search(_) | Response::ListChats(_) | Response::Status(_)
+            Response::Search(_)
+                | Response::ListChats(_)
+                | Response::Status(_)
+                | Response::Records(_)
         )
     {
         line(&mut out, "\nFull details (JSON):");
@@ -458,6 +482,92 @@ pub(crate) fn error(value: &crate::AppError) -> Result<String, serde_json::Error
         json(&mut out, "Next action", action)?;
     }
     Ok(out)
+}
+
+fn scope(value: &crate::records::Scope) -> String {
+    use crate::records::Scope;
+    match value {
+        Scope::Personal => "personal".into(),
+        Scope::Repository { identity } => format!("repository {}", safe(identity)),
+        Scope::LocalProject { path } => format!("project {}", safe(path)),
+        Scope::Chat { id } => format!("chat {}", safe(id)),
+    }
+}
+
+fn records(out: &mut String, value: &Memories<'_>) -> Result<(), serde_json::Error> {
+    line(
+        out,
+        &format!("Mash records — {} results", value.records.len()),
+    );
+    for (index, record) in value.records.iter().enumerate() {
+        line(
+            out,
+            &format!(
+                "\n{}. {} · {} · {}",
+                index + 1,
+                record.kind,
+                safe(&record.state),
+                scope(record.scope)
+            ),
+        );
+        line(out, &format!("  Statement: {}", safe(record.statement)));
+        if !record.rationale.is_empty() {
+            line(out, &format!("  Why: {}", safe(record.rationale)));
+        }
+        line(
+            out,
+            &format!(
+                "  Recorded: {} by {} · revision {} · {}",
+                time(Some(record.recorded_at)),
+                safe(record.recorded_by),
+                record.revision,
+                serde_json::to_string(&record.review)?.trim_matches('"')
+            ),
+        );
+        if record.evidence_stale {
+            line(
+                out,
+                "  Its source messages have changed since it was recorded.",
+            );
+        }
+        if record.conflicted {
+            line(out, "  Conflicts with another record; see get_record.");
+        }
+        line(out, &format!("  Record: {}", safe(record.id)));
+        if let Some(node) = record.node_id {
+            line(out, &format!("  Node: {}", safe(node)));
+        }
+        for source in &record.evidence {
+            line(
+                out,
+                &format!(
+                    "  Source: chat {} · message {}",
+                    safe(source.chat_id),
+                    safe(source.message_id)
+                ),
+            );
+        }
+    }
+    if value.records.is_empty() {
+        line(
+            out,
+            "No records returned; this does not prove that nothing was decided.",
+        );
+    }
+    if let Some(next) = value.next_offset {
+        line(
+            out,
+            &format!("\nNext offset: {next}. Repeat list_records with this offset for more."),
+        );
+    }
+    if let Some(cursor) = value.next_cursor {
+        json(out, "Next cursor", cursor)?;
+    }
+    line(
+        out,
+        "get_record has each record's quotes, history and links.",
+    );
+    Ok(())
 }
 
 fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), serde_json::Error> {

@@ -1,6 +1,6 @@
 {
   "name": "mash",
-  "version": "0.1.62",
+  "version": "0.1.63",
   "author": { "name": "Mash contributors" },
   "description": "Find and inspect past agent conversations with Mash, preferring MCP with CLI fallback."
 }

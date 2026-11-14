@@ -13,7 +13,8 @@ pub(crate) enum Detail {
     Extended,
 }
 
-const EXCERPT_CHARS: usize = 600;
+/// Characters of one excerpt. Enough to judge a match; `view` has the whole message.
+const EXCERPT_CHARS: usize = 400;
 
 pub(crate) mod text;
 
@@ -34,6 +35,7 @@ pub(crate) fn serialize(
             diagnostics: value.diagnostics.as_ref(),
         }),
         Response::Status(value) => serde_json::to_value(Status::from(value.as_ref())),
+        Response::Records(value) => serde_json::to_value(Memories::from(value)),
         _ => serde_json::to_value(response),
     }
 }
@@ -228,6 +230,93 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
             shared_context_error: value.shared_context_error.as_deref(),
             diagnostics: value.diagnostics.as_ref(),
             notice: value.notice.as_deref(),
+        }
+    }
+}
+
+/// One record as a list shows it: what it says, where it applies and where
+/// it came from. `get_record` has the quotes, history and links.
+#[derive(Serialize)]
+struct Memory<'a> {
+    id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_id: Option<&'a str>,
+    kind: &'static str,
+    state: String,
+    statement: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    rationale: &'a str,
+    scope: &'a crate::records::Scope,
+    review: crate::records::Review,
+    recorded_by: &'a str,
+    recorded_at: i64,
+    revision: i64,
+    evidence: Vec<Source<'a>>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    evidence_stale: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    conflicted: bool,
+}
+
+/// The message a record cites.
+#[derive(Serialize)]
+struct Source<'a> {
+    chat_id: &'a str,
+    message_id: &'a str,
+}
+
+impl<'a> Memory<'a> {
+    /// The record at its current revision; a record without one is not listed.
+    fn of(record: &'a crate::records::Record) -> Option<Self> {
+        let revision = record
+            .revisions
+            .iter()
+            .find(|revision| revision.revision == record.current_revision)
+            .or_else(|| record.revisions.first())?;
+        let state = serde_json::to_value(&revision.body.details)
+            .ok()
+            .and_then(|details| details.get("state")?.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        Some(Self {
+            id: &record.id,
+            node_id: record.node_id.as_deref(),
+            kind: revision.body.details.kind(),
+            state,
+            statement: &revision.body.statement,
+            rationale: &revision.body.rationale,
+            scope: &record.scope,
+            review: revision.body.review,
+            recorded_by: &revision.body.recorded_by,
+            recorded_at: revision.recorded_at,
+            revision: revision.revision,
+            evidence: revision
+                .evidence
+                .iter()
+                .map(|evidence| Source {
+                    chat_id: &evidence.chat_id,
+                    message_id: &evidence.message_id,
+                })
+                .collect(),
+            evidence_stale: !revision.evidence_current,
+            conflicted: record.conflicted,
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct Memories<'a> {
+    records: Vec<Memory<'a>>,
+    next_offset: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_cursor: Option<&'a crate::records::Cursor>,
+}
+
+impl<'a> From<&'a crate::records::Page> for Memories<'a> {
+    fn from(value: &'a crate::records::Page) -> Self {
+        Self {
+            records: value.records.iter().filter_map(Memory::of).collect(),
+            next_offset: value.next_offset,
+            next_cursor: value.next_cursor.as_ref(),
         }
     }
 }

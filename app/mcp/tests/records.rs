@@ -115,6 +115,21 @@ async fn native_records_sdk_duplicate_suggestions_and_explicit_reuse() {
     service.cancel().await.unwrap();
 }
 
+/// A list is each record's current statement and sources, as readable text.
+fn assert_compact_list(compact: &rmcp::model::CallToolResult) {
+    assert_ne!(compact.is_error, Some(true), "{compact:?}");
+    let row = &compact.structured_content.as_ref().unwrap()["records"][0];
+    assert_eq!(row["kind"], "decision");
+    assert!(row["statement"].is_string() && row["evidence"][0]["message_id"].is_string());
+    assert!(row.get("revisions").is_none() && row.get("owner").is_none());
+    let shown = compact.content[0].as_text().unwrap().text.clone();
+    assert!(shown.starts_with("Mash records — 1 results"), "{shown}");
+    assert!(
+        shown.contains("  Statement: ") && !shown.contains("fingerprint"),
+        "{shown}"
+    );
+}
+
 #[tokio::test]
 async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models() {
     let root = tempfile::tempdir().unwrap();
@@ -154,7 +169,10 @@ async fn native_records_sdk_mutations_reads_and_writer_admission_need_no_models(
     let receipt = created.structured_content.unwrap();
     let retry = call("record", request).await.unwrap();
     assert_eq!(retry.structured_content.as_ref(), Some(&receipt));
-    let listed = call("list_records", json!({})).await.unwrap();
+    assert_compact_list(&call("list_records", json!({})).await.unwrap());
+    let listed = call("list_records", json!({"detail":"extended"}))
+        .await
+        .unwrap();
     assert_ne!(listed.is_error, Some(true), "{listed:?}");
     assert_eq!(
         listed.structured_content.as_ref().unwrap()["records"][0]["revisions"][0]["confirmation_history"],

@@ -18,12 +18,12 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Intent {
-    /// What a shared-API request that omits its intent means; the configured
-    /// default for searches is `views.query.intent`.
+    /// By meaning, for a question or a topic; uses the query models.
+    // Also what a shared-API request that omits its intent means; the
+    // configured default for searches is `views.query.intent`.
     #[default]
     RelatedDiscussion,
-    /// Model-free: every query word in any order, ranked by BM25, or a quoted
-    /// query as one literal phrase.
+    /// By words: every query word in any order, or a "quoted" phrase; no models.
     ExactMention,
 }
 

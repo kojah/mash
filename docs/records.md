@@ -103,7 +103,9 @@ For a visual, read-only view, open `mash dash` and choose **Memory**. The
 history, relationships and links to supporting chat messages.
 
 Or ask your agent to call `list_records`. By default it returns established
-current records whose evidence still matches the saved messages.
+current records whose evidence still matches the saved messages. Each one is
+its current statement, reason, scope and the messages it cites; pass
+`detail: "extended"` for quotes, confirmations, the owner and links.
 
 - `include_inactive` adds candidates, older choices and records with changed
   or missing sources.
@@ -121,8 +123,8 @@ original message was sent.
 ### Shared records
 
 To read published records, call `list_records` with `shared: true`. Results
-include `node_id` and `owner`; identical statements from different owners stay
-separate. Select one node with `node_id`, and pass `next_cursor` back as
+include `node_id`, and `owner` with `detail: "extended"`; identical statements
+from different owners stay separate. Select one node with `node_id`, and pass `next_cursor` back as
 `cursor` with the same filters until no cursor remains. Pass a result's
 `node_id` alongside its `id` to `get_record` to read that shared copy.
 

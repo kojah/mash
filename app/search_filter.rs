@@ -36,8 +36,11 @@ pub(crate) struct Selection {
     pub(crate) sort: Sort,
     /// Provider alternatives; omitted or empty selects all providers.
     pub(crate) provider: Vec<Provider>,
+    /// Only messages from the last this many days.
     pub(crate) days: Option<u32>,
+    /// Machines to search; omitted or empty selects all.
     pub(crate) node: Vec<String>,
+    /// Who wrote the message, such as user or assistant; omitted or empty selects all.
     pub(crate) role: Vec<crate::role::Role>,
     /// Canonical chat IDs from search or `list_chats`; omitted or empty selects all chats.
     #[serde(rename = "chat")]
@@ -50,7 +53,10 @@ pub(crate) struct Selection {
     pub(crate) after: Option<i64>,
     /// Exclusive Unix timestamp in seconds.
     pub(crate) before: Option<i64>,
-    /// Boolean expression using all/any/not and metadata predicates.
+    /// Boolean expression using all/any/not and metadata predicates. Accepted
+    /// but not listed in the tool's schema: it repeats the plain selectors,
+    /// and a schema that refers to itself is refused by some model services.
+    #[schemars(skip)]
     pub(crate) filter: Option<Filter>,
 }
 

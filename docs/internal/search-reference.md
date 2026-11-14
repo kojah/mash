@@ -91,7 +91,14 @@ mash search 'deployment' --repository https://github.com/kojah/mash.git \
 
 For Boolean combinations, use `--filter` with a structured JSON expression, or
 the MCP search tool's `filter` argument. This is a query expression; configuration
-files remain TOML. Each expression contains exactly one operator:
+files remain TOML.
+
+The MCP search tool accepts `filter`, `fusion`, `ranking` and
+`shared_vector_search`, but its published schema does not list them. They are
+tuning for the person running Mash: listing them cost every agent's model
+about 4,600 characters per session, small models misused them, and `filter`'s
+self-referencing schema is refused by some model services. Pass them by name
+when you need them. Each expression contains exactly one operator:
 
 - `all`: AND of expressions; an empty list matches everything.
 - `any`: OR of expressions; an empty list matches nothing.

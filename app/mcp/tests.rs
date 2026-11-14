@@ -336,7 +336,12 @@ async fn qdrant_indexing_streams_correlated_progress_before_the_tool_result() {
 
 fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     let search = tools.iter().find(|tool| tool.name == "search").unwrap();
-    assert!(search.input_schema["properties"].get("filter").is_some());
+    // Advanced arguments are accepted but not shown to a model, and nothing
+    // in the schema refers to itself.
+    for hidden in ["filter", "fusion", "ranking", "shared_vector_search"] {
+        assert!(search.input_schema["properties"].get(hidden).is_none());
+    }
+    assert!(search.input_schema["$defs"].get("Filter").is_none());
     for field in ["provider", "chat", "node", "role", "project", "repository"] {
         assert_eq!(search.input_schema["properties"][field]["type"], "array");
     }
@@ -360,11 +365,7 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     );
     let schema = serde_json::to_string(&search.input_schema).unwrap();
     assert!(schema.contains("\"chats\"") && schema.contains("\"messages\""));
-    assert!(
-        schema.contains("rank_constant")
-            && schema.contains("lexical_weight")
-            && schema.contains("semantic_weight")
-    );
+    assert!(!schema.contains("rank_constant") && !schema.contains("ef_runtime"));
 }
 
 #[tokio::test]
