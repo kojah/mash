@@ -75,7 +75,7 @@ library `mash-app` (`app/`) and the crates under `crates/`. These default comman
 | `mash-search` | Configuration, the embedding and reranking models, local and shared Qdrant views, ranking, tracing, and `blocking`. | `mash-query`, `mash-model`, `mash-silver`, `mash-storage` |
 | `mash-sync` | The shared index: the node-side client, sync and publication, shared retrieval, and the server's silver store and view synchronization. | `mash-query`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search` |
 | `mash-app` (`app/`) | The application library: the indexing pipeline, the typed core the CLI, MCP and dashboard call, watching, runtime leases and service setup | `mash-query`, `mash-fleet`, `mash-model`, `mash-silver`, `mash-storage`, `mash-search`, `mash-sync` |
-| `mash-server` | The authenticated HTTP service for the shared index: routes, authorization, the sync protocol's endpoints and service setup. Its store stays in `mash-app` (`shared::server`) | `mash-app`, `mash-model` |
+| `mash-server` | The authenticated HTTP service for the shared index: routes, authorization, the sync protocol's endpoints and service setup. Its store is in `mash-sync` (`shared::server`) | `mash-app`, `mash-model` |
 | `mash-mcp` | The stdio MCP server, its tool contract, the dashboard's console and the generated history skill | `mash-app`, `mash-model`, `mash-silver` |
 | `mash-dash` | The local web dashboard served by `mash dash`, and the build script that embeds its front end | `mash-app`, `mash-mcp`, `mash-fleet`, `mash-model` |
 | `mash` (`cli/`) | Both executables: argument parsing and output, and the CLI contract tests | `mash-app`, `mash-mcp`, `mash-server`, `mash-dash`, `mash-model` |
