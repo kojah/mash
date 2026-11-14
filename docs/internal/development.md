@@ -95,7 +95,16 @@ other builds running (logs in `mash-artifacts/build-speed/`):
 | Test build, library tests only (current `make iterate`) | 35–42 s, 3.2–4.0 GiB peak |
 | Debug `mash`, incremental (`make dev-build`) | 24–28 s |
 | Debug `mash`, raw `cargo build-clif` under the machine-wide Cargo settings | 88 s |
-| Whole `make iterate`, before → after | about 80 s → 69 s |
+| Whole `make iterate`, all targets, Clippy then tests (original) | about 80 s |
+| Whole `make iterate`, library tests, Clippy then tests | 68–71 s |
+| Whole `make iterate`, library tests, Clippy beside tests (current) | 56–58 s with Clippy waiting for a slot; the test build alone is 36–41 s |
+
+`make iterate` checks formatting first, then runs Clippy and the test build at
+the same time and prints Clippy's output after the tests, so one loop reports
+both lint and test failures. Clippy has its own target directory
+(`clippy/` under the development target) because Cargo locks a target
+directory for a whole build. Each runs as its own `agent-test` job, so a loop
+takes two of the four shared slots; in one job they would pass its memory limit.
 
 What the time is made of:
 

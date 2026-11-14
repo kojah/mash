@@ -32,11 +32,30 @@ cheap_checks() {
     RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Znext-solver=no" run cargo clippy --all-targets -- -D warnings
 }
 if [[ $mode == focused ]]; then
-    cheap_checks
+    run cargo fmt --check
     if (( ${#scope[@]} )); then
         echo 'Building library unit tests only; pass TARGETS=all (or name a binary in FOCUS) for the CLI contract and other integration targets.'
     fi
-    run cargo test-clif --locked "${scope[@]}" -E "$focus" --no-tests fail --test-threads 4
+    # Clippy and the test build share no artifacts, so they run at the same
+    # time and one loop reports both. Cargo locks a target directory for a
+    # whole build, so Clippy gets its own. With a launcher each is its own
+    # job: together in one they would exceed a single job's memory limit.
+    launch=()
+    [[ -z ${MASH_ITERATE_LAUNCHER:-} ]] || launch=("$MASH_ITERATE_LAUNCHER" env "TMPDIR=$TMPDIR")
+    clippy_log=$(mktemp "$TMPDIR/mash-iterate-clippy.XXXXXXXX")
+    CARGO_TARGET_DIR="$CARGO_TARGET_DIR/clippy" RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Znext-solver=no" \
+        run "${launch[@]}" cargo clippy --all-targets -- -D warnings >"$clippy_log" 2>&1 &
+    clippy_job=$!
+    tests=0
+    run "${launch[@]}" cargo test-clif --locked "${scope[@]}" -E "$focus" --no-tests fail --test-threads 4 || tests=$?
+    clippy=0
+    wait "$clippy_job" || clippy=$?
+    echo "--- cargo clippy (exit $clippy) ---"
+    cat "$clippy_log"
+    rm -f -- "$clippy_log"
+    (( clippy == 0 )) || echo 'Clippy failed.' >&2
+    (( tests == 0 )) || echo 'Tests failed.' >&2
+    (( clippy == 0 && tests == 0 )) || exit 1
     exit 0
 fi
 validation_key() {

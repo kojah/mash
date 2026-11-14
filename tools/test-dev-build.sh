@@ -52,17 +52,27 @@ run_build() { timeout 10 bash "$scratch/repository/tools/build-dev-linux.sh" "$@
 timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
     DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' >/dev/null
 [[ $(sed -n '1p' "$TEST_BUILD_CALLS") == 'fmt --check' ]]
-[[ $(sed -n '2p' "$TEST_BUILD_CALLS") == clippy* ]]
-[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked --lib -E test(contract) --no-tests fail --test-threads 4' ]]
+# Clippy and the tests run at the same time, so their order is not fixed.
+grep -q '^clippy' "$TEST_BUILD_CALLS"
+grep -Fxq 'test-clif --locked --lib -E test(contract) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
 [[ $(wc -l < "$TEST_BUILD_CALLS") == 3 ]]
+# A Clippy failure fails the loop, and the tests still ran and reported.
+: > "$TEST_BUILD_CALLS"
+touch "$TEST_BUILD_CLIPPY_FAIL"
+if run_build --focused 'test(contract)' >/dev/null 2>&1; then echo 'Failed focused Clippy was accepted.' >&2; exit 1; fi
+grep -q '^test-clif' "$TEST_BUILD_CALLS"
+rm -f "$TEST_BUILD_CLIPPY_FAIL"
+touch "$TEST_BUILD_FAIL"
+if run_build --focused 'test(contract)' >/dev/null 2>&1; then echo 'Failed focused tests were accepted.' >&2; exit 1; fi
+rm -f "$TEST_BUILD_FAIL"
 # Integration targets are built on request, or when the filter names a binary.
 : > "$TEST_BUILD_CALLS"
 timeout 10 make --no-print-directory -C "$scratch/repository" iterate DEV_RUN= \
     DEV_TMPDIR="$TMPDIR" DEV_TARGET_DIR="$scratch/target" FOCUS='test(contract)' TARGETS=all >/dev/null
-[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked -E test(contract) --no-tests fail --test-threads 4' ]]
+grep -Fxq 'test-clif --locked -E test(contract) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
 : > "$TEST_BUILD_CALLS"
 run_build --focused 'binary(cli_contract)' >/dev/null
-[[ $(sed -n '3p' "$TEST_BUILD_CALLS") == 'test-clif --locked -E binary(cli_contract) --no-tests fail --test-threads 4' ]]
+grep -Fxq 'test-clif --locked -E binary(cli_contract) --no-tests fail --test-threads 4' "$TEST_BUILD_CALLS"
 [[ -z $(find "$scratch/target" -name '*.ok' -print -quit) ]]
 : > "$TEST_BUILD_CALLS"
 touch "$TEST_BUILD_CLIPPY_FAIL"
