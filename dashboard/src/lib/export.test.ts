@@ -20,11 +20,32 @@ describe("whole-chat exports", () => {
       async (id, node, offset) => {
         expect([id, node]).toEqual(["chat", "remote"]);
         offsets.push(offset);
-        return { messages: offset < 200 ? [message(String(offset))] : [] };
+        return { messages: offset < 1000 ? [message(String(offset))] : [] };
       },
     );
-    expect(offsets).toEqual([0, 100, 200]);
-    expect(result.map((row) => row.id)).toEqual(["0", "100"]);
+    expect(offsets).toEqual([0, 500, 1000]);
+    expect(result.map((row) => row.id)).toEqual(["0", "500"]);
+  });
+
+  it("asks for the rest of a long chat together, in order", async () => {
+    const offsets: number[] = [];
+    const limits = new Set<number>();
+    const result = await collectChat(
+      "chat",
+      "local",
+      new AbortController().signal,
+      () => {},
+      async (_id, _node, offset, _signal, limit) => {
+        offsets.push(offset);
+        limits.add(limit);
+        // Later pages answer sooner than earlier ones.
+        await new Promise((resolve) => setTimeout(resolve, 20 - offset / 100));
+        return { total: 1450, messages: offset < 1450 ? [message(String(offset))] : [] };
+      },
+    );
+    expect(offsets).toEqual([0, 500, 1000, 1500]);
+    expect([...limits]).toEqual([500]);
+    expect(result.map((row) => row.id)).toEqual(["0", "500", "1000"]);
   });
 
   it("rejects failed or unstable reads without returning partial data", async () => {

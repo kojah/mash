@@ -188,12 +188,15 @@ export function parseMessages(body: Answer<"/api/chat">): MessagePage {
   };
 }
 export const PAGE_SIZE = 100;
+/** The most messages the server gives in one answer. */
+export const WHOLE_PAGE = 500;
 export async function transcript(
   id: string,
   node: string,
   offset: number,
   signal: AbortSignal,
   shared = false,
+  limit = PAGE_SIZE,
 ): Promise<MessagePage> {
   return parseMessages(
     await read(
@@ -203,7 +206,7 @@ export async function transcript(
         ...(node ? { node } : {}),
         ...(shared ? { shared: "true" } : {}),
         offset: String(offset),
-        limit: String(PAGE_SIZE),
+        limit: String(limit),
       }),
       signal,
     ),

@@ -373,7 +373,7 @@ test("Export downloads the entire chat as safe HTML and Markdown", async ({ page
     return route.fulfill({
       json: {
         messages:
-          offset >= 200
+          offset >= 1000
             ? []
             : [
                 {

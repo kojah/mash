@@ -1,8 +1,9 @@
 ---
-// The landing hero: Starlight's headline, tagline and actions over the rippling
-// surface, with the install command ready to copy.
+// The landing hero: the logo at full size on the page's plain ground, then
+// Starlight's headline, tagline and actions, with the install command ready to copy.
 import { Icon, LinkButton } from "@astrojs/starlight/components";
-import Surface from "./Surface.astro";
+import logoDark from "../../../assets/mash-logo-dark.svg?url";
+import logoLight from "../../../assets/mash-logo-light.svg?url";
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero ?? {};
@@ -63,9 +64,12 @@ const first = script;
 ---
 
 <div class="mash-hero">
-  <Surface />
   <div class="hero">
     <div class="sl-flex stack">
+      <div class="mash-logo">
+        <img class="on-dark" src={logoDark} alt="Mash" width="4995" height="1497" />
+        <img class="on-light" src={logoLight} alt="Mash" width="4995" height="1497" />
+      </div>
       <div class="sl-flex copy">
         <h1 id="_top" data-page-title set:html={title} />
         {
@@ -148,9 +152,21 @@ const first = script;
 </script>
 
 <style>
-  .mash-hero {
-    position: relative;
-    isolation: isolate;
+  .mash-logo {
+    width: min(100%, 55rem);
+    align-self: center;
+  }
+  .mash-logo img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .mash-logo .on-light,
+  :global([data-theme="light"]) .mash-logo .on-dark {
+    display: none;
+  }
+  :global([data-theme="light"]) .mash-logo .on-light {
+    display: block;
   }
   .hero {
     display: grid;
@@ -304,18 +320,6 @@ const first = script;
   @media (min-width: 50rem) {
     .hero {
       padding-block: clamp(2.5rem, calc(1rem + 10vmin), 10rem);
-    }
-    .stack {
-      text-align: start;
-    }
-    .copy {
-      align-items: flex-start;
-    }
-    .mash-install {
-      align-self: flex-start;
-    }
-    .choices {
-      justify-content: flex-start;
     }
   }
 </style>

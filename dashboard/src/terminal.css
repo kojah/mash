@@ -1418,8 +1418,21 @@ h1:focus {
 #xdrawer {
   display: none;
 }
+/* Messages sit close: a tool-step row and the words round it read as one
+   run. Steps keep a taller row where a finger has to hit them. */
 .hitbox {
-  padding: 10px 12px;
+  padding: 2px 12px;
+}
+.hitbox.hit {
+  padding-block: 10px;
+}
+.log {
+  gap: 10px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .log .fold summary {
+    min-height: 30px;
+  }
 }
 .hitbox > .a {
   font-size: 13px;

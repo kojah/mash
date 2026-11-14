@@ -163,7 +163,7 @@ const whole = createQuery(() => ({
       (count) => {
         findProgress = count;
       },
-      (id, node, offset, signal) => transcript(id, node, offset, signal, shared),
+      (id, node, offset, signal, limit) => transcript(id, node, offset, signal, shared, limit),
     ),
 }));
 const matches = $derived(
@@ -388,7 +388,7 @@ async function exportChat(format: ExportFormat): Promise<void> {
       (count) => {
         notice = `Preparing export: ${count.toLocaleString()} messages…`;
       },
-      (id, node, offset, signal) => transcript(id, node, offset, signal, shared),
+      (id, node, offset, signal, limit) => transcript(id, node, offset, signal, shared, limit),
     );
     controller.signal.throwIfAborted();
     if (format === "pdf" && popup) {

@@ -1,4 +1,4 @@
-import { PAGE_SIZE, transcript } from "./api";
+import { type MessagePage, transcript, WHOLE_PAGE } from "./api";
 import { markdown } from "./markdown";
 import type { Message } from "./types";
 
@@ -14,21 +14,32 @@ export function messageText(message: Message): string {
   );
 }
 
-/** Reads every page, failing visibly rather than downloading a truncated export. */
+export type ReadPage = (
+  id: string,
+  node: string,
+  offset: number,
+  signal: AbortSignal,
+  limit: number,
+) => Promise<MessagePage>;
+
+/**
+ * Reads every page, failing visibly rather than downloading a truncated
+ * export. The first answer says how long the chat is, so the rest are asked
+ * for together instead of one after another.
+ */
 export async function collectChat(
   id: string,
   node: string,
   signal: AbortSignal,
   progress: (count: number) => void,
-  readPage: typeof transcript = transcript,
+  readPage: ReadPage = (id, node, offset, signal, limit) =>
+    transcript(id, node, offset, signal, false, limit),
 ): Promise<readonly Message[]> {
   const messages: Message[] = [];
   const seen = new Set<string>();
   let characters = 0;
-  for (let offset = 0; offset < 100_000; offset += PAGE_SIZE) {
-    signal.throwIfAborted();
-    const page = await readPage(id, node, offset, signal);
-    if (!page.messages.length) return messages;
+  // False once a page comes back empty: the chat ends there.
+  const keep = (page: MessagePage): boolean => {
     for (const message of page.messages) {
       if (seen.has(message.id))
         throw new Error("Chat changed during export. Try again after indexing finishes.");
@@ -41,11 +52,38 @@ export async function collectChat(
       messages.push(message);
     }
     progress(messages.length);
+    return page.messages.length > 0;
+  };
+  const first = await readPage(id, node, 0, signal, WHOLE_PAGE);
+  if (!keep(first)) return messages;
+  let offset = WHOLE_PAGE;
+  // One page past the stated length confirms the end without another trip.
+  const known = Math.min(first.total ?? 0, LIMIT);
+  if (known > WHOLE_PAGE) {
+    signal.throwIfAborted();
+    const offsets: number[] = [];
+    for (; offset < known + WHOLE_PAGE; offset += WHOLE_PAGE) offsets.push(offset);
+    // A few at a time, so a very long chat does not ask for everything at once.
+    for (let at = 0; at < offsets.length; at += TOGETHER) {
+      signal.throwIfAborted();
+      const pages = await Promise.all(
+        offsets
+          .slice(at, at + TOGETHER)
+          .map((start) => readPage(id, node, start, signal, WHOLE_PAGE)),
+      );
+      for (const page of pages) if (!keep(page)) return messages;
+    }
+  }
+  for (; offset < LIMIT; offset += WHOLE_PAGE) {
+    signal.throwIfAborted();
+    if (!keep(await readPage(id, node, offset, signal, WHOLE_PAGE))) return messages;
   }
   throw new Error(
     "This chat exceeds the 100,000-position browser export limit. No partial file was saved.",
   );
 }
+const LIMIT = 100_000;
+const TOGETHER = 6;
 
 function escapeHtml(text: string): string {
   return text.replace(

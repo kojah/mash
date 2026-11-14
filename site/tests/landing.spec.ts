@@ -40,25 +40,22 @@ test("the hero's two actions sit side by side", async ({ page }) => {
   expect(second).toBe(first);
 });
 
-test("the hero draws its surface in the theme's ink", async ({ page }) => {
+test("the hero leads with the full logo, in the one that suits the theme", async ({ page }) => {
   await page.goto("/");
-  const surface = page.locator("canvas.mash-surface");
-  // It spans the window without widening the page.
-  await expect
-    .poll(() => surface.evaluate((node) => node.getBoundingClientRect().width))
-    .toBe(await page.evaluate(() => document.documentElement.clientWidth));
-  const painted = () =>
-    surface.evaluate((node) => {
-      const canvas = node as HTMLCanvasElement;
-      const pixels = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data;
-      let count = 0;
-      for (let i = 3; pixels && i < pixels.length; i += 4) if (pixels[i]) count += 1;
-      return count;
-    });
-  await expect.poll(painted).toBeGreaterThan(1000);
-  expect(await surface.evaluate((node) => getComputedStyle(node).color)).toBe(
-    await page.evaluate(() => getComputedStyle(document.querySelector("h1") as Element).color),
+  const shown = page.locator(".mash-logo img:visible");
+  await expect(shown).toHaveCount(1);
+  // It is drawn large without widening the page.
+  const width = await shown.evaluate((node) => node.getBoundingClientRect().width);
+  expect(width).toBeGreaterThan(280);
+  expect(width).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
   );
+  expect(await shown.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(
+    0,
+  );
+  const dark = await page.evaluate(() => document.documentElement.dataset.theme !== "light");
+  await expect(shown).toHaveClass(dark ? /on-dark/ : /on-light/);
+  await expect(page.locator("canvas")).toHaveCount(0);
 });
 
 test("the hero's install command copies to the clipboard", async ({ page, context }) => {

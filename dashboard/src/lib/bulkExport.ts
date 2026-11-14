@@ -1,6 +1,5 @@
-import { transcript } from "./api";
 import { projectLabel } from "./browse";
-import { collectChat, markdownExport } from "./export";
+import { collectChat, markdownExport, type ReadPage } from "./export";
 import { plainTitle } from "./markdown";
 import type { ChatSummary, Message } from "./types";
 import { ZipWriter } from "./zip";
@@ -93,7 +92,7 @@ export async function exportChats(
   format: BulkFormat,
   signal: AbortSignal,
   progress: (progress: BulkProgress) => void,
-  readPage: typeof transcript = transcript,
+  readPage?: ReadPage,
   stamp = new Date(),
 ): Promise<Blob> {
   const files: (string | undefined)[] = chats.map(() => undefined);
