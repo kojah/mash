@@ -189,10 +189,10 @@ test("real API shapes, explicit search, source identity, safe content and stable
   await expect(page.getByText("Updated reply", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: /This page has changed/ }).click();
   await expect(page.getByText("Updated reply", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Read from the beginning" }).click();
+  await page.getByRole("button", { name: "First message" }).first().click();
   await expect.poll(() => chatRequests.at(-1)?.pathname).toBe("/api/chat");
   expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
-  await page.getByRole("button", { name: "Next messages" }).click();
+  await page.getByRole("button", { name: "Next messages" }).first().click();
   await expect.poll(() => chatRequests.at(-1)?.searchParams.get("offset")).toBe("100");
   expect(chatRequests.at(-1)?.searchParams.get("node")).toBe("remote");
   expect(errors).toEqual([]);

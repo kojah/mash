@@ -1842,10 +1842,19 @@ h1:focus {
 .newpill .btn {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
+.pager.start {
+  position: static;
+}
 .pager.end {
   position: static;
   border-bottom: 0;
   border-top: 1px solid var(--hair);
+}
+/* Arrow-only page buttons, large enough to tap. */
+.pager.start .btn,
+.pager.end .btn {
+  min-width: 40px;
+  min-height: 36px;
 }
 .pager .btn {
   min-height: 32px;

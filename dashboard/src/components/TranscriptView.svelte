@@ -609,6 +609,19 @@ const prompts = $derived(
     {#if notice}<p role="status" class="meta">{notice}</p>{/if}
     <div class="newpill" aria-live="polite">{#if added && !sessionsOpen}<button type="button" class="btn p" onclick={showNew}><ChevronsDown size={15} aria-hidden="true" />{added.toLocaleString()} new message{added === 1 ? "" : "s"}</button>{/if}</div>
     {#if loaded}
+      <!-- The same controls above and below the messages. Around a search
+           match there are no pages to step through, only the two ends. -->
+      {#snippet pager(name: string, place: string)}
+        <nav aria-label={name} class="pager {place}">
+          <button class="btn" type="button" disabled={!anchor && offset === 0} onclick={() => page(0)} aria-label="First message" title="First message"><ChevronsLeft size={15} aria-hidden="true" /></button>
+          {#if !anchor}
+            <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))} aria-label="Previous messages" title="Previous messages"><ChevronLeft size={15} aria-hidden="true" /></button>
+            <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)} aria-label="Next messages" title="Next messages"><ChevronRight size={15} aria-hidden="true" /></button>
+          {/if}
+          {#if lastOffset !== undefined}<button class="btn" type="button" disabled={!anchor && offset === lastOffset} onclick={latest} aria-label="Latest message" title="Latest message"><ChevronsRight size={15} aria-hidden="true" /></button>{/if}
+        </nav>
+      {/snippet}
+      {@render pager("Message pages", "start")}
       {#if !loaded.messages.length}<div class="state-c"><p>No messages at this position. The chat may have been removed, or this is the end.</p></div>{/if}
       {#snippet saved(message: Message)}
         {#each memories.data?.records ?? [] as record (record.id)}
@@ -658,15 +671,7 @@ const prompts = $derived(
           </div>
         {/if}
       {/each}
-      <!-- Around a search match there are no pages to step through, only the two ends to jump to. -->
-      <nav aria-label="Message pages" class="pager end">
-        <button class="btn" type="button" disabled={!anchor && offset === 0} onclick={() => page(0)} aria-label="First message" title="First message"><ChevronsLeft size={15} aria-hidden="true" /></button>
-        {#if !anchor}
-          <button class="btn" type="button" disabled={offset === 0} onclick={() => page(Math.max(0, offset - PAGE_SIZE))}><ChevronLeft size={15} aria-hidden="true" />Previous messages</button>
-          <button class="btn" type="button" disabled={loaded.messages.length < PAGE_SIZE} onclick={() => page(offset + PAGE_SIZE)}>Next messages<ChevronRight size={15} aria-hidden="true" /></button>
-        {/if}
-        {#if lastOffset !== undefined}<button class="btn" type="button" disabled={!anchor && offset === lastOffset} onclick={latest} aria-label="Latest message" title="Latest message"><ChevronsRight size={15} aria-hidden="true" /></button>{/if}
-      </nav>
+      {@render pager("Message pages, bottom", "end")}
     {/if}
   </article>
 </div>
