@@ -18,7 +18,7 @@ pub mod settings;
 mod tests;
 
 pub use assistant::Assistant;
-pub(crate) use document::validate_identifier;
+pub use document::validate_identifier;
 pub(crate) use embeddings::Embeddings;
 pub use loading::{default_path, load};
 pub use qdrant::QdrantConfig;
@@ -40,7 +40,7 @@ pub struct ResolvedConfig {
     pub path: PathBuf,
     pub loaded: bool,
     pub shared: Option<SharedConfig>,
-    pub(crate) views: crate::views::config::Configuration,
+    pub views: crate::views::config::Configuration,
     pub providers: ProviderRoots,
     pub since_days: Option<u32>,
     pub destination: IndexDestination,

@@ -11,13 +11,13 @@ use std::{
 mod snapshot;
 
 #[derive(Clone, Copy)]
-pub(crate) struct Inference<'a> {
-    pub(crate) models_dir: &'a Path,
-    pub(crate) local: Option<&'a crate::config::ResolvedConfig>,
+pub struct Inference<'a> {
+    pub models_dir: &'a Path,
+    pub local: Option<&'a crate::config::ResolvedConfig>,
 }
 
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub(crate) struct SnapshotWork {
+pub struct SnapshotWork {
     forwarded_embeddings: u64,
     pub(super) model_inferences: u64,
     model_load_milliseconds: u64,
@@ -45,7 +45,7 @@ pub(super) fn target(config: &SharedConfig) -> String {
     .to_hex()
     .to_string()
 }
-pub(crate) fn write_event(
+pub fn write_event(
     file: &mut impl Write,
     event: &Event,
     redaction: crate::redaction::Policy,
@@ -237,7 +237,7 @@ async fn should_auto_backfill(path: &Path, config: &SharedConfig) -> Result<bool
         .any(|node| node.node_id == config.node_id && node.revision > 0))
 }
 
-pub(crate) async fn publish(
+pub async fn publish(
     path: &Path,
     config: &SharedConfig,
     inference: Option<Inference<'_>>,

@@ -16,6 +16,7 @@ use mash_app::{
 use mash_dash as dash;
 use mash_mcp as mcp;
 use mash_model::{AppError, platform, provider, redaction, role};
+use mash_server as server;
 use serde::Serialize;
 
 /// Registers the silver text codec on a raw connection, as tests need to read silver directly.

@@ -6,14 +6,14 @@ use std::time::Instant;
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[schemars(rename = "ActivityKind")]
-pub(crate) enum Kind {
+pub enum Kind {
     Publication,
     Attachment,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Phase {
+pub enum Phase {
     WaitingForCapacity,
     Receiving,
     WaitingForNode,
@@ -30,7 +30,7 @@ pub(crate) enum Phase {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Unit {
+pub enum Unit {
     Bytes,
     Records,
     Chats,
@@ -51,7 +51,7 @@ pub(crate) struct Active {
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[schemars(rename = "ActivityReport")]
-pub(crate) struct Report {
+pub struct Report {
     capacity: usize,
     occupied: usize,
     available: usize,
@@ -76,13 +76,13 @@ struct Record {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct Registry(Arc<Mutex<Vec<Weak<Record>>>>);
+pub struct Registry(Arc<Mutex<Vec<Weak<Record>>>>);
 
 #[derive(Clone, Default)]
-pub(crate) struct Progress(Option<Arc<Record>>);
+pub struct Progress(Option<Arc<Record>>);
 
 impl Registry {
-    pub(crate) fn start(&self, group: &str, node: &str, kind: Kind) -> Progress {
+    pub fn start(&self, group: &str, node: &str, kind: Kind) -> Progress {
         let now = Instant::now();
         let record = Arc::new(Record {
             id: crate::observability::request_id(),
@@ -113,7 +113,7 @@ impl Registry {
         Progress(Some(record))
     }
 
-    pub(crate) fn snapshot(&self, group: &str, capacity: usize, available: usize) -> Report {
+    pub fn snapshot(&self, group: &str, capacity: usize, available: usize) -> Report {
         let entries = self
             .0
             .lock()
@@ -146,7 +146,7 @@ impl Registry {
 }
 
 impl Progress {
-    pub(crate) fn phase(&self, phase: Phase, unit: Unit) {
+    pub fn phase(&self, phase: Phase, unit: Unit) {
         if let Some(record) = &self.0 {
             let now = Instant::now();
             let mut step = record

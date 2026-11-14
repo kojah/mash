@@ -25,7 +25,7 @@ impl EmbeddingInput<'_> {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ChatRecord {
+pub struct ChatRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enrichment: Option<crate::silver::enrichment::Evidence>,
     pub id: String,
@@ -39,7 +39,7 @@ pub(crate) struct ChatRecord {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct MessageRecord {
+pub struct MessageRecord {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<crate::attachments::Metadata>,
     pub id: String,

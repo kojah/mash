@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Manifest {
+pub struct Manifest {
     schema_version: u32,
     interpretation_version: u32,
     representation_version: u32,
@@ -21,7 +21,7 @@ impl Manifest {
         }
     }
 
-    pub(super) fn matches(&self, silver: Option<&State>) -> bool {
+    pub fn matches(&self, silver: Option<&State>) -> bool {
         self.schema_version == 1
             && self.representation_version == 1
             && self.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION

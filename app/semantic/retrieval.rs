@@ -61,7 +61,7 @@ pub(crate) fn finish_hybrid(
         .map(Ranked::Rerank)
 }
 
-pub(crate) const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";
+pub const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";
 
 pub(crate) fn shared_query_vector(
     backend: &mut Backend,

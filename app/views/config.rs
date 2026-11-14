@@ -9,14 +9,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 #[schemars(rename = "ViewsConfiguration")]
-pub(crate) struct Configuration {
+pub struct Configuration {
     pub(crate) build: Build,
-    pub(crate) query: Query,
+    pub query: Query,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Build {
+pub struct Build {
     #[serde(skip_serializing_if = "RetrievalUnit::is_default")]
     pub(crate) retrieval_unit: RetrievalUnit,
     #[serde(skip_serializing_if = "DenseContent::is_default")]
@@ -224,14 +224,14 @@ impl Build {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Query {
+pub struct Query {
     /// Include read-only local indexing freshness warnings with search results.
     pub(crate) freshness_warnings: bool,
     pub(crate) intent: super::exact::Intent,
     pub(crate) unit: SearchUnit,
     pub(crate) limit: usize,
     pub(crate) fusion: Fusion,
-    pub(crate) ranking: Ranking,
+    pub ranking: Ranking,
 }
 
 /// Query-only ranking over the active lexical and dense candidate artifacts.

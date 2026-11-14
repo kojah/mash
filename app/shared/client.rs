@@ -41,7 +41,7 @@ pub(crate) async fn fingerprints(
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum Endpoint {
+pub enum Endpoint {
     Freshness,
     Search,
     Fingerprints,
@@ -182,7 +182,7 @@ fn request_with_token(
         .headers(headers)
         .timeout(endpoint.timeout()))
 }
-pub(super) async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
+pub async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
     request: reqwest::RequestBuilder,
     endpoint: Endpoint,
 ) -> Result<T, AppError> {
@@ -449,7 +449,7 @@ pub(crate) async fn query(
     query_with_token(config, &token, node, request).await
 }
 
-pub(crate) async fn query_with_token(
+pub async fn query_with_token(
     config: &SharedConfig,
     token: &str,
     node: Option<&str>,

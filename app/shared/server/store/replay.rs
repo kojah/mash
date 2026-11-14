@@ -9,15 +9,16 @@ use std::path::Path;
 use std::time::Instant;
 
 /// Per-store interruption points; no global state or production fault switches.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReplayFault {
+pub enum ReplayFault {
     AfterInvalidation,
     AfterDeletion,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Store {
+    #[cfg(test)]
     pub(crate) fn with_replay_fault(mut self, fault: ReplayFault) -> Self {
         self.replay_fault = Some(fault);
         self
@@ -60,11 +61,11 @@ const CHAT_WINDOW: usize = 256;
 
 /// Replay result for one node.
 #[derive(Debug, serde::Serialize)]
-pub(crate) struct Replayed {
+pub struct Replayed {
     pub(crate) group_id: String,
     pub(crate) node_id: String,
     pub(crate) chats: u64,
-    pub(crate) messages: u64,
+    pub messages: u64,
     pub(crate) embeddings: u64,
     pub(crate) timings: Timings,
 }
@@ -94,11 +95,7 @@ impl Store {
     }
 
     /// Re-embed every dense-eligible message and rewrite all of the node's views.
-    pub(crate) async fn replay(
-        &self,
-        identity: &Identity,
-        models: &Path,
-    ) -> Result<Replayed, AppError> {
+    pub async fn replay(&self, identity: &Identity, models: &Path) -> Result<Replayed, AppError> {
         let total_started = Instant::now();
         let lock_started = Instant::now();
         let _node = self.lock(identity).await?;
@@ -125,12 +122,12 @@ impl Store {
                     let phase = Instant::now();
                     bulk.invalidate(&node).await?;
                     timings.invalidate_ms = millis(phase);
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     self.interrupt_replay(ReplayFault::AfterInvalidation)?;
                     let phase = Instant::now();
                     bulk.delete_documents().await?;
                     timings.delete_ms = millis(phase);
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     self.interrupt_replay(ReplayFault::AfterDeletion)?;
                     let mut replayed = Replayed {
                         group_id: identity.group_id.clone(),

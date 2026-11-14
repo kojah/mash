@@ -24,7 +24,7 @@ use generated as sql;
 /// Server-only publication head of one node, kept in its `shared_head` row.
 /// Fields of retired protocol features are ignored when read back.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct Head {
+pub struct Head {
     pub(crate) instance: String,
     pub(crate) revision: i64,
     /// Changes with every committed publication, including views-only rebuilds.
@@ -46,14 +46,14 @@ pub(crate) struct Head {
 /// Transfer receipt recorded with the silver commit it describes. The
 /// transport catalog only tracks spool state; this is the canonical evidence.
 #[derive(Clone, Debug)]
-pub(crate) struct SyncReceipt {
-    pub(crate) operation_id: String,
-    pub(crate) manifest_digest: String,
+pub struct SyncReceipt {
+    pub operation_id: String,
+    pub manifest_digest: String,
 }
 
 /// Receipt identity over the transfer manifest and committed revision. The
 /// client, the silver head and the transport catalog all use this function.
-pub(crate) fn receipt_digest(manifest: &str, revision: i64) -> String {
+pub fn receipt_digest(manifest: &str, revision: i64) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"mash-sync-receipt-v1\0");
     hasher.update(manifest.as_bytes());
@@ -65,7 +65,7 @@ pub(crate) fn receipt_digest(manifest: &str, revision: i64) -> String {
 /// `<root>/<group_id>/<node_id>.sqlite3`. WAL readers run concurrently with
 /// the node's single writer. One API process owns the directory at a time.
 #[derive(Clone)]
-pub(crate) struct SilverStore {
+pub struct SilverStore {
     root: PathBuf,
     groups: BTreeMap<String, Vec<String>>,
     /// None only for `unavailable`, whose every connection fails.
@@ -105,7 +105,7 @@ pub(crate) fn now() -> String {
         .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
-pub(crate) fn token() -> Result<String, AppError> {
+pub fn token() -> Result<String, AppError> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random).map_err(|_| AppError::internal("create publication token"))?;
     Ok(blake3::hash(&random).to_hex().to_string())
@@ -127,7 +127,7 @@ fn provider(name: &str) -> Result<Provider, AppError> {
 impl SilverStore {
     /// Create or open every configured node's database; only the API process
     /// writes them.
-    pub(crate) fn open<'a>(
+    pub fn open<'a>(
         root: &Path,
         identities: impl IntoIterator<Item = &'a Identity>,
     ) -> Result<Self, AppError> {
@@ -157,8 +157,8 @@ impl SilverStore {
     }
 
     /// Test-only store whose every access fails, like an unreachable backend.
-    #[cfg(test)]
-    pub(crate) fn unavailable() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn unavailable() -> Self {
         Self {
             root: PathBuf::from("/proc/mash-unavailable/silver"),
             groups: BTreeMap::new(),
@@ -265,7 +265,7 @@ pub(crate) fn head(connection: &Connection) -> Result<Option<Head>, AppError> {
         .transpose()
 }
 
-pub(crate) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppError> {
+pub fn put_head(connection: &Connection, head: &Head) -> Result<(), AppError> {
     sql::PutHead::builder()
         .head(&encode(head)?)
         .build()

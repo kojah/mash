@@ -2,7 +2,7 @@
 //! application through the existing silver-before-views transaction boundary.
 use super::{App, Identity, admission};
 use crate::AppError;
-use crate::attachments::{Availability, Metadata};
+use crate::files::{Availability, Metadata};
 use crate::shared::protocol::{self, Event};
 use crate::shared::silver_store;
 use crate::shared::sync::catalog::{self, Begin, BeginOutcome, Catalog, StoredChunk};
@@ -71,10 +71,8 @@ async fn run(app: App, identity: Identity, socket: WebSocket) -> Result<(), AppE
     // Expire transfers abandoned by earlier sessions before accepting new work.
     let cutoff = epoch_millis()
         .saturating_sub(i64::try_from(INCOMPLETE_RETENTION.as_millis()).unwrap_or(i64::MAX));
-    if let Ok(expired) = crate::shared::server::sync::catalog(&catalog, move |catalog| {
-        catalog.expire_incomplete(cutoff)
-    })
-    .await
+    if let Ok(expired) =
+        crate::sync::catalog(&catalog, move |catalog| catalog.expire_incomplete(cutoff)).await
         && expired > 0
     {
         tracing::info!(expired, "expired abandoned synchronization transfers");
@@ -791,7 +789,7 @@ async fn handle_begin_attachment(
             > app
                 .store
                 .max_node_bytes()
-                .min(crate::attachments::MAX_BYTES as u64)
+                .min(crate::files::MAX_BYTES as u64)
         || begin.manifest_digest.len() != 64
         || !begin.manifest_digest.bytes().all(|b| b.is_ascii_hexdigit())
     {
@@ -1734,7 +1732,7 @@ async fn apply_attachment(
 ) -> Result<String, AppError> {
     let start: AttachmentStart = serde_json::from_str(&operation.start_json)
         .map_err(|_| AppError::internal("attachment metadata is not valid"))?;
-    let max_decoded = crate::attachments::MAX_BYTES
+    let max_decoded = crate::files::MAX_BYTES
         .min(usize::try_from(app.store.max_node_bytes()).unwrap_or(usize::MAX));
     let bytes = wire::decode_bytes(pieces, max_decoded)
         .map_err(|_| AppError::usage("attachment bytes were not valid"))?;
@@ -1743,7 +1741,7 @@ async fn apply_attachment(
         .digest
         .clone()
         .ok_or_else(|| AppError::usage("attachment digest is missing"))?;
-    let request = crate::attachments::Request {
+    let request = crate::files::Request {
         node_id: identity.node_id.clone(),
         message_id: start.message_id.clone(),
         attachment_id: Some(start.attachment.id.clone()),
@@ -1760,8 +1758,7 @@ async fn apply_attachment(
         .ok_or_else(|| AppError::usage("shared attachment storage is disabled"))?;
     let metadata = start.attachment;
     let write_metadata = metadata.clone();
-    crate::blocking(move || crate::attachments::write_bytes(&root, &write_metadata, &bytes))
-        .await?;
+    crate::blocking(move || crate::files::write_bytes(&root, &write_metadata, &bytes)).await?;
     let operation_id = operation.operation_id.clone();
     let receipt = digest.clone();
     let _ = catalog(handle, move |catalog| {

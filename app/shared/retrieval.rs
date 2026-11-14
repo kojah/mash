@@ -8,6 +8,44 @@ use crate::{AppError, config::SharedConfig};
 use futures_util::FutureExt;
 use std::{collections::HashMap, path::Path, time::Duration};
 
+/// Masks and compacts search candidates before the shared server sends them:
+/// a hit whose text its node's document already carries travels without it.
+pub fn prepare_candidates(
+    candidates: &mut protocol::Candidates,
+    redaction: crate::redaction::Policy,
+) {
+    for document in &mut candidates.documents {
+        document.projection = redaction.projection(&document.projection);
+    }
+    let projections: std::collections::HashMap<_, _> = candidates
+        .documents
+        .iter()
+        .map(|document| {
+            (
+                (document.node_id.as_str(), document.id.as_str()),
+                document.projection.as_str(),
+            )
+        })
+        .collect();
+    for hit in candidates
+        .lexical
+        .iter_mut()
+        .chain(&mut candidates.semantic)
+    {
+        hit.content = redaction.projection(&hit.content);
+        hit.metadata.redact(redaction);
+        // Clients restore projections before fusion and reranking. Send text
+        // once when the same node/message document supplies it; exact matches
+        // have no document records and keep their content inline.
+        if projections
+            .get(&(hit.node_id.as_deref().unwrap_or_default(), hit.id.as_str()))
+            .is_some_and(|projection| *projection == hit.content)
+        {
+            hit.content = String::new();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

@@ -149,11 +149,7 @@ impl Store {
 
     /// Bootstrap once, or explicitly replace the group's recipe and model space.
     /// Replacing them makes every node's views stale until it is republished.
-    pub(crate) async fn select_views(
-        &self,
-        identity: &Scope,
-        activate: bool,
-    ) -> Result<String, AppError> {
+    pub async fn select_views(&self, identity: &Scope, activate: bool) -> Result<String, AppError> {
         self.upgrade_configuration(identity).await?;
         let previous = self.group_configuration(identity).await?;
         if let Some(previous) = &previous {

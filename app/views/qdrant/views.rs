@@ -15,22 +15,22 @@ use std::collections::BTreeMap;
 /// which `certified` and each chat's evidence then record.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NodeViews {
+pub struct NodeViews {
     kind: PointKind,
     pub(crate) node_id: String,
     pub(crate) build: crate::views::config::Build,
     pub(crate) generation: String,
-    pub(crate) silver: Option<State>,
+    pub silver: Option<State>,
     /// The last completed synchronization covered every chat with complete
     /// documents. Searches keep serving it while a later synchronization runs.
     #[serde(default)]
-    pub(crate) certified: bool,
+    pub certified: bool,
     /// Silver revision these chats were built from. Certification only claims a
     /// head equal to it, so views never report the current head while serving a
     /// different revision's content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) input: Option<i64>,
-    pub(crate) projections: super::Projections,
+    pub input: Option<i64>,
+    pub projections: super::Projections,
 }
 
 impl NodeViews {

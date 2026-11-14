@@ -454,7 +454,7 @@ Source mapping:
   `apply`, `Upload::forget`, `Upload::chat`.
 - [silver_store.rs](../app/shared/silver_store.rs): `SilverStore::write`.
 - Existing regression:
-  [canonical revision and atomic publication](../app/shared/server/tests/silver_revision.rs).
+  [canonical revision and atomic publication](../crates/mash-server/src/tests/silver_revision.rs).
 
 Chat bodies, source certificates, canonical hashing, ordinary `Remove` events,
 provider-qualified identity is outside this model.
@@ -846,7 +846,7 @@ the worker, while queued work and committed evidence survive.
 
 Implemented source mapping:
 
-- `Receive` / `ChangedRetry`: `app/shared/server/sync.rs::handle_chunk` checks
+- `Receive` / `ChangedRetry`: `crates/mash-server/src/sync.rs::handle_chunk` checks
   the negotiated limits, zstd envelope and decoded digest before
   `app/shared/sync/catalog.rs::append` rejects gaps, foreign owners and
   conflicting retries of a retained sequence.
@@ -1039,7 +1039,7 @@ Two benchmarks cover different layers:
   that NDJSON, and the production Protobuf+zstd pieces over a deterministic
   varied corpus. It reports wire bytes, encode/decode medians and projected
   transfer time over 10/50/200 Mbit/s links.
-- **End to end** (`server::tests::sync::
+- **End to end** (`mash-server` `tests::sync::
   qdrant_publish_latency_and_bandwidth_http_versus_websocket`, ignored) times
   real `POST /v1/index` against `/v1/sync` until `Published`, with silver and
   Qdrant views in the loop. It reports measured medians/p90, payload bytes per

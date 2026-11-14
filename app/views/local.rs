@@ -23,7 +23,7 @@ pub mod test_support;
 #[cfg(test)]
 mod tests;
 
-pub(crate) struct Build {
+pub struct Build {
     pub(crate) counts: Counts,
     /// Every configured view is certified, including dense when enabled.
     pub(crate) ready: bool,
@@ -249,7 +249,7 @@ impl Local {
     clippy::too_many_lines,
     reason = "keep invalidation, awaited mutations and final certification in one coordinator"
 )]
-pub(crate) async fn build(
+pub async fn build(
     database: &Path,
     models: &Path,
     configuration: &ResolvedConfig,

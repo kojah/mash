@@ -1,6 +1,7 @@
 //! Public, synthetic relevance judgments exercised through the typed core.
+#[cfg(test)]
 mod cleanup;
-use crate::core::{IndexRequest, Operation, Paths, Request, Response};
+use crate::core::{Operation, Paths, Request, Response};
 use crate::search_results::{Results, SearchUnit};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -50,7 +51,7 @@ fn corpus() -> Corpus {
     corpus
 }
 
-pub(crate) fn fixture() -> (tempfile::TempDir, Paths) {
+pub fn fixture() -> (tempfile::TempDir, Paths) {
     let corpus = corpus();
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("claude");
@@ -132,7 +133,7 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
     let (_root, paths) = fixture();
     crate::core::execute(Request {
         paths: paths.clone(),
-        operation: Operation::Index(IndexRequest::default()),
+        operation: Operation::Index(crate::core::IndexRequest::default()),
     })
     .await
     .unwrap();
@@ -145,7 +146,7 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
     assert_eq!(failures, Vec::<String>::new(), "relevance regressions");
 }
 
-pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
+pub async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
     let corpus = corpus();
     let mut failures = Vec::new();
     for unit in [SearchUnit::Messages, SearchUnit::Chats] {

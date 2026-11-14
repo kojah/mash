@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Row {
+pub enum Row {
     Owner {
         id: String,
     },
@@ -74,7 +74,7 @@ impl Row {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Kind {
+pub enum Kind {
     Decision,
     Preference,
     Fact,

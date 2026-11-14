@@ -38,7 +38,7 @@ pub(super) fn added_nodes_path(configuration: &Path) -> std::path::PathBuf {
 }
 
 /// Whether `group_id/node_id` is already a node of this server.
-pub(super) fn has_node(config: &Configuration, group_id: &str, node_id: &str) -> bool {
+pub fn has_node(config: &Configuration, group_id: &str, node_id: &str) -> bool {
     config
         .nodes
         .iter()
@@ -47,7 +47,7 @@ pub(super) fn has_node(config: &Configuration, group_id: &str, node_id: &str) ->
 
 /// Record a new node by the hash of its token. The caller has validated the
 /// identifiers, which are therefore safe to write as TOML strings.
-pub(super) fn append_node(
+pub fn append_node(
     configuration: &Path,
     group_id: &str,
     node_id: &str,
@@ -76,8 +76,8 @@ pub(super) fn append_node(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Configuration {
-    pub(super) attachments_dir: Option<std::path::PathBuf>,
+pub struct Configuration {
+    pub attachments_dir: Option<std::path::PathBuf>,
     /// Shared silver system of record, one database per configured node;
     /// defaults to `shared-silver` in the platform data directory.
     silver_dir: Option<std::path::PathBuf>,
@@ -87,26 +87,26 @@ pub(super) struct Configuration {
     #[serde(default)]
     pub(super) embeddings: crate::config::Embeddings,
     #[serde(default = "default_listen")]
-    pub(super) listen: SocketAddr,
-    pub(super) qdrant_url_env: Option<String>,
-    pub(super) qdrant_grpc_url_env: Option<String>,
+    pub listen: SocketAddr,
+    pub qdrant_url_env: Option<String>,
+    pub qdrant_grpc_url_env: Option<String>,
     pub(super) qdrant_api_key_env: Option<String>,
     #[serde(default = "default_upload_mib")]
     max_upload_mib: u64,
     #[serde(default)]
     pub(super) qdrant_memory: qdrant_index::MemoryTier,
     #[serde(default = "default_uploads")]
-    pub(super) max_concurrent_uploads: usize,
+    pub max_concurrent_uploads: usize,
     #[serde(default)]
-    pub(super) redaction: Redaction,
+    pub redaction: Redaction,
     nodes: Vec<AuthorizedNode>,
 }
 /// Where the server masks recognizable credentials; each defaults on.
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct Redaction {
+pub struct Redaction {
     /// HTTP read responses: search candidates, chats, view and attachments.
-    pub(super) responses: bool,
+    pub responses: bool,
 }
 impl Default for Redaction {
     fn default() -> Self {
@@ -137,7 +137,7 @@ fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8787))
 }
 impl Configuration {
-    pub(super) fn silver_dir(&self) -> Result<std::path::PathBuf, AppError> {
+    pub fn silver_dir(&self) -> Result<std::path::PathBuf, AppError> {
         match &self.silver_dir {
             Some(path) if path.is_absolute() => Ok(path.clone()),
             Some(_) => Err(AppError::configuration(
@@ -169,9 +169,7 @@ pub(super) fn env_name(name: &str) -> Result<(), AppError> {
     }
     Ok(())
 }
-pub(super) fn identities(
-    config: &Configuration,
-) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
+pub fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.views.query.vector_search.validate()?;
     config.embeddings.validate()?;
     config.silver_dir()?;
@@ -258,7 +256,7 @@ pub(super) fn identities(
     }
     Ok(result)
 }
-pub(super) async fn load(path: &Path) -> Result<Configuration, AppError> {
+pub async fn load(path: &Path) -> Result<Configuration, AppError> {
     let path = path.to_path_buf();
     crate::blocking(move || {
         use std::io::Read;

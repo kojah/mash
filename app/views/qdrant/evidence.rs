@@ -7,24 +7,24 @@ mod tests;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ProjectionEvidence {
+pub struct ProjectionEvidence {
     /// Fingerprint of every silver field on which this scope depends.
-    pub(crate) fingerprint: String,
-    pub(crate) embeddings: u64,
+    pub fingerprint: String,
+    pub embeddings: u64,
     /// Every dense-eligible unit in this scope has its required vector.
-    pub(crate) complete: bool,
+    pub complete: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(transparent)]
-pub(crate) struct Projections(BTreeMap<String, ProjectionEvidence>);
+pub struct Projections(BTreeMap<String, ProjectionEvidence>);
 
 impl Projections {
-    pub(crate) fn get(&self, scope: &str) -> Option<&ProjectionEvidence> {
+    pub fn get(&self, scope: &str) -> Option<&ProjectionEvidence> {
         self.0.get(scope)
     }
 
-    pub(crate) fn insert(&mut self, scope: String, evidence: ProjectionEvidence) {
+    pub fn insert(&mut self, scope: String, evidence: ProjectionEvidence) {
         self.0.insert(scope, evidence);
     }
 
@@ -40,7 +40,7 @@ impl Projections {
         self.0.values().map(|evidence| evidence.embeddings).sum()
     }
 
-    pub(crate) fn chats(&self) -> impl Iterator<Item = (&String, &ProjectionEvidence)> {
+    pub fn chats(&self) -> impl Iterator<Item = (&String, &ProjectionEvidence)> {
         self.0.iter()
     }
 

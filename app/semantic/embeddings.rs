@@ -14,7 +14,7 @@ use std::path::Path;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 pub(super) mod cpu;
 
-pub(crate) struct EmbeddingPool {
+pub struct EmbeddingPool {
     pub(super) backend: EmbeddingPoolBackend,
     pub(super) assets_lease: Option<std::fs::File>,
 }

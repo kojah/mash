@@ -25,8 +25,8 @@ pub(super) async fn read(
     }
     let mut seen = BTreeSet::new();
     for anchor in &input.anchors {
-        super::super::validation::valid_id(&anchor.id)?;
-        super::super::validation::valid_id(&anchor.node_id)?;
+        crate::shared::validation::valid_id(&anchor.id)?;
+        crate::shared::validation::valid_id(&anchor.node_id)?;
         if anchor.context > 2
             || !matches!(
                 anchor.content,

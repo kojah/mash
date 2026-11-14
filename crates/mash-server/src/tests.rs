@@ -584,7 +584,7 @@ impl Service {
         let store = if matches!(backend, TestBackend::Unavailable) {
             Store::unavailable()
         } else {
-            let silver = super::super::silver_store::SilverStore::open(
+            let silver = crate::shared::silver_store::SilverStore::open(
                 &directory.path().join("silver"),
                 identities.values(),
             )

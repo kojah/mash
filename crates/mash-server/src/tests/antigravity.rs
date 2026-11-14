@@ -7,7 +7,7 @@ use crate::{
 
 async fn contract(service: Service) {
     let directory = tempfile::tempdir().unwrap();
-    let path = crate::silver::write_antigravity_fixture(directory.path());
+    let path = mash_silver::antigravity::fixture::write(directory.path());
     let roots = vec![path.clone()];
     let sources = discovered_sources(Provider::Antigravity, &roots);
     let source = &sources[0];

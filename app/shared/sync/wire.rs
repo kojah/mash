@@ -14,10 +14,10 @@ use std::io::Read;
 
 // Version 4 requires native record batches, including the final record phase
 // of progressive backfill. Older peers must reject before accepting a transfer.
-pub(crate) const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 4;
 pub(crate) const MAX_CONTROL_BYTES: usize = 64 * 1024;
-pub(crate) const MAX_ENVELOPE_BYTES: usize = 4 * 1024 * 1024;
-pub(crate) const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;
+pub const MAX_ENVELOPE_BYTES: usize = 4 * 1024 * 1024;
+pub const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;
 pub(crate) const NORMAL_BATCH_TARGET: usize = 1024 * 1024;
 pub(crate) const MAX_BATCH_CHATS: usize = 128;
 pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
@@ -26,21 +26,21 @@ pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
 /// chats up to the normal target, so only one very long chat can exceed it:
 /// real agent sessions reach hundreds of megabytes of text, and a chat that
 /// cannot fit would keep its node's shared publication stale forever.
-pub(crate) const DEFAULT_MAX_DECODED_BYTES: usize = 1024 * 1024 * 1024;
+pub const DEFAULT_MAX_DECODED_BYTES: usize = 1024 * 1024 * 1024;
 /// Why one atomic publication cannot be sent; publishers then use a backfill.
 pub(crate) const BATCH_TOO_LARGE: &str = "publication batch exceeds decoded-size limit";
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct ClientFrame {
+pub struct ClientFrame {
     #[prost(string, tag = "1")]
     pub operation_id: String,
     #[prost(oneof = "client_frame::Body", tags = "2, 3, 4, 6, 7, 8, 9, 10, 11")]
     pub body: Option<client_frame::Body>,
 }
 
-pub(crate) mod client_frame {
+pub mod client_frame {
     #[derive(Clone, PartialEq, prost::Oneof)]
-    pub(crate) enum Body {
+    pub enum Body {
         #[prost(message, tag = "2")]
         Hello(super::Hello),
         #[prost(message, tag = "3")]
@@ -63,7 +63,7 @@ pub(crate) mod client_frame {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct ServerFrame {
+pub struct ServerFrame {
     #[prost(string, tag = "1")]
     pub operation_id: String,
     #[prost(
@@ -73,9 +73,9 @@ pub(crate) struct ServerFrame {
     pub body: Option<server_frame::Body>,
 }
 
-pub(crate) mod server_frame {
+pub mod server_frame {
     #[derive(Clone, PartialEq, prost::Oneof)]
-    pub(crate) enum Body {
+    pub enum Body {
         #[prost(message, tag = "2")]
         Welcome(super::Welcome),
         #[prost(message, tag = "3")]
@@ -112,7 +112,7 @@ pub(crate) mod server_frame {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Hello {
+pub struct Hello {
     #[prost(uint32, tag = "1")]
     pub protocol_version: u32,
     #[prost(string, tag = "2")]
@@ -124,7 +124,7 @@ pub(crate) struct Hello {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Welcome {
+pub struct Welcome {
     #[prost(uint32, tag = "1")]
     pub protocol_version: u32,
     #[prost(string, tag = "2")]
@@ -148,7 +148,7 @@ pub(crate) struct Welcome {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct BeginBackfill {
+pub struct BeginBackfill {
     #[prost(string, tag = "1")]
     pub backfill_id: String,
     #[prost(string, tag = "2")]
@@ -167,7 +167,7 @@ pub(crate) struct BeginBackfill {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
-pub(crate) enum PublicationMode {
+pub enum PublicationMode {
     Unspecified = 0,
     BackfillBatch = 1,
     Delta = 2,
@@ -175,7 +175,7 @@ pub(crate) enum PublicationMode {
 }
 
 impl PublicationMode {
-    pub(crate) const fn parse(value: i32) -> Option<Self> {
+    pub const fn parse(value: i32) -> Option<Self> {
         match value {
             0 => Some(Self::Unspecified),
             1 => Some(Self::BackfillBatch),
@@ -187,7 +187,7 @@ impl PublicationMode {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct BeginPublication {
+pub struct BeginPublication {
     #[prost(message, optional, tag = "1")]
     pub start: Option<PublicationStart>,
     #[prost(enumeration = "PublicationMode", tag = "2")]
@@ -209,7 +209,7 @@ pub(crate) struct BeginPublication {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct PublicationStart {
+pub struct PublicationStart {
     #[prost(message, optional, tag = "1")]
     pub views_build: Option<ViewsBuild>,
     #[prost(message, optional, tag = "2")]
@@ -227,7 +227,7 @@ pub(crate) struct PublicationStart {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct BeginAttachment {
+pub struct BeginAttachment {
     #[prost(string, tag = "1")]
     pub message_id: String,
     #[prost(message, optional, tag = "2")]
@@ -242,7 +242,7 @@ pub(crate) struct BeginAttachment {
 /// chat content the client froze; a tombstone digest is produced by
 /// [`tombstone_member_digest`].
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct BackfillMember {
+pub struct BackfillMember {
     #[prost(string, tag = "1")]
     pub chat_id: String,
     #[prost(string, tag = "2")]
@@ -251,7 +251,7 @@ pub(crate) struct BackfillMember {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
-pub(crate) enum Compression {
+pub enum Compression {
     None = 0,
     Zstd = 1,
 }
@@ -267,7 +267,7 @@ impl Compression {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Chunk {
+pub struct Chunk {
     #[prost(uint64, tag = "1")]
     pub sequence: u64,
     #[prost(uint64, tag = "2")]
@@ -283,13 +283,13 @@ pub(crate) struct Chunk {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct FinishUpload {
+pub struct FinishUpload {
     #[prost(string, tag = "1")]
     pub manifest_digest: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct FinishBackfill {
+pub struct FinishBackfill {
     #[prost(string, tag = "1")]
     pub backfill_id: String,
     #[prost(int64, tag = "2")]
@@ -299,34 +299,34 @@ pub(crate) struct FinishBackfill {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Resume {
+pub struct Resume {
     #[prost(string, tag = "1")]
     pub manifest_digest: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Cancel {}
+pub struct Cancel {}
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Queued {
+pub struct Queued {
     #[prost(uint32, tag = "1")]
     pub position: u32,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Accepted {
+pub struct Accepted {
     #[prost(uint32, tag = "1")]
     pub credit_bytes: u32,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Credit {
+pub struct Credit {
     #[prost(uint32, tag = "1")]
     pub additional_bytes: u32,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Checkpoint {
+pub struct Checkpoint {
     #[prost(uint64, tag = "1")]
     pub sequence: u64,
     #[prost(uint64, tag = "2")]
@@ -334,7 +334,7 @@ pub(crate) struct Checkpoint {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Progress {
+pub struct Progress {
     #[prost(string, tag = "1")]
     pub phase: String,
     #[prost(uint64, tag = "2")]
@@ -344,7 +344,7 @@ pub(crate) struct Progress {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct SilverCommitted {
+pub struct SilverCommitted {
     #[prost(int64, tag = "1")]
     pub revision: i64,
     #[prost(string, tag = "2")]
@@ -352,7 +352,7 @@ pub(crate) struct SilverCommitted {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Published {
+pub struct Published {
     #[prost(int64, tag = "1")]
     pub revision: i64,
     #[prost(bool, tag = "2")]
@@ -362,13 +362,13 @@ pub(crate) struct Published {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct AttachmentStored {
+pub struct AttachmentStored {
     #[prost(string, tag = "1")]
     pub digest: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct BackfillComplete {
+pub struct BackfillComplete {
     #[prost(string, tag = "1")]
     pub backfill_id: String,
     #[prost(uint64, tag = "2")]
@@ -377,7 +377,7 @@ pub(crate) struct BackfillComplete {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
-pub(crate) enum OutcomeState {
+pub enum OutcomeState {
     Unspecified = 0,
     Receiving = 1,
     QueuedForApply = 2,
@@ -392,7 +392,7 @@ pub(crate) enum OutcomeState {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
 #[repr(i32)]
-pub(crate) enum CommitState {
+pub enum CommitState {
     Unspecified = 0,
     NotCommitted = 1,
     Committed = 2,
@@ -400,7 +400,7 @@ pub(crate) enum CommitState {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Outcome {
+pub struct Outcome {
     #[prost(enumeration = "OutcomeState", tag = "1")]
     pub state: i32,
     #[prost(enumeration = "CommitState", tag = "2")]
@@ -414,7 +414,7 @@ pub(crate) struct Outcome {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Failed {
+pub struct Failed {
     #[prost(string, tag = "1")]
     pub phase: String,
     #[prost(string, tag = "2")]
@@ -434,14 +434,14 @@ pub(crate) struct Failed {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Cancelled {}
+pub struct Cancelled {}
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct TooLateToCancel {}
+pub struct TooLateToCancel {}
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Draining {}
+pub struct Draining {}
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct ViewsBuild {
+pub struct ViewsBuild {
     #[prost(uint32, tag = "1")]
     pub retrieval_unit: u32,
     #[prost(uint32, tag = "2")]
@@ -457,7 +457,7 @@ pub(crate) struct ViewsBuild {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct SourceCertificate {
+pub struct SourceCertificate {
     #[prost(uint64, tag = "1")]
     pub revision: u64,
     #[prost(uint32, tag = "2")]
@@ -568,7 +568,7 @@ pub(crate) struct MessageContext {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Attachment {
+pub struct Attachment {
     #[prost(string, tag = "1")]
     pub id: String,
     #[prost(string, tag = "2")]
@@ -708,14 +708,14 @@ fn invalid(message: &'static str) -> AppError {
     AppError::usage(message)
 }
 
-pub(crate) fn encode_client(frame: &ClientFrame) -> Result<Vec<u8>, AppError> {
+pub fn encode_client(frame: &ClientFrame) -> Result<Vec<u8>, AppError> {
     encode_frame(
         frame,
         matches!(frame.body, Some(client_frame::Body::Chunk(_))),
     )
 }
 
-pub(crate) fn encode_server(frame: &ServerFrame) -> Result<Vec<u8>, AppError> {
+pub fn encode_server(frame: &ServerFrame) -> Result<Vec<u8>, AppError> {
     encode_frame(frame, false)
 }
 
@@ -736,7 +736,7 @@ fn encode_frame(frame: &impl Message, data: bool) -> Result<Vec<u8>, AppError> {
     Ok(bytes)
 }
 
-pub(crate) fn decode_client(bytes: &[u8]) -> Result<ClientFrame, AppError> {
+pub fn decode_client(bytes: &[u8]) -> Result<ClientFrame, AppError> {
     if bytes.len() > MAX_ENVELOPE_BYTES {
         return Err(invalid("sync frame exceeds limits"));
     }
@@ -751,7 +751,7 @@ pub(crate) fn decode_client(bytes: &[u8]) -> Result<ClientFrame, AppError> {
     Ok(frame)
 }
 
-pub(crate) fn decode_server(bytes: &[u8]) -> Result<ServerFrame, AppError> {
+pub fn decode_server(bytes: &[u8]) -> Result<ServerFrame, AppError> {
     if bytes.len() > MAX_CONTROL_BYTES {
         return Err(invalid("sync control frame exceeds limits"));
     }
@@ -762,7 +762,7 @@ pub(crate) fn decode_server(bytes: &[u8]) -> Result<ServerFrame, AppError> {
     Ok(frame)
 }
 
-pub(crate) fn compress(bytes: &[u8]) -> Result<Vec<u8>, AppError> {
+pub fn compress(bytes: &[u8]) -> Result<Vec<u8>, AppError> {
     zstd::stream::encode_all(bytes, 1).map_err(|_| AppError::internal("compress publication batch"))
 }
 
@@ -770,11 +770,7 @@ pub(crate) fn compress(bytes: &[u8]) -> Result<Vec<u8>, AppError> {
     clippy::similar_names,
     reason = "decoded length and decoded bytes are distinct concepts in the wire contract"
 )]
-pub(crate) fn decompress(
-    bytes: &[u8],
-    decoded_length: usize,
-    limit: usize,
-) -> Result<Vec<u8>, AppError> {
+pub fn decompress(bytes: &[u8], decoded_length: usize, limit: usize) -> Result<Vec<u8>, AppError> {
     if decoded_length > limit {
         return Err(invalid("publication piece exceeds decoded-size limit"));
     }
@@ -792,7 +788,7 @@ pub(crate) fn decompress(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Piece {
+pub struct Piece {
     pub sequence: u64,
     pub decoded_offset: u64,
     pub decoded_length: u64,
@@ -803,7 +799,7 @@ pub(crate) struct Piece {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EncodedBatch {
+pub struct EncodedBatch {
     pub decoded_bytes: u64,
     pub record_count: u32,
     pub chat_count: u32,
@@ -812,7 +808,7 @@ pub(crate) struct EncodedBatch {
 }
 
 impl EncodedBatch {
-    pub(crate) fn chunk(piece: &Piece) -> Chunk {
+    pub fn chunk(piece: &Piece) -> Chunk {
         Chunk {
             sequence: piece.sequence,
             decoded_offset: piece.decoded_offset,
@@ -825,7 +821,7 @@ impl EncodedBatch {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ManifestPiece<'a> {
+pub struct ManifestPiece<'a> {
     pub sequence: u64,
     pub decoded_offset: u64,
     pub decoded_length: u64,
@@ -836,7 +832,7 @@ pub(crate) struct ManifestPiece<'a> {
 ///
 /// Both preparation and receipt verification use this function so a retry
 /// cannot change ordering, offsets or payload bytes under the same manifest.
-pub(crate) fn manifest_digest(
+pub fn manifest_digest(
     decoded_bytes: u64,
     record_count: u32,
     pieces: &[ManifestPiece<'_>],
@@ -858,10 +854,7 @@ pub(crate) fn manifest_digest(
     clippy::too_many_lines,
     reason = "one bounded encoder that counts every publication event kind the same way"
 )]
-pub(crate) fn encode_publication(
-    events: &[Event],
-    max_decoded: usize,
-) -> Result<EncodedBatch, AppError> {
+pub fn encode_publication(events: &[Event], max_decoded: usize) -> Result<EncodedBatch, AppError> {
     let mut decoded = Vec::new();
     let mut records = 0u32;
     let mut chats = 0u32;
@@ -981,21 +974,18 @@ fn event_len(event: &Event) -> u32 {
 
 /// Records in decoded publication events; verification uses the same counting
 /// rule as preparation.
-pub(crate) fn record_count(events: &[Event]) -> u32 {
+pub fn record_count(events: &[Event]) -> u32 {
     events
         .iter()
         .fold(0u32, |total, event| total.saturating_add(event_len(event)))
 }
 
-pub(crate) fn decode_publication(
-    pieces: &[Piece],
-    max_decoded: usize,
-) -> Result<Vec<Event>, AppError> {
+pub fn decode_publication(pieces: &[Piece], max_decoded: usize) -> Result<Vec<Event>, AppError> {
     decode_records(&decode_bytes(pieces, max_decoded)?)
 }
 
 /// Assemble independently compressed pieces into one bounded byte buffer.
-pub(crate) fn decode_bytes(pieces: &[Piece], max_decoded: usize) -> Result<Vec<u8>, AppError> {
+pub fn decode_bytes(pieces: &[Piece], max_decoded: usize) -> Result<Vec<u8>, AppError> {
     let total = pieces
         .iter()
         .try_fold(0usize, |total, piece| {
@@ -1030,7 +1020,7 @@ pub(crate) fn decode_bytes(pieces: &[Piece], max_decoded: usize) -> Result<Vec<u
 }
 
 /// Baseline membership digest for a chat record.
-pub(crate) fn member_digest(record: &protocol::ChatRecord) -> Result<String, AppError> {
+pub fn member_digest(record: &protocol::ChatRecord) -> Result<String, AppError> {
     let mut bytes = Vec::new();
     NativeRecord::from(record)
         .encode_length_delimited(&mut bytes)
@@ -1040,14 +1030,14 @@ pub(crate) fn member_digest(record: &protocol::ChatRecord) -> Result<String, App
 
 /// Baseline membership digest for a tombstone, independent of the changed
 /// chat record that may arrive later.
-pub(crate) fn tombstone_member_digest(chat_id: &str) -> String {
+pub fn tombstone_member_digest(chat_id: &str) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"mash-backfill-tombstone-v1\0");
     hasher.update(chat_id.as_bytes());
     hasher.finalize().to_hex().to_string()
 }
 
-pub(crate) fn decode_backfill_manifest(
+pub fn decode_backfill_manifest(
     bytes: &[u8],
     max_members: usize,
 ) -> Result<Vec<BackfillMember>, AppError> {

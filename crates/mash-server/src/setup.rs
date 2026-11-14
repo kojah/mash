@@ -3,8 +3,8 @@
 //! directory, adds the first node, keeps the server running as a user service
 //! and gives it an HTTPS address inside the user's tailnet. It uses the Qdrant
 //! that is already running here and downloads nothing.
-use super::configuration;
 use crate::AppError;
+use crate::configuration;
 use crate::remote::{self, Layout, ServiceName, Supervisor};
 use std::path::{Path, PathBuf};
 

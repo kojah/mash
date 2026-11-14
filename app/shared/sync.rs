@@ -5,6 +5,6 @@
 //! existing server store.
 #[cfg(test)]
 mod bench;
-pub(crate) mod catalog;
-pub(crate) mod client;
-pub(crate) mod wire;
+pub mod catalog;
+pub mod client;
+pub mod wire;

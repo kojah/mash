@@ -35,7 +35,7 @@ ranking. The HTTP service and concrete database backends remain separate from
 those node-side modules. These boundaries use existing concrete types rather
 than adding transport or provider abstractions.
 
-`app/shared/server.rs` owns Axum routing, authorization, typed HTTP responses
+`crates/mash-server/src/lib.rs` owns Axum routing, authorization, typed HTTP responses
 and the listener lifecycle. Its private `configuration` module loads bounded
 strict TOML and resolves authorized node identities; `store` initializes Qdrant; `upload` spools bounded
 NDJSON streams. Configuration and credentials are validated before connecting

@@ -6,7 +6,7 @@ use crate::{
 };
 
 impl Store {
-    pub(crate) async fn list_records(
+    pub async fn list_records(
         &self,
         identity: &Identity,
         mut input: List,
@@ -96,11 +96,7 @@ impl Store {
         Ok(page)
     }
 
-    pub(crate) async fn get_record(
-        &self,
-        identity: &Identity,
-        input: Get,
-    ) -> Result<Record, AppError> {
+    pub async fn get_record(&self, identity: &Identity, input: Get) -> Result<Record, AppError> {
         let node = input
             .node_id
             .clone()

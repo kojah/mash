@@ -23,15 +23,15 @@ async fn call(
 )]
 async fn qdrant_http_attachments_require_current_membership_and_group_authorization() {
     let service = Service::qdrant(384).await;
-    let source = crate::attachments::Source::Base64 {
+    let source = crate::files::Source::Base64 {
         name: "notes.txt".into(),
         media_type: "text/plain".into(),
         data: STANDARD.encode("password=\"hunter2\"\nuseful notes"),
     };
     let cache = tempfile::tempdir().unwrap();
-    let record = crate::attachments::retain(
+    let record = crate::files::retain(
         cache.path(),
-        &crate::attachments::Configuration::default(),
+        &crate::files::Configuration::default(),
         "searchable",
         &[source],
     )
@@ -57,10 +57,10 @@ async fn qdrant_http_attachments_require_current_membership_and_group_authorizat
         .await
         .unwrap();
     assert_eq!(listed["attachments"][0]["availability"], "not_uploaded");
-    let file = crate::attachments::Retrieved {
+    let file = crate::files::Retrieved {
         message_id: "searchable".into(),
         attachment: record.clone(),
-        data: crate::attachments::read(cache.path(), &record).unwrap(),
+        data: crate::files::read(cache.path(), &record).unwrap(),
     };
     let bytes = STANDARD.decode(&file.data).unwrap();
     let config = crate::config::SharedConfig {
@@ -94,7 +94,7 @@ async fn qdrant_http_attachments_require_current_membership_and_group_authorizat
     )
     .await
     .expect("owner stores the attachment over /v1/sync");
-    let downloaded: crate::attachments::Retrieved = service
+    let downloaded: crate::files::Retrieved = service
         .request("attachment", SECOND)
         .json(&request)
         .send()

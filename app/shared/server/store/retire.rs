@@ -5,15 +5,16 @@ use crate::shared::silver_store;
 use crate::views::qdrant::NodeViews;
 
 /// Per-store interruption points; no global state or production fault switches.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RetireFault {
+pub enum RetireFault {
     AfterInvalidation,
     AfterDocuments,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Store {
+    #[cfg(test)]
     pub(crate) fn with_retire_fault(mut self, fault: RetireFault) -> Self {
         self.retire_fault = Some(fault);
         self
@@ -29,7 +30,7 @@ impl Store {
 
 /// What a retirement removed.
 #[derive(Debug, serde::Serialize)]
-pub(crate) struct Retired {
+pub struct Retired {
     pub(crate) group_id: String,
     pub(crate) node_id: String,
     pub(crate) chats: u64,
@@ -41,7 +42,7 @@ impl Store {
     /// history. The views are marked uncertified first, so an interruption
     /// leaves a node that reports stale views and can be retired again; it
     /// never leaves search documents for history that is gone.
-    pub(crate) async fn retire(&self, identity: &Identity) -> Result<Retired, AppError> {
+    pub async fn retire(&self, identity: &Identity) -> Result<Retired, AppError> {
         let _node = self.lock(identity).await?;
         let _replay = self.replay_lock(&identity.group_id).await?;
         let counts = self.read(identity, silver_store::counts).await?;
@@ -51,10 +52,10 @@ impl Store {
                 .put_node_views(identity, &NodeViews::empty(&self.views, identity))
                 .await?;
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.interrupt_retire(RetireFault::AfterInvalidation)?;
         self.views.delete_node_documents(identity).await?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.interrupt_retire(RetireFault::AfterDocuments)?;
         let silver = self.silver.clone();
         let node = identity.clone();

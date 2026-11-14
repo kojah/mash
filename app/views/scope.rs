@@ -5,9 +5,9 @@ use serde::Deserialize;
 /// Authentication belongs to the caller; the views engine needs only this scope.
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Scope {
-    pub(crate) group_id: String,
-    pub(crate) node_id: String,
-    pub(crate) generation: String,
-    pub(crate) dimensions: usize,
+pub struct Scope {
+    pub group_id: String,
+    pub node_id: String,
+    pub generation: String,
+    pub dimensions: usize,
 }

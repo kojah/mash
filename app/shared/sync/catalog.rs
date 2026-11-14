@@ -15,7 +15,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 const SCHEMA_VERSION: i64 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum State {
+pub enum State {
     Receiving,
     QueuedForApply,
     Applying,
@@ -60,32 +60,32 @@ impl State {
     clippy::struct_field_names,
     reason = "the operation identity names the durable transfer row"
 )]
-pub(crate) struct Operation {
-    pub(crate) operation_id: String,
-    pub(crate) kind: String,
-    pub(crate) manifest_digest: String,
+pub struct Operation {
+    pub operation_id: String,
+    pub kind: String,
+    pub manifest_digest: String,
     pub(crate) decoded_bytes: u64,
-    pub(crate) record_count: u32,
-    pub(crate) start_json: String,
-    pub(crate) state: State,
-    pub(crate) next_sequence: u64,
-    pub(crate) decoded_offset: u64,
-    pub(crate) revision: Option<i64>,
-    pub(crate) receipt_digest: Option<String>,
+    pub record_count: u32,
+    pub start_json: String,
+    pub state: State,
+    pub next_sequence: u64,
+    pub decoded_offset: u64,
+    pub revision: Option<i64>,
+    pub receipt_digest: Option<String>,
 }
 
-pub(crate) struct Begin<'a> {
-    pub(crate) operation_id: &'a str,
-    pub(crate) group_id: &'a str,
-    pub(crate) node_id: &'a str,
-    pub(crate) kind: &'a str,
-    pub(crate) manifest_digest: &'a str,
-    pub(crate) decoded_bytes: u64,
-    pub(crate) record_count: u32,
-    pub(crate) start_json: &'a str,
+pub struct Begin<'a> {
+    pub operation_id: &'a str,
+    pub group_id: &'a str,
+    pub node_id: &'a str,
+    pub kind: &'a str,
+    pub manifest_digest: &'a str,
+    pub decoded_bytes: u64,
+    pub record_count: u32,
+    pub start_json: &'a str,
 }
 
-pub(crate) enum BeginOutcome {
+pub enum BeginOutcome {
     New(Operation),
     Existing(Operation),
 }
@@ -97,47 +97,47 @@ pub(crate) enum BeginOutcome {
     clippy::struct_field_names,
     reason = "the backfill identity names the durable session row"
 )]
-pub(crate) struct Backfill {
-    pub(crate) backfill_id: String,
+pub struct Backfill {
+    pub backfill_id: String,
     pub(crate) database_instance: String,
-    pub(crate) baseline_revision: i64,
+    pub baseline_revision: i64,
     pub(crate) views_fingerprint: String,
     pub(crate) manifest_digest: String,
-    pub(crate) total_chats: u64,
-    pub(crate) covered: u64,
-    pub(crate) state: String,
+    pub total_chats: u64,
+    pub covered: u64,
+    pub state: String,
 }
 
-pub(crate) struct BackfillBegin<'a> {
-    pub(crate) backfill_id: &'a str,
-    pub(crate) group_id: &'a str,
-    pub(crate) node_id: &'a str,
-    pub(crate) database_instance: &'a str,
-    pub(crate) baseline_revision: i64,
-    pub(crate) views_fingerprint: &'a str,
-    pub(crate) manifest_digest: &'a str,
-    pub(crate) total_chats: u64,
+pub struct BackfillBegin<'a> {
+    pub backfill_id: &'a str,
+    pub group_id: &'a str,
+    pub node_id: &'a str,
+    pub database_instance: &'a str,
+    pub baseline_revision: i64,
+    pub views_fingerprint: &'a str,
+    pub manifest_digest: &'a str,
+    pub total_chats: u64,
 }
 
 /// A durable operation left behind by a process that stopped mid-apply.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Recoverable {
-    pub(crate) operation_id: String,
-    pub(crate) group_id: String,
-    pub(crate) node_id: String,
-    pub(crate) kind: String,
+pub struct Recoverable {
+    pub operation_id: String,
+    pub group_id: String,
+    pub node_id: String,
+    pub kind: String,
 }
 
-pub(crate) struct StoredChunk {
-    pub(crate) sequence: u64,
-    pub(crate) decoded_offset: u64,
-    pub(crate) decoded_length: u64,
-    pub(crate) digest: String,
-    pub(crate) encoded: Vec<u8>,
-    pub(crate) compression: i32,
+pub struct StoredChunk {
+    pub sequence: u64,
+    pub decoded_offset: u64,
+    pub decoded_length: u64,
+    pub digest: String,
+    pub encoded: Vec<u8>,
+    pub compression: i32,
 }
 
-pub(crate) struct Catalog {
+pub struct Catalog {
     root: PathBuf,
     connection: Connection,
     /// Total encoded bytes all retained pieces may occupy.
@@ -145,8 +145,8 @@ pub(crate) struct Catalog {
 }
 
 /// Spool ceiling for tests and tools that do not configure one.
-#[cfg(test)]
-pub(crate) const DEFAULT_SPOOL_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+#[cfg(any(test, feature = "test-support"))]
+pub const DEFAULT_SPOOL_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 
 fn database(error: rusqlite::Error) -> AppError {
     AppError::database(error)
@@ -166,13 +166,13 @@ fn now() -> i64 {
 }
 
 impl Catalog {
-    #[cfg(test)]
-    pub(crate) fn open(root: &Path) -> Result<Self, AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn open(root: &Path) -> Result<Self, AppError> {
         Self::open_with_limit(root, DEFAULT_SPOOL_LIMIT)
     }
 
     /// Open the catalog with a hard ceiling on retained spool bytes.
-    pub(crate) fn open_with_limit(root: &Path, limit_bytes: u64) -> Result<Self, AppError> {
+    pub fn open_with_limit(root: &Path, limit_bytes: u64) -> Result<Self, AppError> {
         std::fs::create_dir_all(root.join("pieces")).map_err(AppError::io)?;
         let path = root.join("catalog.sqlite3");
         let connection = Connection::open(&path).map_err(database)?;
@@ -262,7 +262,7 @@ impl Catalog {
         })
     }
 
-    pub(crate) fn begin(&self, begin: &Begin<'_>) -> Result<BeginOutcome, AppError> {
+    pub fn begin(&self, begin: &Begin<'_>) -> Result<BeginOutcome, AppError> {
         if begin.operation_id.is_empty() || begin.operation_id.len() > 4096 {
             return Err(AppError::usage("invalid sync operation identity"));
         }
@@ -316,7 +316,7 @@ impl Catalog {
     }
 
     /// Persist one validated piece, then advance the durable checkpoint.
-    pub(crate) fn append(
+    pub fn append(
         &self,
         operation_id: &str,
         group_id: &str,
@@ -420,7 +420,7 @@ impl Catalog {
     }
 
     /// Verify the complete receipt and queue it for application.
-    pub(crate) fn finish(
+    pub fn finish(
         &self,
         operation_id: &str,
         group_id: &str,
@@ -467,7 +467,7 @@ impl Catalog {
 
     /// Operations that reached a durable apply state before the process
     /// stopped. Receiving transfers are not listed: they wait for their client.
-    pub(crate) fn recoverable(&self) -> Result<Vec<Recoverable>, AppError> {
+    pub fn recoverable(&self) -> Result<Vec<Recoverable>, AppError> {
         let mut statement = self
             .connection
             .prepare(
@@ -492,7 +492,7 @@ impl Catalog {
     }
 
     /// Retained pieces of a recoverable operation, with ownership checks.
-    pub(crate) fn recover_pieces(
+    pub fn recover_pieces(
         &self,
         operation_id: &str,
         group_id: &str,
@@ -503,7 +503,7 @@ impl Catalog {
         Ok((operation, pieces))
     }
 
-    pub(crate) fn select(
+    pub fn select(
         &self,
         operation_id: &str,
         group_id: &str,
@@ -556,7 +556,7 @@ impl Catalog {
             .map_err(database)
     }
 
-    pub(crate) fn set_state(
+    pub fn set_state(
         &self,
         operation_id: &str,
         state: State,
@@ -579,7 +579,7 @@ impl Catalog {
         Ok(())
     }
 
-    pub(crate) fn published(
+    pub fn published(
         &self,
         operation_id: &str,
         revision: i64,
@@ -596,18 +596,14 @@ impl Catalog {
 
     /// Mark a non-publication operation complete without claiming a silver
     /// revision. Used for the backfill manifest transfer.
-    pub(crate) fn completed(
-        &self,
-        operation_id: &str,
-        receipt_digest: &str,
-    ) -> Result<(), AppError> {
+    pub fn completed(&self, operation_id: &str, receipt_digest: &str) -> Result<(), AppError> {
         self.set_state(operation_id, State::Published, None, Some(receipt_digest))?;
         self.remove_pieces(operation_id)
     }
 
     /// Create or re-open a progressive-backfill session. Identity and manifest
     /// are immutable once the session exists.
-    pub(crate) fn begin_backfill(&self, input: &BackfillBegin<'_>) -> Result<Backfill, AppError> {
+    pub fn begin_backfill(&self, input: &BackfillBegin<'_>) -> Result<Backfill, AppError> {
         if input.backfill_id.is_empty() || input.backfill_id.len() > 4096 {
             return Err(AppError::usage("invalid backfill identity"));
         }
@@ -655,7 +651,7 @@ impl Catalog {
         Ok(backfill)
     }
 
-    pub(crate) fn backfill(
+    pub fn backfill(
         &self,
         backfill_id: &str,
         group_id: &str,
@@ -692,7 +688,7 @@ impl Catalog {
 
     /// Install the verified manifest once its transfer finishes. Repeating the
     /// same manifest is idempotent; different bytes fail closed.
-    pub(crate) fn store_manifest(
+    pub fn store_manifest(
         &self,
         backfill_id: &str,
         group_id: &str,
@@ -743,7 +739,7 @@ impl Catalog {
 
     /// Mark baseline members covered by a committed batch. Members outside the
     /// manifest are live additions and intentionally ignored.
-    pub(crate) fn cover(
+    pub fn cover(
         &self,
         backfill_id: &str,
         group_id: &str,
@@ -769,7 +765,7 @@ impl Catalog {
     }
 
     /// Verify complete manifest coverage. Idempotent after completion.
-    pub(crate) fn finish_backfill(
+    pub fn finish_backfill(
         &self,
         backfill_id: &str,
         group_id: &str,
@@ -805,11 +801,7 @@ impl Catalog {
     }
 
     /// Backfill sessions that still accept baseline batches for this node.
-    pub(crate) fn active_backfills(
-        &self,
-        group_id: &str,
-        node_id: &str,
-    ) -> Result<Vec<String>, AppError> {
+    pub fn active_backfills(&self, group_id: &str, node_id: &str) -> Result<Vec<String>, AppError> {
         let mut statement = self
             .connection
             .prepare(
@@ -830,7 +822,7 @@ impl Catalog {
     /// Record that a newer live publication carries these chats. A
     /// live record at a revision above the frozen baseline satisfies its
     /// baseline member, and a later baseline batch must not overwrite it.
-    pub(crate) fn record_live(
+    pub fn record_live(
         &self,
         backfill_id: &str,
         group_id: &str,
@@ -860,7 +852,7 @@ impl Catalog {
 
     /// Baseline chats already superseded by a live publication at or
     /// above `revision`. Their baseline records must not be applied.
-    pub(crate) fn superseded(
+    pub fn superseded(
         &self,
         backfill_id: &str,
         group_id: &str,
@@ -887,7 +879,7 @@ impl Catalog {
     }
 
     /// Most recently created baseline session for a node.
-    pub(crate) fn latest_backfill(
+    pub fn latest_backfill(
         &self,
         group_id: &str,
         node_id: &str,
@@ -909,7 +901,7 @@ impl Catalog {
         }
     }
 
-    pub(crate) fn cancel(&self, operation_id: &str) -> Result<(), AppError> {
+    pub fn cancel(&self, operation_id: &str) -> Result<(), AppError> {
         self.set_state(operation_id, State::Cancelled, None, None)?;
         self.remove_pieces(operation_id)
     }
@@ -917,7 +909,7 @@ impl Catalog {
     /// Expire abandoned receiving transfers whose last progress is older than
     /// `cutoff` (milliseconds since the epoch). Completed work is never expired
     /// here: only `receiving` rows release their spool.
-    pub(crate) fn expire_incomplete(&self, cutoff: i64) -> Result<usize, AppError> {
+    pub fn expire_incomplete(&self, cutoff: i64) -> Result<usize, AppError> {
         // One immediate transaction: an in-flight append on another connection
         // either commits first (and changes `updated_at`) or waits. That keeps a
         // checkpoint acknowledged by `append` from being deleted here.
@@ -973,7 +965,7 @@ impl Catalog {
     /// Forget every transfer, receipt and backfill of one node. A receipt kept
     /// after its history is gone could acknowledge an upload that no longer
     /// exists, so retiring a node removes them with it.
-    pub(crate) fn retire(&self, group_id: &str, node_id: &str) -> Result<usize, AppError> {
+    pub fn retire(&self, group_id: &str, node_id: &str) -> Result<usize, AppError> {
         let transaction = rusqlite::Transaction::new_unchecked(
             &self.connection,
             rusqlite::TransactionBehavior::Immediate,
@@ -1023,7 +1015,7 @@ impl Catalog {
 
     /// Bound retained spool and catalog rows. Published operations keep only
     /// their receipt so a reconnect can still report the outcome.
-    pub(crate) fn prune(&self, group_id: &str, node_id: &str, keep: usize) -> Result<(), AppError> {
+    pub fn prune(&self, group_id: &str, node_id: &str, keep: usize) -> Result<(), AppError> {
         let mut statement = self
             .connection
             .prepare(

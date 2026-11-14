@@ -19,7 +19,7 @@ pub struct Join {
 }
 
 impl Join {
-    pub(crate) fn new(api_url: &str, group_id: &str, node_id: &str, token: &str) -> Self {
+    pub fn new(api_url: &str, group_id: &str, node_id: &str, token: &str) -> Self {
         Self {
             v: 1,
             api_url: api_url.trim_end_matches('/').to_owned(),
@@ -29,7 +29,7 @@ impl Join {
         }
     }
 
-    pub(crate) fn encode(&self) -> Result<String, AppError> {
+    pub fn encode(&self) -> Result<String, AppError> {
         let json =
             serde_json::to_vec(self).map_err(|_| AppError::internal("encode join string"))?;
         Ok(format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(json)))

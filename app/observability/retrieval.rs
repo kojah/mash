@@ -10,7 +10,7 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 #[repr(usize)]
-pub(crate) enum Stage {
+pub enum Stage {
     LocalExact,
     SharedCandidates,
     Context,
@@ -54,8 +54,8 @@ pub(crate) enum RerankerFallback {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Measurement {
-    pub(crate) stage: Stage,
+pub struct Measurement {
+    pub stage: Stage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) reranker_engine: Option<RerankerEngine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

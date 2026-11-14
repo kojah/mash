@@ -17,12 +17,12 @@ const TAILSCALE_APP: &str = "/Applications/Tailscale.app/Contents/MacOS/Tailscal
 
 /// What a user service is called under each service manager, and who wrote it.
 #[derive(Clone, Copy)]
-pub(crate) struct ServiceName {
-    pub(crate) unit: &'static str,
-    pub(crate) label: &'static str,
-    pub(crate) description: &'static str,
+pub struct ServiceName {
+    pub unit: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
     /// The command to rerun, named in the definition for whoever reads it.
-    pub(crate) written_by: &'static str,
+    pub written_by: &'static str,
 }
 
 const DASHBOARD: ServiceName = ServiceName {
@@ -34,13 +34,13 @@ const DASHBOARD: ServiceName = ServiceName {
 
 /// The user's own service manager on this system.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Supervisor {
+pub enum Supervisor {
     Systemd,
     Launchd,
 }
 
 impl Supervisor {
-    pub(crate) fn current() -> Option<Self> {
+    pub fn current() -> Option<Self> {
         if cfg!(target_os = "linux") {
             Some(Self::Systemd)
         } else if cfg!(target_os = "macos") {
@@ -97,7 +97,7 @@ struct Report {
 }
 
 /// A user service and the files that belong to it.
-pub(crate) struct Layout {
+pub struct Layout {
     pub(crate) supervisor: Supervisor,
     pub(crate) name: ServiceName,
     /// The service's environment; for the dashboard, its tokens.
@@ -110,7 +110,7 @@ pub(crate) struct Layout {
 
 impl Layout {
     /// `environment` and `log` are the service's own files.
-    pub(crate) fn resolve(
+    pub fn resolve(
         supervisor: Supervisor,
         name: ServiceName,
         environment: PathBuf,
@@ -134,7 +134,7 @@ impl Layout {
     }
 
     /// The name the service manager knows the service by.
-    pub(crate) fn service(&self) -> &'static str {
+    pub fn service(&self) -> &'static str {
         match self.supervisor {
             Supervisor::Systemd => self.name.unit,
             Supervisor::Launchd => self.name.label,
@@ -142,7 +142,7 @@ impl Layout {
     }
 
     /// Where to look when the service does not come up.
-    pub(crate) fn logs(&self) -> String {
+    pub fn logs(&self) -> String {
         match self.supervisor {
             Supervisor::Systemd => format!("`journalctl --user -u {}`", self.name.unit),
             Supervisor::Launchd => self.log.display().to_string(),
@@ -276,7 +276,7 @@ fn report(report: &Report) -> Result<(), AppError> {
 /// Write the service's definition for its manager. launchd reads no
 /// environment file, so its property list carries `environment` and is as
 /// private as that file.
-pub(crate) fn write_definition(
+pub fn write_definition(
     layout: &Layout,
     arguments: &[String],
     environment: &[(String, String)],
@@ -292,7 +292,7 @@ pub(crate) fn write_definition(
 }
 
 /// Load the written definition and start the service, replacing a running one.
-pub(crate) async fn start(layout: &Layout) -> Result<(), AppError> {
+pub async fn start(layout: &Layout) -> Result<(), AppError> {
     match layout.supervisor {
         Supervisor::Systemd => {
             let unit = layout.name.unit;
@@ -344,7 +344,7 @@ async fn unload(target: &str) {
 
 /// Stop the service, remove its definition and take down its address. A
 /// service that is already gone is the wanted outcome.
-pub(crate) async fn uninstall(layout: &Layout, port: u16) -> Result<(), AppError> {
+pub async fn uninstall(layout: &Layout, port: u16) -> Result<(), AppError> {
     match layout.supervisor {
         Supervisor::Systemd => {
             let _ = command(
@@ -385,7 +385,7 @@ async fn remove(layout: &Layout, port: u16) -> Result<(), AppError> {
 }
 
 /// Run a helper to completion; its output is kept out of ours.
-pub(crate) async fn command(program: &str, arguments: &[&str]) -> Result<String, AppError> {
+pub async fn command(program: &str, arguments: &[&str]) -> Result<String, AppError> {
     // A helper that stops to ask something would otherwise hang this command.
     let running = tokio::process::Command::new(program)
         .args(arguments)
@@ -415,7 +415,7 @@ pub(crate) async fn command(program: &str, arguments: &[&str]) -> Result<String,
 }
 
 /// Tailscale's command: the one on PATH, or on macOS the app's own copy.
-pub(crate) fn tailscale() -> &'static str {
+pub fn tailscale() -> &'static str {
     let on_path = std::env::var_os("PATH").is_some_and(|path| {
         std::env::split_paths(&path).any(|directory| directory.join("tailscale").is_file())
     });
@@ -427,7 +427,7 @@ pub(crate) fn tailscale() -> &'static str {
 }
 
 /// The name other devices in the tailnet use for this machine.
-pub(crate) async fn tailnet_name() -> Result<String, AppError> {
+pub async fn tailnet_name() -> Result<String, AppError> {
     parse_tailnet_name(&command(tailscale(), &["status", "--json"]).await?)
 }
 
@@ -459,11 +459,7 @@ fn already_published(serve: &str, host: &str, port: u16) -> bool {
 /// Refuse a port something else on this machine already answers on. Tailscale
 /// takes the port on this machine's tailnet address, so a program listening
 /// there, such as another dashboard, would silently stop being reachable.
-pub(crate) async fn ensure_port_free(
-    layout: &Layout,
-    host: &str,
-    port: u16,
-) -> Result<(), AppError> {
+pub async fn ensure_port_free(layout: &Layout, host: &str, port: u16) -> Result<(), AppError> {
     // A rerun finds its own service and address in place. Without the
     // service, a forward to this port belongs to something else.
     let installed = layout.unit_file.exists();

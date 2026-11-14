@@ -14,7 +14,7 @@ impl Write for Capture {
     }
 }
 
-pub(crate) fn capture() -> (Arc<Mutex<Vec<u8>>>, tracing::Dispatch) {
+pub fn capture() -> (Arc<Mutex<Vec<u8>>>, tracing::Dispatch) {
     let bytes = Arc::new(Mutex::new(Vec::new()));
     let writer = Capture(bytes.clone());
     let dispatcher = tracing::Dispatch::new(super::subscriber(move || writer.clone()));

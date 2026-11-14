@@ -32,7 +32,7 @@ pub(crate) enum Artifact {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Diagnostics {
+pub struct Diagnostics {
     pub(crate) policy_version: u16,
     pub(crate) intent: Intent,
     pub(crate) unit: SearchUnit,
@@ -50,15 +50,15 @@ pub(crate) struct Diagnostics {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) fusion: Option<Fusion>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) ranking: Option<Ranking>,
+    pub ranking: Option<Ranking>,
     /// Requested shared override, not a claim that remote retrieval completed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) shared_vector_override: Option<super::vector::Search>,
+    pub shared_vector_override: Option<super::vector::Search>,
     pub(crate) returned_results: usize,
     /// Core time includes configuration and model admission, excludes CLI startup.
     pub(crate) elapsed_ms: u64,
     #[serde(default)]
-    pub(crate) stages: Vec<crate::observability::retrieval::Measurement>,
+    pub stages: Vec<crate::observability::retrieval::Measurement>,
     #[serde(default)]
     pub(crate) shared_context_incomplete: bool,
 }

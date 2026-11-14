@@ -816,7 +816,7 @@ async fn qdrant_backfill_manifest_coverage_completes_only_after_baseline_batches
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL with Qdrant 1.20+"]
 async fn qdrant_attachment_upload_uses_the_websocket_transport() {
     let service = Service::qdrant(384).await;
-    let source = crate::attachments::Source::Base64 {
+    let source = crate::files::Source::Base64 {
         name: "notes.txt".into(),
         media_type: "text/plain".into(),
         data: base64::Engine::encode(
@@ -825,9 +825,9 @@ async fn qdrant_attachment_upload_uses_the_websocket_transport() {
         ),
     };
     let cache = tempfile::tempdir().unwrap();
-    let record = crate::attachments::retain(
+    let record = crate::files::retain(
         cache.path(),
-        &crate::attachments::Configuration::default(),
+        &crate::files::Configuration::default(),
         "searchable",
         &[source],
     )
@@ -843,7 +843,7 @@ async fn qdrant_attachment_upload_uses_the_websocket_transport() {
 
     let bytes = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
-        crate::attachments::read(cache.path(), &record).unwrap(),
+        crate::files::read(cache.path(), &record).unwrap(),
     )
     .unwrap();
     let config = crate::config::SharedConfig {
@@ -865,7 +865,7 @@ async fn qdrant_attachment_upload_uses_the_websocket_transport() {
 
     // A different node can retrieve the retained bytes.
     let request = json!({"node_id":"first","message_id":"searchable","attachment_id":record.id});
-    let downloaded: crate::attachments::Retrieved = service
+    let downloaded: crate::files::Retrieved = service
         .request("attachment", SECOND)
         .json(&request)
         .send()

@@ -2,8 +2,8 @@
 #[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 mod coreml;
 mod embeddings;
-#[cfg(test)]
-pub(crate) mod evaluation;
+#[cfg(any(test, feature = "test-support"))]
+pub mod evaluation;
 mod models;
 pub(crate) mod remote;
 pub mod remote_reranker;
@@ -22,7 +22,8 @@ pub(crate) use embeddings::{EmbeddingProgress, EmbeddingSummary};
 pub(crate) use models::indexer;
 pub(crate) use models::indexer::LoadedIndexer;
 pub(crate) use models::{InstallSummary, LoadedBackend, Models};
-pub(crate) use retrieval::{SHARED_EMBEDDING_GENERATION, finish_hybrid, fuse, shared_query_vector};
+pub use retrieval::SHARED_EMBEDDING_GENERATION;
+pub(crate) use retrieval::{finish_hybrid, fuse, shared_query_vector};
 
 const EMBEDDING_MODEL: EmbeddingModel = EmbeddingModel::AllMiniLML6V2Q;
 const RERANKER_MODEL: RerankerModel = RerankerModel::JINARerankerV1TurboEn;

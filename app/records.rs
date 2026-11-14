@@ -436,7 +436,7 @@ impl Change {
 }
 
 impl Record {
-    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+    pub fn redact(&mut self, policy: crate::redaction::Policy) {
         match &mut self.scope {
             Scope::Repository { identity } => *identity = policy.text(identity),
             Scope::LocalProject { path } => *path = policy.text(path),

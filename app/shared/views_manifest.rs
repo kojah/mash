@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "SharedViewsManifest")]
-pub(super) struct Manifest {
+pub struct Manifest {
     pub(super) schema_version: u32,
     pub(super) interpretation_version: u32,
-    pub(super) build: Build,
+    pub build: Build,
     pub(super) model_generation: String,
-    pub(super) silver: State,
+    pub silver: State,
 }
 
 impl Manifest {

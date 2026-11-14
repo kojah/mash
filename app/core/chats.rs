@@ -16,20 +16,20 @@ mod tests;
 
 #[derive(Debug, Serialize)]
 pub struct Response {
-    pub(crate) chats: Vec<Row>,
+    pub chats: Vec<Row>,
     pub(crate) next_offset: Option<usize>,
-    pub(crate) shared: bool,
+    pub shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) shared_error: Option<String>,
+    pub shared_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) diagnostics: Option<Diagnostics>,
 }
 
 /// One listed chat with arguments `view` accepts to read it from the start.
 #[derive(Debug, Serialize)]
-pub(crate) struct Row {
+pub struct Row {
     #[serde(flatten)]
-    pub(crate) chat: Chat,
+    pub chat: Chat,
     /// Absent only when the chat retains no messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<Lookup>,

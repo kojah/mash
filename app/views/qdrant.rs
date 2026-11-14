@@ -64,7 +64,7 @@ impl MemoryTier {
 }
 
 #[derive(Clone, Copy, Default)]
-pub(crate) struct MemoryPolicy {
+pub struct MemoryPolicy {
     pub(crate) tier: MemoryTier,
     pub(crate) activate: bool,
 }
@@ -77,10 +77,10 @@ impl From<MemoryTier> for MemoryPolicy {
     }
 }
 
-pub(crate) use crate::views::vector::Search as VectorIndex;
+pub use crate::views::vector::Search as VectorIndex;
 
 #[derive(Clone)]
-pub(crate) struct Store {
+pub struct Store {
     dense_names: std::collections::BTreeMap<String, String>,
     build: crate::views::config::Build,
     api: api::Client,
@@ -314,8 +314,8 @@ fn tokens(text: &str) -> Vec<String> {
         .collect()
 }
 impl Store {
-    #[cfg(test)]
-    pub(crate) fn unavailable() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn unavailable() -> Self {
         Self {
             dense_names: std::collections::BTreeMap::new(),
             build: crate::views::config::Build::default(),
@@ -337,7 +337,7 @@ impl Store {
         &self.build
     }
     /// Explicit setup of each group's document and views-state collections.
-    pub(crate) async fn connect(
+    pub async fn connect(
         (url, grpc_url): (&str, &str),
         key: Option<&str>,
         groups: &[String],

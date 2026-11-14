@@ -84,7 +84,7 @@ impl Default for Request {
 }
 
 impl Request {
-    pub(crate) fn validate(&self) -> Result<(), AppError> {
+    pub fn validate(&self) -> Result<(), AppError> {
         if !(1..=100).contains(&self.limit) || self.offset > 10_000 {
             return Err(AppError::usage(
                 "chat pages require limit 1–100 and offset 0–10000",
@@ -142,12 +142,12 @@ impl Request {
     clippy::struct_field_names,
     reason = "chat_id is the public identity field shared with search results"
 )]
-pub(crate) struct Chat {
-    pub(crate) chat_id: String,
+pub struct Chat {
+    pub chat_id: String,
     pub(crate) provider: crate::provider::Provider,
-    pub(crate) node_id: String,
+    pub node_id: String,
     #[serde(flatten)]
-    pub(crate) metadata: ChatMetadata,
+    pub metadata: ChatMetadata,
     /// The chat's first message by display position, which `view` accepts.
     /// None when the chat has no retained messages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -161,7 +161,7 @@ pub(crate) struct Chat {
 /// wasted work. Every masking pattern that can hide text on that line matches
 /// within the line, and the 4096-character cap leaves a secret that starts in
 /// the shown part far more room than any pattern needs to recognise it.
-pub(crate) fn headline(title: &mut String) {
+pub fn headline(title: &mut String) {
     let Some(line) = title.lines().find(|line| !line.trim().is_empty()) else {
         return;
     };
@@ -177,9 +177,9 @@ pub(crate) fn headline(title: &mut String) {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "ChatCatalogPage")]
-pub(crate) struct Page {
-    pub(crate) chats: Vec<Chat>,
-    pub(crate) next_offset: Option<usize>,
+pub struct Page {
+    pub chats: Vec<Chat>,
+    pub next_offset: Option<usize>,
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use serde::Serialize;
 
-use crate::{AppError, shared::server};
+use crate::{AppError, server};
 
 #[derive(Parser)]
 // Independent explicit startup operations, not mutually exclusive states.

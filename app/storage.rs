@@ -23,7 +23,7 @@ pub(crate) mod gold_input;
 mod indexing;
 pub mod packed;
 pub(crate) mod publication;
-pub(crate) mod records;
+pub mod records;
 pub(crate) mod search_input;
 mod silver_state;
 pub(crate) mod turns;
@@ -51,13 +51,13 @@ pub struct Storage {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub(crate) struct Counts {
-    pub(crate) chats: u64,
-    pub(crate) messages: u64,
+pub struct Counts {
+    pub chats: u64,
+    pub messages: u64,
     pub(crate) searchable_messages: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) searchable_user_messages: Option<u64>,
-    pub(crate) embeddings: u64,
+    pub embeddings: u64,
 }
 
 pub(crate) struct StatusSnapshot {
@@ -71,38 +71,38 @@ pub struct SearchHit {
     pub(crate) lookup: Option<crate::search_results::lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
-    pub(crate) id: String,
-    pub(crate) chat_id: String,
-    pub(crate) provider: crate::provider::Provider,
+    pub id: String,
+    pub chat_id: String,
+    pub provider: crate::provider::Provider,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) turn_id: Option<String>,
     pub(crate) role: crate::role::Role,
     /// Message position in its chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) sequence: Option<i64>,
-    pub(crate) content: String,
+    pub content: String,
     #[serde(default)]
     pub(crate) created_at: Option<i64>,
     #[serde(default)]
-    pub(crate) metadata: crate::search_results::ChatMetadata,
+    pub metadata: crate::search_results::ChatMetadata,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) copies: Vec<crate::search_results::MessageReference>,
+    pub copies: Vec<crate::search_results::MessageReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) semantic_score: Option<f32>,
+    pub semantic_score: Option<f32>,
     pub(crate) fusion_score: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) rerank_score: Option<f32>,
+    pub rerank_score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) node_id: Option<String>,
+    pub node_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct Message {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) attachments: Vec<crate::attachments::Metadata>,
-    pub(crate) id: String,
+    pub attachments: Vec<crate::attachments::Metadata>,
+    pub id: String,
     pub ordinal: i64,
     pub role: crate::role::Role,
     pub content: String,
@@ -128,7 +128,7 @@ pub struct ChatWindow {
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum MessageContent {
+pub enum MessageContent {
     #[default]
     Canonical,
     SearchProjection,
@@ -251,7 +251,7 @@ impl Drop for Storage {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 #[cfg(test)]
 mod tests;

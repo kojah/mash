@@ -73,9 +73,9 @@ async fn concurrent_http_calls_correlate_failures_and_bound_untrusted_metadata()
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let client = reqwest::Client::new();
     let call = |token| {
-        super::super::super::client::response::<crate::storage::Counts>(
+        crate::shared::client::response::<crate::storage::Counts>(
             client.get(&url).bearer_auth(token),
-            super::super::super::client::Endpoint::Freshness,
+            crate::shared::client::Endpoint::Freshness,
         )
         .with_subscriber(dispatcher.clone())
     };
@@ -85,9 +85,9 @@ async fn concurrent_http_calls_correlate_failures_and_bound_untrusted_metadata()
 
     // Disabled client tracing sends no ID: the tracing server creates its own.
     assert!(
-        super::super::super::client::response::<crate::storage::Counts>(
+        crate::shared::client::response::<crate::storage::Counts>(
             client.get(&url).bearer_auth(FIRST),
-            super::super::super::client::Endpoint::Freshness,
+            crate::shared::client::Endpoint::Freshness,
         )
         .with_subscriber(tracing::subscriber::NoSubscriber::default())
         .await

@@ -32,8 +32,6 @@ pub(crate) mod antigravity {
     pub(crate) mod tests;
 }
 #[cfg(test)]
-pub(crate) use antigravity::tests::write as write_antigravity_fixture;
-#[cfg(test)]
 mod codex_store {
     use crate::provider::Provider;
     pub(crate) use mash_silver::codex_store::*;

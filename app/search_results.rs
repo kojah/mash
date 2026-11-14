@@ -98,20 +98,20 @@ pub(crate) struct Collected {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct ChatMetadata {
+pub struct ChatMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
-    pub(crate) title: Option<String>,
-    pub(crate) project: Option<String>,
-    pub(crate) repository: Option<String>,
-    pub(crate) created_at: Option<i64>,
-    pub(crate) updated_at: Option<i64>,
+    pub enrichment: Option<crate::silver::enrichment::Evidence>,
+    pub title: Option<String>,
+    pub project: Option<String>,
+    pub repository: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
 }
 
 impl ChatMetadata {
     /// Masks credentials in the descriptive fields; enrichment derived from a
     /// masked field is dropped with it.
-    pub(crate) fn redact(&mut self, policy: crate::redaction::Policy) {
+    pub fn redact(&mut self, policy: crate::redaction::Policy) {
         if !policy.enabled() {
             return;
         }
@@ -169,7 +169,7 @@ pub struct ChatMatch {
     pub(crate) lookup: Option<lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
-    pub(crate) message_id: String,
+    pub message_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) turn_id: Option<String>,
     pub(crate) node_id: Option<String>,
@@ -181,7 +181,7 @@ pub struct ChatMatch {
     pub(crate) rerank_score: Option<f32>,
     pub(crate) fusion_score: f32,
     /// Other indexed copies of this evidence, usable as view anchors.
-    pub(crate) copies: Vec<MessageReference>,
+    pub copies: Vec<MessageReference>,
 }
 
 /// Half-open Unicode-scalar character offsets, not bytes or canonical offsets.
@@ -192,9 +192,9 @@ pub struct ProjectionSpan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct MessageReference {
+pub struct MessageReference {
     pub(crate) message_id: String,
-    pub(crate) node_id: Option<String>,
+    pub node_id: Option<String>,
 }
 
 pub(crate) type EvidenceKey = (

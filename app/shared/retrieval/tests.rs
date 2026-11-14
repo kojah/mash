@@ -93,7 +93,7 @@ fn compact_candidates_restore_identical_redacted_hits_before_ranking() {
         document.projection = crate::redaction::projection(&document.projection);
     }
     let baseline = serde_json::to_vec(&candidates).unwrap();
-    super::super::server::prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
+    prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
     assert!(
         candidates
             .lexical
@@ -136,11 +136,11 @@ fn compaction_preserves_inline_text_without_an_identical_node_message_projection
             projection: "literal evidence".into(),
         }],
     };
-    super::super::server::prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
+    prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
     assert_eq!(candidates.lexical[0].content, "literal evidence");
     assert_eq!(candidates.lexical[1].content, "different projection");
     candidates.documents.clear();
-    super::super::server::prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
+    prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
     assert_eq!(candidates.lexical[0].content, "literal evidence");
     assert_eq!(candidates.lexical[1].content, "different projection");
 }
@@ -152,8 +152,8 @@ fn server_response_masking_can_be_turned_off() {
         semantic: Vec::new(),
         documents: Vec::new(),
     };
-    super::super::server::prepare_candidates(&mut candidates, crate::redaction::Policy::new(false));
+    prepare_candidates(&mut candidates, crate::redaction::Policy::new(false));
     assert!(candidates.lexical[0].content.contains("hunter2"));
-    super::super::server::prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
+    prepare_candidates(&mut candidates, crate::redaction::Policy::ON);
     assert!(!candidates.lexical[0].content.contains("hunter2"));
 }

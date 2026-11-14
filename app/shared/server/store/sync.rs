@@ -22,7 +22,7 @@ struct Written {
 
 /// Silver committed and awaiting views certification. Holds the node lock so
 /// no other publication interleaves between the two phases.
-pub(crate) struct SilverCommit {
+pub struct SilverCommit {
     identity: Identity,
     file: tempfile::NamedTempFile,
     applied: Applied,
@@ -34,15 +34,15 @@ pub(crate) struct SilverCommit {
 
 impl SilverCommit {
     /// Source revision committed in silver.
-    pub(crate) fn revision(&self) -> i64 {
+    pub fn revision(&self) -> i64 {
         self.applied.revision
     }
 }
 
 impl Store {
     /// Test helper: commit silver and certify views in one call.
-    #[cfg(test)]
-    pub(crate) async fn index(
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn index(
         &self,
         identity: &Identity,
         file: tempfile::NamedTempFile,
@@ -56,7 +56,7 @@ impl Store {
     /// First phase: atomically commit canonical silver, its receipt and the
     /// publication head. Views are untouched, so a caller can report
     /// `SilverCommitted` before certification starts.
-    pub(crate) async fn commit_silver(
+    pub async fn commit_silver(
         &self,
         identity: &Identity,
         file: tempfile::NamedTempFile,
@@ -115,7 +115,7 @@ impl Store {
     }
 
     /// Second phase: write and certify views for a committed silver revision.
-    pub(crate) async fn certify_views(&self, commit: SilverCommit) -> Result<Indexed, AppError> {
+    pub async fn certify_views(&self, commit: SilverCommit) -> Result<Indexed, AppError> {
         let SilverCommit {
             identity,
             file,
@@ -129,7 +129,7 @@ impl Store {
         // views and must not block another batch's commit for this node.
         drop(node);
         if !(applied.duplicate && current) {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             if self.views_interruption {
                 return Err(AppError::internal("injected views certification failure"));
             }
@@ -148,7 +148,7 @@ impl Store {
     /// Whether this node's stored views cover the current head. Certification
     /// can complete successfully without claiming the head when a newer commit
     /// landed first, so the receipt must ask instead of assuming.
-    pub(crate) async fn views_current(&self, identity: &Identity) -> Result<bool, AppError> {
+    pub async fn views_current(&self, identity: &Identity) -> Result<bool, AppError> {
         let head = self.head(identity).await?;
         let silver = head.as_ref().and_then(|head| head.silver_revision.as_ref());
         Ok(self
@@ -161,7 +161,7 @@ impl Store {
     /// Current accepted source revision for this node; 0 before its first
     /// publication. Baseline batches rebase onto it so per-chat
     /// ordering, not node-level staleness, decides what applies.
-    pub(crate) async fn head_revision(&self, identity: &Identity) -> Result<i64, AppError> {
+    pub async fn head_revision(&self, identity: &Identity) -> Result<i64, AppError> {
         Ok(self.head(identity).await?.map_or(0, |head| head.revision))
     }
 
@@ -169,7 +169,7 @@ impl Store {
     /// replaying its current receipt advances `last_synced_at` like a duplicate
     /// publication, without changing silver. One immediate transaction keeps
     /// the read-modify-write ordered against concurrent commits.
-    pub(crate) async fn record_check_in(&self, identity: &Identity) -> Result<(), AppError> {
+    pub async fn record_check_in(&self, identity: &Identity) -> Result<(), AppError> {
         let silver = self.silver.clone();
         let identity = identity.clone();
         crate::blocking(move || {
@@ -252,7 +252,7 @@ impl Store {
         let written = self
             .write_upload(identity, file, &supplied, progress)
             .await?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self
             .views_partial_interruption
             .load(std::sync::atomic::Ordering::Relaxed)
@@ -417,7 +417,7 @@ impl Store {
     }
 
     /// Record views as current only when every silver chat has complete documents.
-    pub(crate) async fn certify(
+    pub async fn certify(
         &self,
         identity: &Identity,
         views: NodeViews,

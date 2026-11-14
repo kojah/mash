@@ -4,6 +4,8 @@ use super::{Chat, HistorySource, ParsedFile, SourceIdentity, diagnostics::Record
 use crate::{AppError, dialogue, provider::Provider, role::Role};
 use std::path::Path;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixture;
 pub mod history;
 pub mod proto;
 pub mod store;

@@ -6,7 +6,7 @@ use crate::{
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Select owner-authored changes, excluding machine-local project scopes.
-pub(crate) fn visit_shared(
+pub fn visit_shared(
     connection: &Connection,
     after: Option<i64>,
     policy: crate::redaction::Policy,

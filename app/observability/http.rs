@@ -1,9 +1,9 @@
 //! Opaque per-hop correlation; incoming metadata never becomes arbitrary log text.
-pub(crate) const HEADER: &str = "x-mash-trace-id";
+pub const HEADER: &str = "x-mash-trace-id";
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub(crate) struct TraceId(String);
+pub struct TraceId(String);
 
 impl TryFrom<String> for TraceId {
     type Error = &'static str;
@@ -20,7 +20,7 @@ impl From<TraceId> for String {
 }
 
 impl TraceId {
-    pub(crate) fn parse(value: &[u8]) -> Option<Self> {
+    pub fn parse(value: &[u8]) -> Option<Self> {
         if value.len() != 32
             || !value
                 .iter()
@@ -31,7 +31,7 @@ impl TraceId {
         String::from_utf8(value.to_vec()).ok().map(Self)
     }
 
-    pub(crate) fn generate() -> Option<Self> {
+    pub fn generate() -> Option<Self> {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut bytes = [0; 16];
         getrandom::fill(&mut bytes).ok()?;
@@ -43,7 +43,7 @@ impl TraceId {
         Some(Self(value))
     }
 
-    pub(crate) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }

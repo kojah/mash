@@ -11,12 +11,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 mod replay;
-#[cfg(test)]
-pub(crate) use replay::ReplayFault;
+#[cfg(any(test, feature = "test-support"))]
+pub use replay::ReplayFault;
 mod records;
 mod retire;
-#[cfg(test)]
-pub(crate) use retire::RetireFault;
+#[cfg(any(test, feature = "test-support"))]
+pub use retire::RetireFault;
 mod sync;
 
 /// Serializes publications per node while other nodes proceed.
@@ -35,7 +35,7 @@ where
 }
 
 #[derive(Clone)]
-pub(crate) struct Store {
+pub struct Store {
     silver: SilverStore,
     views: qdrant_index::Store,
     max_upload_bytes: u64,
@@ -50,22 +50,22 @@ pub(crate) struct Store {
     responses: crate::redaction::Policy,
     /// Where committed publications are announced to listening dashboards.
     events: Arc<super::events::Hub>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     replay_fault: Option<ReplayFault>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     retire_fault: Option<RetireFault>,
     /// Test hook: fail views certification after a committed silver write.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     views_interruption: bool,
     /// Test hook: fail after documents were written but before they are
     /// certified, leaving a partially written view behind.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     views_partial_interruption: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
-pub(super) async fn initialize(
+pub async fn initialize<S: std::hash::BuildHasher>(
     config: &Configuration,
-    identities: &HashMap<blake3::Hash, Identity>,
+    identities: &HashMap<blake3::Hash, Identity, S>,
     activate_views: bool,
     activate_query: bool,
     activate_memory: bool,
@@ -136,30 +136,26 @@ pub(super) async fn initialize(
 const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
 impl Store {
-    #[cfg(test)]
-    pub(crate) fn with_views_interruption(mut self) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_views_interruption(mut self) -> Self {
         self.views_interruption = true;
         self
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_views_partial_interruption(self) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_views_partial_interruption(self) -> Self {
         self.views_partial_interruption
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self
     }
 
-    #[cfg(test)]
-    pub(crate) fn clear_views_partial_interruption(&self) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn clear_views_partial_interruption(&self) {
         self.views_partial_interruption
             .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub(crate) fn new(
-        silver: SilverStore,
-        views: qdrant_index::Store,
-        max_upload_bytes: u64,
-    ) -> Self {
+    pub fn new(silver: SilverStore, views: qdrant_index::Store, max_upload_bytes: u64) -> Self {
         Self {
             silver,
             views,
@@ -170,13 +166,13 @@ impl Store {
             replays: Arc::default(),
             responses: crate::redaction::Policy::ON,
             events: Arc::default(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             replay_fault: None,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             retire_fault: None,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             views_interruption: false,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             views_partial_interruption: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
                 false,
             )),
@@ -188,22 +184,22 @@ impl Store {
         self
     }
 
-    pub(crate) fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
+    pub fn with_response_redaction(mut self, responses: crate::redaction::Policy) -> Self {
         self.responses = responses;
         self.views = self.views.with_response_redaction(responses);
         self
     }
 
-    pub(crate) fn events(&self) -> &super::events::Hub {
+    pub fn events(&self) -> &super::events::Hub {
         &self.events
     }
 
-    pub(crate) fn responses(&self) -> crate::redaction::Policy {
+    pub fn responses(&self) -> crate::redaction::Policy {
         self.responses
     }
 
-    #[cfg(test)]
-    pub(crate) fn unavailable() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn unavailable() -> Self {
         Self::new(
             SilverStore::unavailable(),
             qdrant_index::Store::unavailable(),
@@ -211,7 +207,7 @@ impl Store {
         )
     }
 
-    pub(crate) fn max_node_bytes(&self) -> u64 {
+    pub fn max_node_bytes(&self) -> u64 {
         self.max_upload_bytes
     }
 
@@ -234,7 +230,7 @@ impl Store {
     /// Run a typed, read-only query over this node's shared silver. The
     /// connection gets the same views, `query_only`, authorizer and budgets as a
     /// local query; it is opened per call and discarded.
-    pub(crate) async fn query(
+    pub async fn query(
         &self,
         identity: &Identity,
         request: crate::silver_query::Request,
@@ -299,16 +295,12 @@ impl Store {
 
     /// Stage views without certifying them. Used by tests that reconstruct a
     /// certification which lost the race with a newer commit.
-    #[cfg(test)]
-    pub(crate) async fn put_views(
-        &self,
-        identity: &Identity,
-        views: &NodeViews,
-    ) -> Result<(), AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn put_views(&self, identity: &Identity, views: &NodeViews) -> Result<(), AppError> {
         self.views.put_node_views(identity, views).await
     }
 
-    pub(crate) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
+    pub async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
         let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
             .views
@@ -320,7 +312,7 @@ impl Store {
     }
 
     /// View usable for this node: built with the group recipe and model space.
-    pub(crate) async fn compatible_views(
+    pub async fn compatible_views(
         &self,
         identity: &Identity,
     ) -> Result<Option<NodeViews>, AppError> {
@@ -372,7 +364,7 @@ impl Store {
     }
 
     /// Count chats another node already holds with the same content.
-    pub(crate) async fn fingerprint_report(
+    pub async fn fingerprint_report(
         &self,
         group: &str,
         dimensions: usize,
@@ -430,8 +422,8 @@ impl Store {
     }
 
     /// Receipt recorded on the silver head for the last `/v1/sync` operation.
-    #[cfg(test)]
-    pub(crate) async fn sync_receipt(
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn sync_receipt(
         &self,
         identity: &Identity,
     ) -> Result<Option<(String, String, String)>, AppError> {
@@ -449,8 +441,8 @@ impl Store {
     }
 
     /// One node's publication state, for tests.
-    #[cfg(test)]
-    pub(crate) async fn state(&self, identity: &Identity) -> Result<protocol::NodeState, AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn state(&self, identity: &Identity) -> Result<protocol::NodeState, AppError> {
         let (head, tombstones) = self
             .read(identity, |connection| {
                 Ok((
@@ -474,7 +466,7 @@ impl Store {
         })
     }
 
-    pub(crate) async fn freshness(&self, identity: &Identity) -> Result<Freshness, AppError> {
+    pub async fn freshness(&self, identity: &Identity) -> Result<Freshness, AppError> {
         let group_views = self.views.views_configuration(identity).await?;
         let heads = self.heads(&identity.group_id).await?;
         let mut nodes = Vec::new();
@@ -586,7 +578,7 @@ impl Store {
         Ok(checked.into_iter().flatten().collect())
     }
 
-    pub(crate) async fn search(
+    pub async fn search(
         &self,
         identity: &Identity,
         input: protocol::Search,
@@ -671,7 +663,7 @@ impl Store {
         Ok(())
     }
 
-    pub(crate) async fn list_chats(
+    pub async fn list_chats(
         &self,
         identity: &Identity,
         input: crate::chat_catalog::Request,
@@ -683,7 +675,7 @@ impl Store {
         Ok(collector.finish())
     }
 
-    pub(crate) async fn catalog(
+    pub async fn catalog(
         &self,
         identity: &Identity,
         input: &crate::chat_catalog::Request,
@@ -722,7 +714,7 @@ impl Store {
         Ok(chats)
     }
 
-    pub(crate) async fn chat_page(
+    pub async fn chat_page(
         &self,
         identity: &Identity,
         input: protocol::ChatPage,
@@ -743,11 +735,11 @@ impl Store {
     }
 
     /// Fail before streaming when shared silver is unreachable.
-    pub(crate) async fn available(&self, identity: &Identity) -> Result<(), AppError> {
+    pub async fn available(&self, identity: &Identity) -> Result<(), AppError> {
         self.head(identity).await.map(|_| ())
     }
 
-    pub(crate) async fn view(
+    pub async fn view(
         &self,
         identity: &Identity,
         input: protocol::View,

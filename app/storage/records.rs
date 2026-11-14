@@ -9,7 +9,7 @@ mod recall;
 mod relations;
 #[cfg(test)]
 mod tests;
-pub(crate) mod transfer;
+pub mod transfer;
 use crate::{
     AppError,
     records::{
@@ -695,8 +695,8 @@ impl Storage {
         Ok(result)
     }
 
-    #[cfg(test)]
-    pub(crate) fn record(&self, id: &str, history: bool) -> Result<Record, AppError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn record(&self, id: &str, history: bool) -> Result<Record, AppError> {
         bounded(id, 512, "record ID")?;
         let transaction = self
             .connection

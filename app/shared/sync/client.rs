@@ -324,7 +324,7 @@ async fn ensure_session<'a>(
     clippy::too_many_lines,
     reason = "one resumable protocol session with explicit server outcomes"
 )]
-pub(crate) async fn upload_with_token(
+pub async fn upload_with_token(
     config: &SharedConfig,
     file: &tempfile::NamedTempFile,
     token: String,
@@ -343,7 +343,7 @@ pub(crate) async fn upload_with_token(
     clippy::too_many_lines,
     reason = "one resumable protocol session with explicit server outcomes"
 )]
-pub(crate) async fn upload_encoded_with_token(
+pub async fn upload_encoded_with_token(
     config: &SharedConfig,
     token: String,
     start: &protocol::Start,
@@ -577,7 +577,7 @@ pub(crate) async fn upload_attachment(
     clippy::too_many_lines,
     reason = "one handshake, begin, chunk and acknowledgement sequence"
 )]
-pub(crate) async fn upload_attachment_with_token(
+pub async fn upload_attachment_with_token(
     config: &SharedConfig,
     token: String,
     message_id: &str,
@@ -832,7 +832,7 @@ fn publication_digest(start: &protocol::Start, manifest: &str) -> String {
     digest.finalize().to_hex().to_string()
 }
 
-pub(crate) fn scoped_operation_id(kind: &str, config: &SharedConfig, digest: &str) -> String {
+pub fn scoped_operation_id(kind: &str, config: &SharedConfig, digest: &str) -> String {
     // The catalog is service-wide, so the group belongs to the identity:
     // identical bytes published into another group must not reuse (or be
     // rejected by) the first group's operation.
@@ -841,9 +841,9 @@ pub(crate) fn scoped_operation_id(kind: &str, config: &SharedConfig, digest: &st
 
 /// How many chats and decoded bytes one baseline batch may carry.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct BackfillLimits {
-    pub(crate) chats: usize,
-    pub(crate) decoded_bytes: u64,
+pub struct BackfillLimits {
+    pub chats: usize,
+    pub decoded_bytes: u64,
 }
 
 impl Default for BackfillLimits {
@@ -860,7 +860,7 @@ impl Default for BackfillLimits {
 
 /// One independently committed baseline batch.
 #[derive(Clone)]
-pub(crate) struct PlannedBatch {
+pub struct PlannedBatch {
     pub(crate) encoded: wire::EncodedBatch,
     pub(crate) members: Vec<wire::BackfillMember>,
 }
@@ -873,21 +873,21 @@ impl PlannedBatch {
 
 /// A frozen baseline split into commits, with the membership manifest that
 /// proves completion.
-pub(crate) struct BackfillPlan {
+pub struct BackfillPlan {
     pub(crate) start: protocol::Start,
     pub(crate) baseline_revision: i64,
     pub(crate) members: Vec<wire::BackfillMember>,
     pub(crate) manifest_piece: wire::Piece,
     pub(crate) manifest_digest: String,
     pub(crate) manifest_bytes: u64,
-    pub(crate) batches: Vec<PlannedBatch>,
+    pub batches: Vec<PlannedBatch>,
     pub(crate) record_batch: Option<wire::EncodedBatch>,
 }
 
 /// What a previous attempt already completed for this baseline.
-pub(crate) struct BackfillResume<'a> {
-    pub(crate) completed: &'a std::collections::BTreeSet<String>,
-    pub(crate) last_revision: i64,
+pub struct BackfillResume<'a> {
+    pub completed: &'a std::collections::BTreeSet<String>,
+    pub last_revision: i64,
 }
 
 /// A batch that just committed, with a gate the sender waits on before
@@ -899,11 +899,11 @@ pub(crate) struct BackfillResume<'a> {
         reason = "progress gate is consumed by tests and future operator surfaces"
     )
 )]
-pub(crate) struct BackfillProgress {
-    pub(crate) index: usize,
-    pub(crate) total: usize,
-    pub(crate) revision: i64,
-    pub(crate) acknowledge: tokio::sync::oneshot::Sender<()>,
+pub struct BackfillProgress {
+    pub index: usize,
+    pub total: usize,
+    pub revision: i64,
+    pub acknowledge: tokio::sync::oneshot::Sender<()>,
 }
 
 struct Group {
@@ -923,7 +923,7 @@ fn entry<'a>(groups: &'a mut std::collections::BTreeMap<String, Group>, id: &str
 /// Split a frozen batch into independently publishable commits: whole
 /// chats, most-recently-updated first, packed to the byte and
 /// chat targets. A chat is never split across batches.
-pub(crate) fn plan_backfill(
+pub fn plan_backfill(
     start: protocol::Start,
     events: Vec<Event>,
     limits: BackfillLimits,
@@ -1065,7 +1065,7 @@ fn plan_backfill_bounded(
 }
 
 /// Plan a sealed baseline spool with the production batch targets.
-pub(crate) fn plan_backfill_file(
+pub fn plan_backfill_file(
     file: &tempfile::NamedTempFile,
     limits: BackfillLimits,
 ) -> Result<BackfillPlan, AppError> {
@@ -1120,7 +1120,7 @@ pub(crate) fn backfill_lanes() -> usize {
     clippy::too_many_arguments,
     reason = "one baseline session: manifest, per-batch commits, completion"
 )]
-pub(crate) async fn upload_backfill_plan(
+pub async fn upload_backfill_plan(
     config: &SharedConfig,
     token: String,
     plan: &BackfillPlan,

@@ -322,19 +322,19 @@ pub struct SearchResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) freshness_warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) diagnostics: Option<crate::views::diagnostics::Diagnostics>,
+    pub diagnostics: Option<crate::views::diagnostics::Diagnostics>,
     pub(crate) query: String,
     #[serde(default)]
     pub(crate) intent: crate::views::exact::Intent,
     pub(crate) realized_mode: SearchMode,
-    pub(crate) unit: crate::search_results::SearchUnit,
-    pub(crate) results: crate::search_results::Results,
+    pub unit: crate::search_results::SearchUnit,
+    pub results: crate::search_results::Results,
     /// Offset of the next page of the same ranked list; null on the last page.
     #[serde(default)]
     pub(crate) next_offset: Option<usize>,
-    pub(crate) shared: bool,
+    pub shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) shared_error: Option<String>,
+    pub shared_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) shared_context_error: Option<String>,
     /// Why an empty result may not mean the history lacks the subject.

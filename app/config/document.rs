@@ -301,7 +301,7 @@ struct RawDocumentAgents {
     agents: RawAgents,
 }
 
-pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<(), AppError> {
+pub fn validate_identifier(value: &str, label: &str) -> Result<(), AppError> {
     let bytes = value.as_bytes();
     let valid = (1..=255).contains(&bytes.len())
         && bytes.first().is_some_and(u8::is_ascii_alphanumeric)

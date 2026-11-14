@@ -40,7 +40,7 @@ struct Manifest {
     record_schema_version: u32,
     created_at: String,
     source_node: Option<String>,
-    silver: Certificate,
+    pub silver: Certificate,
     counts: HistoryCounts,
     records: FileDigest,
 }

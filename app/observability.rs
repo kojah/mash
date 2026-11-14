@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-pub(crate) mod http;
-pub(crate) mod retrieval;
+pub mod http;
+pub mod retrieval;
 
 pub fn initialize() {
     let trace = std::env::var_os("MASH_TRACE").as_deref() == Some(std::ffi::OsStr::new("1"));
@@ -27,7 +27,7 @@ pub fn initialize() {
     let _ = configured_subscriber(std::io::stderr, true).try_init();
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn subscriber<W>(writer: W) -> impl tracing::Subscriber + Send + Sync
 where
     W: for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
@@ -95,5 +95,5 @@ impl ThreadContext {
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-pub(crate) mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;

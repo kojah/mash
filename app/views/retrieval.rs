@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "SearchRequest")]
-pub(crate) struct Search {
+pub struct Search {
     #[serde(default)]
     pub match_mode: crate::views::matching::Mode,
     #[serde(
@@ -38,14 +38,14 @@ fn related_discussion(intent: &crate::views::exact::Intent) -> bool {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Candidates {
+pub struct Candidates {
     pub lexical: Vec<SearchHit>,
     pub semantic: Vec<SearchHit>,
     pub documents: Vec<Document>,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Document {
+pub struct Document {
     pub node_id: String,
     pub id: String,
     pub projection: String,

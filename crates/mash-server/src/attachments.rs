@@ -1,12 +1,10 @@
 use super::{ApiError, App, Identity, json};
-use crate::{
-    AppError,
-    attachments::{self, Availability, Listing, Metadata, Retrieved},
-};
+use crate::AppError;
 use axum::{
     Extension, Json,
     extract::{State, rejection::JsonRejection},
 };
+use mash_model::attachments::{self, Availability, Listing, Metadata, Retrieved};
 use std::path::PathBuf;
 
 pub(super) fn directory(app: &App, id: &Identity, node: &str) -> Option<PathBuf> {
@@ -30,7 +28,7 @@ pub(super) async fn known(
         .store
         .view(
             identity,
-            super::protocol::View {
+            crate::protocol::View {
                 node_id: input.node_id.clone(),
                 id: input.message_id.clone(),
                 context: 0,

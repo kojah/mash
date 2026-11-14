@@ -61,9 +61,9 @@ pub struct Selection {
 }
 
 #[derive(Clone)]
-pub(crate) struct Scope {
+pub struct Scope {
     pub(crate) match_mode: crate::views::matching::Mode,
-    pub(crate) filter: Filter,
+    pub filter: Filter,
     pub node: String,
 }
 
@@ -106,7 +106,7 @@ impl Selection {
         fields.into_iter().collect()
     }
 
-    pub(crate) fn resolve(self, node: &str) -> Result<Scope, AppError> {
+    pub fn resolve(self, node: &str) -> Result<Scope, AppError> {
         let mut all = Vec::new();
         if !self.provider.is_empty() {
             all.push(Filter::Provider(self.provider));

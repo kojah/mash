@@ -2,8 +2,11 @@ use crate::provider::Provider;
 use serde::{Deserialize, Serialize};
 
 use crate::storage::Counts;
-pub(crate) use crate::views::documents::{ChatRecord, MessageRecord};
-pub(crate) use crate::views::retrieval::{Candidates, Document, Search, valid_vector};
+pub use crate::views::documents::ChatRecord;
+pub use crate::views::documents::MessageRecord;
+pub use crate::views::retrieval::Candidates;
+pub use crate::views::retrieval::Search;
+pub(crate) use crate::views::retrieval::{Document, valid_vector};
 
 /// One node's committed publication, as `/v1/events` tells listening
 /// dashboards about it. It names chats and never carries their text.
@@ -24,7 +27,7 @@ pub struct NodeChange {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Start {
+pub struct Start {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub views_build: Option<crate::views::config::Build>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,7 +40,7 @@ pub(crate) struct Start {
 }
 
 impl Start {
-    pub(super) fn validate_source_silver(&self) -> Result<(), crate::AppError> {
+    pub fn validate_source_silver(&self) -> Result<(), crate::AppError> {
         if let Some(certificate) = &self.source_silver
             && ((!self.snapshot && self.base_revision.is_none())
                 || certificate.interpretation_version
@@ -87,7 +90,7 @@ mod source_certificate_tests {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Event {
+pub enum Event {
     Start(Start),
     Batch(Batch),
     Remove { id: String },
@@ -105,7 +108,7 @@ pub(crate) const MAX_AMENDED_MESSAGES: usize = 1024;
 /// exist follow as ordinary message batches; the rest of the chat is kept.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Amendment {
+pub struct Amendment {
     pub chat: ChatRecord,
     pub replaced: Vec<String>,
     pub messages: u64,
@@ -113,7 +116,7 @@ pub(crate) struct Amendment {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Batch {
+pub enum Batch {
     Records {
         records: Vec<crate::records::transfer::Row>,
     },
@@ -245,14 +248,14 @@ impl ChatRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Tombstone {
+pub struct Tombstone {
     pub provider: Provider,
     pub chat_id: String,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub(crate) struct NodeState {
+pub struct NodeState {
     /// Changes on every committed publication, independently of the source counter.
     /// Empty before the first publication.
     #[serde(default)]
@@ -269,7 +272,7 @@ pub(crate) struct NodeState {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub(crate) struct Indexed {
+pub struct Indexed {
     pub counts: Counts,
     pub revision: i64,
     pub removed_messages: u64,
@@ -283,7 +286,7 @@ pub(crate) struct Indexed {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "ViewRequest")]
-pub(crate) struct View {
+pub struct View {
     pub node_id: String,
     pub id: String,
     pub context: u32,
@@ -296,7 +299,7 @@ pub(crate) struct View {
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ChatPage {
+pub struct ChatPage {
     pub node_id: String,
     pub chat_id: String,
     pub offset: u32,
@@ -306,13 +309,13 @@ pub(crate) struct ChatPage {
 /// A bounded search-only batch; the explicit view API retains larger radii.
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Contexts {
+pub struct Contexts {
     pub anchors: Vec<View>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
-pub(super) enum ContextResult {
+pub enum ContextResult {
     Complete {
         index: usize,
         messages: Vec<crate::storage::Message>,

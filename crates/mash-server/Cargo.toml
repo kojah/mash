@@ -1,0 +1,55 @@
+[package]
+name = "mash-server"
+version.workspace = true
+edition = "2024"
+description = "The authenticated HTTP service for Mash's shared index"
+license = "MIT"
+publish = false
+
+[dependencies]
+mash-app = { path = "../../app" }
+mash-model = { path = "../mash-model" }
+aide = { version = "=0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-ws"] }
+axum = { version = "0.8", features = ["ws"] }
+blake3 = "1.8.5"
+getrandom = "0.4"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["gzip", "json", "rustls-tls", "stream"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+schemars = "1.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["raw_value"] }
+tempfile = "3.27.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "fs", "net", "io-util", "process"] }
+tokio-util = { version = "0.7", features = ["io-util", "rt"] }
+toml = "1.1"
+tower-http = { version = "0.6", features = ["compression-gzip"] }
+tracing = "0.1"
+
+[dev-dependencies]
+hex = "0.4"
+assert_cmd = "2.2.2"
+base64 = "0.22.1"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+mash-app = { path = "../../app", features = ["test-support"] }
+mash-model = { path = "../mash-model", features = ["test-support"] }
+mash-silver = { path = "../mash-silver", features = ["test-support"] }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+tonic-prost = "0.14.9"
+prost = "0.14.4"
+tonic = { version = "0.14.9", features = ["transport", "tls-native-roots"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+# Items here are public only so the other workspace crates can use them. These
+# lints document a published API; they did not apply to the same items while
+# they were crate-private in `mash`, and still do not.
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+return_self_not_must_use = { level = "allow", priority = 1 }
