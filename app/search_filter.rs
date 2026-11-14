@@ -27,6 +27,25 @@ pub enum Sort {
     Recent,
 }
 
+/// A list selector also takes one value on its own. Small models often write
+/// `"project": "/path"` where the schema says a list; the meaning is plain.
+pub fn one_or_many<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Given<T> {
+        Many(Vec<T>),
+        One(T),
+    }
+    Ok(match Given::deserialize(deserializer)? {
+        Given::Many(values) => values,
+        Given::One(value) => vec![value],
+    })
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct Selection {
@@ -35,19 +54,25 @@ pub struct Selection {
     /// relevance (default) or recent: newest first within each page of relevant results.
     pub sort: Sort,
     /// Provider alternatives; omitted or empty selects all providers.
+    #[serde(deserialize_with = "one_or_many")]
     pub provider: Vec<Provider>,
     /// Only messages from the last this many days.
     pub days: Option<u32>,
     /// Machines to search; omitted or empty selects all.
+    #[serde(deserialize_with = "one_or_many")]
     pub node: Vec<String>,
     /// Who wrote the message, such as user or assistant; omitted or empty selects all.
+    #[serde(deserialize_with = "one_or_many")]
     pub role: Vec<crate::role::Role>,
     /// Canonical chat IDs from search or `list_chats`; omitted or empty selects all chats.
     #[serde(rename = "chat")]
+    #[serde(deserialize_with = "one_or_many")]
     pub chat: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
+    #[serde(deserialize_with = "one_or_many")]
     pub project: Vec<String>,
     /// Exact Git origin URL; repeat for alternatives.
+    #[serde(deserialize_with = "one_or_many")]
     pub repository: Vec<String>,
     /// Inclusive Unix timestamp in seconds.
     pub after: Option<i64>,
@@ -395,5 +420,19 @@ mod tests {
         }
         assert!(deep.validate().is_err());
         assert!(serde_json::from_str::<Filter>(r#"{"project":["x"],"role":["user"]}"#).is_err());
+    }
+
+    #[test]
+    fn a_list_selector_takes_one_value_or_several() {
+        let one: Selection =
+            serde_json::from_str(r#"{"project": "/work/app", "provider": "codex"}"#).unwrap();
+        assert_eq!(one.project, ["/work/app"]);
+        assert_eq!(one.provider.len(), 1);
+        let many: Selection =
+            serde_json::from_str(r#"{"project": ["/work/app", "/work/site"], "chat": []}"#)
+                .unwrap();
+        assert_eq!(many.project.len(), 2);
+        assert!(many.chat.is_empty() && many.node.is_empty());
+        assert!(serde_json::from_str::<Selection>(r#"{"project": 7}"#).is_err());
     }
 }

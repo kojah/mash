@@ -21,8 +21,8 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
         Some(crate::search_results::SearchUnit::Messages)
     ));
     for invalid in [
-        json!({"query":"database", "provider":"codex"}),
-        json!({"query":"database", "chat":"thread-a"}),
+        json!({"query":"database", "provider":7}),
+        json!({"query":"database", "provider":"not-a-provider"}),
         json!({"query":"database", "unknown_filter":[]}),
         json!({"query":"database", "source":["external"]}),
         json!({"query":"database", "kind":["codex:message"]}),
@@ -31,6 +31,14 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
     ] {
         assert!(serde_json::from_value::<Search>(invalid).is_err());
     }
+    // One value stands for a list of one: small models often write it that way.
+    let single: Search = serde_json::from_value(
+        json!({"query":"database", "provider":"codex", "chat":"thread-a", "role":"user"}),
+    )
+    .unwrap();
+    assert_eq!(single.filters.provider, [Provider::Codex]);
+    assert_eq!(single.filters.chat, ["thread-a"]);
+    assert_eq!(single.filters.role.len(), 1);
     let empty: Search = serde_json::from_value(json!({"query":"database"})).unwrap();
     assert_eq!(
         empty.filters.match_mode,
