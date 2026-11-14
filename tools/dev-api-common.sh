@@ -54,7 +54,8 @@ check_api_http() {
 # Read the migration interval declared by the candidate source.
 silver_schema_range() {
     local source=$1
-    schema=$(sed -nE 's/^pub\(crate\) const SCHEMA_VERSION: i64 = ([0-9]+);$/\1/p' "$source")
+    # The constant's visibility changes as code moves between crates.
+    schema=$(sed -nE 's/^pub(\([a-z]+\))? const SCHEMA_VERSION: i64 = ([0-9]+);$/\2/p' "$source")
     schema_min=$(sed -nE 's/^const BASELINE: i64 = ([0-9]+);$/\1/p' "$source")
     # Releases without migrations only open their exact schema.
     schema_min=${schema_min:-$schema}
