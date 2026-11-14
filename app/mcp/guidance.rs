@@ -319,7 +319,7 @@ pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
 }
 
 fn contract() -> Result<Value, serde_json::Error> {
-    let mut tools = Mash::tool_router().list_all();
+    let mut tools = Mash::tools().list_all();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
     serde_json::to_value((
         tools,
@@ -405,7 +405,7 @@ pub(super) async fn attach_runtime(result: &mut CallToolResult, expected: Option
 
 pub(super) fn validate_help(request: &Help) -> Result<(), String> {
     if let Some(name) = &request.tool
-        && !Mash::tool_router()
+        && !Mash::tools()
             .list_all()
             .iter()
             .any(|tool| tool.name == *name)
@@ -430,7 +430,7 @@ pub(super) async fn help(request: Help) -> CallToolResult {
         return super::tool_result(Err(crate::AppError::usage(error)));
     }
     let data = (|| -> Result<Value, serde_json::Error> {
-        let tools = Mash::tool_router().list_all();
+        let tools = Mash::tools().list_all();
         let selected = request
             .tool
             .as_ref()

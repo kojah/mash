@@ -68,7 +68,7 @@ impl Console {
     }
 
     pub(crate) fn catalogue() -> Result<Catalogue, AppError> {
-        let mut tools = Mash::tool_router().list_all();
+        let mut tools = Mash::tools().list_all();
         tools.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(Catalogue {
             build_revision: env!("MASH_BUILD_REVISION"),
@@ -85,7 +85,7 @@ impl Console {
         name: &str,
         arguments: serde_json::Map<String, serde_json::Value>,
     ) -> Result<Answer, AppError> {
-        let Some(tool) = Mash::tool_router()
+        let Some(tool) = Mash::tools()
             .list_all()
             .into_iter()
             .find(|tool| tool.name == name)

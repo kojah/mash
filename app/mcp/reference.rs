@@ -259,7 +259,7 @@ fn parameters(page: &mut String, schema: &Map<String, Value>) {
 /// # Errors
 /// Returns an error when a tool is missing from, or listed twice in, the page's groups.
 fn generate_tool_reference() -> Result<String, String> {
-    let tools = Mash::tool_router().list_all();
+    let tools = Mash::tools().list_all();
     let grouped: Vec<&str> = GROUPS
         .iter()
         .flat_map(|(_, names)| names.iter().copied())

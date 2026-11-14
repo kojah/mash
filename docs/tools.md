@@ -30,10 +30,10 @@ history.
 <div class="param"><span class="name"><code>chat</code><small>list of text</small></span><span class="about">Canonical chat IDs from search or <code>list_chats</code>; omitted or empty selects all chats.</span></div>
 <div class="param"><span class="name"><code>days</code><small>whole number</small></span><span class="about">Only messages from the last this many days.</span></div>
 <div class="param"><span class="name"><code>detail</code><small>one of <code>compact</code>, <code>extended</code></small></span><span class="about">compact (default) returns bounded excerpts; extended includes full hits and scores. <small>Default <code>compact</code>.</small></span></div>
-<div class="param"><span class="name"><code>diagnostics</code><small>true or false</small></span><span class="about">Include resolved retrieval policy, source outcomes and core timing. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>diagnostics</code><small>true or false</small></span><span class="about">Include resolved retrieval policy, source outcomes and core timing.</span></div>
 <div class="param"><span class="name"><code>intent</code><small>one of <code>related-discussion</code>, <code>exact-mention</code></small></span><span class="about">exact-mention (by words) or related-discussion (by meaning); omitted uses the configured default, exact-mention unless changed.</span></div>
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about">Results per page, from 1 to 200; omitted uses the configured default (20).</span></div>
-<div class="param"><span class="name"><code>local</code><small>true or false</small></span><span class="about">Search only this machine's index. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>local</code><small>true or false</small></span><span class="about">Search only this machine's index.</span></div>
 <div class="param"><span class="name"><code>match_mode</code><small>one of <code>strict</code>, <code>prefix</code>, <code>typo</code>, <code>flexible</code></small></span><span class="about">flexible (default) enables prefix and typo matching; strict preserves literals. <small>Default <code>flexible</code>.</small></span></div>
 <div class="param"><span class="name"><code>node</code><small>list of text</small></span><span class="about">Machines to search; omitted or empty selects all.</span></div>
 <div class="param"><span class="name"><code>offset</code><small>whole number</small></span><span class="about">The <code>next_offset</code> of the previous page of the same search.</span></div>
@@ -41,7 +41,7 @@ history.
 <div class="param"><span class="name"><code>provider</code><small>list of one of <code>claude-code</code>, <code>codex</code>, <code>opencode</code>, <code>copilot</code>, <code>cursor</code>, <code>antigravity</code></small></span><span class="about">Provider alternatives; omitted or empty selects all providers.</span></div>
 <div class="param"><span class="name"><code>repository</code><small>list of text</small></span><span class="about">Exact Git origin URL; repeat for alternatives.</span></div>
 <div class="param"><span class="name"><code>role</code><small>list of text</small></span><span class="about">Who wrote the message, such as user or assistant; omitted or empty selects all.</span></div>
-<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Also search the shared index. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Also search the shared index.</span></div>
 <div class="param"><span class="name"><code>sort</code><small>one of <code>relevance</code>, <code>recent</code></small></span><span class="about">relevance (default) or recent: newest first within each page of relevant results. <small>Default <code>relevance</code>.</small></span></div>
 <div class="param"><span class="name"><code>unit</code><small>one of <code>chats</code>, <code>messages</code></small></span><span class="about">chats (default) or messages.</span></div>
 </div>
@@ -61,15 +61,15 @@ history.
 <div class="param"><span class="name"><code>after</code><small>whole number</small></span><span class="about">Inclusive thread activity cutoff in Unix seconds.</span></div>
 <div class="param"><span class="name"><code>before</code><small>whole number</small></span><span class="about">Exclusive thread activity cutoff in Unix seconds.</span></div>
 <div class="param"><span class="name"><code>detail</code><small>one of <code>compact</code>, <code>extended</code></small></span><span class="about">compact (default) omits enrichment provenance; extended includes all metadata. <small>Default <code>compact</code>.</small></span></div>
-<div class="param"><span class="name"><code>diagnostics</code><small>true or false</small></span><span class="about">Include metadata source outcomes and listing/merge timings. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>diagnostics</code><small>true or false</small></span><span class="about">Include metadata source outcomes and listing/merge timings.</span></div>
 <div class="param"><span class="name"><code>direction</code><small>one of <code>asc</code>, <code>desc</code></small></span><span class="about"><small>Default <code>desc</code>.</small></span></div>
-<div class="param"><span class="name"><code>exclude_self</code><small>true or false</small></span><span class="about">Exclude the caller's published copy, for combined local/shared discovery. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>exclude_self</code><small>true or false</small></span><span class="about">Exclude the caller's published copy, for combined local/shared discovery.</span></div>
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about">Results per page, from 1 to 100; use <code>next_offset</code> to fetch another page. <small>Default <code>50</code>.</small></span></div>
-<div class="param"><span class="name"><code>local</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>local</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>node</code><small>list of text</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>offset</code><small>whole number</small></span><span class="about">Page offset, from 0 to 10000. <small>Default <code>0</code>.</small></span></div>
 <div class="param"><span class="name"><code>provider</code><small>list of one of <code>claude-code</code>, <code>codex</code>, <code>opencode</code>, <code>copilot</code>, <code>cursor</code>, <code>antigravity</code></small></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>sort</code><small>one of <code>updated_at</code>, <code>created_at</code>, <code>title</code></small></span><span class="about"><small>Default <code>updated_at</code>.</small></span></div>
 <div class="param"><span class="name"><code>title_contains</code><small>text</small></span><span class="about">Literal substring, ASCII case insensitive; no wildcard syntax. Omit when unused; supplied text must be nonempty, at most 4096 bytes, without control characters.</span></div>
 </div>
@@ -126,8 +126,8 @@ history.
 <div class="params">
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about">Maximum rows in sql mode; request carries its own limit.</span></div>
 <div class="param"><span class="name"><code>node</code><small>text</small></span><span class="about">Shared node to read; defaults to this node and must belong to the token's group. Requires shared.</span></div>
-<div class="param"><span class="name"><code>request</code><small>object (<code>Request</code>)</small></span><span class="about">Typed, declarative query. Preferred over sql: it cannot name tables, columns or SQL fragments and works the same way for shared silver.</span></div>
-<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Query the configured shared index instead of local silver. Requires request; SQL is never sent to another machine. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>request</code><small>object</small></span><span class="about">Typed, declarative query. Preferred over sql: it cannot name tables, columns or SQL fragments and works the same way for shared silver.</span></div>
+<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Query the configured shared index instead of local silver. Requires request; SQL is never sent to another machine.</span></div>
 <div class="param"><span class="name"><code>sql</code><small>text</small></span><span class="about">One read-only SQL statement over local silver. Local diagnostics only.</span></div>
 </div>
 </details>
@@ -161,11 +161,11 @@ history.
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>scope</code><small>object (<code>Scope</code>)</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>byte_budget</code><small>whole number</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>file</code><small>text</small></span><span class="about">Exact project-relative path; never a basename or a host path.</span></div>
-<div class="param"><span class="name"><code>include_personal</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
-<div class="param"><span class="name"><code>include_review</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>include_personal</code><small>true or false</small></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>include_review</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>query</code><small>text</small></span><span class="about"></span></div>
 </div>
@@ -180,17 +180,17 @@ history.
 <h4>Parameters</h4>
 <div class="params">
 <div class="param"><span class="name"><code>chat</code><small>text</small></span><span class="about">Records citing this chat in any retained revision, regardless of scope.</span></div>
-<div class="param"><span class="name"><code>cursor</code><small>object (<code>Cursor</code>)</small></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>cursor</code><small>object</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>detail</code><small>one of <code>compact</code>, <code>extended</code></small></span><span class="about">compact (default) gives each record's current statement, reason, scope and sources; extended includes quotes, fingerprints, confirmations and links. <small>Default <code>compact</code>.</small></span></div>
-<div class="param"><span class="name"><code>include_inactive</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>include_inactive</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>kind</code><small>one of <code>decision</code>, <code>preference</code>, <code>fact</code></small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>node_id</code><small>text</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>offset</code><small>whole number</small></span><span class="about"><small>Default <code>0</code>.</small></span></div>
 <div class="param"><span class="name"><code>query</code><small>text</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>review</code><small>one of <code>candidate</code>, <code>established</code></small></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>scope</code><small>object (<code>Scope</code>)</small></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>state</code><small>one of <code>proposed</code>, <code>accepted</code>, <code>active</code>, <code>current</code>, <code>superseded</code>, <code>withdrawn</code>, <code>retracted</code></small></span><span class="about"></span></div>
 </div>
 </details>
@@ -205,7 +205,7 @@ history.
 <div class="params">
 <div class="param"><span class="name"><code>id</code><small>text</small><b>required</b></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>before_revision</code><small>whole number</small></span><span class="about">Continue history strictly before the returned revision cursor.</span></div>
-<div class="param"><span class="name"><code>history</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>history</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>limit</code><small>whole number</small></span><span class="about">History page size, default 8, maximum 20.</span></div>
 <div class="param"><span class="name"><code>link_offset</code><small>whole number</small></span><span class="about"><small>Default <code>0</code>.</small></span></div>
 <div class="param"><span class="name"><code>node_id</code><small>text</small></span><span class="about"></span></div>
@@ -220,8 +220,8 @@ history.
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>body</code><small>object (<code>Body</code>)</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>scope</code><small>object (<code>Scope</code>)</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>body</code><small>object</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about"></span></div>
 </div>
 </details>
 
@@ -235,7 +235,7 @@ history.
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>backfill</code><small>true or false</small></span><span class="about">Explicit setup/maintenance only. Ordinary conversations never scan history. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>backfill</code><small>true or false</small></span><span class="about">Explicit setup/maintenance only. Ordinary conversations never scan history.</span></div>
 <div class="param"><span class="name"><code>offset</code><small>whole number</small></span><span class="about">Continue a bounded scan; offsets are hints, not review checkpoints. <small>Default <code>0</code>.</small></span></div>
 <div class="param"><span class="name"><code>session_id</code><small>text</small></span><span class="about"></span></div>
 </div>
@@ -254,8 +254,8 @@ history.
 <div class="params">
 <div class="param"><span class="name"><code>chat_id</code><small>text</small><b>required</b></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>operation_id</code><small>text</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>records</code><small>list of object (<code>Draft</code>)</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>scope</code><small>object (<code>Scope</code>)</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>records</code><small>list of object</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>source_fingerprint</code><small>text</small><b>required</b></span><span class="about"></span></div>
 </div>
 </details>
@@ -270,7 +270,7 @@ history.
 <h4>Parameters</h4>
 <div class="params">
 <div class="param"><span class="name"><code>chat_id</code><small>text</small><b>required</b></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>scope</code><small>object (<code>Scope</code>)</small><b>required</b></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>scope</code><small>object</small><b>required</b></span><span class="about"></span></div>
 </div>
 </details>
 
@@ -284,9 +284,9 @@ history.
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>coverage</code><small>object (<code>Scope</code>)</small></span><span class="about">Optional provider/node/message-time scope. Reports retained rows and scan evidence; unknown coverage never proves that matching chats do not exist.</span></div>
+<div class="param"><span class="name"><code>coverage</code><small>object</small></span><span class="about">Optional provider/node/message-time scope. Reports retained rows and scan evidence; unknown coverage never proves that matching chats do not exist.</span></div>
 <div class="param"><span class="name"><code>detail</code><small>one of <code>compact</code>, <code>extended</code></small></span><span class="about">compact (default) shows readiness and freshness; extended includes manifests/configuration. <small>Default <code>compact</code>.</small></span></div>
-<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Query shared per-node synchronization and update timestamps. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>shared</code><small>true or false</small></span><span class="about">Query shared per-node synchronization and update timestamps.</span></div>
 </div>
 </details>
 
@@ -315,10 +315,10 @@ history.
 </ul>
 <h4>Parameters</h4>
 <div class="params">
-<div class="param"><span class="name"><code>all_history</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
-<div class="param"><span class="name"><code>full</code><small>true or false</small></span><span class="about"><small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>all_history</code><small>true or false</small></span><span class="about"></span></div>
+<div class="param"><span class="name"><code>full</code><small>true or false</small></span><span class="about"></span></div>
 <div class="param"><span class="name"><code>provider</code><small>list of one of <code>claude-code</code>, <code>codex</code>, <code>opencode</code>, <code>copilot</code>, <code>cursor</code>, <code>antigravity</code></small></span><span class="about"></span></div>
-<div class="param"><span class="name"><code>rebuild_local_views</code><small>true or false</small></span><span class="about">Rebuild only local views from certified stored silver, without provider reads or shared publication. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>rebuild_local_views</code><small>true or false</small></span><span class="about">Rebuild only local views from certified stored silver, without provider reads or shared publication.</span></div>
 <div class="param"><span class="name"><code>since_days</code><small>whole number</small></span><span class="about"></span></div>
 </div>
 </details>
@@ -366,6 +366,6 @@ history.
 <div class="params">
 <div class="param"><span class="name"><code>database</code><small>text</small><b>required</b></span><span class="about">New SQLite database path; existing databases and attachment directories are refused.</span></div>
 <div class="param"><span class="name"><code>directory</code><small>text</small><b>required</b></span><span class="about">Local export directory created by <code>export_silver</code>.</span></div>
-<div class="param"><span class="name"><code>keep_identity</code><small>true or false</small></span><span class="about">Continue the exporting node's shared identity; for upgrades that retire it. <small>Default <code>false</code>.</small></span></div>
+<div class="param"><span class="name"><code>keep_identity</code><small>true or false</small></span><span class="about">Continue the exporting node's shared identity; for upgrades that retire it.</span></div>
 </div>
 </details>

@@ -341,7 +341,11 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     for hidden in ["filter", "fusion", "ranking", "shared_vector_search"] {
         assert!(search.input_schema["properties"].get(hidden).is_none());
     }
-    assert!(search.input_schema["$defs"].get("Filter").is_none());
+    assert!(
+        !serde_json::to_string(&search.input_schema)
+            .unwrap()
+            .contains("Filter")
+    );
     for field in ["provider", "chat", "node", "role", "project", "repository"] {
         assert_eq!(search.input_schema["properties"][field]["type"], "array");
     }

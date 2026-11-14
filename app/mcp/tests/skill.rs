@@ -34,7 +34,7 @@ fn arguments<T: DeserializeOwned + schemars::JsonSchema>(text: &str) -> Result<T
 }
 
 fn mcp(tool: &str, text: &str) -> Result<(), String> {
-    if !Mash::tool_router()
+    if !Mash::tools()
         .list_all()
         .iter()
         .any(|entry| entry.name == tool)

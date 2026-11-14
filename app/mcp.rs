@@ -17,6 +17,7 @@ pub(crate) mod guidance;
 // Renders docs/tools.md; only its currency test runs it.
 #[cfg(test)]
 mod reference;
+mod schema;
 
 #[derive(Clone)]
 struct Mash {
@@ -472,6 +473,18 @@ fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
     result
 }
 
+impl Mash {
+    /// The tools as agents see them: every tool the SDK registered, each with
+    /// its input schema reduced to what a model needs to call it.
+    pub(crate) fn tools() -> rmcp::handler::server::router::tool::ToolRouter<Self> {
+        let mut router = Self::tool_router();
+        for route in router.map.values_mut() {
+            route.attr.input_schema = std::sync::Arc::new(schema::plain(&route.attr.input_schema));
+        }
+        router
+    }
+}
+
 #[tool_router]
 impl Mash {
     #[tool(
@@ -773,7 +786,7 @@ impl Mash {
 
 // The SDK macro emits an immediate async tools/list handler.
 #[allow(clippy::unused_async_trait_impl)]
-#[rmcp::tool_handler(router = Self::tool_router())]
+#[rmcp::tool_handler(router = Self::tools())]
 impl rmcp::ServerHandler for Mash {
     fn get_info(&self) -> rmcp::model::ServerConfig {
         let mut info = rmcp::model::ServerConfig::default();
