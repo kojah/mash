@@ -58,7 +58,134 @@ pub(super) fn plain(schema: &Map<String, Value>) -> Map<String, Value> {
     if dangling(&schema) {
         return stripped;
     }
+    let Value::Object(schema) = flatten(Value::Object(schema)) else {
+        return stripped;
+    };
     schema
+}
+
+/// The one property that names an alternative, when every alternative is an
+/// object that sets it to its own constant.
+fn tag(alternatives: &[Value]) -> Option<String> {
+    let constants = |alternative: &Value| -> Vec<String> {
+        alternative
+            .get("properties")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(_, property)| property.get("const").is_some_and(Value::is_string))
+            .map(|(name, _)| name.clone())
+            .collect()
+    };
+    let first = constants(alternatives.first()?);
+    let [name] = &first[..] else { return None };
+    alternatives
+        .iter()
+        .all(|alternative| constants(alternative) == first)
+        .then(|| name.clone())
+}
+
+/// Alternatives told apart by one named constant become one object: the name
+/// takes any of the constants, the other properties are all listed once, and
+/// the description says which of them each alternative needs. A model fills
+/// in one flat object far more reliably than it picks among several shapes,
+/// and some model services refuse `oneOf`. Alternatives that give one
+/// property different meanings are left as they are.
+fn flatten(value: Value) -> Value {
+    let mut fields = match value {
+        Value::Array(items) => return Value::Array(items.into_iter().map(flatten).collect()),
+        Value::Object(fields) => fields
+            .into_iter()
+            .map(|(name, value)| (name, flatten(value)))
+            .collect::<Map<String, Value>>(),
+        other => return other,
+    };
+    let Some(Value::Array(alternatives)) = fields.get("oneOf") else {
+        return Value::Object(fields);
+    };
+    // Named values, each with what it means.
+    if alternatives
+        .iter()
+        .all(|one| one.get("const").is_some_and(Value::is_string))
+    {
+        let names: Vec<Value> = alternatives
+            .iter()
+            .map(|one| one["const"].clone())
+            .collect();
+        let meanings: Vec<String> = alternatives
+            .iter()
+            .filter_map(|one| {
+                let meaning = one.get("description")?.as_str()?;
+                Some(format!(
+                    "{}: {}",
+                    one["const"].as_str()?,
+                    meaning.replace('\n', " ")
+                ))
+            })
+            .collect();
+        fields.remove("oneOf");
+        fields.insert("type".into(), "string".into());
+        fields.insert("enum".into(), Value::Array(names));
+        describe(&mut fields, &meanings.join(" "));
+        return Value::Object(fields);
+    }
+    let Some(tag) = tag(alternatives) else {
+        return Value::Object(fields);
+    };
+    let mut properties = Map::new();
+    let mut names = Vec::new();
+    let mut needs = Vec::new();
+    for alternative in alternatives {
+        let Some(own) = alternative.get("properties").and_then(Value::as_object) else {
+            return Value::Object(fields);
+        };
+        let name = own[&tag]["const"].as_str().unwrap_or_default().to_owned();
+        for (property, schema) in own.iter().filter(|(property, _)| **property != tag) {
+            match properties.get(property) {
+                Some(seen) if seen != schema => return Value::Object(fields),
+                Some(_) => {}
+                None => {
+                    properties.insert(property.clone(), schema.clone());
+                }
+            }
+        }
+        let required: Vec<&str> = alternative
+            .get("required")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|property| *property != tag)
+            .collect();
+        if !required.is_empty() {
+            needs.push(format!("{name} needs {}.", required.join(", ")));
+        }
+        names.push(Value::String(name));
+    }
+    let mut all = Map::new();
+    all.insert(
+        tag.clone(),
+        serde_json::json!({"type": "string", "enum": names}),
+    );
+    all.extend(properties);
+    fields.remove("oneOf");
+    fields.insert("type".into(), "object".into());
+    fields.insert("properties".into(), Value::Object(all));
+    fields.insert("required".into(), serde_json::json!([tag]));
+    describe(&mut fields, &needs.join(" "));
+    Value::Object(fields)
+}
+
+/// Adds `more` to what a schema says about itself.
+fn describe(fields: &mut Map<String, Value>, more: &str) {
+    if more.is_empty() {
+        return;
+    }
+    let text = match fields.get("description").and_then(Value::as_str) {
+        Some(said) => format!("{said} {more}"),
+        None => more.to_owned(),
+    };
+    fields.insert("description".into(), Value::String(text));
 }
 
 /// Whether anything refers to a definition that is no longer there.
@@ -221,6 +348,59 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn alternatives_told_apart_by_a_constant_become_one_flat_object() {
+        let expected = json!({"type": "object", "properties": {"id": {"type": "string"}}});
+        let schema = reduced(&json!({
+            "type": "object",
+            "properties": {
+                "change": {"description": "What to do.", "oneOf": [
+                    {"type": "object", "required": ["action", "scope", "body"], "properties": {
+                        "action": {"type": "string", "const": "create"}, "scope": {"type": "string"}, "body": {"type": "string"}}},
+                    {"type": "object", "required": ["action", "expected", "body"], "properties": {
+                        "action": {"type": "string", "const": "revise"}, "expected": expected, "body": {"type": "string"}}},
+                    {"type": "object", "required": ["action", "expected"], "properties": {
+                        "action": {"type": "string", "const": "forget"}, "expected": expected}}
+                ]},
+                "intent": {"oneOf": [
+                    {"type": "string", "const": "by-words", "description": "Every word."},
+                    {"type": "string", "const": "by-meaning", "description": "A question."}
+                ]}
+            }
+        }));
+        assert_eq!(
+            schema["properties"]["change"],
+            json!({
+                "description": "What to do. create needs scope, body. revise needs expected, body. forget needs expected.",
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                    "action": {"type": "string", "enum": ["create", "revise", "forget"]},
+                    "scope": {"type": "string"},
+                    "body": {"type": "string"},
+                    "expected": expected
+                }
+            })
+        );
+        assert_eq!(
+            schema["properties"]["intent"],
+            json!({"type": "string", "enum": ["by-words", "by-meaning"],
+                "description": "by-words: Every word. by-meaning: A question."})
+        );
+    }
+
+    #[test]
+    fn alternatives_that_give_a_property_different_meanings_stay_apart() {
+        let details = json!({"oneOf": [
+            {"type": "object", "required": ["kind", "state"], "properties": {
+                "kind": {"type": "string", "const": "decision"}, "state": {"type": "string", "enum": ["accepted", "rejected"]}}},
+            {"type": "object", "required": ["kind", "state"], "properties": {
+                "kind": {"type": "string", "const": "fact"}, "state": {"type": "string", "enum": ["current", "retracted"]}}}
+        ]});
+        let schema = reduced(&json!({"type": "object", "properties": {"details": details}}));
+        assert_eq!(schema["properties"]["details"], details);
     }
 
     #[test]
