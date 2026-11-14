@@ -247,13 +247,13 @@ async function copy(): Promise<void> {
       {#each shown as chat (chatKey(chat))}
         {@const key = chatKey(chat)}
         {@const included = !excluded.has(key)}
-        <label class="xrow" class:off={!included}>
-          <input type="checkbox" checked={included} onchange={(event) => setIncluded(key, event.currentTarget.checked)} />
-          <span style:min-width="0">
+        <div class="xrow" class:off={!included}>
+          <span style:min-width="0" style:flex="1">
             <span class="row-t"><AgentMark agent={chat.agent} /><span>{plainTitle(chat.title)}</span></span>
             <span class="elb" style:margin-top="2px"><MetaChips {chat} extra={included ? "" : "left out"} /></span>
           </span>
-        </label>
+          <button class="a" type="button" aria-label="{included ? 'Leave out' : 'Include'} {plainTitle(chat.title)}" onclick={() => setIncluded(key, !included)}>{included ? "Leave out" : "Include"}</button>
+        </div>
       {/each}
       {#if listed.length > pageSize}
         <nav class="hd" aria-label="Pages" style:margin-top="14px">

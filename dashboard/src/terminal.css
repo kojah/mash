@@ -2987,22 +2987,21 @@ summary.rw::-webkit-details-marker {
   }
 }
 
-/* Import / export: a chat row with a checkbox, a choice drawn as a tile, and
-   a command to copy. */
+/* Import / export: a chat row with a way to leave it out, a choice drawn as
+   a tile, and a command to copy. */
 .xrow {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 8px 0;
   border-bottom: 1px solid var(--hair);
-  cursor: pointer;
 }
-.xrow > input {
+.xrow > button {
   flex: none;
-  width: 16px;
-  height: 16px;
-  margin-top: 5px;
-  accent-color: var(--clay2);
+  min-height: 36px;
+  padding: 0 6px;
+  font-size: 13.5px;
+  white-space: nowrap;
 }
 .xrow.off .row-t {
   color: var(--dim);

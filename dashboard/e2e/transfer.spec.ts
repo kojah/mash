@@ -61,7 +61,7 @@ for (const width of [390, 1280]) {
     const status = main.getByRole("status").first();
     await expect(status).toContainText("60 chats will be exported");
     await expect(main.getByRole("navigation", { name: "Pages" })).toContainText(
-      "1–25 of 60 chats · 25 of the 25 on this page included",
+      "1–10 of 60 chats · 10 of the 10 on this page included",
     );
 
     // Filters apply at once and live in the address.
@@ -72,15 +72,15 @@ for (const width of [390, 1280]) {
     await expect(status).toContainText("30 chats will be exported");
 
     // A chat left out by hand stays out on the next page and back.
-    await main.getByRole("checkbox", { name: /Conversation 1\b/ }).uncheck();
+    await main.getByRole("button", { name: /^Leave out Conversation 1$/ }).click();
     await expect(status).toContainText("29 chats will be exported");
     await expect(status).toContainText("1 chat left out by hand");
     await main.getByRole("link", { name: "Next" }).click();
-    await expect(main.getByRole("navigation", { name: "Pages" })).toContainText("26–30 of 30");
+    await expect(main.getByRole("navigation", { name: "Pages" })).toContainText("11–20 of 30");
     await main.getByRole("link", { name: "Previous" }).click();
-    await expect(main.getByRole("checkbox", { name: /Conversation 1\b/ })).not.toBeChecked();
+    await expect(main.getByRole("button", { name: /^Include Conversation 1$/ })).toBeVisible();
     await main.getByRole("button", { name: "show them" }).click();
-    await expect(main.getByRole("checkbox")).toHaveCount(1);
+    await expect(main.getByRole("button", { name: /^(Leave out|Include) / })).toHaveCount(1);
     await main.getByRole("button", { name: "show all" }).click();
 
     await main.getByRole("radio", { name: /JSON/ }).check();
