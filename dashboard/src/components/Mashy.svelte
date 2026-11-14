@@ -96,6 +96,8 @@ async function close(): Promise<void> {
 // The window can be moved by its header, away from what it covers. Where it
 // was left is remembered for this browser; a double click puts it back.
 const PLACE = "mashy.place";
+// Safari's attribute for a multi-line field, which the element's types omit.
+const uncorrected: Record<string, string> = { autocorrect: "off" };
 let panel = $state<HTMLElement>();
 // A phone's keyboard shrinks what is visible without resizing the page, and
 // the browser scrolls a fixed sheet's top out of sight to show the field.
@@ -293,8 +295,8 @@ function followed(event: MouseEvent): void {
           rows="1"
           enterkeyhint="send"
           autocomplete="off"
-          autocorrect="off"
           spellcheck="false"
+          {...uncorrected}
           placeholder={mashy.busy ? "Mashy is answering…" : "Ask Mashy about your past chats"}
           bind:this={input}
           bind:value={draft}
