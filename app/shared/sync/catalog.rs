@@ -27,7 +27,7 @@ pub enum State {
 }
 
 impl State {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Receiving => "receiving",
             Self::QueuedForApply => "queued_for_apply",
@@ -64,7 +64,7 @@ pub struct Operation {
     pub operation_id: String,
     pub kind: String,
     pub manifest_digest: String,
-    pub(crate) decoded_bytes: u64,
+    pub decoded_bytes: u64,
     pub record_count: u32,
     pub start_json: String,
     pub state: State,
@@ -99,10 +99,10 @@ pub enum BeginOutcome {
 )]
 pub struct Backfill {
     pub backfill_id: String,
-    pub(crate) database_instance: String,
+    pub database_instance: String,
     pub baseline_revision: i64,
-    pub(crate) views_fingerprint: String,
-    pub(crate) manifest_digest: String,
+    pub views_fingerprint: String,
+    pub manifest_digest: String,
     pub total_chats: u64,
     pub covered: u64,
     pub state: String,

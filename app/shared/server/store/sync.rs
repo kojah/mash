@@ -428,7 +428,7 @@ impl Store {
 
     /// Certification for a bulk replay; the final state write is the barrier,
     /// then the group-wide graph threshold is restored once.
-    pub(crate) async fn certify_bulk(
+    pub async fn certify_bulk(
         &self,
         identity: &Identity,
         views: NodeViews,

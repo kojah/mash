@@ -34,9 +34,7 @@ pub async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
 }
 
 /// Group-wide duplicate-history report keyed by canonical fingerprints.
-pub(crate) async fn fingerprints(
-    config: &SharedConfig,
-) -> Result<super::FingerprintReport, AppError> {
+pub async fn fingerprints(config: &SharedConfig) -> Result<super::FingerprintReport, AppError> {
     get(config, Endpoint::Fingerprints).await
 }
 
@@ -346,13 +344,13 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
         return body::read(response, endpoint, permit).await;
     }
 }
-pub(super) async fn get<T: serde::de::DeserializeOwned + Send + 'static>(
+pub async fn get<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,
     endpoint: Endpoint,
 ) -> Result<T, AppError> {
     response(request(config, reqwest::Method::GET, endpoint)?, endpoint).await
 }
-pub(super) async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
+pub async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,
     endpoint: Endpoint,
     body: &impl Serialize,
@@ -364,21 +362,21 @@ pub(super) async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
     .await
 }
 
-pub(crate) async fn list_records(
+pub async fn list_records(
     config: &SharedConfig,
     input: &crate::records::List,
 ) -> Result<crate::records::Page, AppError> {
     post(config, Endpoint::Records, input).await
 }
 
-pub(crate) async fn get_record(
+pub async fn get_record(
     config: &SharedConfig,
     input: &crate::records::Get,
 ) -> Result<crate::records::Record, AppError> {
     post(config, Endpoint::Record, input).await
 }
 
-pub(crate) async fn list_chats(
+pub async fn list_chats(
     config: &SharedConfig,
     input: &crate::chat_catalog::Request,
 ) -> Result<crate::chat_catalog::Page, AppError> {
@@ -399,19 +397,17 @@ pub async fn events(config: &SharedConfig) -> Result<reqwest::Response, AppError
     }
 }
 
-pub(crate) async fn catalog(
-    config: &SharedConfig,
-) -> Result<Vec<crate::chat_catalog::Chat>, AppError> {
+pub async fn catalog(config: &SharedConfig) -> Result<Vec<crate::chat_catalog::Chat>, AppError> {
     get(config, Endpoint::Catalog).await
 }
 
-pub(crate) async fn chat_page(
+pub async fn chat_page(
     config: &SharedConfig,
     input: &protocol::ChatPage,
 ) -> Result<Vec<Message>, AppError> {
     post(config, Endpoint::ChatPage, input).await
 }
-pub(crate) async fn view(
+pub async fn view(
     config: &SharedConfig,
     node: &str,
     id: &str,
@@ -438,7 +434,7 @@ struct QueryBody<'a> {
 }
 
 /// Run a typed, read-only query against shared silver.
-pub(crate) async fn query(
+pub async fn query(
     config: &SharedConfig,
     node: Option<&str>,
     request: &crate::silver_query::Request,

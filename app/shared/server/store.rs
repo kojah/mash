@@ -179,7 +179,7 @@ impl Store {
         }
     }
 
-    pub(crate) fn with_embeddings(mut self, embeddings: crate::config::Embeddings) -> Self {
+    pub fn with_embeddings(mut self, embeddings: crate::config::Embeddings) -> Self {
         self.embeddings = embeddings;
         self
     }
@@ -213,7 +213,7 @@ impl Store {
 
     /// Serializes the views stamp check with its write, so a slow
     /// certification cannot overwrite a newer one after the guard has passed.
-    pub(crate) async fn views_write_guard(
+    pub async fn views_write_guard(
         &self,
         identity: &Identity,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, AppError> {
@@ -324,7 +324,7 @@ impl Store {
     }
 
     /// Configured nodes of one group, in identity order.
-    pub(crate) fn nodes(&self, group: &str) -> &[String] {
+    pub fn nodes(&self, group: &str) -> &[String] {
         self.silver.nodes(group)
     }
 

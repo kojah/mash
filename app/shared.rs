@@ -10,19 +10,18 @@ const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
 use crate::views::retrieval::EXACT_SEARCH_BUDGET_ERROR;
 
 pub mod activity;
-pub(crate) mod attachments;
+pub mod attachments;
 pub mod client;
-mod coverage;
-mod exact;
+pub mod exact;
 pub mod join;
 mod lexical_manifest;
 mod output;
 pub mod protocol;
-pub(crate) mod publication;
+pub mod publication;
 #[cfg(test)]
 use crate::views::qdrant as qdrant_index;
 use crate::views::qdrant::Settings as GroupView;
-mod retrieval;
+pub mod retrieval;
 mod reuse;
 pub mod server;
 use crate::silver::revision as silver_revision;
@@ -35,21 +34,21 @@ pub use client::events;
 pub use client::freshness;
 #[cfg(any(test, feature = "test-support"))]
 pub use client::query_with_token;
-pub(crate) use client::{
+pub use client::{
     catalog, chat_page, fingerprints, get_record, list_chats, list_records, query, view,
 };
-pub(crate) use exact::search as search_exact;
-pub(crate) use output::{FreshnessSummary, PublicationSummary};
+pub use exact::search as search_exact;
+pub use output::{FreshnessSummary, PublicationSummary};
 pub use publication::Inference;
 pub use publication::publish;
-pub(crate) use publication::status;
+pub use publication::status;
 pub use publication::write_event;
 pub use retrieval::prepare_candidates;
-pub(crate) use retrieval::{SearchOutcome, require_dense, search, search_lexical};
+pub use retrieval::{SearchOutcome, require_dense, search, search_lexical};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum PublicationState {
+pub enum PublicationState {
     Pending,
     Published,
 }
@@ -64,21 +63,21 @@ pub struct Publication {
 }
 
 impl Publication {
-    pub(crate) fn attachment_failure(&mut self, error: crate::AppError) {
+    pub fn attachment_failure(&mut self, error: crate::AppError) {
         self.state = PublicationState::Pending;
         self.error = Some(error.error.message);
     }
     pub fn is_pending(&self) -> bool {
         self.state == PublicationState::Pending
     }
-    pub(crate) const fn published() -> Self {
+    pub const fn published() -> Self {
         Self {
             preparation: None,
             state: PublicationState::Published,
             error: None,
         }
     }
-    pub(crate) const fn pending() -> Self {
+    pub const fn pending() -> Self {
         Self {
             preparation: None,
             state: PublicationState::Pending,
@@ -106,7 +105,7 @@ pub struct FingerprintReport {
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct NodeFingerprintSummary {
-    pub(crate) node_id: String,
+    pub node_id: String,
     pub chats: u64,
     pub duplicated: u64,
 }
@@ -133,7 +132,7 @@ pub struct Freshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unpublished_nodes: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) group_views: Option<Box<GroupView>>,
+    pub group_views: Option<Box<GroupView>>,
     pub nodes: Vec<NodeFreshness>,
 }
 
@@ -141,7 +140,7 @@ pub struct Freshness {
 pub struct NodeFreshness {
     /// None means the service did not report artifact publication states.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) artifacts: Option<crate::views::readiness::Artifacts>,
+    pub artifacts: Option<crate::views::readiness::Artifacts>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lexical_manifest: Option<lexical_manifest::Manifest>,
     #[serde(default)]
@@ -157,13 +156,15 @@ pub struct NodeFreshness {
     pub source_silver: Option<crate::silver::certificate::Certificate>,
     pub node_id: String,
     /// The local database that owns this node's publications.
-    pub(crate) instance: String,
+    pub instance: String,
     pub revision: i64,
     pub last_synced_at: Option<String>,
-    pub(crate) last_updated_at: Option<String>,
+    pub last_updated_at: Option<String>,
     pub chats: i64,
     pub messages: i64,
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 #[cfg(test)]
 mod tests;

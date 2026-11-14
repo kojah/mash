@@ -14,8 +14,8 @@ pub enum RetireFault {
 
 #[cfg(any(test, feature = "test-support"))]
 impl Store {
-    #[cfg(test)]
-    pub(crate) fn with_retire_fault(mut self, fault: RetireFault) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_retire_fault(mut self, fault: RetireFault) -> Self {
         self.retire_fault = Some(fault);
         self
     }
@@ -31,10 +31,10 @@ impl Store {
 /// What a retirement removed.
 #[derive(Debug, serde::Serialize)]
 pub struct Retired {
-    pub(crate) group_id: String,
-    pub(crate) node_id: String,
-    pub(crate) chats: u64,
-    pub(crate) messages: u64,
+    pub group_id: String,
+    pub node_id: String,
+    pub chats: u64,
+    pub messages: u64,
 }
 
 impl Store {

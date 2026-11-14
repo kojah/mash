@@ -26,7 +26,7 @@ pub struct SnapshotWork {
     pub(super) upload_bytes: u64,
 }
 
-pub(super) fn target(config: &SharedConfig) -> String {
+pub fn target(config: &SharedConfig) -> String {
     blake3::hash(
         format!(
             "providers-six-v1-attachments-v1-redaction-v2\0{}\0{}\0{}{}",
@@ -141,7 +141,7 @@ fn publisher() -> &'static tokio::sync::mpsc::UnboundedSender<Job> {
 
 /// Queue a publication for the process-wide publisher task. The caller returns
 /// immediately; the local indexing task never waits for the network.
-pub(crate) fn enqueue(
+pub fn enqueue(
     database: &Path,
     config: &SharedConfig,
     models: &Path,
@@ -159,10 +159,7 @@ pub(crate) fn enqueue(
         .map_err(|_| AppError::internal("background publisher is unavailable"))
 }
 
-pub(crate) fn status(
-    path: &Path,
-    config: Option<&SharedConfig>,
-) -> Result<Option<Publication>, AppError> {
+pub fn status(path: &Path, config: Option<&SharedConfig>) -> Result<Option<Publication>, AppError> {
     let Some(config) = config else {
         return Ok(None);
     };
@@ -527,7 +524,7 @@ fn store_backfill_receipts(path: &Path, receipts: &BackfillReceipts) -> Result<(
 
 /// Publish one frozen baseline progressively through `/v1/sync` and complete
 /// it. This is the operator entry point behind `mash backfill`.
-pub(crate) async fn publish_backfill(
+pub async fn publish_backfill(
     path: &Path,
     config: &SharedConfig,
     backfill_id: &str,

@@ -15,12 +15,12 @@ use std::io::Read;
 // Version 4 requires native record batches, including the final record phase
 // of progressive backfill. Older peers must reject before accepting a transfer.
 pub const PROTOCOL_VERSION: u32 = 4;
-pub(crate) const MAX_CONTROL_BYTES: usize = 64 * 1024;
+pub const MAX_CONTROL_BYTES: usize = 64 * 1024;
 pub const MAX_ENVELOPE_BYTES: usize = 4 * 1024 * 1024;
 pub const DEFAULT_CREDIT_BYTES: u32 = 4 * 1024 * 1024;
-pub(crate) const NORMAL_BATCH_TARGET: usize = 1024 * 1024;
-pub(crate) const MAX_BATCH_CHATS: usize = 128;
-pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
+pub const NORMAL_BATCH_TARGET: usize = 1024 * 1024;
+pub const MAX_BATCH_CHATS: usize = 128;
+pub const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
 /// The largest decoded publication batch a client builds and asks a server to
 /// accept; servers cap it at their own `max_upload_mib`. Batches group many
 /// chats up to the normal target, so only one very long chat can exceed it:
@@ -28,7 +28,7 @@ pub(crate) const OVERSIZED_PIECE_TARGET: usize = 256 * 1024;
 /// cannot fit would keep its node's shared publication stale forever.
 pub const DEFAULT_MAX_DECODED_BYTES: usize = 1024 * 1024 * 1024;
 /// Why one atomic publication cannot be sent; publishers then use a backfill.
-pub(crate) const BATCH_TOO_LARGE: &str = "publication batch exceeds decoded-size limit";
+pub const BATCH_TOO_LARGE: &str = "publication batch exceeds decoded-size limit";
 
 #[derive(Clone, PartialEq, Message)]
 pub struct ClientFrame {
@@ -257,7 +257,7 @@ pub enum Compression {
 }
 
 impl Compression {
-    pub(crate) const fn parse(value: i32) -> Option<Self> {
+    pub const fn parse(value: i32) -> Option<Self> {
         match value {
             0 => Some(Self::None),
             1 => Some(Self::Zstd),
@@ -469,14 +469,14 @@ pub struct SourceCertificate {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct NativeRecord {
+pub struct NativeRecord {
     #[prost(oneof = "native_record::Body", tags = "1, 2, 3, 4, 5, 6")]
     pub body: Option<native_record::Body>,
 }
 
-pub(crate) mod native_record {
+pub mod native_record {
     #[derive(Clone, PartialEq, prost::Oneof)]
-    pub(crate) enum Body {
+    pub enum Body {
         #[prost(message, tag = "1")]
         Chat(super::Chat),
         #[prost(message, tag = "2")]
@@ -495,7 +495,7 @@ pub(crate) mod native_record {
 
 /// One chat a delta amends; see `protocol::Amendment`.
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Amend {
+pub struct Amend {
     #[prost(message, optional, tag = "1")]
     pub chat: Option<Chat>,
     #[prost(string, repeated, tag = "2")]
@@ -505,7 +505,7 @@ pub(crate) struct Amend {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Chat {
+pub struct Chat {
     #[prost(message, optional, tag = "1")]
     pub enrichment: Option<Enrichment>,
     #[prost(string, tag = "2")]
@@ -525,7 +525,7 @@ pub(crate) struct Chat {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct NativeMessage {
+pub struct NativeMessage {
     #[prost(message, repeated, tag = "1")]
     pub attachments: Vec<Attachment>,
     #[prost(string, tag = "2")]
@@ -553,13 +553,13 @@ pub(crate) struct NativeMessage {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Vector {
+pub struct Vector {
     #[prost(double, repeated, tag = "1")]
     pub values: Vec<f64>,
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct MessageContext {
+pub struct MessageContext {
     #[prost(uint32, tag = "1")]
     pub kind: u32,
     // Tag 2 belonged to ordinal ancestry in protocol 1.
@@ -586,7 +586,7 @@ pub struct Attachment {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct ToolActivity {
+pub struct ToolActivity {
     #[prost(message, repeated, tag = "1")]
     pub calls: Vec<ToolCall>,
     #[prost(message, repeated, tag = "2")]
@@ -594,7 +594,7 @@ pub(crate) struct ToolActivity {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct ToolCall {
+pub struct ToolCall {
     #[prost(string, optional, tag = "1")]
     pub name: Option<String>,
     #[prost(string, optional, tag = "2")]
@@ -605,7 +605,7 @@ pub(crate) struct ToolCall {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct ToolResult {
+pub struct ToolResult {
     #[prost(string, optional, tag = "1")]
     pub call_id: Option<String>,
     #[prost(bool, optional, tag = "2")]
@@ -613,7 +613,7 @@ pub(crate) struct ToolResult {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Tombstone {
+pub struct Tombstone {
     #[prost(string, tag = "1")]
     pub provider: String,
     #[prost(string, tag = "2")]
@@ -621,7 +621,7 @@ pub(crate) struct Tombstone {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct Enrichment {
+pub struct Enrichment {
     #[prost(uint32, tag = "1")]
     pub version: u32,
     #[prost(message, optional, tag = "2")]
@@ -635,14 +635,14 @@ pub(crate) struct Enrichment {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct EnrichmentOrigin {
+pub struct EnrichmentOrigin {
     #[prost(oneof = "enrichment_origin::Kind", tags = "1, 2, 3")]
     pub kind: Option<enrichment_origin::Kind>,
 }
 
-pub(crate) mod enrichment_origin {
+pub mod enrichment_origin {
     #[derive(Clone, PartialEq, prost::Oneof)]
-    pub(crate) enum Kind {
+    pub enum Kind {
         #[prost(bool, tag = "1")]
         Unknown(bool),
         #[prost(string, tag = "2")]
@@ -653,7 +653,7 @@ pub(crate) mod enrichment_origin {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct FirstVisibleMessage {
+pub struct FirstVisibleMessage {
     #[prost(string, tag = "1")]
     pub message_id: String,
     #[prost(uint32, tag = "2")]
@@ -661,7 +661,7 @@ pub(crate) struct FirstVisibleMessage {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct EnrichmentTimestamps {
+pub struct EnrichmentTimestamps {
     #[prost(message, optional, tag = "1")]
     pub created_at: Option<TimestampOrigin>,
     #[prost(message, optional, tag = "2")]
@@ -669,14 +669,14 @@ pub(crate) struct EnrichmentTimestamps {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct TimestampOrigin {
+pub struct TimestampOrigin {
     #[prost(oneof = "timestamp_origin::Kind", tags = "1, 2, 3")]
     pub kind: Option<timestamp_origin::Kind>,
 }
 
-pub(crate) mod timestamp_origin {
+pub mod timestamp_origin {
     #[derive(Clone, PartialEq, prost::Oneof)]
-    pub(crate) enum Kind {
+    pub enum Kind {
         #[prost(bool, tag = "1")]
         Unknown(bool),
         #[prost(message, tag = "2")]
@@ -687,7 +687,7 @@ pub(crate) mod timestamp_origin {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct SourceTimestamp {
+pub struct SourceTimestamp {
     #[prost(string, tag = "1")]
     pub field: String,
     #[prost(uint32, tag = "2")]
@@ -695,7 +695,7 @@ pub(crate) struct SourceTimestamp {
 }
 
 #[derive(Clone, PartialEq, Message)]
-pub(crate) struct MessageBoundary {
+pub struct MessageBoundary {
     #[prost(string, tag = "1")]
     pub message_id: String,
     #[prost(bool, tag = "2")]

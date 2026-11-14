@@ -3,14 +3,14 @@ use super::{Freshness, Publication, PublicationState};
 use serde::Serialize;
 
 #[derive(Serialize)]
-pub(crate) struct PublicationSummary<'a> {
-    pub(crate) state: PublicationState,
+pub struct PublicationSummary<'a> {
+    pub state: PublicationState,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) error: Option<&'a str>,
+    pub error: Option<&'a str>,
 }
 
 impl Publication {
-    pub(crate) fn summary(&self) -> PublicationSummary<'_> {
+    pub fn summary(&self) -> PublicationSummary<'_> {
         PublicationSummary {
             state: self.state,
             error: self.error.as_deref(),
@@ -19,33 +19,33 @@ impl Publication {
 }
 
 #[derive(Serialize)]
-pub(crate) struct FreshnessSummary<'a> {
+pub struct FreshnessSummary<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) activity: Option<&'a super::activity::Report>,
-    pub(crate) group_id: &'a str,
+    pub activity: Option<&'a super::activity::Report>,
+    pub group_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) unpublished_nodes: Option<&'a [String]>,
-    pub(crate) nodes: Vec<Member<'a>>,
+    pub unpublished_nodes: Option<&'a [String]>,
+    pub nodes: Vec<Member<'a>>,
 }
 
 #[derive(Serialize)]
-pub(crate) struct Member<'a> {
-    pub(crate) node_id: &'a str,
-    pub(crate) revision: i64,
-    pub(crate) last_synced_at: Option<&'a str>,
-    pub(crate) last_updated_at: Option<&'a str>,
-    pub(crate) chats: i64,
-    pub(crate) messages: i64,
-    pub(crate) lexical_current: bool,
-    pub(crate) views_current: bool,
+pub struct Member<'a> {
+    pub node_id: &'a str,
+    pub revision: i64,
+    pub last_synced_at: Option<&'a str>,
+    pub last_updated_at: Option<&'a str>,
+    pub chats: i64,
+    pub messages: i64,
+    pub lexical_current: bool,
+    pub views_current: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) artifacts: Option<&'a crate::views::readiness::Artifacts>,
+    pub artifacts: Option<&'a crate::views::readiness::Artifacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) source_silver: Option<&'a crate::silver::certificate::Certificate>,
+    pub source_silver: Option<&'a crate::silver::certificate::Certificate>,
 }
 
 impl Freshness {
-    pub(crate) fn summary(&self) -> FreshnessSummary<'_> {
+    pub fn summary(&self) -> FreshnessSummary<'_> {
         FreshnessSummary {
             activity: self.activity.as_ref(),
             group_id: &self.group_id,

@@ -1,6 +1,7 @@
 use super::client::{Endpoint, get, post, response};
 use super::publication::target;
 use super::retrieval::{CONTEXT_DEADLINE, context_documents, prepare_search, search_prepared};
+use super::test_support::{seed, seed_certified, seed_ready};
 use super::*;
 use crate::config::SharedConfig;
 use crate::search_results::SearchUnit;
@@ -8,13 +9,11 @@ use crate::semantic::{self, Models};
 use crate::silver::{Chat, NormalizedMessage};
 use crate::storage::{Message, SearchHit, Storage};
 use crate::views::readiness::{Artifacts, State};
-use std::path::Path;
 use std::time::Duration;
 
 mod context_batch;
 mod correlation;
 mod decoding;
-mod diagnostics;
 mod publication_recovery;
 mod selections;
 
@@ -697,24 +696,6 @@ async fn capture_search_request(
     })
 }
 
-async fn seed_ready(path: &Path) -> crate::views::local::test_support::Fixture {
-    seed_certified(path);
-    crate::views::local::test_support::Fixture::new(path, "local-node").await
-}
-
-fn seed_certified(path: &Path) {
-    drop(seed(path));
-    let mut writer = Storage::open_writer(path).unwrap();
-    writer
-        .begin_silver_scan(crate::provider::Provider::Codex)
-        .unwrap();
-    writer
-        .finish_silver_scan(crate::provider::Provider::Codex, true)
-        .unwrap();
-    writer.finish_silver_ingestion().unwrap();
-    writer.commit_writer().unwrap();
-}
-
 #[tokio::test]
 async fn http_pool_reuses_connections_without_caching_node_credentials() {
     use axum::extract::{ConnectInfo, State};
@@ -823,52 +804,6 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
     assert_eq!(requests[3].headers["x-mash-node"], "second-node");
     drop(requests);
     server.abort();
-}
-
-fn seed(path: &Path) -> Storage {
-    let mut storage = Storage::open_writer(path).expect("writer");
-    storage
-        .replace_chat(&Chat {
-            id: "conversation".to_owned(),
-            provider: crate::provider::Provider::Codex,
-            title_origin: None,
-            timestamp_origins: None,
-            claude_lineage: None,
-            source: crate::silver::SourceIdentity::file("/tmp/shared-fixture.jsonl"),
-            project: None,
-            repository: None,
-            title: Some("fixture".to_owned()),
-            created_at: Some(1),
-            updated_at: Some(2),
-            messages: vec![
-                NormalizedMessage {
-                    attachments: Vec::new(),
-                    id: "searchable".to_owned(),
-                    ordinal: 0,
-                    context: crate::message_context::MessageContext::Linear,
-                    role: crate::role::Role::User,
-                    content: "hello shared history".to_owned(),
-                    dialogue_text: None,
-                    created_at: Some(1),
-                    tools: crate::tools::Activity::default(),
-                },
-                NormalizedMessage {
-                    attachments: Vec::new(),
-                    id: "context".to_owned(),
-                    ordinal: 1,
-                    context: crate::message_context::MessageContext::Linear,
-                    role: crate::role::Role::Tool,
-                    content: "hello raw tool output".to_owned(),
-                    dialogue_text: Some(String::new()),
-                    created_at: Some(2),
-                    tools: crate::tools::Activity::default(),
-                },
-            ]
-            .into(),
-        })
-        .expect("conversation");
-    storage.commit_writer().expect("commit");
-    storage
 }
 
 #[tokio::test]

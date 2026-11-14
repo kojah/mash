@@ -86,7 +86,10 @@ fn shared_aggregate_certificates_do_not_become_scoped_coverage() {
             },
             ..Default::default()
         };
-        let value = serde_json::to_value(freshness.coverage_members(&scope).unwrap()).unwrap();
+        let value = serde_json::to_value(
+            mash_app::core::coverage::shared_members(&freshness, &scope).unwrap(),
+        )
+        .unwrap();
         assert!(value[0]["providers"].is_null());
         if scoped {
             assert!(value[0]["retained"].is_null());

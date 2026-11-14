@@ -55,10 +55,17 @@ mod storage_tests;
 pub use mash_storage::records;
 pub mod remote;
 pub mod runtime;
-pub mod shared;
 #[cfg(test)]
 use mash_model::test_support;
 pub use mash_storage::storage;
+/// The shared index; its tests that search through the core live here.
+pub mod shared {
+    pub use mash_sync::shared::*;
+    #[cfg(test)]
+    mod diagnostics_core_tests;
+    #[cfg(test)]
+    mod exact_core_tests;
+}
 pub mod watch;
 
 use std::io::{self, Write};

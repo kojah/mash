@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::storage::Counts;
 pub use crate::views::retrieval::Candidates;
 pub use crate::views::retrieval::Search;
-pub(crate) use crate::views::retrieval::{Document, valid_vector};
+pub use crate::views::retrieval::{Document, valid_vector};
 pub use mash_storage::shared::batches::*;
 
 /// One node's committed publication, as `/v1/events` tells listening

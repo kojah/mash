@@ -49,15 +49,15 @@ pub fn prepare_candidates(
 #[cfg(test)]
 mod tests;
 
-pub(super) const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
+pub const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
 
-pub(crate) enum SharedRetrieval {
+pub enum SharedRetrieval {
     Available,
     LocalFallback { error: String },
 }
 
 impl SharedRetrieval {
-    pub(crate) fn into_error(self) -> Option<String> {
+    pub fn into_error(self) -> Option<String> {
         match self {
             Self::Available => None,
             Self::LocalFallback { error } => Some(error),
@@ -65,13 +65,13 @@ impl SharedRetrieval {
     }
 }
 
-pub(crate) struct SearchOutcome {
-    pub(crate) hits: Vec<SearchHit>,
-    pub(crate) retrieval: SharedRetrieval,
-    pub(crate) context_error: Option<String>,
+pub struct SearchOutcome {
+    pub hits: Vec<SearchHit>,
+    pub retrieval: SharedRetrieval,
+    pub context_error: Option<String>,
 }
 
-pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError> {
+pub async fn require_dense(config: &SharedConfig) -> Result<(), AppError> {
     let freshness: super::Freshness = get(config, Endpoint::Freshness).await?;
     freshness
         .group_views
@@ -81,7 +81,7 @@ pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError>
 }
 
 #[tracing::instrument(name = "combined_search", skip_all)]
-pub(crate) async fn search(
+pub async fn search(
     config: &SharedConfig,
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     reranking: &crate::config::Reranking,
@@ -116,7 +116,7 @@ pub(crate) async fn search(
 /// Model-free word search over this machine (`local_database`), the shared
 /// nodes (`config`), or both. A failed shared request keeps local results and
 /// is reported; alone, it is the error.
-pub(crate) async fn search_lexical(
+pub async fn search_lexical(
     config: Option<&SharedConfig>,
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     query: &str,
@@ -189,7 +189,7 @@ pub(crate) async fn search_lexical(
     Ok((crate::search_results::diversify(hits, options.unit), error))
 }
 
-pub(super) struct PreparedSearch {
+pub struct PreparedSearch {
     backend: semantic::LoadedBackend,
     vector: Vec<f64>,
     local: Option<crate::views::local::Local>,
@@ -197,7 +197,7 @@ pub(super) struct PreparedSearch {
 }
 
 #[tracing::instrument(name = "prepare_search", skip_all)]
-pub(super) async fn prepare_search(
+pub async fn prepare_search(
     local_database: Option<(&Path, &crate::config::ResolvedConfig)>,
     reranking: &crate::config::Reranking,
     models_dir: &Path,
@@ -232,7 +232,7 @@ pub(super) async fn prepare_search(
 }
 
 #[tracing::instrument(name = "retrieve_and_rank", skip_all)]
-pub(super) async fn search_prepared(
+pub async fn search_prepared(
     config: &SharedConfig,
     local_database: Option<&Path>,
     query: &str,
@@ -452,7 +452,7 @@ fn apply_projections<'a>(
     }
 }
 
-pub(super) async fn context_documents(
+pub async fn context_documents(
     config: &SharedConfig,
     database: Option<std::path::PathBuf>,
     query: &str,

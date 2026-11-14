@@ -181,7 +181,7 @@ fn outcome_error(failed: &wire::Failed) -> AppError {
     clippy::too_many_lines,
     reason = "one resumable protocol session with explicit server outcomes"
 )]
-pub(crate) async fn upload(
+pub async fn upload(
     config: &SharedConfig,
     file: &tempfile::NamedTempFile,
 ) -> Result<protocol::Indexed, AppError> {
@@ -189,7 +189,7 @@ pub(crate) async fn upload(
 }
 
 /// Send a prepared batch without rereading or re-encoding its canonical spool.
-pub(crate) async fn upload_encoded(
+pub async fn upload_encoded(
     config: &SharedConfig,
     start: &protocol::Start,
     encoded: &wire::EncodedBatch,
@@ -563,7 +563,7 @@ async fn publish_on_session(
 }
 
 /// Upload one attachment as bounded uncompressed pieces over `/v1/sync`.
-pub(crate) async fn upload_attachment(
+pub async fn upload_attachment(
     config: &SharedConfig,
     message_id: &str,
     metadata: &crate::attachments::Metadata,
@@ -861,12 +861,12 @@ impl Default for BackfillLimits {
 /// One independently committed baseline batch.
 #[derive(Clone)]
 pub struct PlannedBatch {
-    pub(crate) encoded: wire::EncodedBatch,
-    pub(crate) members: Vec<wire::BackfillMember>,
+    pub encoded: wire::EncodedBatch,
+    pub members: Vec<wire::BackfillMember>,
 }
 
 impl PlannedBatch {
-    pub(crate) fn digest(&self) -> &str {
+    pub fn digest(&self) -> &str {
         &self.encoded.manifest_digest
     }
 }
@@ -874,14 +874,14 @@ impl PlannedBatch {
 /// A frozen baseline split into commits, with the membership manifest that
 /// proves completion.
 pub struct BackfillPlan {
-    pub(crate) start: protocol::Start,
-    pub(crate) baseline_revision: i64,
-    pub(crate) members: Vec<wire::BackfillMember>,
-    pub(crate) manifest_piece: wire::Piece,
-    pub(crate) manifest_digest: String,
-    pub(crate) manifest_bytes: u64,
+    pub start: protocol::Start,
+    pub baseline_revision: i64,
+    pub members: Vec<wire::BackfillMember>,
+    pub manifest_piece: wire::Piece,
+    pub manifest_digest: String,
+    pub manifest_bytes: u64,
     pub batches: Vec<PlannedBatch>,
-    pub(crate) record_batch: Option<wire::EncodedBatch>,
+    pub record_batch: Option<wire::EncodedBatch>,
 }
 
 /// What a previous attempt already completed for this baseline.
@@ -1074,7 +1074,7 @@ pub fn plan_backfill_file(
 }
 
 /// Coordinator with the process credential, used by publication.
-pub(crate) async fn upload_backfill_plan_with_config(
+pub async fn upload_backfill_plan_with_config(
     config: &SharedConfig,
     plan: &BackfillPlan,
     backfill_id: &str,
@@ -1100,7 +1100,7 @@ pub(crate) async fn upload_backfill_plan_with_config(
 const DEFAULT_BACKFILL_LANES: usize = 4;
 const MAX_BACKFILL_LANES: usize = 8;
 
-pub(crate) fn backfill_lanes() -> usize {
+pub fn backfill_lanes() -> usize {
     std::env::var("MASH_BACKFILL_LANES")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
@@ -1390,7 +1390,7 @@ fn indexed(revision: i64, views_current: bool) -> protocol::Indexed {
 #[cfg(test)]
 /// Close every cached publisher session. Tests use this once a publication is
 /// done so a fake server that answers on disconnect can finish.
-pub(crate) fn close_sessions() {
+pub fn close_sessions() {
     let mut slots = session_slots()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);

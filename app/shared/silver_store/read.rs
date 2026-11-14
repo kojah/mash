@@ -1,11 +1,11 @@
 //! Silver reads: thread metadata, canonical views and retained-history export.
 use super::{chats, database, message_record, sql};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::{encode, tombstones};
 use crate::shared::protocol::{ChatRecord, MessageRecord};
 use crate::{AppError, message_context::MessageContext, storage::Message};
 use rusqlite::Connection;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use std::io::Write;
 
 /// One published thread's catalogue row.
@@ -13,14 +13,14 @@ use std::io::Write;
     clippy::struct_field_names,
     reason = "chat is the published record; the struct names the catalogue row"
 )]
-pub(crate) struct Chat {
-    pub(crate) node_id: String,
-    pub(crate) chat: ChatRecord,
-    pub(crate) first_message_id: Option<String>,
+pub struct Chat {
+    pub node_id: String,
+    pub chat: ChatRecord,
+    pub first_message_id: Option<String>,
 }
 
 /// Every thread of one node's silver.
-pub(crate) fn list_chats(connection: &Connection, node: &str) -> Result<Vec<Chat>, AppError> {
+pub fn list_chats(connection: &Connection, node: &str) -> Result<Vec<Chat>, AppError> {
     let mut first: std::collections::HashMap<String, String> = sql::NodeFirstMessages
         .query_many(connection)
         .map_err(database)?
@@ -47,7 +47,7 @@ fn parent(record: &MessageRecord) -> Option<&str> {
 
 /// Canonical messages around one anchor: an ordinal window for linear threads,
 /// or the native ancestor chain and first-child continuation for trees.
-pub(crate) fn view(
+pub fn view(
     connection: &Connection,
     id: &str,
     context: u32,
@@ -120,7 +120,7 @@ pub(crate) fn view(
     Ok(rows)
 }
 
-pub(crate) fn message(record: MessageRecord, projection: bool) -> Message {
+pub fn message(record: MessageRecord, projection: bool) -> Message {
     Message {
         attachments: record.attachments,
         id: record.id,
@@ -136,7 +136,7 @@ pub(crate) fn message(record: MessageRecord, projection: bool) -> Message {
     }
 }
 
-pub(crate) fn chat_page(
+pub fn chat_page(
     connection: &Connection,
     input: &crate::shared::protocol::ChatPage,
 ) -> Result<Vec<Message>, AppError> {
@@ -152,14 +152,14 @@ pub(crate) fn chat_page(
         .collect()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 /// Writes one JSON object member per row without collecting the node in memory.
 struct Members<'a, W: Write> {
     output: &'a mut W,
     first: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl<W: Write> Members<'_, W> {
     fn push(&mut self, key: &str, value: &str) -> Result<(), AppError> {
         let io = |_| AppError::internal("write retained shared silver");
@@ -173,7 +173,7 @@ impl<W: Write> Members<'_, W> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn section<'a, W: Write>(
     output: &'a mut W,
     name: &str,
@@ -189,9 +189,9 @@ fn section<'a, W: Write>(
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 /// Stream the retained history wire format: chats, messages and tombstones.
-pub(crate) fn export(connection: &Connection, output: &mut impl Write) -> Result<(), AppError> {
+pub fn export(connection: &Connection, output: &mut impl Write) -> Result<(), AppError> {
     let mut members = section(output, "chats", true)?;
     for record in chats(connection)? {
         members.push(&record.id, &encode(&record)?)?;

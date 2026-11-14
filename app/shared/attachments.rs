@@ -8,11 +8,7 @@ use crate::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::path::Path;
 
-pub(crate) async fn list(
-    config: &SharedConfig,
-    node: &str,
-    message: &str,
-) -> Result<Listing, AppError> {
+pub async fn list(config: &SharedConfig, node: &str, message: &str) -> Result<Listing, AppError> {
     client::post(
         config,
         Endpoint::Attachments,
@@ -24,7 +20,7 @@ pub(crate) async fn list(
     )
     .await
 }
-pub(crate) async fn get(
+pub async fn get(
     config: &SharedConfig,
     node: &str,
     message: &str,
@@ -42,7 +38,7 @@ pub(crate) async fn get(
     .await
 }
 
-pub(crate) async fn publish(database: &Path, config: &SharedConfig) -> Result<(), AppError> {
+pub async fn publish(database: &Path, config: &SharedConfig) -> Result<(), AppError> {
     let db = database.to_path_buf();
     // Only IDs are materialized; each file is loaded and uploaded individually.
     let candidates =

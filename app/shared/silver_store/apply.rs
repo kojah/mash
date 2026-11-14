@@ -13,8 +13,7 @@ use std::io::BufRead;
 /// An amendment that would not reproduce the publisher's chat: the server's
 /// copy is not the one the delta was prepared against. The publisher resends
 /// the chat whole.
-pub(crate) const AMENDMENT_DIVERGED: &str =
-    "amended chat differs from the shared history it amends";
+pub const AMENDMENT_DIVERGED: &str = "amended chat differs from the shared history it amends";
 
 #[cfg(test)]
 mod tests;
@@ -22,7 +21,7 @@ mod tests;
 /// The caller holds the node lock through this operation and subsequent views
 /// synchronization. Duplicate validation rolls back the outer transaction so
 /// SQLite need not retain a snapshot-sized nested-savepoint subjournal.
-pub(crate) fn write(
+pub fn write(
     store: &super::SilverStore,
     identity: &Identity,
     file: &tempfile::NamedTempFile,
@@ -92,33 +91,33 @@ fn write_inner(
 }
 
 #[derive(Debug)]
-pub(crate) struct Applied {
-    pub(crate) head: Head,
-    pub(crate) revision: i64,
+pub struct Applied {
+    pub head: Head,
+    pub revision: i64,
     /// Previously accepted snapshot with matching canonical history.
-    pub(crate) duplicate: bool,
-    pub(crate) changed: bool,
-    pub(crate) removed: u64,
-    pub(crate) purged: u64,
+    pub duplicate: bool,
+    pub changed: bool,
+    pub removed: u64,
+    pub purged: u64,
     /// Chats whose messages and vectors this upload supplies.
-    pub(crate) supplied: BTreeSet<String>,
+    pub supplied: BTreeSet<String>,
     /// Chats removed from silver; their views documents are obsolete.
-    pub(crate) deleted: BTreeSet<String>,
+    pub deleted: BTreeSet<String>,
     /// Supplied chats this upload amended rather than replaced.
-    pub(crate) amended: BTreeMap<String, Amended>,
+    pub amended: BTreeMap<String, Amended>,
     /// Whether this upload carried memories or replaced them all.
-    pub(crate) records: bool,
+    pub records: bool,
 }
 
 /// What one amendment changed, so views can keep the rest of the chat.
 #[derive(Debug)]
-pub(crate) struct Amended {
+pub struct Amended {
     /// The chat's fingerprint before this upload; none when it was absent.
-    pub(crate) prior: Option<String>,
+    pub prior: Option<String>,
     /// Message IDs replaced or removed; the upload supplies those that remain.
-    pub(crate) replaced: BTreeSet<String>,
+    pub replaced: BTreeSet<String>,
     /// Dense-eligible messages of the prior chat that were replaced or removed.
-    pub(crate) removed_embeddings: u64,
+    pub removed_embeddings: u64,
     messages: u64,
 }
 

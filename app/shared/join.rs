@@ -12,10 +12,10 @@ const PREFIX: &str = "mash-join.";
 pub struct Join {
     /// Format version; a newer server's string is refused, not guessed at.
     v: u8,
-    pub(crate) api_url: String,
-    pub(crate) group_id: String,
-    pub(crate) node_id: String,
-    pub(crate) token: String,
+    pub api_url: String,
+    pub group_id: String,
+    pub node_id: String,
+    pub token: String,
 }
 
 impl Join {

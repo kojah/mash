@@ -18,8 +18,8 @@ pub enum ReplayFault {
 
 #[cfg(any(test, feature = "test-support"))]
 impl Store {
-    #[cfg(test)]
-    pub(crate) fn with_replay_fault(mut self, fault: ReplayFault) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_replay_fault(mut self, fault: ReplayFault) -> Self {
         self.replay_fault = Some(fault);
         self
     }
@@ -38,17 +38,17 @@ impl Store {
     reason = "phase durations are all milliseconds; the suffix is the unit"
 )]
 #[derive(Debug, Default, serde::Serialize)]
-pub(crate) struct Timings {
-    pub(crate) lock_ms: u64,
-    pub(crate) begin_ms: u64,
-    pub(crate) fingerprints_ms: u64,
-    pub(crate) invalidate_ms: u64,
-    pub(crate) delete_ms: u64,
-    pub(crate) materialize_ms: u64,
-    pub(crate) embedding_ms: u64,
-    pub(crate) finish_ms: u64,
-    pub(crate) certify_ms: u64,
-    pub(crate) total_ms: u64,
+pub struct Timings {
+    pub lock_ms: u64,
+    pub begin_ms: u64,
+    pub fingerprints_ms: u64,
+    pub invalidate_ms: u64,
+    pub delete_ms: u64,
+    pub materialize_ms: u64,
+    pub embedding_ms: u64,
+    pub finish_ms: u64,
+    pub certify_ms: u64,
+    pub total_ms: u64,
 }
 
 fn millis(started: Instant) -> u64 {
@@ -62,12 +62,12 @@ const CHAT_WINDOW: usize = 256;
 /// Replay result for one node.
 #[derive(Debug, serde::Serialize)]
 pub struct Replayed {
-    pub(crate) group_id: String,
-    pub(crate) node_id: String,
-    pub(crate) chats: u64,
+    pub group_id: String,
+    pub node_id: String,
+    pub chats: u64,
     pub messages: u64,
-    pub(crate) embeddings: u64,
-    pub(crate) timings: Timings,
+    pub embeddings: u64,
+    pub timings: Timings,
 }
 
 impl Store {

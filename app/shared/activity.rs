@@ -37,7 +37,7 @@ pub enum Unit {
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub(crate) struct Active {
+pub struct Active {
     operation_id: u64,
     node_id: String,
     kind: Kind,
@@ -164,7 +164,7 @@ impl Progress {
         }
     }
 
-    pub(crate) fn advance(&self, amount: u64) {
+    pub fn advance(&self, amount: u64) {
         if let Some(record) = &self.0 {
             let mut step = record
                 .step

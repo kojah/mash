@@ -13,10 +13,7 @@ use crate::{
 };
 use std::path::Path;
 
-#[cfg(test)]
-mod tests;
-
-pub(crate) async fn search(
+pub async fn search(
     config: &SharedConfig,
     database: Option<(&Path, &crate::config::ResolvedConfig)>,
     query: &str,
