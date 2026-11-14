@@ -2,7 +2,7 @@ class Mash < Formula
   desc "Search your coding agents' past conversations from a CLI and MCP server"
   homepage "https://github.com/mashium/mash"
   version "@VERSION@"
-  license "MIT"
+  license any_of: ["MIT", "Apache-2.0"]
 
   on_macos do
     on_arm do

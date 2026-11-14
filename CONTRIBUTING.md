@@ -51,4 +51,6 @@ edit them rather than anything under `site/src/content`.
 - Keep each pull request to one change, with tests for behaviour it changes.
 - Formatting, Clippy and the test suite must pass.
 - Update the guide in `docs/` when you change something a user sees.
-- Contributions are accepted under the project's [MIT license](LICENSE).
+- Mash is licensed under either the [MIT licence](LICENSE-MIT) or the
+  [Apache License 2.0](LICENSE-APACHE). Unless you say otherwise, anything you
+  contribute is offered under both, with no further terms.

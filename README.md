@@ -9,7 +9,7 @@
   <a href="https://github.com/mashium/mash/actions/workflows/ci.yml"><img src="https://github.com/mashium/mash/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/mashium/mash/actions/workflows/windows.yml"><img src="https://github.com/mashium/mash/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows"></a>
   <a href="https://getmash.io"><img src="https://github.com/mashium/mash/actions/workflows/docs.yml/badge.svg?branch=main" alt="Documentation"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licence"></a>
+  <a href="#licence"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="MIT or Apache 2.0 licence"></a>
 </p>
 
 # mash - The **M**ulti-**A**gent **S**earch **H**istory Tool
@@ -213,4 +213,9 @@ troubleshooting, and the CLI and MCP references.
 Upgrading an existing installation? Read [the upgrade guide](docs/upgrades.md)
 before replacing it.
 
-[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)
+## Licence
+
+Mash is licensed under either the [MIT licence](LICENSE-MIT) or the
+[Apache License 2.0](LICENSE-APACHE), at your option.
+
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)

@@ -2,7 +2,7 @@
     "version": "@VERSION@",
     "description": "Search your coding agents' past conversations from a CLI and MCP server",
     "homepage": "https://github.com/mashium/mash",
-    "license": "MIT",
+    "license": "MIT OR Apache-2.0",
     "architecture": {
         "64bit": {
             "url": "https://github.com/mashium/mash/releases/download/v@VERSION@/mash-x86_64-pc-windows-msvc.zip",

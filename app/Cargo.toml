@@ -3,7 +3,7 @@ name = "mash-app"
 version.workspace = true
 edition = "2024"
 description = "Mash's application library: silver storage, views, search, sync, the shared server, MCP and the dashboard"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 build = "build.rs"
 

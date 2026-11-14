@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 description = "Mash fleet management through Ansible and MCP"
 autobins = false
-license = "MIT"
+license = "MIT OR Apache-2.0"
 
 [[bin]]
 name = "mash-fleet"

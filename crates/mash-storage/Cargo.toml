@@ -3,7 +3,7 @@ name = "mash-storage"
 version.workspace = true
 edition = "2024"
 description = "Mash's silver SQLite index, memory records and the search result types every layer above shares"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 

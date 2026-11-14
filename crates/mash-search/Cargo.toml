@@ -3,7 +3,7 @@ name = "mash-search"
 version.workspace = true
 edition = "2024"
 description = "Mash's configuration, embedding and reranking models, Qdrant views and ranking"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 

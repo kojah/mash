@@ -3,7 +3,7 @@ name = "mash-sync"
 version.workspace = true
 edition = "2024"
 description = "Mash's shared index: the node-side client, sync and publication, and the server's silver store"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 

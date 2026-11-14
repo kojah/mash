@@ -3,5 +3,6 @@ Upstream-Name: mash
 Source: https://github.com/mashium/mash
 
 Files: *
-License: MIT
- See https://github.com/mashium/mash/blob/main/LICENSE
+License: MIT or Apache-2.0
+ See https://github.com/mashium/mash/blob/main/LICENSE-MIT
+ and https://github.com/mashium/mash/blob/main/LICENSE-APACHE

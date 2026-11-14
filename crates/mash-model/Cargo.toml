@@ -3,7 +3,7 @@ name = "mash-model"
 version = "0.1.0"
 edition = "2024"
 description = "Vocabulary shared by the Mash crates: roles, providers, tool activity, attachments, masking and errors"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [features]

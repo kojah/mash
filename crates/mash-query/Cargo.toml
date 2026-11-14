@@ -3,7 +3,7 @@ name = "mash-query"
 version = "0.1.0"
 edition = "2024"
 description = "Pure query validation and literal matching rules shared by mash search backends"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]

@@ -3,7 +3,7 @@ name = "mash-mcp"
 version.workspace = true
 edition = "2024"
 description = "Mash's stdio MCP server, its tool contract and the generated history skill"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]

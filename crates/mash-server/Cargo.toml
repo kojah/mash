@@ -3,7 +3,7 @@ name = "mash-server"
 version.workspace = true
 edition = "2024"
 description = "The authenticated HTTP service for Mash's shared index"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
