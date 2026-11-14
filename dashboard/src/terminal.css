@@ -3349,6 +3349,9 @@ summary.rw::-webkit-details-marker {
 .signin {
   display: grid;
   place-items: center;
+  /* #app is a row; without this the screen is only as wide as the form and
+     sits at the left edge on a wide window. */
+  flex: 1;
   min-height: 100dvh;
   padding: 16px;
 }
