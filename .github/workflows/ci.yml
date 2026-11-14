@@ -42,6 +42,20 @@ jobs:
           make protocol-tools
           make protocol-check DEV_RUN=
 
+  dependencies:
+    # Licences, banned and wildcard dependencies, and where crates come from.
+    # Security advisories change without a commit, so they have their own
+    # workflow (dependencies.yml) and do not fail an unrelated push.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        with:
+          tool: cargo-deny@0.20.2
+          fallback: none
+      - run: cargo deny check bans licenses sources
+
   rust:
     # Cancel obsolete validation jobs on branches, without canceling an active
     # deployment. On main a run that has started finishes: with several pushes

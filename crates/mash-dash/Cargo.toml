@@ -15,7 +15,7 @@ mash-model = { path = "../mash-model" }
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", default-features = false, features = ["std"] }
 regex = "1.12"
-rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+rusqlite = { version = "0.41.0", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
 toml = "1.1"
 aide = { version = "=0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-ws"] }
 axum = { version = "0.8", features = ["ws"] }

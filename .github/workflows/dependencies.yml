@@ -1,0 +1,28 @@
+# Security advisories for the Rust dependencies. A new advisory can appear
+# without any commit, so this runs daily as well as when dependencies change.
+name: Dependency advisories
+
+on:
+  push:
+    branches: [main]
+    paths: [Cargo.lock, deny.toml, .github/workflows/dependencies.yml]
+  pull_request:
+    paths: [Cargo.lock, deny.toml, .github/workflows/dependencies.yml]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        with:
+          tool: cargo-deny@0.20.2
+          fallback: none
+      - run: cargo deny check advisories

@@ -319,19 +319,19 @@ fn run_params(
         return Err(AppError::usage("query exceeds the statement limit"));
     }
     let limit = limit.clamp(1, MAX_ROWS);
-    let connection = Connection::open_with_flags(
+    let mut connection = Connection::open_with_flags(
         database,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(AppError::database)?;
-    prepare_read_only(&connection, timeout)?;
+    prepare_read_only(&mut connection, timeout)?;
     execute(&connection, sql, params, limit, byte_budget)
 }
 
 /// Pin the connection read-only and arm the time
 /// budget. Shared-silver reads call this on a server connection as well, so a
 /// typed query gets exactly the same guardrails as a local one.
-fn prepare_read_only(connection: &Connection, timeout: Duration) -> Result<(), AppError> {
+fn prepare_read_only(connection: &mut Connection, timeout: Duration) -> Result<(), AppError> {
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;
@@ -362,7 +362,7 @@ fn prepare_read_only(connection: &Connection, timeout: Duration) -> Result<(), A
 /// Run a typed request on an already-open connection, applying the same
 /// read-only setup as `run_request`.
 pub fn run_request_on(
-    connection: &Connection,
+    connection: &mut Connection,
     request: &Request,
     timeout: Duration,
 ) -> Result<Value, AppError> {
@@ -385,11 +385,7 @@ fn execute(
     byte_budget: usize,
 ) -> Result<Value, AppError> {
     let mut statement = connection.prepare(sql).map_err(|error| sql_error(&error))?;
-    let columns: Vec<String> = statement
-        .column_names()
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
+    let columns: Vec<String> = statement.column_names().map(str::to_owned).collect();
     let mut rows = statement
         .query(rusqlite::params_from_iter(params.iter()))
         .map_err(|error| {

@@ -236,8 +236,12 @@ impl Store {
         request: crate::silver_query::Request,
         timeout: std::time::Duration,
     ) -> Result<serde_json::Value, AppError> {
-        self.read(identity, move |connection| {
-            crate::silver_query::run_request_on(connection, &request, timeout)
+        // Installing the query's authorizer needs the connection to itself.
+        let silver = self.silver.clone();
+        let identity = identity.clone();
+        crate::blocking(move || {
+            let mut connection = silver.connect(&identity)?;
+            crate::silver_query::run_request_on(&mut connection, &request, timeout)
         })
         .await
     }

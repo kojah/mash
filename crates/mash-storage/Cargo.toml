@@ -23,8 +23,8 @@ tempfile = "3.27.0"
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", default-features = false, features = ["std"] }
 clap = { version = "4.6.1", features = ["derive"] }
-rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
-rusqlite_migration = "2.6.0"
+rusqlite = { version = "0.41.0", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+rusqlite_migration = "2.7.0"
 base64 = "0.22.1"
 prost = "0.14.4"
 zstd = "0.13.3"

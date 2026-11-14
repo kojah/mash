@@ -311,6 +311,25 @@ batch membership and vector generation. See the
 memory/throughput tradeoff and the manual worker-budget diagnostic. This is an
 inference workspace limit, not a total indexing memory limit.
 
+## Dependency policy
+
+`deny.toml` is the policy for Rust dependencies, checked with
+[cargo-deny](https://github.com/EmbarkStudios/cargo-deny). Install it with
+`cargo binstall cargo-deny` and run `make deny` after changing dependencies.
+
+| Check | What fails it | Where it runs |
+| --- | --- | --- |
+| Licences | A crate with no licence on the allow-list. Only permissive licences are listed; `option-ext` (MPL-2.0) is a named exception | CI, every push |
+| Bans | A wildcard version requirement. Duplicate versions of a crate only warn | CI, every push |
+| Sources | A crate from anywhere but crates.io | CI, every push |
+| Advisories | A RustSec advisory, an unsound or unmaintained crate, or a yanked version | Its own workflow: daily, and when `Cargo.lock` or `deny.toml` changes |
+
+Advisories have their own workflow because a new one can appear without any
+commit; it should show as its own failure, not turn an unrelated push red.
+When one appears, update the crate if a fixed release exists. Add it to
+`ignore` in `deny.toml` only with the reason written beside it, and only when
+no fix exists or the affected code is not reachable from Mash.
+
 ## Generated SQLite queries
 
 SQLite query models are generated with sqlc 1.31.1 / sqlc-gen-rust 0.1.12.

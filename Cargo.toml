@@ -5,6 +5,8 @@ edition = "2024"
 description = "Multi-Agent Search History for local agent conversations"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mashium/mash"
+# "mash" on crates.io is another crate; this one is installed from its releases.
+publish = false
 default-run = "mash"
 autobins = false
 autotests = false
@@ -71,7 +73,7 @@ tempfile = "3.27.0"
 toml = "1.1"
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "json", "rustls-tls", "stream"] }
 blake3 = "1.8.5"
-rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+rusqlite = { version = "0.41.0", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
 axum = { version = "0.8", features = ["ws"] }
 walkdir = "2.5.0"
 mash-silver = { path = "crates/mash-silver", features = ["test-support"] }

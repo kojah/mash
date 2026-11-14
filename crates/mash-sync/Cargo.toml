@@ -31,7 +31,7 @@ futures-util = "0.3"
 tempfile = "3.27.0"
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", default-features = false, features = ["std"] }
-rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
+rusqlite = { version = "0.41.0", features = ["bundled", "modern_sqlite", "blob", "functions", "hooks"] }
 base64 = "0.22.1"
 prost = "0.14.4"
 zstd = "0.13.3"

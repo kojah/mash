@@ -42,6 +42,12 @@ protocol-tools:
 protocol-check:
 	$(DEV_RUN) bash protocol/check.sh
 
+# Dependency policy in deny.toml: advisories, licences, bans and sources.
+# Install the tool with `cargo binstall cargo-deny`.
+.PHONY: deny
+deny:
+	cargo deny check
+
 .PHONY: iterate validate-dev
 iterate:
 	@test -n "$${FOCUS}" || (echo 'Set FOCUS to a nextest filter for the changed behavior'; exit 2)

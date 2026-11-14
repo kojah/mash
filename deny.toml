@@ -1,0 +1,55 @@
+# Dependency policy, checked by `make deny` and in CI.
+# Run `cargo deny check` after changing dependencies.
+
+[graph]
+# The platforms Mash is released for.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+# Each ignored advisory needs its reason beside it.
+ignore = [
+    # `paste` is finished rather than broken: a small macro crate with no
+    # known defect, pulled in by `tokenizers` for the embedding models.
+    { id = "RUSTSEC-2024-0436", reason = "no replacement inside tokenizers; revisit when tokenizers drops it" },
+]
+
+[licenses]
+# Permissive licences only. A crate offered under several needs one of these.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    # Public-domain dedication (`notify`).
+    "CC0-1.0",
+    # Mozilla's root certificate list as data (`webpki-roots`).
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+# Weak copyleft, file by file: fine to link, and named here so that another
+# such crate is a decision and not a default.
+exceptions = [{ allow = ["MPL-2.0"], crate = "option-ext" }]
+
+[licenses.private]
+# The workspace's own crates are not published.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
